@@ -31,7 +31,17 @@ export class QuotesListBlock extends BaseBlock {
     this.renderHeader(el, title);
 
     const colsEl = el.createDiv({ cls: 'quotes-columns' });
-    colsEl.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+
+    const MIN_COL_WIDTH = 200;
+    const updateCols = () => {
+      const w = colsEl.offsetWidth;
+      const effective = w > 0 ? Math.max(1, Math.min(columns, Math.floor(w / MIN_COL_WIDTH))) : columns;
+      colsEl.style.gridTemplateColumns = `repeat(${effective}, 1fr)`;
+    };
+    updateCols();
+    const ro = new ResizeObserver(updateCols);
+    ro.observe(colsEl);
+    this.register(() => ro.disconnect());
 
     if (source === 'text') {
       this.renderTextQuotes(colsEl, quotes, maxItems);

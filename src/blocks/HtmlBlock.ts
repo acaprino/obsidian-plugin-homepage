@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from 'obsidian';
+import { App, Modal, Setting, sanitizeHTMLToDom } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
@@ -22,7 +22,7 @@ export class HtmlBlock extends BaseBlock {
       return;
     }
 
-    contentEl.innerHTML = html;
+    contentEl.appendChild(sanitizeHTMLToDom(html));
   }
 
   openSettings(onSave: () => void): void {
@@ -47,21 +47,23 @@ class HtmlBlockSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'HTML Block Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('Block title').setDesc('Optional header shown above the HTML.').addText(t =>
-      t.setValue(this.config.title as string ?? '')
-       .onChange(v => { this.config.title = v; }),
+      t.setValue(draft.title as string ?? '')
+       .onChange(v => { draft.title = v; }),
     );
 
-    new Setting(contentEl).setName('HTML').setDesc('Raw HTML rendered directly in the block.');
+    new Setting(contentEl).setName('HTML').setDesc('HTML is sanitized before rendering.');
     const textarea = contentEl.createEl('textarea', { cls: 'static-text-settings-textarea' });
-    textarea.value = this.config.html as string ?? '';
+    textarea.value = draft.html as string ?? '';
     textarea.rows = 12;
     textarea.setAttribute('spellcheck', 'false');
-    textarea.addEventListener('input', () => { this.config.html = textarea.value; });
+    textarea.addEventListener('input', () => { draft.html = textarea.value; });
 
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

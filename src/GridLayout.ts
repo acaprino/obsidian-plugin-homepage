@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, Modal, Setting, setIcon } from 'obsidian';
 import { BlockInstance, LayoutConfig, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
@@ -23,11 +23,29 @@ export class GridLayout {
     this.gridEl = containerEl.createDiv({ cls: 'homepage-grid' });
   }
 
+  /** Expose the root grid element so HomepageView can reorder it in the DOM. */
+  getElement(): HTMLElement {
+    return this.gridEl;
+  }
+
   render(blocks: BlockInstance[], columns: number): void {
     this.destroyAll();
     this.gridEl.empty();
-    this.gridEl.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
-    if (this.editMode) this.gridEl.addClass('edit-mode');
+    this.gridEl.setAttribute('role', 'grid');
+    this.gridEl.setAttribute('aria-label', 'Homepage blocks');
+    this.gridEl.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+
+    if (this.editMode) {
+      this.gridEl.addClass('edit-mode');
+    } else {
+      this.gridEl.removeClass('edit-mode');
+    }
+
+    if (blocks.length === 0) {
+      const empty = this.gridEl.createDiv({ cls: 'homepage-empty-state' });
+      empty.createEl('p', { text: 'No blocks yet. Click Edit to add your first block.' });
+      return;
+    }
 
     for (const instance of blocks) {
       this.renderBlock(instance);
@@ -40,6 +58,8 @@ export class GridLayout {
 
     const wrapper = this.gridEl.createDiv({ cls: 'homepage-block-wrapper' });
     wrapper.dataset.blockId = instance.id;
+    wrapper.setAttribute('role', 'gridcell');
+    wrapper.setAttribute('aria-label', factory.displayName);
     this.applyGridPosition(wrapper, instance);
 
     if (this.editMode) {
@@ -69,9 +89,13 @@ export class GridLayout {
     const bar = wrapper.createDiv({ cls: 'block-handle-bar' });
 
     const handle = bar.createDiv({ cls: 'block-move-handle' });
-    handle.setText('⠿');
+    setIcon(handle, 'grip-vertical');
+    handle.setAttribute('aria-label', 'Drag to reorder');
+    handle.setAttribute('title', 'Drag to reorder');
 
-    const settingsBtn = bar.createEl('button', { cls: 'block-settings-btn', text: '⚙' });
+    const settingsBtn = bar.createEl('button', { cls: 'block-settings-btn' });
+    setIcon(settingsBtn, 'settings');
+    settingsBtn.setAttribute('aria-label', 'Block settings');
     settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const entry = this.blocks.get(instance.id);
@@ -85,19 +109,24 @@ export class GridLayout {
       });
     });
 
-    const removeBtn = bar.createEl('button', { cls: 'block-remove-btn', text: '×' });
+    const removeBtn = bar.createEl('button', { cls: 'block-remove-btn' });
+    setIcon(removeBtn, 'x');
+    removeBtn.setAttribute('aria-label', 'Remove block');
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const newBlocks = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
-      this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-      this.rerender();
+      new RemoveBlockConfirmModal(this.app, () => {
+        const newBlocks = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
+        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+        this.rerender();
+      }).open();
     });
 
-    // Resize grip (absolute positioned via CSS, bottom-right)
-    const grip = wrapper.createDiv({ cls: 'block-resize-grip', text: '⊿' });
+    const grip = wrapper.createDiv({ cls: 'block-resize-grip' });
+    setIcon(grip, 'maximize-2');
+    grip.setAttribute('aria-label', 'Drag to resize');
+    grip.setAttribute('title', 'Drag to resize');
     this.attachResizeHandler(grip, wrapper, instance);
 
-    // Drag handler on the braille handle
     this.attachDragHandler(handle, wrapper, instance);
   }
 
@@ -105,7 +134,6 @@ export class GridLayout {
     handle.addEventListener('mousedown', (e: MouseEvent) => {
       e.preventDefault();
 
-      // Cancel any previous operation
       this.activeAbortController?.abort();
       const ac = new AbortController();
       this.activeAbortController = ac;
@@ -136,7 +164,6 @@ export class GridLayout {
       };
 
       const onMouseUp = (me: MouseEvent) => {
-        // Aborting the controller removes both listeners automatically
         ac.abort();
         this.activeAbortController = null;
 
@@ -164,7 +191,6 @@ export class GridLayout {
       e.preventDefault();
       e.stopPropagation();
 
-      // Cancel any previous operation
       this.activeAbortController?.abort();
       const ac = new AbortController();
       this.activeAbortController = ac;
@@ -180,7 +206,6 @@ export class GridLayout {
         const deltaCols = Math.round(deltaX / colWidth);
         const max = columns - instance.col + 1;
         currentColSpan = Math.max(1, Math.min(max, startColSpan + deltaCols));
-        // Visual feedback only — instance is not mutated until mouseup
         wrapper.style.gridColumn = `${instance.col} / span ${currentColSpan}`;
       };
 
@@ -188,7 +213,6 @@ export class GridLayout {
         ac.abort();
         this.activeAbortController = null;
 
-        // Commit via immutable update
         const newBlocks = this.plugin.layout.blocks.map(b =>
           b.id === instance.id ? { ...b, colSpan: currentColSpan } : b,
         );
@@ -233,8 +257,14 @@ export class GridLayout {
     this.rerender();
   }
 
+  /** Update column count, clamping each block's col and colSpan to fit. */
   setColumns(n: number): void {
-    this.onLayoutChange({ ...this.plugin.layout, columns: n });
+    const newBlocks = this.plugin.layout.blocks.map(b => {
+      const col = Math.min(b.col, n);
+      const colSpan = Math.min(b.colSpan, n - col + 1);
+      return { ...b, col, colSpan };
+    });
+    this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
     this.rerender();
   }
 
@@ -245,12 +275,17 @@ export class GridLayout {
   }
 
   private rerender(): void {
+    const focused = document.activeElement;
+    const focusedBlockId = (focused?.closest('[data-block-id]') as HTMLElement | null)?.dataset.blockId;
     this.render(this.plugin.layout.blocks, this.plugin.layout.columns);
+    if (focusedBlockId) {
+      const el = this.gridEl.querySelector<HTMLElement>(`[data-block-id="${focusedBlockId}"]`);
+      el?.focus();
+    }
   }
 
   /** Unload all blocks and cancel any in-progress drag/resize. */
   destroyAll(): void {
-    // Abort any in-progress drag/resize and clean up orphaned clone
     this.activeAbortController?.abort();
     this.activeAbortController = null;
     this.activeClone?.remove();
@@ -267,4 +302,31 @@ export class GridLayout {
     this.destroyAll();
     this.gridEl.remove();
   }
+}
+
+// ── Remove confirmation modal ────────────────────────────────────────────────
+
+class RemoveBlockConfirmModal extends Modal {
+  constructor(app: App, private onConfirm: () => void) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h2', { text: 'Remove block?' });
+    contentEl.createEl('p', { text: 'This block will be removed from the homepage.' });
+    new Setting(contentEl)
+      .addButton(btn =>
+        btn.setButtonText('Remove').setWarning().onClick(() => {
+          this.onConfirm();
+          this.close();
+        }),
+      )
+      .addButton(btn =>
+        btn.setButtonText('Cancel').onClick(() => this.close()),
+      );
+  }
+
+  onClose(): void { this.contentEl.empty(); }
 }

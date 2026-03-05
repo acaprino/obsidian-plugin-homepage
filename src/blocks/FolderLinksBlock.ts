@@ -70,14 +70,17 @@ class FolderLinksSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Folder Links Settings' });
 
+    const draft: { title?: string; links?: LinkItem[] } = structuredClone(this.config);
+    draft.links ??= [];
+    const links = draft.links;
+
     new Setting(contentEl).setName('Block title').addText(t =>
-      t.setValue(this.config.title ?? 'Links')
-       .onChange(v => { this.config.title = v; }),
+      t.setValue(draft.title ?? 'Links')
+       .onChange(v => { draft.title = v; }),
     );
 
     contentEl.createEl('h3', { text: 'Links' });
 
-    const links: LinkItem[] = (this.config.links ?? []).map(l => ({ ...l }));
     const linksContainer = contentEl.createDiv();
 
     const renderLinks = () => {
@@ -103,8 +106,7 @@ class FolderLinksSettingsModal extends Modal {
         renderLinks();
       }))
       .addButton(btn => btn.setButtonText('Save').setCta().onClick(() => {
-        this.config.links = links;
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }));
   }

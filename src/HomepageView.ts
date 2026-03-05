@@ -40,12 +40,11 @@ export class HomepageView extends ItemView {
       this.app,
       this.plugin,
       this.grid,
-      (columns) => {
-        this.plugin.layout.columns = columns;
-        void this.plugin.saveLayout(this.plugin.layout);
-        this.grid?.setColumns(columns);
-      },
+      (columns) => { this.grid?.setColumns(columns); },
     );
+
+    // Toolbar must appear above the grid in the flex-column layout
+    contentEl.insertBefore(this.toolbar.getElement(), this.grid.getElement());
 
     this.grid.render(layout.blocks, layout.columns);
   }

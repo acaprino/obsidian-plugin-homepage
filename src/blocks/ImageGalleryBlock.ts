@@ -150,9 +150,11 @@ class ImageGallerySettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Image Gallery Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('Block title').addText(t =>
-      t.setValue(this.config.title as string ?? 'Gallery')
-       .onChange(v => { this.config.title = v; }),
+      t.setValue(draft.title as string ?? 'Gallery')
+       .onChange(v => { draft.title = v; }),
     );
     let folderText: import('obsidian').TextComponent;
     new Setting(contentEl)
@@ -160,31 +162,31 @@ class ImageGallerySettingsModal extends Modal {
       .setDesc('Pick a vault folder.')
       .addText(t => {
         folderText = t;
-        t.setValue(this.config.folder as string ?? '')
+        t.setValue(draft.folder as string ?? '')
          .setPlaceholder('Attachments/Photos')
-         .onChange(v => { this.config.folder = v; });
+         .onChange(v => { draft.folder = v; });
       })
       .addButton(btn =>
         btn.setIcon('folder').setTooltip('Browse vault folders').onClick(() => {
           new FolderSuggestModal(this.app, (folder) => {
             const path = folder.path === '/' ? '' : folder.path;
-            this.config.folder = path;
+            draft.folder = path;
             folderText.setValue(path);
           }).open();
         }),
       );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
-       .setValue(String(this.config.columns ?? 3))
-       .onChange(v => { this.config.columns = Number(v); }),
+       .setValue(String(draft.columns ?? 3))
+       .onChange(v => { draft.columns = Number(v); }),
     );
     new Setting(contentEl).setName('Max items').addText(t =>
-      t.setValue(String(this.config.maxItems ?? 20))
-       .onChange(v => { this.config.maxItems = parseInt(v) || 20; }),
+      t.setValue(String(draft.maxItems ?? 20))
+       .onChange(v => { draft.maxItems = parseInt(v) || 20; }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

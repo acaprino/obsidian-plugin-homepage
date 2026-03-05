@@ -62,24 +62,26 @@ class ClockSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Clock Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('Show seconds').addToggle(t =>
-      t.setValue(this.config.showSeconds as boolean ?? false)
-       .onChange(v => { this.config.showSeconds = v; }),
+      t.setValue(draft.showSeconds as boolean ?? false)
+       .onChange(v => { draft.showSeconds = v; }),
     );
     new Setting(contentEl).setName('Show date').addToggle(t =>
-      t.setValue(this.config.showDate as boolean ?? true)
-       .onChange(v => { this.config.showDate = v; }),
+      t.setValue(draft.showDate as boolean ?? true)
+       .onChange(v => { draft.showDate = v; }),
     );
     new Setting(contentEl)
       .setName('Custom format')
       .setDesc('Optional moment.js format string, e.g. "HH:mm". Leave empty for default.')
       .addText(t =>
-        t.setValue(this.config.format as string ?? '')
-         .onChange(v => { this.config.format = v; }),
+        t.setValue(draft.format as string ?? '')
+         .onChange(v => { draft.format = v; }),
       );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

@@ -255,18 +255,24 @@ export class GridLayout {
       const ac = new AbortController();
       this.activeAbortController = ac;
 
-      // Floating clone that follows the cursor
-      const clone = document.createElement('div');
+      // Clone: position via GPU-composited transform (no layout recalc on every mousemove)
+      const clone = wrapper.cloneNode(true) as HTMLElement;
       clone.addClass('block-drag-clone');
       clone.style.width = `${wrapper.offsetWidth}px`;
       clone.style.height = `${wrapper.offsetHeight}px`;
-      clone.style.left = `${e.clientX - wrapper.offsetWidth / 2}px`;
-      clone.style.top = `${e.clientY - 20}px`;
+      clone.style.position = 'fixed';
+      clone.style.left = '0';
+      clone.style.top = '0';
+      clone.style.pointerEvents = 'none';
+      const cloneOffsetX = wrapper.offsetWidth / 2;
+      clone.style.transform = `translate(${e.clientX - cloneOffsetX}px, ${e.clientY - 20}px) rotate(1.5deg) scale(1.03)`;
+      clone.querySelectorAll<HTMLElement>('button,input,a,[contenteditable]')
+        .forEach(el => { el.setAttribute('tabindex', '-1'); el.style.pointerEvents = 'none'; });
       const themed = (this.gridEl.closest('.app-container') ?? document.body) as HTMLElement;
       themed.appendChild(clone);
       this.activeClone = clone;
 
-      // Placeholder — shows the landing spot in the real layout
+      // Placeholder — instant DOM insertion, no opacity animation (prevents strobe on fast moves)
       const placeholder = document.createElement('div');
       placeholder.addClass('block-drag-placeholder');
       placeholder.style.flex = wrapper.style.flex;
@@ -276,15 +282,21 @@ export class GridLayout {
 
       const sourceId = instance.id;
       wrapper.addClass('block-dragging');
-
-      // Cache rects once at drag start to avoid layout thrash on every mousemove
-      const cachedRects = new Map<string, DOMRect>();
-      for (const [id, { wrapper: w }] of this.blocks) {
-        if (id !== sourceId) cachedRects.set(id, w.getBoundingClientRect());
-      }
+      document.body.addClass('is-dragging-block');
 
       let lastInsertBeforeId: string | null = null;
       let lastNewRow = false;
+      let pendingX = e.clientX;
+      let pendingY = e.clientY;
+      let rafId: number | null = null;
+
+      const getLiveRects = (): Map<string, DOMRect> => {
+        const rects = new Map<string, DOMRect>();
+        for (const [id, { wrapper: w }] of this.blocks) {
+          if (id !== sourceId) rects.set(id, w.getBoundingClientRect());
+        }
+        return rects;
+      };
 
       const movePlaceholder = (insertBeforeId: string | null, newRow: boolean) => {
         if (insertBeforeId === lastInsertBeforeId && newRow === lastNewRow) return;
@@ -303,29 +315,47 @@ export class GridLayout {
           const targetWrapper = this.blocks.get(insertBeforeId)?.wrapper;
           if (targetWrapper) {
             this.gridEl.insertBefore(placeholder, targetWrapper);
-            return;
+          } else {
+            this.gridEl.appendChild(placeholder);
           }
+        } else {
+          this.gridEl.appendChild(placeholder);
         }
-        this.gridEl.appendChild(placeholder);
+      };
+
+      // rAF-throttled frame: batches clone move + placeholder update into one paint cycle
+      const processFrame = () => {
+        rafId = null;
+        clone.style.transform = `translate(${pendingX - cloneOffsetX}px, ${pendingY - 20}px) rotate(1.5deg) scale(1.03)`;
+        const pt = this.findInsertionPointCached(pendingX, pendingY, sourceId, getLiveRects());
+        movePlaceholder(pt.insertBeforeId, pt.newRow);
       };
 
       const onMouseMove = (me: MouseEvent) => {
-        clone.style.left = `${me.clientX - wrapper.offsetWidth / 2}px`;
-        clone.style.top = `${me.clientY - 20}px`;
-        const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
-        movePlaceholder(pt.insertBeforeId, pt.newRow);
+        pendingX = me.clientX;
+        pendingY = me.clientY;
+        if (rafId === null) rafId = requestAnimationFrame(processFrame);
       };
 
       const onMouseUp = (me: MouseEvent) => {
         ac.abort();
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
         this.activeAbortController = null;
         clone.remove();
         this.activeClone = null;
         placeholder.remove();
         wrapper.removeClass('block-dragging');
+        document.body.removeClass('is-dragging-block');
 
-        const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
+        const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, getLiveRects());
         this.reorderBlock(sourceId, pt.insertBeforeId, pt.newRow);
+
+        // Drop confirmation flash on the landed wrapper
+        const landedEntry = this.blocks.get(sourceId);
+        if (landedEntry) {
+          landedEntry.wrapper.addClass('block-drop-landed');
+          setTimeout(() => landedEntry.wrapper.removeClass('block-drop-landed'), 450);
+        }
       };
 
       document.addEventListener('mousemove', onMouseMove, { signal: ac.signal });
@@ -400,20 +430,14 @@ export class GridLayout {
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
 
-      // If cursor is directly over this card, use it immediately
+      // If cursor is directly over this card, use horizontal position only (no new-row)
       if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-        const inBottomHalf = y > cy;
-        if (inBottomHalf) {
-          // Drop below → new row after this block
-          return { insertBeforeId: this.nextBlockId(id), newRow: true };
-        }
         const insertBefore = x < cx;
         return { insertBeforeId: insertBefore ? id : this.nextBlockId(id), newRow: false };
       }
 
-      // Beyond 300px from center, don't show indicator — prevents unintuitive highlights
       const dist = Math.hypot(x - cx, y - cy);
-      if (dist < bestDist && dist < 300) {
+      if (dist < bestDist) {
         bestDist = dist;
         bestTargetId = id;
         bestInsertBefore = x < cx;
@@ -510,6 +534,7 @@ export class GridLayout {
     this.activeAbortController = null;
     this.activeClone?.remove();
     this.activeClone = null;
+    document.body.removeClass('is-dragging-block');
 
     for (const { block } of this.blocks.values()) {
       block.unload();

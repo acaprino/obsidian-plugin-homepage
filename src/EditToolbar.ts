@@ -23,6 +23,12 @@ export class EditToolbar {
   private renderToolbar(): void {
     this.toolbarEl.empty();
 
+    // Edit mode indicator (left-aligned, hidden until edit mode activates)
+    const indicator = this.toolbarEl.createDiv({ cls: 'toolbar-edit-indicator' });
+    indicator.createDiv({ cls: 'toolbar-edit-dot' });
+    indicator.createSpan({ text: 'Editing' });
+    if (this.editMode) indicator.addClass('is-visible');
+
     // Column count selector
     const colSelect = this.toolbarEl.createEl('select', { cls: 'toolbar-col-select' });
     colSelect.setAttribute('aria-label', 'Number of columns');
@@ -42,11 +48,17 @@ export class EditToolbar {
       this.grid.setEditMode(this.editMode);
       this.updateEditBtn(editBtn);
       this.syncAddButton();
+      indicator.toggleClass('is-visible', this.editMode);
+      this.toolbarEl.toggleClass('toolbar-editing', this.editMode);
     });
 
     if (this.editMode) {
+      this.toolbarEl.addClass('toolbar-editing');
       this.appendAddButton();
     }
+
+    // Wire up the grid's empty state CTA to open the add block modal
+    this.grid.onRequestAddBlock = () => { this.openAddBlockModal(); };
   }
 
   private updateEditBtn(btn: HTMLButtonElement): void {
@@ -65,28 +77,31 @@ export class EditToolbar {
 
   private appendAddButton(): void {
     const addBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-add-btn', text: '+ Add Block' });
-    addBtn.addEventListener('click', () => {
-      new AddBlockModal(this.app, (type) => {
-        const factory = BlockRegistry.get(type);
-        if (!factory) return;
+    addBtn.addEventListener('click', () => { this.openAddBlockModal(); });
+  }
 
-        const maxRow = this.plugin.layout.blocks.reduce(
-          (max, b) => Math.max(max, b.row + b.rowSpan - 1), 0,
-        );
+  /** Opens the Add Block modal. Called from toolbar button and empty state CTA. */
+  private openAddBlockModal(): void {
+    new AddBlockModal(this.app, (type) => {
+      const factory = BlockRegistry.get(type);
+      if (!factory) return;
 
-        const instance: BlockInstance = {
-          id: crypto.randomUUID(),
-          type,
-          col: 1,
-          row: maxRow + 1,
-          colSpan: Math.min(factory.defaultSize.colSpan, this.plugin.layout.columns),
-          rowSpan: factory.defaultSize.rowSpan,
-          config: { ...factory.defaultConfig },
-        };
+      const maxRow = this.plugin.layout.blocks.reduce(
+        (max, b) => Math.max(max, b.row + b.rowSpan - 1), 0,
+      );
 
-        this.grid.addBlock(instance);
-      }).open();
-    });
+      const instance: BlockInstance = {
+        id: crypto.randomUUID(),
+        type,
+        col: 1,
+        row: maxRow + 1,
+        colSpan: Math.min(factory.defaultSize.colSpan, this.plugin.layout.columns),
+        rowSpan: factory.defaultSize.rowSpan,
+        config: { ...factory.defaultConfig },
+      };
+
+      this.grid.addBlock(instance);
+    }).open();
   }
 
   getElement(): HTMLElement {
@@ -98,17 +113,17 @@ export class EditToolbar {
   }
 }
 
-const BLOCK_ICONS: Record<BlockType, string> = {
-  'greeting':      '👋',
-  'clock':         '🕐',
-  'folder-links':  '🔗',
-  'insight':       '💡',
-  'tag-grid':      '🏷️',
-  'quotes-list':   '💬',
-  'image-gallery': '🖼️',
-  'embedded-note': '📄',
-  'static-text':   '📝',
-  'html':          '</>',
+const BLOCK_META: Record<BlockType, { icon: string; desc: string }> = {
+  'greeting':      { icon: '\u{1F44B}', desc: 'Personalized greeting with time of day' },
+  'clock':         { icon: '\u{1F550}', desc: 'Live clock with date display' },
+  'folder-links':  { icon: '\u{1F517}', desc: 'Quick links to notes and folders' },
+  'insight':       { icon: '\u{1F4A1}', desc: 'Daily rotating note from a tag' },
+  'tag-grid':      { icon: '\u{1F3F7}\uFE0F', desc: 'Grid of labeled value buttons' },
+  'quotes-list':   { icon: '\u{1F4AC}', desc: 'Collection of quotes from notes' },
+  'image-gallery': { icon: '\u{1F5BC}\uFE0F', desc: 'Photo grid from a vault folder' },
+  'embedded-note': { icon: '\u{1F4C4}', desc: 'Render a note inline on the page' },
+  'static-text':   { icon: '\u{1F4DD}', desc: 'Markdown text block you write directly' },
+  'html':          { icon: '</>', desc: 'Custom HTML content (sanitized)' },
 };
 
 class AddBlockModal extends Modal {
@@ -127,9 +142,13 @@ class AddBlockModal extends Modal {
     const grid = contentEl.createDiv({ cls: 'add-block-grid' });
 
     for (const factory of BlockRegistry.getAll()) {
+      const meta = BLOCK_META[factory.type];
       const btn = grid.createEl('button', { cls: 'add-block-option' });
-      btn.createSpan({ cls: 'add-block-icon', text: BLOCK_ICONS[factory.type] ?? '▪' });
+      btn.createSpan({ cls: 'add-block-icon', text: meta?.icon ?? '\u25AA' });
       btn.createSpan({ cls: 'add-block-name', text: factory.displayName });
+      if (meta?.desc) {
+        btn.createSpan({ cls: 'add-block-desc', text: meta.desc });
+      }
       btn.addEventListener('click', () => {
         this.onSelect(factory.type);
         this.close();

@@ -26,7 +26,9 @@ export class StaticTextBlock extends BaseBlock {
     const contentEl = el.createDiv({ cls: 'static-text-content' });
 
     if (!content) {
-      contentEl.setText('Configure text in settings.');
+      const hint = contentEl.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4DD}' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No content yet. Add Markdown text in settings.' });
       return;
     }
 

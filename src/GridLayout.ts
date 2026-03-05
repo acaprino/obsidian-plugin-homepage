@@ -15,6 +15,10 @@ export class GridLayout {
   private activeClone: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private effectiveColumns = 3;
+  /** Callback to trigger the Add Block modal from the empty state CTA. */
+  onRequestAddBlock: (() => void) | null = null;
+  /** ID of the most recently added block — used for scroll-into-view. */
+  private lastAddedBlockId: string | null = null;
 
   constructor(
     containerEl: HTMLElement,
@@ -39,8 +43,10 @@ export class GridLayout {
 
   private computeEffectiveColumns(layoutColumns: number): number {
     const w = this.gridEl.offsetWidth;
-    if (w > 0 && w <= 540) return 1;
-    if (w > 0 && w <= 840) return Math.min(2, layoutColumns);
+    if (w <= 0) return layoutColumns;
+    if (w <= 540) return 1;
+    if (w <= 840) return Math.min(2, layoutColumns);
+    if (w <= 1024) return Math.min(3, layoutColumns);
     return layoutColumns;
   }
 
@@ -59,7 +65,16 @@ export class GridLayout {
 
     if (blocks.length === 0) {
       const empty = this.gridEl.createDiv({ cls: 'homepage-empty-state' });
-      empty.createEl('p', { text: 'No blocks yet. Click Edit to add your first block.' });
+      empty.createDiv({ cls: 'homepage-empty-icon', text: '\u{1F3E0}' });
+      empty.createEl('p', { cls: 'homepage-empty-title', text: 'Your homepage is empty' });
+      empty.createEl('p', {
+        cls: 'homepage-empty-desc',
+        text: 'Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started.',
+      });
+      if (this.editMode && this.onRequestAddBlock) {
+        const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add Your First Block' });
+        cta.addEventListener('click', () => { this.onRequestAddBlock?.(); });
+      }
       return;
     }
 
@@ -119,10 +134,14 @@ export class GridLayout {
   private applyGridPosition(wrapper: HTMLElement, instance: BlockInstance): void {
     const cols = this.effectiveColumns;
     const colSpan = Math.min(instance.colSpan, cols);
-    // flex-grow proportional to colSpan so wrapped items stretch to fill the row
+    // For N columns there are (N-1) gaps distributed across N slots.
+    // A block spanning S columns covers S slots and (S-1) internal gaps,
+    // so it must subtract (N-S)/N share of the total gap space.
+    // Formula: basis = S/N * 100% - (N-S)/N * gap
     const basisPercent = (colSpan / cols) * 100;
-    wrapper.style.flex = `${colSpan} 0 calc(${basisPercent}% - var(--hp-gap, 16px))`;
-    wrapper.style.minWidth = '0';
+    const gapFraction = (cols - colSpan) / cols;
+    wrapper.style.flex = `${colSpan} 1 calc(${basisPercent}% - var(--hp-gap, 16px) * ${gapFraction.toFixed(4)})`;
+    wrapper.style.minWidth = cols === 1 ? '0' : 'var(--hp-card-min-width, 200px)';
   }
 
   private attachEditHandles(wrapper: HTMLElement, instance: BlockInstance): void {
@@ -183,7 +202,7 @@ export class GridLayout {
       clone.addClass('block-drag-clone');
       clone.style.width = `${wrapper.offsetWidth}px`;
       clone.style.height = `${wrapper.offsetHeight}px`;
-      clone.style.left = `${e.clientX - 20}px`;
+      clone.style.left = `${e.clientX - wrapper.offsetWidth / 2}px`;
       clone.style.top = `${e.clientY - 20}px`;
       document.body.appendChild(clone);
       this.activeClone = clone;
@@ -191,35 +210,35 @@ export class GridLayout {
       const sourceId = instance.id;
       wrapper.addClass('block-dragging');
 
+      const clearIndicators = () => {
+        for (const { wrapper: w } of this.blocks.values()) {
+          w.removeClass('drop-before', 'drop-after');
+        }
+      };
+
       const onMouseMove = (me: MouseEvent) => {
-        clone.style.left = `${me.clientX - 20}px`;
+        clone.style.left = `${me.clientX - wrapper.offsetWidth / 2}px`;
         clone.style.top = `${me.clientY - 20}px`;
 
-        this.gridEl.querySelectorAll('.homepage-block-wrapper').forEach(el => {
-          (el as HTMLElement).removeClass('block-drop-target');
-        });
-        const targetId = this.findBlockUnderCursor(me.clientX, me.clientY, sourceId);
-        if (targetId) {
-          this.blocks.get(targetId)?.wrapper.addClass('block-drop-target');
+        clearIndicators();
+        const pt = this.findInsertionPoint(me.clientX, me.clientY, sourceId);
+        if (pt.targetId) {
+          this.blocks.get(pt.targetId)?.wrapper.addClass(
+            pt.insertBefore ? 'drop-before' : 'drop-after',
+          );
         }
       };
 
       const onMouseUp = (me: MouseEvent) => {
         ac.abort();
         this.activeAbortController = null;
-
         clone.remove();
         this.activeClone = null;
         wrapper.removeClass('block-dragging');
+        clearIndicators();
 
-        this.gridEl.querySelectorAll('.homepage-block-wrapper').forEach(el => {
-          (el as HTMLElement).removeClass('block-drop-target');
-        });
-
-        const targetId = this.findBlockUnderCursor(me.clientX, me.clientY, sourceId);
-        if (targetId) {
-          this.swapBlocks(sourceId, targetId);
-        }
+        const pt = this.findInsertionPoint(me.clientX, me.clientY, sourceId);
+        this.reorderBlock(sourceId, pt.insertBeforeId);
       };
 
       document.addEventListener('mousemove', onMouseMove, { signal: ac.signal });
@@ -247,7 +266,8 @@ export class GridLayout {
         const deltaCols = Math.round(deltaX / colWidth);
         currentColSpan = Math.max(1, Math.min(columns, startColSpan + deltaCols));
         const basisPercent = (currentColSpan / columns) * 100;
-        wrapper.style.flex = `${currentColSpan} 0 calc(${basisPercent}% - var(--hp-gap, 16px))`;
+        const gapFraction = (columns - currentColSpan) / columns;
+        wrapper.style.flex = `${currentColSpan} 1 calc(${basisPercent}% - var(--hp-gap, 16px) * ${gapFraction.toFixed(4)})`;
       };
 
       const onMouseUp = () => {
@@ -266,29 +286,70 @@ export class GridLayout {
     });
   }
 
-  private findBlockUnderCursor(x: number, y: number, excludeId: string): string | null {
+  private findInsertionPoint(
+    x: number,
+    y: number,
+    excludeId: string,
+  ): { targetId: string | null; insertBefore: boolean; insertBeforeId: string | null } {
+    let bestTargetId: string | null = null;
+    let bestDist = Infinity;
+    let bestInsertBefore = true;
+
     for (const [id, { wrapper }] of this.blocks) {
       if (id === excludeId) continue;
       const rect = wrapper.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      // If cursor is directly over this card, use it immediately
       if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-        return id;
+        const insertBefore = x < cx;
+        return { targetId: id, insertBefore, insertBeforeId: insertBefore ? id : this.nextBlockId(id) };
+      }
+
+      const dist = Math.hypot(x - cx, y - cy);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestTargetId = id;
+        bestInsertBefore = x < cx;
       }
     }
-    return null;
+
+    if (!bestTargetId) return { targetId: null, insertBefore: true, insertBeforeId: null };
+    return {
+      targetId: bestTargetId,
+      insertBefore: bestInsertBefore,
+      insertBeforeId: bestInsertBefore ? bestTargetId : this.nextBlockId(bestTargetId),
+    };
   }
 
-  /** Swap positions of two blocks using immutable updates. */
-  private swapBlocks(idA: string, idB: string): void {
-    const bA = this.plugin.layout.blocks.find(b => b.id === idA);
-    const bB = this.plugin.layout.blocks.find(b => b.id === idB);
-    if (!bA || !bB) return;
+  private nextBlockId(id: string): string | null {
+    const blocks = this.plugin.layout.blocks;
+    const idx = blocks.findIndex(b => b.id === id);
+    return idx >= 0 && idx < blocks.length - 1 ? blocks[idx + 1].id : null;
+  }
 
-    const newBlocks = this.plugin.layout.blocks.map(b => {
-      if (b.id === idA) return { ...b, col: bB.col, row: bB.row, colSpan: bB.colSpan, rowSpan: bB.rowSpan };
-      if (b.id === idB) return { ...b, col: bA.col, row: bA.row, colSpan: bA.colSpan, rowSpan: bA.rowSpan };
-      return b;
-    });
+  /** Remove the dragged block from its current position and insert it before insertBeforeId (null = append). */
+  private reorderBlock(draggedId: string, insertBeforeId: string | null): void {
+    const blocks = this.plugin.layout.blocks;
+    const dragged = blocks.find(b => b.id === draggedId);
+    if (!dragged) return;
 
+    const withoutDragged = blocks.filter(b => b.id !== draggedId);
+    const insertAt = insertBeforeId
+      ? withoutDragged.findIndex(b => b.id === insertBeforeId)
+      : withoutDragged.length;
+
+    // No-op if effectively same position
+    const originalIdx = blocks.findIndex(b => b.id === draggedId);
+    const resolvedAt = insertAt === -1 ? withoutDragged.length : insertAt;
+    if (resolvedAt === originalIdx || resolvedAt === originalIdx + 1) return;
+
+    const newBlocks = [
+      ...withoutDragged.slice(0, resolvedAt),
+      dragged,
+      ...withoutDragged.slice(resolvedAt),
+    ];
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
     this.rerender();
   }
@@ -311,6 +372,7 @@ export class GridLayout {
 
   addBlock(instance: BlockInstance): void {
     const newBlocks = [...this.plugin.layout.blocks, instance];
+    this.lastAddedBlockId = instance.id;
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
     this.rerender();
   }
@@ -318,8 +380,18 @@ export class GridLayout {
   private rerender(): void {
     const focused = document.activeElement;
     const focusedBlockId = (focused?.closest('[data-block-id]') as HTMLElement | null)?.dataset.blockId;
+    const scrollTargetId = this.lastAddedBlockId;
+    this.lastAddedBlockId = null;
+
     this.render(this.plugin.layout.blocks, this.plugin.layout.columns);
-    if (focusedBlockId) {
+
+    if (scrollTargetId) {
+      const newEl = this.gridEl.querySelector<HTMLElement>(`[data-block-id="${scrollTargetId}"]`);
+      if (newEl) {
+        newEl.addClass('block-just-added');
+        newEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    } else if (focusedBlockId) {
       const el = this.gridEl.querySelector<HTMLElement>(`[data-block-id="${focusedBlockId}"]`);
       el?.focus();
     }

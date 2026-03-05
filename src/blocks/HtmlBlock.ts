@@ -18,7 +18,9 @@ export class HtmlBlock extends BaseBlock {
     const contentEl = el.createDiv({ cls: 'html-block-content' });
 
     if (!html) {
-      contentEl.setText('Configure HTML in settings.');
+      const hint = contentEl.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '</>' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No HTML content yet. Add your markup in settings.' });
       return;
     }
 

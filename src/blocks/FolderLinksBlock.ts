@@ -129,7 +129,9 @@ export class FolderLinksBlock extends BaseBlock {
     }
 
     if (!folder && links.length === 0) {
-      list.createEl('p', { text: 'Add links or select a folder in settings.', cls: 'block-loading' });
+      const hint = list.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F517}' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No links yet. Add manual links or pick a folder in settings.' });
     }
   }
 

@@ -50,7 +50,9 @@ export class QuotesListBlock extends BaseBlock {
 
     // source === 'tag'
     if (!tag) {
-      colsEl.setText('Configure a tag in settings.');
+      const hint = colsEl.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4AC}' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No tag configured. Add a tag in settings to pull quotes from your notes.' });
       return;
     }
 
@@ -103,7 +105,9 @@ export class QuotesListBlock extends BaseBlock {
    */
   private renderTextQuotes(colsEl: HTMLElement, raw: string, maxItems: number): void {
     if (!raw.trim()) {
-      colsEl.setText('Add quotes in settings.');
+      const hint = colsEl.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4AC}' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No quotes yet. Add them in settings, separated by ---.' });
       return;
     }
 

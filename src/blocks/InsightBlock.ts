@@ -26,7 +26,9 @@ export class InsightBlock extends BaseBlock {
     const card = el.createDiv({ cls: 'insight-card' });
 
     if (!tag) {
-      card.setText('Configure a tag in block settings.');
+      const hint = card.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4A1}' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No tag configured. Add a tag in settings to show a daily rotating note.' });
       return;
     }
 

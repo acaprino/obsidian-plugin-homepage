@@ -24,7 +24,9 @@ export class TagGridBlock extends BaseBlock {
     grid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
 
     if (items.length === 0) {
-      grid.setText('No items. Configure in settings.');
+      const hint = grid.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F3F7}\uFE0F' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No items yet. Add values with emojis and labels in settings.' });
       return;
     }
 

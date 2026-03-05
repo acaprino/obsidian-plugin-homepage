@@ -53,7 +53,9 @@ export class EmbeddedNoteBlock extends BaseBlock {
     el.empty();
 
     if (!filePath) {
-      el.setText('Configure a file path in settings.');
+      const hint = el.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4C4}' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No note selected. Choose a file path in settings to embed it here.' });
       return;
     }
 

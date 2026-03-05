@@ -1,9 +1,11 @@
 /* ── Design Tokens ──────────────────────────────────────── */
 :root {
   /* Override these in snippets/homepage.css to customise layout */
-  --hp-gap: 16px;
-  --hp-padding: 24px;
-  --hp-card-padding: 16px 20px;
+  --hp-gap: clamp(12px, 2cqi, 20px);
+  --hp-padding: clamp(12px, 3cqi, 32px);
+  --hp-card-padding: clamp(12px, 2cqi, 20px);
+  --hp-card-min-width: 200px;
+  --hp-content-max-width: 1400px;
 }
 
 /* ── Homepage View ──────────────────────────────────────── */
@@ -20,17 +22,20 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-wrap: wrap;
   gap: var(--hp-gap);
   padding: var(--hp-padding);
   align-items: start;
   align-content: start;
-  max-width: 1400px;
+  max-width: var(--hp-content-max-width);
   width: 100%;
   box-sizing: border-box;
   margin-inline: auto;
   line-height: 1.5;
+  /* Smooth scroll for keyboard navigation */
+  scroll-padding-top: 8px;
 }
 
 
@@ -40,14 +45,54 @@
   border-radius: var(--radius-m, 8px);
   padding: var(--hp-card-padding);
   border: 1px solid var(--background-modifier-border);
-  box-shadow: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   overflow: hidden;
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 60px;
+  min-width: 0;
   box-sizing: border-box;
-  transition: opacity 0.12s ease-out;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s ease-out;
+  animation: hp-card-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Staggered card entry — cascade reveal on load */
+.homepage-block-wrapper:nth-child(1)  { animation-delay: 0ms; }
+.homepage-block-wrapper:nth-child(2)  { animation-delay: 50ms; }
+.homepage-block-wrapper:nth-child(3)  { animation-delay: 100ms; }
+.homepage-block-wrapper:nth-child(4)  { animation-delay: 140ms; }
+.homepage-block-wrapper:nth-child(5)  { animation-delay: 170ms; }
+.homepage-block-wrapper:nth-child(6)  { animation-delay: 195ms; }
+.homepage-block-wrapper:nth-child(7)  { animation-delay: 215ms; }
+.homepage-block-wrapper:nth-child(8)  { animation-delay: 230ms; }
+.homepage-block-wrapper:nth-child(n+9) { animation-delay: 240ms; }
+
+@keyframes hp-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hover lift — subtle Notion-style elevation */
+.homepage-block-wrapper:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+/* No lift in edit mode — dashed outline owns the visual */
+.homepage-grid.edit-mode .homepage-block-wrapper:hover {
+  transform: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .block-content {
@@ -57,27 +102,29 @@
 
 /* ── Block Header / Label ───────────────────────────────── */
 .block-header {
-  font-size: var(--font-interface-size, 0.8125rem);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-normal);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* ── Block Empty State ──────────────────────────────────── */
+/* ── Homepage-level Empty State ─────────────────────────── */
 .homepage-empty-state {
-  grid-column: 1 / -1;
+  /* flex-basis 100% fills the row in a flex-wrap container */
+  flex: 1 0 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 24px;
+  padding: clamp(40px, 8cqi, 80px) clamp(16px, 4cqi, 32px);
   color: var(--text-muted);
   text-align: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .homepage-empty-state p {
@@ -85,11 +132,108 @@
   margin: 0;
 }
 
+.homepage-empty-icon {
+  font-size: 3rem;
+  line-height: 1;
+  opacity: 0.3;
+}
+
+.homepage-empty-state .homepage-empty-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-normal);
+  margin: 0;
+}
+
+.homepage-empty-state .homepage-empty-desc {
+  font-size: var(--font-interface-size, 0.8125rem);
+  margin: 0;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.homepage-empty-cta {
+  margin-top: 8px;
+  background: var(--color-accent);
+  color: var(--text-on-accent, #fff);
+  border: none;
+  border-radius: var(--radius-m, 8px);
+  padding: 8px 20px;
+  font-size: var(--font-interface-size, 0.8125rem);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease-out;
+  box-shadow: none;
+}
+
+.homepage-empty-cta:hover {
+  opacity: 0.85;
+}
+
+/* ── Block-level Empty Hint ────────────────────────────── */
+.block-empty-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.block-empty-hint-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  opacity: 0.4;
+}
+
+.block-empty-hint-text {
+  font-size: var(--font-interface-size, 0.8125rem);
+  line-height: 1.5;
+}
+
+.block-empty-hint-action {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-accent, var(--color-accent));
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 12px;
+  border-radius: var(--radius-s, 4px);
+  transition: background 0.12s ease-out;
+  box-shadow: none;
+}
+
+.block-empty-hint-action:hover {
+  background: var(--background-modifier-hover);
+}
+
 /* ── Block Loading Placeholder ──────────────────────────── */
 .block-loading {
   color: var(--text-muted);
   font-size: var(--font-interface-size, 0.8125rem);
   padding: 8px 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.block-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(var(--color-accent-rgb, 59, 130, 246), 0.04) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: hp-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes hp-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 /* ── Greeting Block ─────────────────────────────────────── */
@@ -162,7 +306,10 @@
   gap: 8px;
   width: 100%;
   border-radius: var(--radius-s, 4px);
-  transition: background 0.1s ease-out, color 0.1s ease-out;
+  transition:
+    background 0.12s ease-out,
+    color 0.12s ease-out,
+    padding-left 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: none;
   text-decoration: none;
 }
@@ -171,12 +318,22 @@
   background: var(--background-modifier-hover);
   color: var(--text-accent, var(--color-accent));
   text-decoration: none;
+  padding-left: 14px;
+}
+
+.folder-link-btn:active {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
 
 .link-emoji {
   font-size: 1em;
   flex-shrink: 0;
   opacity: 0.85;
+  transition: transform 0.15s ease-out;
+}
+
+.folder-link-btn:hover .link-emoji {
+  transform: scale(1.1);
 }
 
 /* ── Insight Block ──────────────────────────────────────── */
@@ -218,7 +375,11 @@
   cursor: pointer;
   font-size: inherit;
   color: var(--text-normal);
-  transition: background 0.15s ease-out;
+  transition:
+    background 0.15s ease-out,
+    border-color 0.15s ease-out,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s ease-out;
   box-shadow: none;
   display: flex;
   align-items: center;
@@ -227,6 +388,14 @@
 
 .tag-btn:hover {
   background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.tag-btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
 }
 
 .tag-btn-emoji {
@@ -278,13 +447,16 @@
   width: 100%;
   display: block;
   border-radius: var(--radius-m, 8px);
-  transition: transform 0.2s ease-out;
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    filter 0.25s ease-out;
   aspect-ratio: 1;
   object-fit: cover;
 }
 
 .gallery-item:hover img {
-  transform: scale(1.02);
+  transform: scale(1.03);
+  filter: brightness(1.04);
 }
 
 /* Masonry layout */
@@ -327,12 +499,17 @@
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  transition: opacity 0.2s ease-out;
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out,
+    background 0.2s ease-out;
   z-index: 1;
+  backdrop-filter: blur(4px);
 }
 
 .gallery-item-video:hover .video-play-overlay {
   opacity: 0;
+  transform: translate(-50%, -50%) scale(0.8);
 }
 
 /* ── Embedded Note Block ────────────────────────────────── */
@@ -379,11 +556,50 @@
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
-  padding: 8px 16px;
+  padding: 8px var(--hp-padding, 16px);
   border-bottom: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
   flex-shrink: 0;
   z-index: 10;
+  transition: background 0.2s ease-out, border-color 0.2s ease-out;
+}
+
+/* Toolbar tints when edit mode is active */
+.homepage-toolbar.toolbar-editing {
+  border-bottom-color: var(--color-accent);
+}
+
+/* Edit mode indicator pill — left side of toolbar */
+.toolbar-edit-indicator {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--color-accent);
+  font-weight: 500;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  pointer-events: none;
+}
+
+.toolbar-edit-indicator.is-visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.toolbar-edit-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: hp-edit-dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes hp-edit-dot-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 /* Reset Obsidian's default button box-shadow for all plugin buttons */
@@ -404,6 +620,7 @@
 
 .toolbar-col-select:hover {
   background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
 
 .toolbar-edit-btn,
@@ -415,12 +632,22 @@
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-normal);
   cursor: pointer;
-  transition: background 0.15s ease-out;
+  transition:
+    background 0.15s ease-out,
+    border-color 0.15s ease-out,
+    transform 0.12s ease-out,
+    box-shadow 0.15s ease-out;
 }
 
 .toolbar-edit-btn:hover,
 .toolbar-add-btn:hover {
   background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.toolbar-edit-btn:active,
+.toolbar-add-btn:active {
+  transform: scale(0.97);
 }
 
 /* Compound selector replaces !important */
@@ -429,6 +656,7 @@
   background: var(--color-accent);
   color: var(--text-on-accent, #fff);
   border-color: var(--color-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
 /* ── Collapsible blocks ─────────────────────────────────── */
@@ -479,8 +707,16 @@
   opacity: 1;
 }
 
+/* Smooth collapse — use max-height animation instead of display:none */
+.homepage-block-wrapper .block-content {
+  transition: max-height 0.25s ease-out, opacity 0.2s ease-out;
+  overflow: hidden;
+}
+
 .homepage-block-wrapper.block-collapsed .block-content {
-  display: none;
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .homepage-block-wrapper.block-collapsed {
@@ -492,6 +728,14 @@
 .homepage-view select:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(var(--color-accent-rgb, 59, 130, 246), 0.15);
+}
+
+.homepage-view input:focus-visible,
+.homepage-view textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
+  box-shadow: 0 0 0 4px rgba(var(--color-accent-rgb, 59, 130, 246), 0.15);
 }
 
 /* ── Edit Mode ──────────────────────────────────────────── */
@@ -549,17 +793,30 @@
   line-height: 1;
   display: flex;
   align-items: center;
-  transition: color 0.12s ease-out, background 0.12s ease-out;
+  transition:
+    color 0.12s ease-out,
+    background 0.12s ease-out,
+    transform 0.12s ease-out;
 }
 
 .block-settings-btn:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
+  transform: scale(1.1);
+}
+
+.block-settings-btn:active {
+  transform: scale(0.95);
 }
 
 .block-remove-btn:hover {
   color: var(--text-error);
   background: var(--background-modifier-hover);
+  transform: scale(1.1);
+}
+
+.block-remove-btn:active {
+  transform: scale(0.95);
 }
 
 .block-resize-grip {
@@ -575,34 +832,46 @@
   justify-content: center;
   opacity: 0.5;
   user-select: none;
-  transition: opacity 0.15s ease-out;
+  transition: opacity 0.15s ease-out, color 0.15s ease-out;
 }
 
 .block-resize-grip:hover {
   opacity: 1;
+  color: var(--color-accent);
 }
 
-/* Drag clone */
+/* Drag clone — polished floating card */
 .block-drag-clone {
   position: fixed;
   pointer-events: none;
-  opacity: 0.7;
+  opacity: 0.85;
   z-index: 100;
-  border: 2px dashed var(--color-accent);
+  border: 1px solid var(--color-accent);
   border-radius: var(--radius-m, 8px);
   background: var(--background-secondary);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.16),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+  transform: rotate(1.5deg) scale(1.02);
 }
 
-/* Block being dragged — animated via base transition */
+/* Block being dragged — ghosted source card */
 .homepage-block-wrapper.block-dragging {
-  opacity: 0.4;
+  opacity: 0.3;
+  transform: scale(0.98);
 }
 
-/* Drop target highlight — compound selector removes need for !important */
-.homepage-grid .homepage-block-wrapper.block-drop-target {
-  outline: 2px solid var(--interactive-accent);
-  outline-offset: -1px;
-  background: var(--background-modifier-hover);
+/* Drop insertion indicators — left/right accent bar shows where block will land */
+.homepage-grid .homepage-block-wrapper.drop-before {
+  border-left: 3px solid var(--color-accent);
+  margin-left: -2px;
+  transition: border-left 0.1s ease-out, margin-left 0.1s ease-out;
+}
+
+.homepage-grid .homepage-block-wrapper.drop-after {
+  border-right: 3px solid var(--color-accent);
+  margin-right: -2px;
+  transition: border-right 0.1s ease-out, margin-right 0.1s ease-out;
 }
 
 /* ── Add Block Modal ────────────────────────────────────── */
@@ -629,7 +898,11 @@
   cursor: pointer;
   font-size: inherit;
   color: var(--text-normal);
-  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+  transition:
+    background 0.15s ease-out,
+    border-color 0.15s ease-out,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s ease-out;
   text-align: center;
   width: 100%;
 }
@@ -637,6 +910,13 @@
 .add-block-option:hover {
   background: var(--background-modifier-hover);
   border-color: var(--color-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.add-block-option:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
 }
 
 .add-block-icon {
@@ -652,11 +932,18 @@
   font-weight: 500;
 }
 
+.add-block-desc {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  max-width: 180px;
+}
+
 /* ── Block header emoji ─────────────────────────────────── */
 .block-header-emoji {
   font-style: normal;
-  margin-right: 4px;
-  font-size: 1.2em;
+  margin-right: 0;
+  font-size: 1.5em;
   line-height: 1;
   vertical-align: middle;
 }
@@ -761,11 +1048,18 @@
   text-align: center;
   line-height: 1;
   box-shadow: none;
-  transition: background 0.1s ease-out;
+  transition:
+    background 0.1s ease-out,
+    transform 0.1s ease-out;
 }
 
 .emoji-btn:hover {
   background: var(--background-modifier-hover);
+  transform: scale(1.15);
+}
+
+.emoji-btn:active {
+  transform: scale(0.95);
 }
 
 .emoji-btn.is-selected {
@@ -857,11 +1151,91 @@
   padding: 4px 0;
 }
 
+/* ── Container Query Responsive Breakpoints ────────────── */
+/* Mobile: single column, tighter padding */
+@container (max-width: 540px) {
+  .homepage-grid {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .homepage-toolbar {
+    padding: 6px 12px;
+    gap: 6px;
+  }
+
+  .homepage-block-wrapper {
+    min-height: 48px;
+  }
+
+  /* Gallery and quotes go single-column */
+  .quotes-columns {
+    max-height: 400px;
+  }
+
+  .homepage-empty-state {
+    padding: 40px 16px;
+  }
+}
+
+/* Tablet: 2-column comfort zone */
+@container (min-width: 541px) and (max-width: 840px) {
+  .homepage-grid {
+    padding: 16px;
+    gap: 14px;
+  }
+}
+
+/* Wide: generous breathing room */
+@container (min-width: 1200px) {
+  .homepage-grid {
+    padding: 32px;
+    gap: 20px;
+  }
+}
+
+/* ── Newly Added Block Highlight ────────────────────────── */
+.homepage-block-wrapper.block-just-added {
+  animation: hp-block-appear 0.4s ease-out;
+}
+
+@keyframes hp-block-appear {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Header Zone Hover Affordance ──────────────────────── */
+.block-header-zone {
+  border-radius: var(--radius-s, 4px);
+  padding: 2px 4px;
+  margin: 0 -4px 8px -4px;
+  transition: background 0.1s ease-out;
+}
+
+.block-header-zone:hover {
+  background: var(--background-modifier-hover);
+}
+
+.edit-mode .block-header-zone:hover {
+  background: transparent;
+}
+
 /* ── Reduced Motion ─────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .homepage-view,
   .homepage-view * {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+
+  .toolbar-edit-dot {
+    animation: none;
+    opacity: 0.7;
   }
 }

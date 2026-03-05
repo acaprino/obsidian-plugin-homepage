@@ -82,7 +82,9 @@ export class ImageGalleryBlock extends BaseBlock {
     }
 
     if (!folder) {
-      gallery.setText('Configure a folder path in settings.');
+      const hint = gallery.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F5BC}\uFE0F' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: 'No folder selected. Pick an image folder in settings to display a gallery.' });
       return;
     }
 

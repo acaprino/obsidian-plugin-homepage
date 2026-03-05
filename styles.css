@@ -267,6 +267,26 @@
   overflow-y: auto;
 }
 
+/* ── Static Text Block ──────────────────────────────────── */
+.static-text-content { font-size: 14px; line-height: 1.6; }
+
+/* ── HTML Block ─────────────────────────────────────────── */
+.html-block-content { font-size: 14px; line-height: 1.6; }
+
+/* ── Settings textarea (Static Text and HTML blocks) ────── */
+.static-text-settings-textarea {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  resize: vertical;
+  margin-bottom: 16px;
+}
+
 /* ── Toolbar ────────────────────────────────────────────── */
 .homepage-toolbar {
   position: absolute;

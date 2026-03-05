@@ -9,7 +9,9 @@ export type BlockType =
   | 'quotes-list'
   | 'image-gallery'
   | 'clock'
-  | 'embedded-note';
+  | 'embedded-note'
+  | 'static-text'
+  | 'html';
 
 export interface BlockInstance {
   id: string;

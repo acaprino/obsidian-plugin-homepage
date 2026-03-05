@@ -89,19 +89,29 @@ export class GridLayout {
       return;
     }
 
-    for (const instance of blocks) {
-      this.renderBlock(instance);
-    }
+    blocks.forEach((instance, i) => {
+      this.renderBlock(instance, isInitial ? i : undefined);
+    });
   }
 
-  private renderBlock(instance: BlockInstance): void {
+  private renderBlock(instance: BlockInstance, blockIndex?: number): void {
     const factory = BlockRegistry.get(instance.type);
     if (!factory) return;
+
+    // Grid sentinel: forces the block to start on a new row without breaking auto-placement order
+    if (instance.newRow) {
+      this.gridEl.createDiv({ cls: 'homepage-row-break' });
+    }
 
     const wrapper = this.gridEl.createDiv({ cls: 'homepage-block-wrapper' });
     wrapper.dataset.blockId = instance.id;
     wrapper.setAttribute('role', 'listitem');
     this.applyGridPosition(wrapper, instance);
+    // Inline animation delay — immune to interleaved sentinel divs skewing nth-child counts
+    if (blockIndex !== undefined) {
+      const DELAYS = [0, 50, 100, 140, 170, 195, 215, 230];
+      wrapper.style.animationDelay = `${DELAYS[blockIndex] ?? 240}ms`;
+    }
 
     if (this.editMode) {
       this.attachEditHandles(wrapper, instance);
@@ -160,8 +170,7 @@ export class GridLayout {
   private applyGridPosition(wrapper: HTMLElement, instance: BlockInstance): void {
     const cols = this.effectiveColumns;
     const colSpan = Math.min(instance.colSpan, cols);
-    // CSS Grid: start on column 1 if newRow is set, otherwise span normally
-    wrapper.style.gridColumn = instance.newRow ? `1 / span ${colSpan}` : `span ${colSpan}`;
+    wrapper.style.gridColumn = `span ${colSpan}`;
     wrapper.style.minHeight = this.rowMinHeight(instance.rowSpan);
   }
 
@@ -180,9 +189,9 @@ export class GridLayout {
       e.stopPropagation();
       const entry = this.blocks.get(instance.id);
       if (!entry) return;
-      const onSave = () => {
+      const onSave = (config: Record<string, unknown>, newRow: boolean | undefined) => {
         const newBlocks = this.plugin.layout.blocks.map(b =>
-          b.id === instance.id ? instance : b,
+          b.id === instance.id ? { ...b, config, newRow } : b,
         );
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
         this.rerender();
@@ -382,7 +391,7 @@ export class GridLayout {
         const deltaRows = Math.round(deltaY / rowUnitPx);
         currentColSpan = Math.max(1, Math.min(columns, startColSpan + deltaCols));
         currentRowSpan = Math.max(1, Math.min(MAX_ROW_SPAN, startRowSpan + deltaRows));
-        wrapper.style.gridColumn = instance.newRow ? `1 / span ${currentColSpan}` : `span ${currentColSpan}`;
+        wrapper.style.gridColumn = `span ${currentColSpan}`;
         wrapper.style.minHeight = this.rowMinHeight(currentRowSpan);
       };
 
@@ -616,7 +625,7 @@ class BlockSettingsModal extends Modal {
     app: App,
     private instance: BlockInstance,
     private block: BaseBlock,
-    private onSave: () => void,
+    private onSave: (config: Record<string, unknown>, newRow: boolean | undefined) => void,
   ) {
     super(app);
   }
@@ -725,9 +734,7 @@ class BlockSettingsModal extends Modal {
     new Setting(contentEl)
       .addButton(btn =>
         btn.setButtonText('Save').setCta().onClick(() => {
-          this.instance.config = draft;
-          this.instance.newRow = draftNewRow || undefined;
-          this.onSave();
+          this.onSave(draft, draftNewRow || undefined);
           this.close();
         }),
       )
@@ -747,7 +754,7 @@ class BlockSettingsModal extends Modal {
       .addButton(btn =>
         btn.setButtonText('Configure block...').onClick(() => {
           this.close();
-          this.block.openSettings(this.onSave);
+          this.block.openSettings(() => this.onSave(this.instance.config, this.instance.newRow));
         }),
       );
   }

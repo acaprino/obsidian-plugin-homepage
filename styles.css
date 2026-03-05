@@ -19,6 +19,15 @@
   position: relative;
 }
 
+/* ── Row break — sentinel that forces the next block onto a new grid row ── */
+/* Negative margins cancel the extra row-gap that a zero-height grid row would add */
+.homepage-row-break {
+  grid-column: 1 / -1;
+  height: 0;
+  pointer-events: none;
+  margin-block: calc(var(--hp-gap, 16px) * -0.5);
+}
+
 /* ── Homepage Grid ─────────────────────────────────────── */
 .homepage-grid {
   flex: 1;
@@ -63,19 +72,10 @@
   /* animation applied only on initial render via .homepage-grid--animating */
 }
 
-/* Staggered card entry — scoped to initial render to avoid replaying on reorder/collapse */
+/* Staggered card entry — animation-delay set inline from JS (immune to interleaved sentinel divs) */
 .homepage-grid--animating .homepage-block-wrapper {
   animation: hp-card-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(1)  { animation-delay: 0ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(2)  { animation-delay: 50ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(3)  { animation-delay: 100ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(4)  { animation-delay: 140ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(5)  { animation-delay: 170ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(6)  { animation-delay: 195ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(7)  { animation-delay: 215ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(8)  { animation-delay: 230ms; }
-.homepage-grid--animating .homepage-block-wrapper:nth-child(n+9) { animation-delay: 240ms; }
 
 @keyframes hp-card-enter {
   from {

@@ -102,26 +102,28 @@ class QuotesSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Quotes List Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('Block title').addText(t =>
-      t.setValue(this.config.title as string ?? 'Quotes')
-       .onChange(v => { this.config.title = v; }),
+      t.setValue(draft.title as string ?? 'Quotes')
+       .onChange(v => { draft.title = v; }),
     );
     new Setting(contentEl).setName('Tag').setDesc('Without # prefix').addText(t =>
-      t.setValue(this.config.tag as string ?? '')
-       .onChange(v => { this.config.tag = v; }),
+      t.setValue(draft.tag as string ?? '')
+       .onChange(v => { draft.tag = v; }),
     );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3')
-       .setValue(String(this.config.columns ?? 2))
-       .onChange(v => { this.config.columns = Number(v); }),
+       .setValue(String(draft.columns ?? 2))
+       .onChange(v => { draft.columns = Number(v); }),
     );
     new Setting(contentEl).setName('Max items').addText(t =>
-      t.setValue(String(this.config.maxItems ?? 20))
-       .onChange(v => { this.config.maxItems = parseInt(v) || 20; }),
+      t.setValue(String(draft.maxItems ?? 20))
+       .onChange(v => { draft.maxItems = parseInt(v) || 20; }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

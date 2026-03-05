@@ -15,6 +15,8 @@ export class EditToolbar {
     private onColumnsChange: (n: number) => void,
   ) {
     this.toolbarEl = containerEl.createDiv({ cls: 'homepage-toolbar' });
+    this.toolbarEl.setAttribute('role', 'toolbar');
+    this.toolbarEl.setAttribute('aria-label', 'Homepage toolbar');
     this.renderToolbar();
   }
 
@@ -23,6 +25,7 @@ export class EditToolbar {
 
     // Column count selector
     const colSelect = this.toolbarEl.createEl('select', { cls: 'toolbar-col-select' });
+    colSelect.setAttribute('aria-label', 'Number of columns');
     [2, 3, 4].forEach(n => {
       const opt = colSelect.createEl('option', { value: String(n), text: `${n} col` });
       if (n === this.plugin.layout.columns) opt.selected = true;
@@ -84,6 +87,10 @@ export class EditToolbar {
         this.grid.addBlock(instance);
       }).open();
     });
+  }
+
+  getElement(): HTMLElement {
+    return this.toolbarEl;
   }
 
   destroy(): void {

@@ -102,21 +102,23 @@ class InsightSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Insight Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('Block title').addText(t =>
-      t.setValue(this.config.title as string ?? 'Daily Insight')
-       .onChange(v => { this.config.title = v; }),
+      t.setValue(draft.title as string ?? 'Daily Insight')
+       .onChange(v => { draft.title = v; }),
     );
     new Setting(contentEl).setName('Tag').setDesc('Without # prefix').addText(t =>
-      t.setValue(this.config.tag as string ?? '')
-       .onChange(v => { this.config.tag = v; }),
+      t.setValue(draft.tag as string ?? '')
+       .onChange(v => { draft.tag = v; }),
     );
     new Setting(contentEl).setName('Daily seed').setDesc('Show same note all day').addToggle(t =>
-      t.setValue(this.config.dailySeed as boolean ?? true)
-       .onChange(v => { this.config.dailySeed = v; }),
+      t.setValue(draft.dailySeed as boolean ?? true)
+       .onChange(v => { draft.dailySeed = v; }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

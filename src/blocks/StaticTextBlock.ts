@@ -55,20 +55,22 @@ class StaticTextSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Static Text Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('Block title').setDesc('Optional header shown above the text.').addText(t =>
-      t.setValue(this.config.title as string ?? '')
-       .onChange(v => { this.config.title = v; }),
+      t.setValue(draft.title as string ?? '')
+       .onChange(v => { draft.title = v; }),
     );
 
     new Setting(contentEl).setName('Content').setDesc('Supports Markdown.');
     const textarea = contentEl.createEl('textarea', { cls: 'static-text-settings-textarea' });
-    textarea.value = this.config.content as string ?? '';
+    textarea.value = draft.content as string ?? '';
     textarea.rows = 10;
-    textarea.addEventListener('input', () => { this.config.content = textarea.value; });
+    textarea.addEventListener('input', () => { draft.content = textarea.value; });
 
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

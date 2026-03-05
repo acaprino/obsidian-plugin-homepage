@@ -63,17 +63,19 @@ class GreetingSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Greeting Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('Name').addText(t =>
-      t.setValue(this.config.name as string ?? 'bentornato')
-       .onChange(v => { this.config.name = v; }),
+      t.setValue(draft.name as string ?? 'bentornato')
+       .onChange(v => { draft.name = v; }),
     );
     new Setting(contentEl).setName('Show time').addToggle(t =>
-      t.setValue(this.config.showTime as boolean ?? true)
-       .onChange(v => { this.config.showTime = v; }),
+      t.setValue(draft.showTime as boolean ?? true)
+       .onChange(v => { draft.showTime = v; }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

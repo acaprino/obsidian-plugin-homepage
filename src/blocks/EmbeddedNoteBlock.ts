@@ -100,17 +100,19 @@ class EmbeddedNoteSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Embedded Note Settings' });
 
+    const draft = structuredClone(this.config);
+
     new Setting(contentEl).setName('File path').setDesc('Vault path to the note (e.g. Notes/MyNote.md)').addText(t =>
-      t.setValue(this.config.filePath as string ?? '')
-       .onChange(v => { this.config.filePath = v; }),
+      t.setValue(draft.filePath as string ?? '')
+       .onChange(v => { draft.filePath = v; }),
     );
     new Setting(contentEl).setName('Show title').addToggle(t =>
-      t.setValue(this.config.showTitle as boolean ?? true)
-       .onChange(v => { this.config.showTitle = v; }),
+      t.setValue(draft.showTitle as boolean ?? true)
+       .onChange(v => { draft.showTitle = v; }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.config);
+        this.onSave(draft);
         this.close();
       }),
     );

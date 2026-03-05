@@ -329,15 +329,75 @@ export class GridLayout {
 
 // ── Block settings modal (title section + block-specific settings) ────────────
 
-const EMOJI_PICKER_SET = [
-  '📁','📂','📄','📝','📋','📌','📍','🔖','🗂','🗃',
-  '💡','🔍','🔎','🔗','⭐','🌟','✨','🎯','🚀','🏠',
-  '🌿','🌱','🌸','🌊','🔥','❄','🌙','☀','🌈','⚡',
-  '💬','💭','🗣','📢','📣','🔔','🔕','📅','📆','🗓',
-  '✅','☑','❌','⚠','🔒','🔓','🔑','🛡','⚙','🔧',
-  '🎨','🖼','🎵','🎬','📷','🎮','🧩','💎','🏆','🎁',
-  '💻','📱','🖥','⌨','🖱','📡','🧠','💪','👁','👋',
-  '🐾','🦋','🌺','🍀','🌙','🏔','🌆','🌍','✈','🚂',
+// [emoji, search keywords] — 170 most common/useful
+const EMOJI_PICKER_SET: [string, string][] = [
+  // Smileys & emotion
+  ['😀','happy smile grin'],['😊','smile blush happy'],['😂','laugh cry funny joy'],
+  ['🥲','tear smile grateful'],['😍','heart eyes love'],['🤩','star eyes excited'],
+  ['😎','cool sunglasses'],['🤔','thinking hmm'],['😅','sweat nervous laugh'],
+  ['😢','cry sad tear'],['😤','angry huff frustrated'],['🥳','party celebrate'],
+  ['😴','sleep tired zzz'],['🤯','mind blown explode'],['🫡','salute respect'],
+  // People & gestures
+  ['👋','wave hello bye'],['👍','thumbs up good ok'],['👎','thumbs down bad'],
+  ['✌','victory peace'],['🤝','handshake deal'],['🙏','pray thanks please'],
+  ['💪','muscle strong flex'],['👁','eye watch see'],['🧠','brain mind think'],
+  ['❤','heart love red'],['🧡','orange heart'],['💛','yellow heart'],
+  ['💚','green heart'],['💙','blue heart'],['💜','purple heart'],['🖤','black heart'],
+  // Nature
+  ['🌱','seedling sprout grow'],['🌿','herb leaf green nature'],['🍀','clover luck'],
+  ['🌸','blossom flower pink'],['🌺','flower hibiscus'],['🌻','sunflower'],
+  ['🍂','autumn fall leaf'],['🌊','wave ocean water sea'],['🔥','fire flame hot'],
+  ['❄','snowflake cold ice winter'],['⚡','lightning bolt energy'],['🌈','rainbow'],
+  ['☀','sun sunny bright'],['🌙','moon night crescent'],['⭐','star favorite'],
+  ['🌟','glowing star shine'],['✨','sparkles shine magic'],['🏔','mountain peak'],
+  ['🌍','earth globe world'],['🌐','globe internet web'],
+  // Food & objects
+  ['☕','coffee tea hot drink'],['🍵','tea cup hot'],['🍺','beer drink'],
+  ['🍎','apple fruit red'],['🍋','lemon yellow sour'],['🎂','cake birthday'],
+  // Activities & sports
+  ['🎯','target bullseye goal'],['🏆','trophy award win'],['🥇','medal gold first'],
+  ['🎮','game controller play'],['🎨','art palette creative paint'],['🎵','music note song'],
+  ['🎬','clapper film movie'],['📷','camera photo'],['🎁','gift present'],
+  ['🎲','dice game random'],['🧩','puzzle piece'],['🎭','theater masks'],
+  // Travel & places
+  ['🚀','rocket launch space'],['✈','airplane travel fly'],['🚂','train travel'],
+  ['🏠','house home'],['🏙','city building'],['🌆','city sunset'],
+  // Objects & tools
+  ['📁','folder directory'],['📂','open folder'],['📄','document page file'],
+  ['📝','memo write note edit'],['📋','clipboard copy'],['📌','pushpin pin'],
+  ['📍','location pin map'],['🔖','bookmark save'],['🗂','index dividers'],
+  ['📅','calendar date schedule'],['🗓','calendar spiral'],['⏰','alarm clock time wake'],
+  ['🕐','clock time hour'],['⏱','stopwatch timer'],['📊','chart bar data'],
+  ['📈','chart up growth trend'],['📉','chart down decline'],
+  ['💡','idea light bulb insight'],['🔍','search magnify zoom'],['🔗','link chain url'],
+  ['📢','loudspeaker announce'],['🔔','bell notification alert'],
+  ['💬','speech bubble chat message'],['💭','thought think bubble'],
+  ['📚','books study library'],['📖','open book read'],['📜','scroll document'],
+  ['✉','envelope email letter'],['📧','email message'],['📥','inbox download'],
+  ['📤','outbox upload send'],['🗑','trash delete remove'],
+  // Tech
+  ['💻','laptop computer code'],['🖥','desktop monitor screen'],['📱','phone mobile'],
+  ['⌨','keyboard type'],['🖱','mouse cursor click'],['📡','satellite antenna signal'],
+  ['🔌','plug power electric'],['🔋','battery power charge'],['💾','floppy disk save'],
+  ['💿','disc cd dvd'],['🖨','printer print'],
+  // Symbols & status
+  ['✅','check done complete yes'],['❌','cross error wrong no delete'],
+  ['⚠','warning caution alert'],['❓','question mark'],['❗','exclamation important'],
+  ['🔒','lock secure private'],['🔓','unlock open public'],['🔑','key password access'],
+  ['🛡','shield protect security'],['⚙','gear settings config'],['🔧','wrench tool fix'],
+  ['🔨','hammer build'],['⚗','flask chemistry lab'],['🔬','microscope science research'],
+  ['🔭','telescope space astronomy'],['🧪','test tube experiment'],
+  ['💎','gem diamond precious'],['💰','money bag rich'],['💳','credit card payment'],
+  ['🏷','label tag price'],['🎀','ribbon bow gift'],
+  // Misc useful
+  ['🧭','compass navigate direction'],['🗺','map world navigate'],
+  ['📦','box package shipping'],['🗄','filing cabinet archive'],
+  ['🔐','lock key secure'],['📎','paperclip attach'],['✂','scissors cut'],
+  ['🖊','pen write edit'],['📏','ruler measure'],['🔅','dim brightness'],
+  ['🔆','bright sun light'],['♻','recycle sustainability'],['✔','checkmark done'],
+  ['➕','plus add'],['➖','minus remove'],['🔄','refresh sync loop'],
+  ['⏩','fast forward skip'],['⏪','rewind back'],['⏸','pause stop'],
+  ['▶','play start'],['🔀','shuffle random mix'],
 ];
 
 class BlockSettingsModal extends Modal {
@@ -367,36 +427,72 @@ class BlockSettingsModal extends Modal {
       );
 
     // ── Emoji picker ──────────────────────────────────────────────────────────
-    const emojiSetting = new Setting(contentEl)
-      .setName('Title emoji')
-      .setDesc('Prepended to the title label.');
+    const emojiRow = contentEl.createDiv({ cls: 'emoji-picker-row' });
+    emojiRow.createSpan({ cls: 'setting-item-name', text: 'Title emoji' });
 
-    const previewSpan = emojiSetting.controlEl.createSpan({ cls: 'emoji-picker-preview' });
-    const updatePreview = () => {
-      previewSpan.setText(typeof draft._titleEmoji === 'string' ? draft._titleEmoji : '');
+    const controls = emojiRow.createDiv({ cls: 'emoji-picker-controls' });
+
+    const triggerBtn = controls.createEl('button', { cls: 'emoji-picker-trigger' });
+    const updateTrigger = () => {
+      const val = typeof draft._titleEmoji === 'string' ? draft._titleEmoji : '';
+      triggerBtn.empty();
+      triggerBtn.createSpan({ text: val || '＋' });
+      triggerBtn.createSpan({ cls: 'emoji-picker-chevron', text: '▾' });
     };
-    updatePreview();
+    updateTrigger();
 
-    emojiSetting.controlEl.createEl('button', { cls: 'emoji-picker-clear', text: '✕' })
-      .addEventListener('click', () => {
-        draft._titleEmoji = '';
-        updatePreview();
-        gridEl.querySelectorAll<HTMLElement>('.emoji-btn.is-selected')
-          .forEach(b => b.removeClass('is-selected'));
-      });
+    const clearBtn = controls.createEl('button', { cls: 'emoji-picker-clear', text: '✕' });
+    clearBtn.setAttribute('aria-label', 'Clear emoji');
 
-    const gridEl = contentEl.createDiv({ cls: 'emoji-picker-grid' });
-    for (const emoji of EMOJI_PICKER_SET) {
-      const btn = gridEl.createEl('button', { cls: 'emoji-btn', text: emoji });
-      if (draft._titleEmoji === emoji) btn.addClass('is-selected');
-      btn.addEventListener('click', () => {
-        draft._titleEmoji = emoji;
-        updatePreview();
-        gridEl.querySelectorAll<HTMLElement>('.emoji-btn.is-selected')
-          .forEach(b => b.removeClass('is-selected'));
-        btn.addClass('is-selected');
-      });
-    }
+    const panel = contentEl.createDiv({ cls: 'emoji-picker-panel' });
+    panel.style.display = 'none';
+
+    const searchInput = panel.createEl('input', {
+      type: 'text',
+      cls: 'emoji-picker-search',
+      placeholder: 'Search…',
+    });
+
+    const gridEl = panel.createDiv({ cls: 'emoji-picker-grid' });
+
+    const renderGrid = (query: string) => {
+      gridEl.empty();
+      const q = query.toLowerCase().trim();
+      const filtered = q
+        ? EMOJI_PICKER_SET.filter(([e, k]) => k.includes(q) || e === q)
+        : EMOJI_PICKER_SET;
+      for (const [emoji] of filtered) {
+        const btn = gridEl.createEl('button', { cls: 'emoji-btn', text: emoji });
+        if (draft._titleEmoji === emoji) btn.addClass('is-selected');
+        btn.addEventListener('click', () => {
+          draft._titleEmoji = emoji;
+          updateTrigger();
+          panel.style.display = 'none';
+          searchInput.value = '';
+          renderGrid('');
+        });
+      }
+      if (filtered.length === 0) {
+        gridEl.createSpan({ cls: 'emoji-picker-empty', text: 'No results' });
+      }
+    };
+    renderGrid('');
+
+    searchInput.addEventListener('input', () => renderGrid(searchInput.value));
+
+    triggerBtn.addEventListener('click', () => {
+      const open = panel.style.display !== 'none';
+      panel.style.display = open ? 'none' : 'block';
+      if (!open) setTimeout(() => searchInput.focus(), 0);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      draft._titleEmoji = '';
+      updateTrigger();
+      panel.style.display = 'none';
+      searchInput.value = '';
+      renderGrid('');
+    });
     // ─────────────────────────────────────────────────────────────────────────
 
     new Setting(contentEl)

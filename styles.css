@@ -1,0 +1,435 @@
+/* ── Homepage Grid ─────────────────────────────────────── */
+.homepage-view {
+  position: relative;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.homepage-grid {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  align-items: start;
+}
+
+/* ── Block Card ─────────────────────────────────────────── */
+.homepage-block-wrapper {
+  background: var(--background-secondary);
+  border-radius: 10px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 60px;
+}
+
+.block-content {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Block Header / Label ───────────────────────────────── */
+.block-header {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Greeting Block ─────────────────────────────────────── */
+.greeting-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 90px;
+}
+
+.greeting-time {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.greeting-name {
+  font-size: 26px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-normal);
+}
+
+/* ── Clock Block ────────────────────────────────────────── */
+.clock-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 90px;
+}
+
+.clock-time {
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-date {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ── Folder Links Block ─────────────────────────────────── */
+.folder-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.folder-link-item {
+  display: flex;
+  align-items: center;
+}
+
+.folder-link-btn {
+  background: none;
+  border: none;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-normal);
+  font-size: 14px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  transition: background 0.12s;
+  box-shadow: none;
+}
+
+.folder-link-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.link-emoji {
+  font-size: 16px;
+}
+
+/* ── Insight Block ──────────────────────────────────────── */
+.insight-block {
+  min-height: 100px;
+}
+
+.insight-card {
+  margin-top: 4px;
+}
+
+.insight-title {
+  color: var(--color-accent);
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+
+.insight-body {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 12px;
+  color: var(--text-normal);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── Tag Grid Block ─────────────────────────────────────── */
+.tag-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.tag-btn {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-normal);
+  transition: background 0.15s;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.tag-btn-emoji {
+  font-size: 16px;
+}
+
+/* ── Quotes List Block ──────────────────────────────────── */
+.quotes-columns {
+  column-gap: 20px;
+}
+
+.quote-item {
+  break-inside: avoid;
+  margin-bottom: 16px;
+}
+
+.quote-content {
+  border-left: 3px solid var(--color-accent);
+  margin: 0 0 4px 0;
+  padding: 4px 0 4px 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-normal);
+}
+
+.quote-source {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 12px;
+}
+
+/* ── Image Gallery Block ────────────────────────────────── */
+.image-gallery {
+  display: grid;
+  gap: 8px;
+}
+
+.gallery-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.gallery-item img {
+  width: 100%;
+  display: block;
+  border-radius: 6px;
+  transition: transform 0.2s;
+}
+
+.gallery-item:hover img {
+  transform: scale(1.02);
+}
+
+.gallery-item video {
+  width: 100%;
+  display: block;
+  border-radius: 6px;
+}
+
+.gallery-item-video {
+  position: relative;
+}
+
+.video-play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 1;
+}
+
+.gallery-item-video:hover .video-play-overlay {
+  opacity: 0;
+}
+
+/* ── Embedded Note Block ────────────────────────────────── */
+.embedded-note-content {
+  font-size: 14px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ── Toolbar ────────────────────────────────────────────── */
+.homepage-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 20px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+  align-items: center;
+}
+
+.toolbar-col-select {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.toolbar-edit-btn,
+.toolbar-add-btn {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.15s;
+  box-shadow: none;
+}
+
+.toolbar-edit-btn:hover,
+.toolbar-add-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.toolbar-btn-active {
+  background: var(--color-accent) !important;
+  color: #fff !important;
+  border-color: var(--color-accent) !important;
+}
+
+/* ── Edit Mode ──────────────────────────────────────────── */
+.homepage-grid.edit-mode .homepage-block-wrapper {
+  border: 2px dashed var(--color-accent);
+}
+
+.block-handle-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+}
+
+.block-move-handle {
+  cursor: grab;
+  font-size: 16px;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  flex: 1;
+  user-select: none;
+}
+
+.block-move-handle:active {
+  cursor: grabbing;
+}
+
+.block-settings-btn,
+.block-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  box-shadow: none;
+  transition: color 0.12s, background 0.12s;
+}
+
+.block-settings-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.block-remove-btn:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+}
+
+.block-resize-grip {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  color: var(--text-muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  user-select: none;
+}
+
+.block-resize-grip:hover {
+  opacity: 1;
+}
+
+/* Drag clone */
+.block-drag-clone {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0.7;
+  z-index: 9999;
+  border: 2px dashed var(--color-accent) !important;
+  border-radius: 10px;
+  background: var(--background-secondary);
+}
+
+/* Block being dragged */
+.homepage-block-wrapper.block-dragging {
+  opacity: 0.4;
+}
+
+/* Drop target highlight */
+.homepage-block-wrapper.block-drop-target {
+  border-color: var(--interactive-accent) !important;
+  background: var(--background-modifier-hover);
+}
+
+/* ── Add Block Modal ────────────────────────────────────── */
+.add-block-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-normal);
+  transition: background 0.15s;
+  box-shadow: none;
+}
+
+.add-block-option:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* ── Settings rows ──────────────────────────────────────── */
+.settings-link-row .setting-item {
+  border-top: none;
+  padding: 4px 0;
+}

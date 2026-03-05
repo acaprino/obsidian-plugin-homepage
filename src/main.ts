@@ -10,6 +10,8 @@ import { TagGridBlock } from './blocks/TagGridBlock';
 import { QuotesListBlock } from './blocks/QuotesListBlock';
 import { ImageGalleryBlock } from './blocks/ImageGalleryBlock';
 import { EmbeddedNoteBlock } from './blocks/EmbeddedNoteBlock';
+import { StaticTextBlock } from './blocks/StaticTextBlock';
+import { HtmlBlock } from './blocks/HtmlBlock';
 
 // ── Default layout ──────────────────────────────────────────────────────────
 
@@ -20,10 +22,10 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   blocks: [
     // Row 1
     {
-      id: 'default-greeting',
-      type: 'greeting',
+      id: 'default-static-text',
+      type: 'static-text',
       col: 1, row: 1, colSpan: 1, rowSpan: 1,
-      config: { name: 'bentornato', showTime: true },
+      config: { title: '', content: '' },
     },
     {
       id: 'default-clock',
@@ -77,6 +79,7 @@ function getDefaultLayout(): LayoutConfig {
 const VALID_BLOCK_TYPES = new Set<string>([
   'greeting', 'folder-links', 'insight', 'tag-grid',
   'quotes-list', 'image-gallery', 'clock', 'embedded-note',
+  'static-text', 'html',
 ]);
 
 function isValidBlockInstance(b: unknown): b is BlockInstance {
@@ -183,6 +186,22 @@ function registerBlocks(): void {
     defaultConfig: { filePath: '', showTitle: true },
     defaultSize: { colSpan: 1, rowSpan: 1 },
     create: (app, instance, plugin) => new EmbeddedNoteBlock(app, instance, plugin),
+  });
+
+  BlockRegistry.register({
+    type: 'static-text',
+    displayName: 'Static Text',
+    defaultConfig: { title: '', content: '' },
+    defaultSize: { colSpan: 1, rowSpan: 1 },
+    create: (app, instance, plugin) => new StaticTextBlock(app, instance, plugin),
+  });
+
+  BlockRegistry.register({
+    type: 'html',
+    displayName: 'HTML Block',
+    defaultConfig: { title: '', html: '' },
+    defaultSize: { colSpan: 1, rowSpan: 1 },
+    create: (app, instance, plugin) => new HtmlBlock(app, instance, plugin),
   });
 }
 

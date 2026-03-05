@@ -329,6 +329,17 @@ export class GridLayout {
 
 // ── Block settings modal (title section + block-specific settings) ────────────
 
+const EMOJI_PICKER_SET = [
+  '📁','📂','📄','📝','📋','📌','📍','🔖','🗂','🗃',
+  '💡','🔍','🔎','🔗','⭐','🌟','✨','🎯','🚀','🏠',
+  '🌿','🌱','🌸','🌊','🔥','❄','🌙','☀','🌈','⚡',
+  '💬','💭','🗣','📢','📣','🔔','🔕','📅','📆','🗓',
+  '✅','☑','❌','⚠','🔒','🔓','🔑','🛡','⚙','🔧',
+  '🎨','🖼','🎵','🎬','📷','🎮','🧩','💎','🏆','🎁',
+  '💻','📱','🖥','⌨','🖱','📡','🧠','💪','👁','👋',
+  '🐾','🦋','🌺','🍀','🌙','🏔','🌆','🌍','✈','🚂',
+];
+
 class BlockSettingsModal extends Modal {
   constructor(
     app: App,
@@ -354,6 +365,39 @@ class BlockSettingsModal extends Modal {
          .setPlaceholder('Default title')
          .onChange(v => { draft._titleLabel = v; }),
       );
+
+    // ── Emoji picker ──────────────────────────────────────────────────────────
+    const emojiSetting = new Setting(contentEl)
+      .setName('Title emoji')
+      .setDesc('Prepended to the title label.');
+
+    const previewSpan = emojiSetting.controlEl.createSpan({ cls: 'emoji-picker-preview' });
+    const updatePreview = () => {
+      previewSpan.setText(typeof draft._titleEmoji === 'string' ? draft._titleEmoji : '');
+    };
+    updatePreview();
+
+    emojiSetting.controlEl.createEl('button', { cls: 'emoji-picker-clear', text: '✕' })
+      .addEventListener('click', () => {
+        draft._titleEmoji = '';
+        updatePreview();
+        gridEl.querySelectorAll<HTMLElement>('.emoji-btn.is-selected')
+          .forEach(b => b.removeClass('is-selected'));
+      });
+
+    const gridEl = contentEl.createDiv({ cls: 'emoji-picker-grid' });
+    for (const emoji of EMOJI_PICKER_SET) {
+      const btn = gridEl.createEl('button', { cls: 'emoji-btn', text: emoji });
+      if (draft._titleEmoji === emoji) btn.addClass('is-selected');
+      btn.addEventListener('click', () => {
+        draft._titleEmoji = emoji;
+        updatePreview();
+        gridEl.querySelectorAll<HTMLElement>('.emoji-btn.is-selected')
+          .forEach(b => b.removeClass('is-selected'));
+        btn.addClass('is-selected');
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     new Setting(contentEl)
       .setName('Hide title')

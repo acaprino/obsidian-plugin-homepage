@@ -572,6 +572,147 @@
   font-weight: 500;
 }
 
+/* ── Block header emoji ─────────────────────────────────── */
+.block-header-emoji {
+  font-style: normal;
+  margin-right: 4px;
+  font-size: 0.9em;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* ── Emoji picker (BlockSettingsModal) ──────────────────── */
+.emoji-picker-preview {
+  font-size: 1.25rem;
+  min-width: 1.5rem;
+  display: inline-block;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.emoji-picker-clear {
+  background: none;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-left: 6px;
+  line-height: 1.4;
+  box-shadow: none;
+}
+
+.emoji-picker-clear:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  margin: 6px 0 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+}
+
+.emoji-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s, 4px);
+  padding: 4px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1;
+  box-shadow: none;
+  transition: background 0.1s ease-out;
+}
+
+.emoji-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.emoji-btn.is-selected {
+  background: var(--background-modifier-hover);
+  border-color: var(--color-accent);
+}
+
+/* ── Values block — item list editor ────────────────────── */
+.values-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.values-item-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.values-item-emoji {
+  width: 3.5rem;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 1rem;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 6px;
+}
+
+.values-item-label {
+  flex: 1;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 8px;
+  font-size: inherit;
+}
+
+.values-item-link {
+  flex: 1.5;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 8px;
+  font-size: var(--font-interface-size, 0.8125rem);
+}
+
+.values-item-emoji:focus-visible,
+.values-item-label:focus-visible,
+.values-item-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.values-item-del {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-s, 4px);
+  font-size: 0.75rem;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.values-item-del:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+}
+
 /* ── Settings rows ──────────────────────────────────────── */
 .settings-link-row .setting-item {
   border-top: none;

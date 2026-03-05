@@ -50,7 +50,7 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
       id: 'default-tag-grid',
       type: 'tag-grid',
       col: 3, row: 2, colSpan: 1, rowSpan: 2,
-      config: { tag: '', title: 'Values', columns: 2, showEmoji: true },
+      config: { title: 'Values', columns: 2, items: [] },
     },
     // Row 3
     {
@@ -158,8 +158,8 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'tag-grid',
-    displayName: 'Tag Grid',
-    defaultConfig: { tag: '', title: 'Notes', columns: 2, showEmoji: true },
+    displayName: 'Values',
+    defaultConfig: { title: 'Values', columns: 2, items: [] },
     defaultSize: { colSpan: 1, rowSpan: 2 },
     create: (app, instance, plugin) => new TagGridBlock(app, instance, plugin),
   });

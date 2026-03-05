@@ -91,7 +91,8 @@ function isValidBlockInstance(b: unknown): b is BlockInstance {
     typeof block.col === 'number' && block.col >= 1 &&
     typeof block.row === 'number' && block.row >= 1 &&
     typeof block.colSpan === 'number' && block.colSpan >= 1 &&
-    typeof block.rowSpan === 'number' && block.rowSpan >= 1 &&
+    typeof block.rowSpan === 'number' && block.rowSpan >= 1 && Number.isFinite(block.rowSpan) &&
+    (block.newRow === undefined || typeof block.newRow === 'boolean') &&
     block.config !== null && typeof block.config === 'object' && !Array.isArray(block.config)
   );
 }

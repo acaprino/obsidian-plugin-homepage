@@ -5,6 +5,8 @@ import { BaseBlock } from './blocks/BaseBlock';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
+const MAX_ROW_SPAN = 12;
+
 export class GridLayout {
   private gridEl: HTMLElement;
   private blocks = new Map<string, { block: BaseBlock; wrapper: HTMLElement }>();
@@ -95,6 +97,10 @@ export class GridLayout {
     const factory = BlockRegistry.get(instance.type);
     if (!factory) return;
 
+    if (instance.newRow) {
+      this.gridEl.createDiv({ cls: 'homepage-row-break' });
+    }
+
     const wrapper = this.gridEl.createDiv({ cls: 'homepage-block-wrapper' });
     wrapper.dataset.blockId = instance.id;
     wrapper.setAttribute('role', 'listitem');
@@ -149,6 +155,11 @@ export class GridLayout {
     this.blocks.set(instance.id, { block, wrapper });
   }
 
+  private rowMinHeight(rowSpan: number): string {
+    if (rowSpan <= 1) return '';
+    return `calc(var(--hp-row-unit, 200px) * ${rowSpan} + var(--hp-gap, 16px) * ${rowSpan - 1})`;
+  }
+
   private applyGridPosition(wrapper: HTMLElement, instance: BlockInstance): void {
     const cols = this.effectiveColumns;
     const colSpan = Math.min(instance.colSpan, cols);
@@ -160,6 +171,7 @@ export class GridLayout {
     const gapFraction = (cols - colSpan) / cols;
     wrapper.style.flex = `${colSpan} 1 calc(${basisPercent}% - var(--hp-gap, 16px) * ${gapFraction.toFixed(4)})`;
     wrapper.style.minWidth = cols === 1 ? '0' : 'var(--hp-card-min-width, 200px)';
+    wrapper.style.minHeight = this.rowMinHeight(instance.rowSpan);
   }
 
   private attachEditHandles(wrapper: HTMLElement, instance: BlockInstance): void {
@@ -321,18 +333,29 @@ export class GridLayout {
       this.activeAbortController = ac;
 
       const startX = e.clientX;
+      const startY = e.clientY;
       const startColSpan = instance.colSpan;
+      const startRowSpan = instance.rowSpan;
       const columns = this.effectiveColumns;
       const colWidth = this.gridEl.offsetWidth / columns;
+      const rowUnitPx =
+        Math.max(50, parseFloat(
+          getComputedStyle(this.gridEl).getPropertyValue('--hp-row-unit').trim(),
+        ) || 200);
       let currentColSpan = startColSpan;
+      let currentRowSpan = startRowSpan;
 
       const onMouseMove = (me: MouseEvent) => {
         const deltaX = me.clientX - startX;
+        const deltaY = me.clientY - startY;
         const deltaCols = Math.round(deltaX / colWidth);
+        const deltaRows = Math.round(deltaY / rowUnitPx);
         currentColSpan = Math.max(1, Math.min(columns, startColSpan + deltaCols));
+        currentRowSpan = Math.max(1, Math.min(MAX_ROW_SPAN, startRowSpan + deltaRows));
         const basisPercent = (currentColSpan / columns) * 100;
         const gapFraction = (columns - currentColSpan) / columns;
         wrapper.style.flex = `${currentColSpan} 1 calc(${basisPercent}% - var(--hp-gap, 16px) * ${gapFraction.toFixed(4)})`;
+        wrapper.style.minHeight = this.rowMinHeight(currentRowSpan);
       };
 
       const onMouseUp = () => {
@@ -340,7 +363,7 @@ export class GridLayout {
         this.activeAbortController = null;
 
         const newBlocks = this.plugin.layout.blocks.map(b =>
-          b.id === instance.id ? { ...b, colSpan: currentColSpan } : b,
+          b.id === instance.id ? { ...b, colSpan: currentColSpan, rowSpan: currentRowSpan } : b,
         );
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
         this.rerender();
@@ -660,10 +683,20 @@ class BlockSettingsModal extends Modal {
          .onChange(v => { draft._hideTitle = v; }),
       );
 
+    let draftNewRow = this.instance.newRow === true;
+    new Setting(contentEl)
+      .setName('Start on new row')
+      .setDesc('Force this block to begin on a new row.')
+      .addToggle(t =>
+        t.setValue(draftNewRow)
+         .onChange(v => { draftNewRow = v; }),
+      );
+
     new Setting(contentEl)
       .addButton(btn =>
         btn.setButtonText('Save').setCta().onClick(() => {
           this.instance.config = draft;
+          this.instance.newRow = draftNewRow || undefined;
           this.onSave();
           this.close();
         }),

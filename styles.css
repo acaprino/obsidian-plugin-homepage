@@ -283,6 +283,23 @@
   transform: scale(1.02);
 }
 
+/* Masonry layout */
+.image-gallery.masonry-layout {
+  display: block;
+  column-gap: 8px;
+}
+
+.image-gallery.masonry-layout .gallery-item {
+  break-inside: avoid;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.image-gallery.masonry-layout .gallery-item img {
+  aspect-ratio: auto;
+  object-fit: unset;
+}
+
 .gallery-item video {
   width: 100%;
   display: block;
@@ -411,33 +428,51 @@
 }
 
 /* ── Collapsible blocks ─────────────────────────────────── */
-.block-collapse-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  padding: 2px 4px;
-  border-radius: var(--radius-s, 4px);
+.block-header-zone {
   display: flex;
   align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.15s ease-out, color 0.12s ease-out, background 0.12s ease-out;
-  box-shadow: none;
-  z-index: 1;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 8px;
 }
 
-.homepage-block-wrapper:hover .block-collapse-btn,
-.homepage-block-wrapper.block-collapsed .block-collapse-btn {
+/* In edit mode the handle bar owns interaction — header zone is not clickable */
+.edit-mode .block-header-zone {
+  cursor: default;
+  pointer-events: none;
+}
+
+.block-header-zone .block-header {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* Chevron indicator — CSS-only, rotates on collapse */
+.block-collapse-chevron {
+  font-size: 0.65rem;
+  color: var(--text-faint);
+  opacity: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  display: inline-block;
+  transform: rotate(270deg); /* expanded: points down */
+  transition: opacity 0.15s ease-out, transform 0.2s ease-out;
+}
+
+.block-collapse-chevron::before {
+  content: '›';
+}
+
+/* Collapsed: points right, always visible */
+.block-collapse-chevron.is-collapsed {
+  transform: rotate(90deg);
   opacity: 1;
 }
 
-.block-collapse-btn:hover {
-  color: var(--text-normal);
-  background: var(--background-modifier-hover);
+/* Show on card hover */
+.homepage-block-wrapper:hover .block-collapse-chevron {
+  opacity: 1;
 }
 
 .homepage-block-wrapper.block-collapsed .block-content {
@@ -446,11 +481,6 @@
 
 .homepage-block-wrapper.block-collapsed {
   min-height: unset;
-}
-
-/* Hide collapse button in edit mode (handle bar takes over) */
-.edit-mode .block-collapse-btn {
-  display: none;
 }
 
 /* ── Focus visible (keyboard navigation) ────────────────── */

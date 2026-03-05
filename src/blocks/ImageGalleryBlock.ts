@@ -54,17 +54,32 @@ export class ImageGalleryBlock extends BaseBlock {
   }
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
-    const { folder = '', title = 'Gallery', columns = 3, maxItems = 20 } = this.instance.config as {
+    const { folder = '', title = 'Gallery', columns = 3, maxItems = 20, layout = 'grid' } = this.instance.config as {
       folder?: string;
       title?: string;
       columns?: number;
       maxItems?: number;
+      layout?: 'grid' | 'masonry';
     };
 
     this.renderHeader(el, title);
 
     const gallery = el.createDiv({ cls: 'image-gallery' });
-    gallery.style.gridTemplateColumns = `repeat(auto-fill, minmax(max(70px, calc(100% / ${columns})), 1fr))`;
+
+    if (layout === 'masonry') {
+      gallery.addClass('masonry-layout');
+      const updateCols = () => {
+        const w = gallery.offsetWidth;
+        const effective = w > 0 ? Math.max(1, Math.min(columns, Math.floor(w / 100))) : columns;
+        gallery.style.columns = String(effective);
+      };
+      updateCols();
+      const ro = new ResizeObserver(updateCols);
+      ro.observe(gallery);
+      this.register(() => ro.disconnect());
+    } else {
+      gallery.style.gridTemplateColumns = `repeat(auto-fill, minmax(max(70px, calc(100% / ${columns})), 1fr))`;
+    }
 
     if (!folder) {
       gallery.setText('Configure a folder path in settings.');
@@ -175,6 +190,11 @@ class ImageGallerySettingsModal extends Modal {
           }).open();
         }),
       );
+    new Setting(contentEl).setName('Layout').addDropdown(d =>
+      d.addOption('grid', 'Grid').addOption('masonry', 'Masonry')
+       .setValue(String(draft.layout ?? 'grid'))
+       .onChange(v => { draft.layout = v; }),
+    );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
        .setValue(String(draft.columns ?? 3))

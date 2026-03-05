@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "minAppVersion": "1.5.0",
   "description": "A dynamic, composable homepage with native blocks — no Dataview required.",
-  "author": "alfio",
-  "authorUrl": "",
+  "author": "Alfio Caprino",
+  "authorUrl": "https://github.com/acaprino",
   "isDesktopOnly": true
 }

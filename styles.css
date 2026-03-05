@@ -140,7 +140,8 @@
 .folder-links-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  margin: 0 -6px;
 }
 
 .folder-link-item {
@@ -151,28 +152,31 @@
 .folder-link-btn {
   background: none;
   border: none;
-  padding: 3px 0;
+  padding: 5px 10px;
   cursor: pointer;
-  color: var(--text-accent, var(--color-accent));
-  font-size: inherit;
+  color: var(--text-normal);
+  font-size: var(--font-text-size, 0.875rem);
   text-align: left;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  transition: color 0.12s ease-out;
+  border-radius: var(--radius-s, 4px);
+  transition: background 0.1s ease-out, color 0.1s ease-out;
   box-shadow: none;
   text-decoration: none;
 }
 
 .folder-link-btn:hover {
-  color: var(--text-accent-hover, var(--color-accent));
-  text-decoration: underline;
+  background: var(--background-modifier-hover);
+  color: var(--text-accent, var(--color-accent));
+  text-decoration: none;
 }
 
 .link-emoji {
-  font-size: 1rem;
+  font-size: 1em;
   flex-shrink: 0;
+  opacity: 0.85;
 }
 
 /* ── Insight Block ──────────────────────────────────────── */
@@ -652,7 +656,7 @@
 .block-header-emoji {
   font-style: normal;
   margin-right: 4px;
-  font-size: 0.9em;
+  font-size: 1.2em;
   line-height: 1;
   vertical-align: middle;
 }

@@ -142,7 +142,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'folder-links',
-    displayName: 'Folder Links',
+    displayName: 'Quick Links',
     defaultConfig: { title: 'Quick Links', folder: '', links: [] },
     defaultSize: { colSpan: 1, rowSpan: 1 },
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),

@@ -45,12 +45,14 @@ export class EmbeddedNoteBlock extends BaseBlock {
   }
 
   private async renderContent(el: HTMLElement): Promise<void> {
-    const { filePath = '', showTitle = true } = this.instance.config as {
+    const { filePath = '', showTitle = true, heightMode = 'scroll' } = this.instance.config as {
       filePath?: string;
       showTitle?: boolean;
+      heightMode?: 'scroll' | 'grow';
     };
 
     el.empty();
+    el.toggleClass('embedded-note-block--grow', heightMode === 'grow');
 
     if (!filePath) {
       const hint = el.createDiv({ cls: 'block-empty-hint' });
@@ -70,6 +72,11 @@ export class EmbeddedNoteBlock extends BaseBlock {
     }
 
     const contentEl = el.createDiv({ cls: 'embedded-note-content' });
+    if (heightMode === 'scroll') {
+      contentEl.setAttribute('tabindex', '0');
+      contentEl.setAttribute('role', 'region');
+      contentEl.setAttribute('aria-label', file.basename);
+    }
 
     try {
       const content = await this.app.vault.read(file);
@@ -112,6 +119,15 @@ class EmbeddedNoteSettingsModal extends Modal {
       t.setValue(draft.showTitle as boolean ?? true)
        .onChange(v => { draft.showTitle = v; }),
     );
+    new Setting(contentEl)
+      .setName('Height mode')
+      .setDesc('Scroll keeps the block compact. Grow to fit all expands the card to show the full note.')
+      .addDropdown(d =>
+        d.addOption('scroll', 'Scroll (fixed height)')
+         .addOption('grow', 'Grow to fit all')
+         .setValue(draft.heightMode as string ?? 'scroll')
+         .onChange(v => { draft.heightMode = v; }),
+      );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {
         this.onSave(draft);

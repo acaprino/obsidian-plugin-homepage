@@ -31,9 +31,14 @@ export class QuotesListBlock extends BaseBlock {
 
     this.renderHeader(el, title);
 
-    if (heightMode === 'extend') el.addClass('quotes-list-block--extend');
+    el.toggleClass('quotes-list-block--extend', heightMode === 'extend');
 
     const colsEl = el.createDiv({ cls: 'quotes-columns' });
+    if (heightMode === 'wrap') {
+      colsEl.setAttribute('tabindex', '0');
+      colsEl.setAttribute('role', 'region');
+      colsEl.setAttribute('aria-label', 'Quotes');
+    }
 
     const MIN_COL_WIDTH = 200;
     const updateCols = () => {
@@ -222,10 +227,10 @@ class QuotesSettingsModal extends Modal {
     );
     new Setting(contentEl)
       .setName('Height mode')
-      .setDesc('Wrap: fixed height with scrollbar. Extend: block grows to show all quotes.')
+      .setDesc('Scroll keeps the block compact. Grow to fit all works best at full width.')
       .addDropdown(d =>
-        d.addOption('wrap', 'Wrap (scroll)')
-         .addOption('extend', 'Extend (show all)')
+        d.addOption('wrap', 'Scroll (fixed height)')
+         .addOption('extend', 'Grow to fit all')
          .setValue(draft.heightMode ?? 'wrap')
          .onChange(v => { draft.heightMode = v as 'wrap' | 'extend'; }),
       );

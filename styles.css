@@ -415,14 +415,20 @@
   align-items: start;
 }
 
-/* Extend mode: let the block grow to show all quotes without a scrollbar */
+/* Extend mode: remove overflow constraint so card grows to fit all quotes */
+/* overflow: visible here overrides the collapse-system's overflow: hidden,
+   letting intrinsic content height propagate upward to size the card */
 .homepage-block-wrapper .block-content > .quotes-list-block--extend {
   overflow: visible;
 }
 
+/* Re-clip during collapse so the grid-template-rows animation still works */
+.homepage-block-wrapper.block-collapsed .block-content > .quotes-list-block--extend {
+  overflow: hidden;
+}
+
 .quotes-list-block--extend .quotes-columns {
   max-height: none;
-  overflow-y: visible;
 }
 
 .quote-item {
@@ -531,6 +537,20 @@
   font-size: inherit;
   max-height: 400px;
   overflow-y: auto;
+}
+
+/* Grow mode: card expands to show full note */
+.homepage-block-wrapper .block-content > .embedded-note-block--grow {
+  overflow: visible;
+}
+
+.homepage-block-wrapper.block-collapsed .block-content > .embedded-note-block--grow {
+  overflow: hidden;
+}
+
+.embedded-note-block--grow .embedded-note-content {
+  max-height: none;
+  overflow-y: visible;
 }
 
 /* ── Static Text Block ──────────────────────────────────── */
@@ -944,13 +964,14 @@
   transform: scale(0.98);
 }
 
-/* Drop insertion indicators — inset shadow, no layout shift */
-.homepage-grid .homepage-block-wrapper.drop-before {
-  box-shadow: inset 3px 0 0 var(--color-accent);
-}
-
-.homepage-grid .homepage-block-wrapper.drop-after {
-  box-shadow: inset -3px 0 0 var(--color-accent);
+/* Drop placeholder — real gap in the layout showing where the block will land */
+.block-drag-placeholder {
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-m, 8px);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  box-sizing: border-box;
+  pointer-events: none;
+  transition: none;
 }
 
 /* ── Add Block Modal ────────────────────────────────────── */
@@ -1250,6 +1271,11 @@
   /* Gallery and quotes go single-column */
   .quotes-columns {
     max-height: 400px;
+  }
+
+  /* Don't override extend mode on small screens */
+  .quotes-list-block--extend .quotes-columns {
+    max-height: none;
   }
 
   .homepage-empty-state {

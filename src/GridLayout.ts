@@ -243,17 +243,24 @@ export class GridLayout {
       const ac = new AbortController();
       this.activeAbortController = ac;
 
-      // Lightweight clone — no deep-copy of heavy block content
+      // Floating clone that follows the cursor
       const clone = document.createElement('div');
       clone.addClass('block-drag-clone');
       clone.style.width = `${wrapper.offsetWidth}px`;
       clone.style.height = `${wrapper.offsetHeight}px`;
       clone.style.left = `${e.clientX - wrapper.offsetWidth / 2}px`;
       clone.style.top = `${e.clientY - 20}px`;
-      // Append inside themed container so CSS vars resolve correctly
       const themed = (this.gridEl.closest('.app-container') ?? document.body) as HTMLElement;
       themed.appendChild(clone);
       this.activeClone = clone;
+
+      // Placeholder — shows the landing spot in the real layout
+      const placeholder = document.createElement('div');
+      placeholder.addClass('block-drag-placeholder');
+      placeholder.style.flex = wrapper.style.flex;
+      placeholder.style.minWidth = wrapper.style.minWidth;
+      placeholder.style.height = `${wrapper.offsetHeight}px`;
+      wrapper.insertAdjacentElement('afterend', placeholder);
 
       const sourceId = instance.id;
       wrapper.addClass('block-dragging');
@@ -264,23 +271,27 @@ export class GridLayout {
         if (id !== sourceId) cachedRects.set(id, w.getBoundingClientRect());
       }
 
-      const clearIndicators = () => {
-        for (const { wrapper: w } of this.blocks.values()) {
-          w.removeClass('drop-before', 'drop-after');
+      let lastInsertBeforeId: string | null = null;
+
+      const movePlaceholder = (insertBeforeId: string | null) => {
+        if (insertBeforeId === lastInsertBeforeId) return;
+        lastInsertBeforeId = insertBeforeId;
+        placeholder.remove();
+        if (insertBeforeId) {
+          const targetWrapper = this.blocks.get(insertBeforeId)?.wrapper;
+          if (targetWrapper) {
+            this.gridEl.insertBefore(placeholder, targetWrapper);
+            return;
+          }
         }
+        this.gridEl.appendChild(placeholder);
       };
 
       const onMouseMove = (me: MouseEvent) => {
         clone.style.left = `${me.clientX - wrapper.offsetWidth / 2}px`;
         clone.style.top = `${me.clientY - 20}px`;
-
-        clearIndicators();
         const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
-        if (pt.targetId) {
-          this.blocks.get(pt.targetId)?.wrapper.addClass(
-            pt.insertBefore ? 'drop-before' : 'drop-after',
-          );
-        }
+        movePlaceholder(pt.insertBeforeId);
       };
 
       const onMouseUp = (me: MouseEvent) => {
@@ -288,8 +299,8 @@ export class GridLayout {
         this.activeAbortController = null;
         clone.remove();
         this.activeClone = null;
+        placeholder.remove();
         wrapper.removeClass('block-dragging');
-        clearIndicators();
 
         const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
         this.reorderBlock(sourceId, pt.insertBeforeId);

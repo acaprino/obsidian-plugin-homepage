@@ -1,6 +1,45 @@
-import { App, Modal, Setting, TFile, TFolder } from 'obsidian';
+import { App, Modal, Setting, SuggestModal, TFile, TFolder } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
+
+// ── Folder picker ────────────────────────────────────────────────────────────
+
+class FolderSuggestModal extends SuggestModal<TFolder> {
+  constructor(
+    app: App,
+    private onChoose: (folder: TFolder) => void,
+  ) {
+    super(app);
+    this.setPlaceholder('Type to search vault folders…');
+  }
+
+  private getAllFolders(): TFolder[] {
+    const folders: TFolder[] = [];
+    const recurse = (f: TFolder) => {
+      folders.push(f);
+      for (const child of f.children) {
+        if (child instanceof TFolder) recurse(child);
+      }
+    };
+    recurse(this.app.vault.getRoot());
+    return folders;
+  }
+
+  getSuggestions(query: string): TFolder[] {
+    const q = query.toLowerCase();
+    return this.getAllFolders().filter(f =>
+      f.path.toLowerCase().includes(q),
+    );
+  }
+
+  renderSuggestion(folder: TFolder, el: HTMLElement): void {
+    el.createEl('span', { text: folder.path === '/' ? '/ (vault root)' : folder.path });
+  }
+
+  onChooseSuggestion(folder: TFolder): void {
+    this.onChoose(folder);
+  }
+}
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -115,10 +154,25 @@ class ImageGallerySettingsModal extends Modal {
       t.setValue(this.config.title as string ?? 'Gallery')
        .onChange(v => { this.config.title = v; }),
     );
-    new Setting(contentEl).setName('Folder').setDesc('Vault folder path (e.g. Attachments/Photos)').addText(t =>
-      t.setValue(this.config.folder as string ?? '')
-       .onChange(v => { this.config.folder = v; }),
-    );
+    let folderText: import('obsidian').TextComponent;
+    new Setting(contentEl)
+      .setName('Folder')
+      .setDesc('Pick a vault folder.')
+      .addText(t => {
+        folderText = t;
+        t.setValue(this.config.folder as string ?? '')
+         .setPlaceholder('Attachments/Photos')
+         .onChange(v => { this.config.folder = v; });
+      })
+      .addButton(btn =>
+        btn.setIcon('folder').setTooltip('Browse vault folders').onClick(() => {
+          new FolderSuggestModal(this.app, (folder) => {
+            const path = folder.path === '/' ? '' : folder.path;
+            this.config.folder = path;
+            folderText.setValue(path);
+          }).open();
+        }),
+      );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
        .setValue(String(this.config.columns ?? 3))

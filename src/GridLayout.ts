@@ -93,6 +93,23 @@ export class GridLayout {
       });
     }
 
+    // Collapse toggle (absolutely positioned, hidden in edit mode)
+    if (instance.collapsed) wrapper.addClass('block-collapsed');
+    const collapseBtn = wrapper.createEl('button', { cls: 'block-collapse-btn' });
+    setIcon(collapseBtn, instance.collapsed ? 'chevron-right' : 'chevron-down');
+    collapseBtn.setAttribute('aria-label', instance.collapsed ? 'Expand' : 'Collapse');
+    collapseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isNowCollapsed = !wrapper.hasClass('block-collapsed');
+      wrapper.toggleClass('block-collapsed', isNowCollapsed);
+      setIcon(collapseBtn, isNowCollapsed ? 'chevron-right' : 'chevron-down');
+      collapseBtn.setAttribute('aria-label', isNowCollapsed ? 'Expand' : 'Collapse');
+      const newBlocks = this.plugin.layout.blocks.map(b =>
+        b.id === instance.id ? { ...b, collapsed: isNowCollapsed } : b,
+      );
+      void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+    });
+
     this.blocks.set(instance.id, { block, wrapper });
   }
 

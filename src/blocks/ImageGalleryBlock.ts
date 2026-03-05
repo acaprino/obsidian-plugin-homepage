@@ -64,7 +64,7 @@ export class ImageGalleryBlock extends BaseBlock {
     this.renderHeader(el, title);
 
     const gallery = el.createDiv({ cls: 'image-gallery' });
-    gallery.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+    gallery.style.gridTemplateColumns = `repeat(auto-fill, minmax(max(70px, calc(100% / ${columns})), 1fr))`;
 
     if (!folder) {
       gallery.setText('Configure a folder path in settings.');

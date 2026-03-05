@@ -20,6 +20,7 @@ export interface BlockInstance {
   row: number;
   colSpan: number;
   rowSpan: number;
+  collapsed?: boolean;
   config: Record<string, unknown>;
 }
 

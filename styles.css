@@ -140,7 +140,7 @@
 .folder-links-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .folder-link-item {
@@ -151,26 +151,28 @@
 .folder-link-btn {
   background: none;
   border: none;
-  padding: 4px 8px;
-  border-radius: var(--radius-s, 4px);
+  padding: 3px 0;
   cursor: pointer;
-  color: var(--text-normal);
+  color: var(--text-accent, var(--color-accent));
   font-size: inherit;
   text-align: left;
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  transition: background 0.12s ease-out;
+  transition: color 0.12s ease-out;
   box-shadow: none;
+  text-decoration: none;
 }
 
 .folder-link-btn:hover {
-  background: var(--background-modifier-hover);
+  color: var(--text-accent-hover, var(--color-accent));
+  text-decoration: underline;
 }
 
 .link-emoji {
   font-size: 1rem;
+  flex-shrink: 0;
 }
 
 /* ── Insight Block ──────────────────────────────────────── */
@@ -406,6 +408,49 @@
   background: var(--color-accent);
   color: var(--text-on-accent, #fff);
   border-color: var(--color-accent);
+}
+
+/* ── Collapsible blocks ─────────────────────────────────── */
+.block-collapse-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  border-radius: var(--radius-s, 4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease-out, color 0.12s ease-out, background 0.12s ease-out;
+  box-shadow: none;
+  z-index: 1;
+}
+
+.homepage-block-wrapper:hover .block-collapse-btn,
+.homepage-block-wrapper.block-collapsed .block-collapse-btn {
+  opacity: 1;
+}
+
+.block-collapse-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.homepage-block-wrapper.block-collapsed .block-content {
+  display: none;
+}
+
+.homepage-block-wrapper.block-collapsed {
+  min-height: unset;
+}
+
+/* Hide collapse button in edit mode (handle bar takes over) */
+.edit-mode .block-collapse-btn {
+  display: none;
 }
 
 /* ── Focus visible (keyboard navigation) ────────────────── */

@@ -13,6 +13,8 @@ export class GridLayout {
   private activeAbortController: AbortController | null = null;
   /** Drag clone appended to document.body; tracked so we can remove it on early teardown. */
   private activeClone: HTMLElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private effectiveColumns = 3;
 
   constructor(
     containerEl: HTMLElement,
@@ -21,6 +23,13 @@ export class GridLayout {
     private onLayoutChange: LayoutChangeCallback,
   ) {
     this.gridEl = containerEl.createDiv({ cls: 'homepage-grid' });
+    this.resizeObserver = new ResizeObserver(() => {
+      const newEffective = this.computeEffectiveColumns(this.plugin.layout.columns);
+      if (newEffective !== this.effectiveColumns) {
+        this.rerender();
+      }
+    });
+    this.resizeObserver.observe(this.gridEl);
   }
 
   /** Expose the root grid element so HomepageView can reorder it in the DOM. */
@@ -28,12 +37,20 @@ export class GridLayout {
     return this.gridEl;
   }
 
+  private computeEffectiveColumns(layoutColumns: number): number {
+    const w = this.gridEl.offsetWidth;
+    if (w > 0 && w <= 540) return 1;
+    if (w > 0 && w <= 840) return Math.min(2, layoutColumns);
+    return layoutColumns;
+  }
+
   render(blocks: BlockInstance[], columns: number): void {
     this.destroyAll();
     this.gridEl.empty();
     this.gridEl.setAttribute('role', 'grid');
     this.gridEl.setAttribute('aria-label', 'Homepage blocks');
-    this.gridEl.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+    this.effectiveColumns = this.computeEffectiveColumns(columns);
+    this.gridEl.style.gridTemplateColumns = `repeat(${this.effectiveColumns}, minmax(0, 1fr))`;
 
     if (this.editMode) {
       this.gridEl.addClass('edit-mode');
@@ -81,7 +98,9 @@ export class GridLayout {
   }
 
   private applyGridPosition(wrapper: HTMLElement, instance: BlockInstance): void {
-    wrapper.style.gridColumn = `${instance.col} / span ${instance.colSpan}`;
+    const col = Math.min(instance.col, this.effectiveColumns);
+    const colSpan = Math.min(instance.colSpan, this.effectiveColumns - col + 1);
+    wrapper.style.gridColumn = `${col} / span ${colSpan}`;
     wrapper.style.gridRow = `${instance.row} / span ${instance.rowSpan}`;
   }
 
@@ -299,6 +318,8 @@ export class GridLayout {
 
   /** Full teardown: unload blocks and remove the grid element from the DOM. */
   destroy(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.destroyAll();
     this.gridEl.remove();
   }

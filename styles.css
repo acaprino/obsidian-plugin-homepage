@@ -1,8 +1,9 @@
 /* ── Design Tokens ──────────────────────────────────────── */
 :root {
-  --hp-radius-sm: 4px;
-  --hp-radius-md: 8px;
-  --hp-radius-lg: 12px;
+  /* Override these in snippets/homepage.css to customise layout */
+  --hp-gap: 16px;
+  --hp-padding: 24px;
+  --hp-card-padding: 16px 20px;
 }
 
 /* ── Homepage View ──────────────────────────────────────── */
@@ -20,8 +21,8 @@
   min-height: 0;
   overflow-y: auto;
   display: grid;
-  gap: 16px;
-  padding: 24px;
+  gap: var(--hp-gap);
+  padding: var(--hp-padding);
   align-items: start;
   align-content: start;
   max-width: 1400px;
@@ -31,39 +32,21 @@
   line-height: 1.5;
 }
 
-/* Responsive column override for narrow panes */
-@container (max-width: 540px) {
-  .homepage-grid {
-    grid-template-columns: 1fr !important;
-    padding: 16px;
-  }
-}
-
-@container (max-width: 840px) {
-  .homepage-grid {
-    grid-template-columns: repeat(2, 1fr) !important;
-  }
-}
 
 /* ── Block Card ─────────────────────────────────────────── */
 .homepage-block-wrapper {
   background: var(--background-secondary);
-  border-radius: var(--hp-radius-lg);
-  padding: 16px 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-m, 8px);
+  padding: var(--hp-card-padding);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
   overflow: hidden;
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 60px;
-  /* Permanent transparent border prevents layout shift in edit mode */
-  border: 2px solid transparent;
   box-sizing: border-box;
-  transition: opacity 0.12s ease-out, border-color 0.15s ease-out;
-}
-
-.theme-dark .homepage-block-wrapper {
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
+  transition: opacity 0.12s ease-out;
 }
 
 .block-content {
@@ -73,7 +56,7 @@
 
 /* ── Block Header / Label ───────────────────────────────── */
 .block-header {
-  font-size: 0.6875rem;
+  font-size: var(--font-interface-size, 0.8125rem);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -104,7 +87,7 @@
 /* ── Block Loading Placeholder ──────────────────────────── */
 .block-loading {
   color: var(--text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--font-interface-size, 0.8125rem);
   padding: 8px 0;
 }
 
@@ -117,14 +100,14 @@
 }
 
 .greeting-time {
-  font-size: 0.8125rem;
+  font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);
   margin-bottom: 4px;
 }
 
 .greeting-name {
-  font-size: 1.625rem;
-  font-weight: 600;
+  font-size: var(--h3-size, 1.625rem);
+  font-weight: var(--h3-weight, 600);
   margin: 0;
   color: var(--text-normal);
 }
@@ -138,7 +121,7 @@
 }
 
 .clock-time {
-  font-size: 2rem;
+  font-size: var(--h3-size, 2rem);
   font-weight: 300;
   letter-spacing: 0.02em;
   color: var(--text-normal);
@@ -147,7 +130,7 @@
 }
 
 .clock-date {
-  font-size: 0.8125rem;
+  font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);
   margin-top: 4px;
 }
@@ -168,10 +151,10 @@
   background: none;
   border: none;
   padding: 4px 8px;
-  border-radius: var(--hp-radius-sm);
+  border-radius: var(--radius-s, 4px);
   cursor: pointer;
   color: var(--text-normal);
-  font-size: 0.875rem;
+  font-size: inherit;
   text-align: left;
   display: flex;
   align-items: center;
@@ -202,14 +185,14 @@
   color: var(--color-accent);
   font-weight: 600;
   margin-bottom: 8px;
-  font-size: 1rem;
+  font-size: inherit;
 }
 
 .insight-body {
   border-left: 3px solid var(--color-accent);
   padding-left: 12px;
   color: var(--text-normal);
-  font-size: 0.875rem;
+  font-size: inherit;
   line-height: 1.6;
 }
 
@@ -222,11 +205,11 @@
 .tag-btn {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--hp-radius-md);
+  border-radius: var(--radius-m, 8px);
   padding: 8px 12px;
   text-align: left;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: inherit;
   color: var(--text-normal);
   transition: background 0.15s ease-out;
   box-shadow: none;
@@ -259,13 +242,13 @@
   border-left: 3px solid var(--color-accent);
   margin: 0 0 4px 0;
   padding: 4px 0 4px 12px;
-  font-size: 0.875rem;
+  font-size: inherit;
   line-height: 1.6;
   color: var(--text-normal);
 }
 
 .quote-source {
-  font-size: 0.6875rem;
+  font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);
   padding-left: 12px;
 }
@@ -279,14 +262,14 @@
 .gallery-item {
   position: relative;
   overflow: hidden;
-  border-radius: var(--hp-radius-md);
+  border-radius: var(--radius-m, 8px);
   cursor: pointer;
 }
 
 .gallery-item img {
   width: 100%;
   display: block;
-  border-radius: var(--hp-radius-md);
+  border-radius: var(--radius-m, 8px);
   transition: transform 0.2s ease-out;
   aspect-ratio: 1;
   object-fit: cover;
@@ -299,7 +282,7 @@
 .gallery-item video {
   width: 100%;
   display: block;
-  border-radius: var(--hp-radius-md);
+  border-radius: var(--radius-m, 8px);
   aspect-ratio: 16 / 9;
   object-fit: cover;
 }
@@ -329,20 +312,20 @@
 
 /* ── Embedded Note Block ────────────────────────────────── */
 .embedded-note-content {
-  font-size: 0.875rem;
+  font-size: inherit;
   max-height: 400px;
   overflow-y: auto;
 }
 
 /* ── Static Text Block ──────────────────────────────────── */
 .static-text-content {
-  font-size: 0.875rem;
+  font-size: inherit;
   line-height: 1.6;
 }
 
 /* ── HTML Block ─────────────────────────────────────────── */
 .html-block-content {
-  font-size: 0.875rem;
+  font-size: inherit;
   line-height: 1.6;
 }
 
@@ -354,7 +337,7 @@
   background: var(--background-primary);
   color: var(--text-normal);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--hp-radius-sm);
+  border-radius: var(--radius-s, 4px);
   padding: 8px;
   resize: vertical;
   margin-bottom: 16px;
@@ -373,7 +356,7 @@
   justify-content: flex-end;
   padding: 8px 16px;
   border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
+  background: var(--background-secondary);
   flex-shrink: 0;
   z-index: 10;
 }
@@ -386,9 +369,9 @@
 .toolbar-col-select {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--hp-radius-sm);
+  border-radius: var(--radius-s, 4px);
   padding: 4px 8px;
-  font-size: 0.8125rem;
+  font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-normal);
   cursor: pointer;
   transition: background 0.15s ease-out, border-color 0.15s ease-out;
@@ -402,9 +385,9 @@
 .toolbar-add-btn {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--hp-radius-sm);
+  border-radius: var(--radius-s, 4px);
   padding: 4px 12px;
-  font-size: 0.8125rem;
+  font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-normal);
   cursor: pointer;
   transition: background 0.15s ease-out;
@@ -432,8 +415,8 @@
 
 /* ── Edit Mode ──────────────────────────────────────────── */
 .homepage-grid.edit-mode .homepage-block-wrapper {
-  border-color: var(--color-accent);
-  border-style: dashed;
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -1px;
 }
 
 .block-handle-bar {
@@ -451,7 +434,7 @@
   padding: 2px 4px;
   flex: 1;
   user-select: none;
-  border-radius: var(--hp-radius-sm);
+  border-radius: var(--radius-s, 4px);
   display: flex;
   align-items: center;
   transition: color 0.12s ease-out, background 0.12s ease-out;
@@ -481,7 +464,7 @@
   cursor: pointer;
   color: var(--text-muted);
   padding: 2px 6px;
-  border-radius: var(--hp-radius-sm);
+  border-radius: var(--radius-s, 4px);
   line-height: 1;
   display: flex;
   align-items: center;
@@ -525,7 +508,7 @@
   opacity: 0.7;
   z-index: 100;
   border: 2px dashed var(--color-accent);
-  border-radius: var(--hp-radius-lg);
+  border-radius: var(--radius-m, 8px);
   background: var(--background-secondary);
 }
 
@@ -536,8 +519,8 @@
 
 /* Drop target highlight — compound selector removes need for !important */
 .homepage-grid .homepage-block-wrapper.block-drop-target {
-  border-color: var(--interactive-accent);
-  border-style: solid;
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -1px;
   background: var(--background-modifier-hover);
 }
 
@@ -548,11 +531,11 @@
   text-align: left;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--hp-radius-md);
+  border-radius: var(--radius-m, 8px);
   padding: 10px 16px;
   margin-bottom: 8px;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: inherit;
   color: var(--text-normal);
   transition: background 0.15s ease-out;
 }

@@ -224,6 +224,19 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       callback: () => { void this.openHomepage(); },
     });
 
+    this.addCommand({
+      id: 'toggle-edit-mode',
+      name: 'Toggle edit mode',
+      callback: () => {
+        const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
+        for (const leaf of leaves) {
+          if (leaf.view instanceof HomepageView) {
+            leaf.view.toggleEditMode();
+          }
+        }
+      },
+    });
+
     this.addRibbonIcon('home', 'Open Homepage', () => { void this.openHomepage(); });
 
     this.addSettingTab(new HomepageSettingTab(this.app, this));

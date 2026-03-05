@@ -135,6 +135,13 @@ export class FolderLinksBlock extends BaseBlock {
     }
   }
 
+  onunload(): void {
+    if (this.renderTimer !== null) {
+      window.clearTimeout(this.renderTimer);
+      this.renderTimer = null;
+    }
+  }
+
   openSettings(onSave: () => void): void {
     new FolderLinksSettingsModal(
       this.app,

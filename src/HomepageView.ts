@@ -43,15 +43,21 @@ export class HomepageView extends ItemView {
       (columns) => { this.grid?.setColumns(columns); },
     );
 
-    // Toolbar must appear above the grid in the flex-column layout
+    // Toolbar above grid; FAB floats independently (already in contentEl via EditToolbar)
     contentEl.insertBefore(this.toolbar.getElement(), this.grid.getElement());
+    contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
 
-    this.grid.render(layout.blocks, layout.columns);
+    this.grid.render(layout.blocks, layout.columns, true);
   }
 
   async onClose(): Promise<void> {
     this.grid?.destroy();
     this.toolbar?.destroy();
+  }
+
+  /** Toggle edit mode — called from keyboard shortcut command. */
+  toggleEditMode(): void {
+    this.toolbar?.toggleEditMode();
   }
 
   /** Re-render the view from scratch (e.g. after settings reset). */

@@ -50,12 +50,18 @@ export class GridLayout {
     return layoutColumns;
   }
 
-  render(blocks: BlockInstance[], columns: number): void {
+  render(blocks: BlockInstance[], columns: number, isInitial = false): void {
     this.destroyAll();
     this.gridEl.empty();
-    this.gridEl.setAttribute('role', 'grid');
+    this.gridEl.setAttribute('role', 'list');
     this.gridEl.setAttribute('aria-label', 'Homepage blocks');
     this.effectiveColumns = this.computeEffectiveColumns(columns);
+
+    // Stagger animation only on the initial render (not reorder/collapse/column change)
+    if (isInitial) {
+      this.gridEl.addClass('homepage-grid--animating');
+      setTimeout(() => this.gridEl.removeClass('homepage-grid--animating'), 500);
+    }
 
     if (this.editMode) {
       this.gridEl.addClass('edit-mode');
@@ -69,7 +75,9 @@ export class GridLayout {
       empty.createEl('p', { cls: 'homepage-empty-title', text: 'Your homepage is empty' });
       empty.createEl('p', {
         cls: 'homepage-empty-desc',
-        text: 'Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started.',
+        text: this.editMode
+          ? 'Click the button below to add your first block.'
+          : 'Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started.',
       });
       if (this.editMode && this.onRequestAddBlock) {
         const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add Your First Block' });
@@ -89,8 +97,7 @@ export class GridLayout {
 
     const wrapper = this.gridEl.createDiv({ cls: 'homepage-block-wrapper' });
     wrapper.dataset.blockId = instance.id;
-    wrapper.setAttribute('role', 'gridcell');
-    wrapper.setAttribute('aria-label', factory.displayName);
+    wrapper.setAttribute('role', 'listitem');
     this.applyGridPosition(wrapper, instance);
 
     if (this.editMode) {
@@ -99,7 +106,11 @@ export class GridLayout {
 
     // Header zone — always visible; houses title + collapse chevron
     const headerZone = wrapper.createDiv({ cls: 'block-header-zone' });
+    headerZone.setAttribute('role', 'button');
+    headerZone.setAttribute('tabindex', '0');
+    headerZone.setAttribute('aria-expanded', String(!instance.collapsed));
     const chevron = headerZone.createSpan({ cls: 'block-collapse-chevron' });
+    chevron.setAttribute('aria-hidden', 'true');
 
     const contentEl = wrapper.createDiv({ cls: 'block-content' });
     const block = factory.create(this.app, instance, this.plugin);
@@ -115,15 +126,22 @@ export class GridLayout {
 
     if (instance.collapsed) wrapper.addClass('block-collapsed');
 
-    headerZone.addEventListener('click', (e) => {
+    const toggleCollapse = (e: Event) => {
       e.stopPropagation();
+      if (this.editMode) return; // edit mode: handle bar owns interaction
       const isNowCollapsed = !wrapper.hasClass('block-collapsed');
       wrapper.toggleClass('block-collapsed', isNowCollapsed);
       chevron.toggleClass('is-collapsed', isNowCollapsed);
+      headerZone.setAttribute('aria-expanded', String(!isNowCollapsed));
       const newBlocks = this.plugin.layout.blocks.map(b =>
         b.id === instance.id ? { ...b, collapsed: isNowCollapsed } : b,
       );
       void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+    };
+
+    headerZone.addEventListener('click', toggleCollapse);
+    headerZone.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(e); }
     });
 
     if (instance.collapsed) chevron.addClass('is-collapsed');
@@ -181,6 +199,33 @@ export class GridLayout {
       }).open();
     });
 
+    // Move up / down keyboard-accessible reorder buttons
+    const moveUpBtn = bar.createEl('button', { cls: 'block-move-up-btn' });
+    setIcon(moveUpBtn, 'chevron-up');
+    moveUpBtn.setAttribute('aria-label', 'Move block up');
+    moveUpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = this.plugin.layout.blocks.findIndex(b => b.id === instance.id);
+      if (idx <= 0) return;
+      const newBlocks = [...this.plugin.layout.blocks];
+      [newBlocks[idx - 1], newBlocks[idx]] = [newBlocks[idx], newBlocks[idx - 1]];
+      this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+      this.rerender();
+    });
+
+    const moveDownBtn = bar.createEl('button', { cls: 'block-move-down-btn' });
+    setIcon(moveDownBtn, 'chevron-down');
+    moveDownBtn.setAttribute('aria-label', 'Move block down');
+    moveDownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = this.plugin.layout.blocks.findIndex(b => b.id === instance.id);
+      if (idx < 0 || idx >= this.plugin.layout.blocks.length - 1) return;
+      const newBlocks = [...this.plugin.layout.blocks];
+      [newBlocks[idx], newBlocks[idx + 1]] = [newBlocks[idx + 1], newBlocks[idx]];
+      this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+      this.rerender();
+    });
+
     const grip = wrapper.createDiv({ cls: 'block-resize-grip' });
     setIcon(grip, 'maximize-2');
     grip.setAttribute('aria-label', 'Drag to resize');
@@ -198,17 +243,26 @@ export class GridLayout {
       const ac = new AbortController();
       this.activeAbortController = ac;
 
-      const clone = wrapper.cloneNode(true) as HTMLElement;
+      // Lightweight clone — no deep-copy of heavy block content
+      const clone = document.createElement('div');
       clone.addClass('block-drag-clone');
       clone.style.width = `${wrapper.offsetWidth}px`;
       clone.style.height = `${wrapper.offsetHeight}px`;
       clone.style.left = `${e.clientX - wrapper.offsetWidth / 2}px`;
       clone.style.top = `${e.clientY - 20}px`;
-      document.body.appendChild(clone);
+      // Append inside themed container so CSS vars resolve correctly
+      const themed = (this.gridEl.closest('.app-container') ?? document.body) as HTMLElement;
+      themed.appendChild(clone);
       this.activeClone = clone;
 
       const sourceId = instance.id;
       wrapper.addClass('block-dragging');
+
+      // Cache rects once at drag start to avoid layout thrash on every mousemove
+      const cachedRects = new Map<string, DOMRect>();
+      for (const [id, { wrapper: w }] of this.blocks) {
+        if (id !== sourceId) cachedRects.set(id, w.getBoundingClientRect());
+      }
 
       const clearIndicators = () => {
         for (const { wrapper: w } of this.blocks.values()) {
@@ -221,7 +275,7 @@ export class GridLayout {
         clone.style.top = `${me.clientY - 20}px`;
 
         clearIndicators();
-        const pt = this.findInsertionPoint(me.clientX, me.clientY, sourceId);
+        const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
         if (pt.targetId) {
           this.blocks.get(pt.targetId)?.wrapper.addClass(
             pt.insertBefore ? 'drop-before' : 'drop-after',
@@ -237,7 +291,7 @@ export class GridLayout {
         wrapper.removeClass('block-dragging');
         clearIndicators();
 
-        const pt = this.findInsertionPoint(me.clientX, me.clientY, sourceId);
+        const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
         this.reorderBlock(sourceId, pt.insertBeforeId);
       };
 
@@ -286,18 +340,18 @@ export class GridLayout {
     });
   }
 
-  private findInsertionPoint(
+  private findInsertionPointCached(
     x: number,
     y: number,
     excludeId: string,
+    rects: Map<string, DOMRect>,
   ): { targetId: string | null; insertBefore: boolean; insertBeforeId: string | null } {
     let bestTargetId: string | null = null;
     let bestDist = Infinity;
     let bestInsertBefore = true;
 
-    for (const [id, { wrapper }] of this.blocks) {
+    for (const [id, rect] of rects) {
       if (id === excludeId) continue;
-      const rect = wrapper.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
 
@@ -307,8 +361,9 @@ export class GridLayout {
         return { targetId: id, insertBefore, insertBeforeId: insertBefore ? id : this.nextBlockId(id) };
       }
 
+      // Beyond 300px from center, don't show indicator — prevents unintuitive highlights
       const dist = Math.hypot(x - cx, y - cy);
-      if (dist < bestDist) {
+      if (dist < bestDist && dist < 300) {
         bestDist = dist;
         bestTargetId = id;
         bestInsertBefore = x < cx;
@@ -386,10 +441,10 @@ export class GridLayout {
     this.render(this.plugin.layout.blocks, this.plugin.layout.columns);
 
     if (scrollTargetId) {
-      const newEl = this.gridEl.querySelector<HTMLElement>(`[data-block-id="${scrollTargetId}"]`);
-      if (newEl) {
-        newEl.addClass('block-just-added');
-        newEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const entry = this.blocks.get(scrollTargetId);
+      if (entry) {
+        entry.wrapper.addClass('block-just-added');
+        entry.wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     } else if (focusedBlockId) {
       const el = this.gridEl.querySelector<HTMLElement>(`[data-block-id="${focusedBlockId}"]`);

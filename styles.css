@@ -15,6 +15,7 @@
   height: 100%;
   overflow: hidden;
   container-type: inline-size;
+  position: relative;
 }
 
 /* ── Homepage Grid ─────────────────────────────────────── */
@@ -45,7 +46,7 @@
   border-radius: var(--radius-m, 8px);
   padding: var(--hp-card-padding);
   border: 1px solid var(--background-modifier-border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-s, 0 1px 2px rgba(0, 0, 0, 0.04));
   overflow: hidden;
   position: relative;
   display: flex;
@@ -58,19 +59,22 @@
     transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.2s ease-out;
-  animation: hp-card-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+  /* animation applied only on initial render via .homepage-grid--animating */
 }
 
-/* Staggered card entry — cascade reveal on load */
-.homepage-block-wrapper:nth-child(1)  { animation-delay: 0ms; }
-.homepage-block-wrapper:nth-child(2)  { animation-delay: 50ms; }
-.homepage-block-wrapper:nth-child(3)  { animation-delay: 100ms; }
-.homepage-block-wrapper:nth-child(4)  { animation-delay: 140ms; }
-.homepage-block-wrapper:nth-child(5)  { animation-delay: 170ms; }
-.homepage-block-wrapper:nth-child(6)  { animation-delay: 195ms; }
-.homepage-block-wrapper:nth-child(7)  { animation-delay: 215ms; }
-.homepage-block-wrapper:nth-child(8)  { animation-delay: 230ms; }
-.homepage-block-wrapper:nth-child(n+9) { animation-delay: 240ms; }
+/* Staggered card entry — scoped to initial render to avoid replaying on reorder/collapse */
+.homepage-grid--animating .homepage-block-wrapper {
+  animation: hp-card-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+.homepage-grid--animating .homepage-block-wrapper:nth-child(1)  { animation-delay: 0ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(2)  { animation-delay: 50ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(3)  { animation-delay: 100ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(4)  { animation-delay: 140ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(5)  { animation-delay: 170ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(6)  { animation-delay: 195ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(7)  { animation-delay: 215ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(8)  { animation-delay: 230ms; }
+.homepage-grid--animating .homepage-block-wrapper:nth-child(n+9) { animation-delay: 240ms; }
 
 @keyframes hp-card-enter {
   from {
@@ -85,14 +89,14 @@
 
 /* Hover lift — subtle Notion-style elevation */
 .homepage-block-wrapper:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-l, 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06));
   transform: translateY(-1px);
 }
 
 /* No lift in edit mode — dashed outline owns the visual */
 .homepage-grid.edit-mode .homepage-block-wrapper:hover {
   transform: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-s, 0 1px 2px rgba(0, 0, 0, 0.04));
 }
 
 .block-content {
@@ -224,7 +228,7 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(var(--color-accent-rgb, 59, 130, 246), 0.04) 50%,
+    color-mix(in srgb, var(--color-accent) 4%, transparent) 50%,
     transparent 100%
   );
   background-size: 200% 100%;
@@ -309,7 +313,7 @@
   transition:
     background 0.12s ease-out,
     color 0.12s ease-out,
-    padding-left 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: none;
   text-decoration: none;
 }
@@ -318,7 +322,7 @@
   background: var(--background-modifier-hover);
   color: var(--text-accent, var(--color-accent));
   text-decoration: none;
-  padding-left: 14px;
+  transform: translateX(4px);
 }
 
 .folder-link-btn:active {
@@ -550,26 +554,70 @@
   outline-offset: 2px;
 }
 
-/* ── Toolbar (in-flow, not absolute) ────────────────────── */
-.homepage-toolbar {
+/* ── Edit FAB — floating trigger visible in read mode ────── */
+.homepage-edit-fab {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 20;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s, 0 1px 4px rgba(0,0,0,0.08));
   display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.2s ease-out;
+}
+
+/* Appear when hovering the top-left zone of the page */
+.homepage-view:hover .homepage-edit-fab {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.homepage-edit-fab:hover {
+  box-shadow: var(--shadow-l, 0 4px 12px rgba(0,0,0,0.12));
+  background: var(--background-modifier-hover);
+}
+
+.homepage-edit-fab:active {
+  transform: scale(0.94);
+}
+
+.homepage-edit-fab.is-hidden {
+  display: none;
+}
+
+/* ── Toolbar — hidden in read mode, shown in edit mode ───── */
+.homepage-toolbar {
+  display: none;
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
   padding: 8px var(--hp-padding, 16px);
-  border-bottom: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--color-accent);
   background: var(--background-secondary);
   flex-shrink: 0;
   z-index: 10;
   transition: background 0.2s ease-out, border-color 0.2s ease-out;
 }
 
-/* Toolbar tints when edit mode is active */
-.homepage-toolbar.toolbar-editing {
-  border-bottom-color: var(--color-accent);
+.homepage-toolbar.is-visible {
+  display: flex;
 }
 
-/* Edit mode indicator pill — left side of toolbar */
+/* Edit mode indicator pill — left side of toolbar (always visible when toolbar shown) */
 .toolbar-edit-indicator {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--color-accent);
@@ -578,15 +626,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  opacity: 0;
-  transform: translateX(-8px);
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
   pointer-events: none;
-}
-
-.toolbar-edit-indicator.is-visible {
-  opacity: 1;
-  transform: translateX(0);
 }
 
 .toolbar-edit-dot {
@@ -594,7 +634,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--color-accent);
-  animation: hp-edit-dot-pulse 2s ease-in-out infinite;
+  animation: hp-edit-dot-pulse 2s ease-in-out 4;
 }
 
 @keyframes hp-edit-dot-pulse {
@@ -707,14 +747,20 @@
   opacity: 1;
 }
 
-/* Smooth collapse — use max-height animation instead of display:none */
+/* Smooth collapse via grid-template-rows (animates to/from auto height without JS measurement) */
 .homepage-block-wrapper .block-content {
-  transition: max-height 0.25s ease-out, opacity 0.2s ease-out;
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.25s ease-out, opacity 0.2s ease-out;
+}
+
+.homepage-block-wrapper .block-content > * {
   overflow: hidden;
+  min-height: 0;
 }
 
 .homepage-block-wrapper.block-collapsed .block-content {
-  max-height: 0;
+  grid-template-rows: 0fr;
   opacity: 0;
   pointer-events: none;
 }
@@ -728,14 +774,14 @@
 .homepage-view select:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px rgba(var(--color-accent-rgb, 59, 130, 246), 0.15);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 .homepage-view input:focus-visible,
 .homepage-view textarea:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 0;
-  box-shadow: 0 0 0 4px rgba(var(--color-accent-rgb, 59, 130, 246), 0.15);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
 
 /* ── Edit Mode ──────────────────────────────────────────── */
@@ -779,6 +825,33 @@
 .block-move-handle svg {
   width: 16px;
   height: 16px;
+  pointer-events: none;
+}
+
+.block-move-up-btn,
+.block-move-down-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  border-radius: var(--radius-s, 4px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  transition: color 0.12s ease-out, background 0.12s ease-out;
+}
+
+.block-move-up-btn:hover,
+.block-move-down-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.block-move-up-btn svg,
+.block-move-down-btn svg {
+  width: 14px;
+  height: 14px;
   pointer-events: none;
 }
 
@@ -861,17 +934,13 @@
   transform: scale(0.98);
 }
 
-/* Drop insertion indicators — left/right accent bar shows where block will land */
+/* Drop insertion indicators — inset shadow, no layout shift */
 .homepage-grid .homepage-block-wrapper.drop-before {
-  border-left: 3px solid var(--color-accent);
-  margin-left: -2px;
-  transition: border-left 0.1s ease-out, margin-left 0.1s ease-out;
+  box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
 .homepage-grid .homepage-block-wrapper.drop-after {
-  border-right: 3px solid var(--color-accent);
-  margin-right: -2px;
-  transition: border-right 0.1s ease-out, margin-right 0.1s ease-out;
+  box-shadow: inset -3px 0 0 var(--color-accent);
 }
 
 /* ── Add Block Modal ────────────────────────────────────── */

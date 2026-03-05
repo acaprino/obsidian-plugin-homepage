@@ -5,29 +5,55 @@ import { GridLayout } from './GridLayout';
 
 export class EditToolbar {
   private toolbarEl: HTMLElement;
+  private fabEl: HTMLElement;
   private editMode = false;
 
   constructor(
-    containerEl: HTMLElement,
+    private containerEl: HTMLElement,
     private app: App,
     private plugin: IHomepagePlugin,
     private grid: GridLayout,
     private onColumnsChange: (n: number) => void,
   ) {
+    // Floating action button — visible in read mode, triggers edit mode
+    this.fabEl = containerEl.createDiv({ cls: 'homepage-edit-fab' });
+    this.fabEl.setAttribute('role', 'button');
+    this.fabEl.setAttribute('tabindex', '0');
+    this.fabEl.setAttribute('aria-label', 'Enter edit mode');
+    this.fabEl.setText('✏');
+    this.fabEl.addEventListener('click', () => this.toggleEditMode());
+    this.fabEl.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggleEditMode(); }
+    });
+
     this.toolbarEl = containerEl.createDiv({ cls: 'homepage-toolbar' });
     this.toolbarEl.setAttribute('role', 'toolbar');
     this.toolbarEl.setAttribute('aria-label', 'Homepage toolbar');
     this.renderToolbar();
   }
 
+  /** Toggle edit mode — called from FAB, Done button, and keyboard shortcut command. */
+  toggleEditMode(): void {
+    this.editMode = !this.editMode;
+    this.grid.setEditMode(this.editMode);
+    this.syncVisibility();
+    this.renderToolbar();
+  }
+
+  private syncVisibility(): void {
+    // Read mode: show FAB, hide toolbar
+    // Edit mode: show toolbar, hide FAB
+    this.fabEl.toggleClass('is-hidden', this.editMode);
+    this.toolbarEl.toggleClass('is-visible', this.editMode);
+  }
+
   private renderToolbar(): void {
     this.toolbarEl.empty();
 
-    // Edit mode indicator (left-aligned, hidden until edit mode activates)
-    const indicator = this.toolbarEl.createDiv({ cls: 'toolbar-edit-indicator' });
+    // Edit mode indicator (left-aligned)
+    const indicator = this.toolbarEl.createDiv({ cls: 'toolbar-edit-indicator is-visible' });
     indicator.createDiv({ cls: 'toolbar-edit-dot' });
     indicator.createSpan({ text: 'Editing' });
-    if (this.editMode) indicator.addClass('is-visible');
 
     // Column count selector
     const colSelect = this.toolbarEl.createEl('select', { cls: 'toolbar-col-select' });
@@ -40,44 +66,16 @@ export class EditToolbar {
       this.onColumnsChange(Number(colSelect.value));
     });
 
-    // Edit toggle
-    const editBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-edit-btn' });
-    this.updateEditBtn(editBtn);
-    editBtn.addEventListener('click', () => {
-      this.editMode = !this.editMode;
-      this.grid.setEditMode(this.editMode);
-      this.updateEditBtn(editBtn);
-      this.syncAddButton();
-      indicator.toggleClass('is-visible', this.editMode);
-      this.toolbarEl.toggleClass('toolbar-editing', this.editMode);
-    });
+    // Add Block button (only in edit mode)
+    const addBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-add-btn', text: '+ Add Block' });
+    addBtn.addEventListener('click', () => { this.openAddBlockModal(); });
 
-    if (this.editMode) {
-      this.toolbarEl.addClass('toolbar-editing');
-      this.appendAddButton();
-    }
+    // Done button — exits edit mode
+    const doneBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-edit-btn toolbar-btn-active', text: '✓ Done' });
+    doneBtn.addEventListener('click', () => this.toggleEditMode());
 
     // Wire up the grid's empty state CTA to open the add block modal
     this.grid.onRequestAddBlock = () => { this.openAddBlockModal(); };
-  }
-
-  private updateEditBtn(btn: HTMLButtonElement): void {
-    btn.textContent = this.editMode ? '✓ Done' : '✏ Edit';
-    btn.toggleClass('toolbar-btn-active', this.editMode);
-  }
-
-  private syncAddButton(): void {
-    const existing = this.toolbarEl.querySelector('.toolbar-add-btn');
-    if (this.editMode && !existing) {
-      this.appendAddButton();
-    } else if (!this.editMode && existing) {
-      existing.remove();
-    }
-  }
-
-  private appendAddButton(): void {
-    const addBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-add-btn', text: '+ Add Block' });
-    addBtn.addEventListener('click', () => { this.openAddBlockModal(); });
   }
 
   /** Opens the Add Block modal. Called from toolbar button and empty state CTA. */
@@ -108,7 +106,13 @@ export class EditToolbar {
     return this.toolbarEl;
   }
 
+  getFabElement(): HTMLElement {
+    return this.fabEl;
+  }
+
   destroy(): void {
+    this.grid.onRequestAddBlock = null;
+    this.fabEl.remove();
     this.toolbarEl.remove();
   }
 }

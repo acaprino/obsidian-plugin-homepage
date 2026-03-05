@@ -16,12 +16,15 @@ export type BlockType =
 export interface BlockInstance {
   id: string;
   type: BlockType;
-  col: number;
-  row: number;
-  colSpan: number;
-  rowSpan: number;
+  /** GridStack x position (0-indexed column) */
+  x: number;
+  /** GridStack y position (0-indexed row) */
+  y: number;
+  /** GridStack width in columns */
+  w: number;
+  /** GridStack height in rows */
+  h: number;
   collapsed?: boolean;
-  newRow?: boolean;
   config: Record<string, unknown>;
 }
 
@@ -35,7 +38,7 @@ export interface BlockFactory {
   type: BlockType;
   displayName: string;
   defaultConfig: Record<string, unknown>;
-  defaultSize: { colSpan: number; rowSpan: number };
+  defaultSize: { w: number; h: number };
   create(app: App, instance: BlockInstance, plugin: IHomepagePlugin): BaseBlock;
 }
 

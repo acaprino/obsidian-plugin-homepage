@@ -1,3 +1,6 @@
+/* ── GridStack Core CSS (bundled from gridstack/dist/gridstack.min.css) ── */
+.grid-stack{position:relative}.grid-stack-rtl{direction:ltr}.grid-stack-rtl>.grid-stack-item{direction:rtl}.grid-stack-placeholder>.placeholder-content{background-color:rgba(0,0,0,.1);margin:0;position:absolute;width:auto;z-index:0!important}.grid-stack>.grid-stack-item{position:absolute;padding:0;top:0;left:0;width:var(--gs-column-width);height:var(--gs-cell-height)}.grid-stack>.grid-stack-item>.grid-stack-item-content{margin:0;position:absolute;width:auto;overflow-x:hidden;overflow-y:auto}.grid-stack>.grid-stack-item.size-to-content:not(.size-to-content-max)>.grid-stack-item-content{overflow-y:hidden}.grid-stack>.grid-stack-item>.grid-stack-item-content,.grid-stack>.grid-stack-placeholder>.placeholder-content{top:var(--gs-item-margin-top);right:var(--gs-item-margin-right);bottom:var(--gs-item-margin-bottom);left:var(--gs-item-margin-left)}.grid-stack-item>.ui-resizable-handle{position:absolute;font-size:.1px;display:block;-ms-touch-action:none;touch-action:none}.grid-stack-item.ui-resizable-autohide>.ui-resizable-handle,.grid-stack-item.ui-resizable-disabled>.ui-resizable-handle{display:none}.grid-stack-item>.ui-resizable-ne,.grid-stack-item>.ui-resizable-nw,.grid-stack-item>.ui-resizable-se,.grid-stack-item>.ui-resizable-sw{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="%23666" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 20 20"><path d="m10 3 2 2H8l2-2v14l-2-2h4l-2 2"/></svg>');background-repeat:no-repeat;background-position:center}.grid-stack-item>.ui-resizable-ne{transform:rotate(45deg)}.grid-stack-item>.ui-resizable-sw{transform:rotate(45deg)}.grid-stack-item>.ui-resizable-nw{transform:rotate(-45deg)}.grid-stack-item>.ui-resizable-se{transform:rotate(-45deg)}.grid-stack-item>.ui-resizable-nw{cursor:nw-resize;width:20px;height:20px;top:var(--gs-item-margin-top);left:var(--gs-item-margin-left)}.grid-stack-item>.ui-resizable-n{cursor:n-resize;height:10px;top:var(--gs-item-margin-top);left:25px;right:25px}.grid-stack-item>.ui-resizable-ne{cursor:ne-resize;width:20px;height:20px;top:var(--gs-item-margin-top);right:var(--gs-item-margin-right)}.grid-stack-item>.ui-resizable-e{cursor:e-resize;width:10px;top:15px;bottom:15px;right:var(--gs-item-margin-right)}.grid-stack-item>.ui-resizable-se{cursor:se-resize;width:20px;height:20px;bottom:var(--gs-item-margin-bottom);right:var(--gs-item-margin-right)}.grid-stack-item>.ui-resizable-s{cursor:s-resize;height:10px;left:25px;bottom:var(--gs-item-margin-bottom);right:25px}.grid-stack-item>.ui-resizable-sw{cursor:sw-resize;width:20px;height:20px;bottom:var(--gs-item-margin-bottom);left:var(--gs-item-margin-left)}.grid-stack-item>.ui-resizable-w{cursor:w-resize;width:10px;top:15px;bottom:15px;left:var(--gs-item-margin-left)}.grid-stack-item.ui-draggable-dragging>.ui-resizable-handle{display:none!important}.grid-stack-item.ui-draggable-dragging{will-change:left,top}.grid-stack-item.ui-resizable-resizing{will-change:width,height}.ui-draggable-dragging,.ui-resizable-resizing{z-index:10000}.ui-draggable-dragging>.grid-stack-item-content,.ui-resizable-resizing>.grid-stack-item-content{box-shadow:1px 4px 6px rgba(0,0,0,.2);opacity:.8}.grid-stack-animate,.grid-stack-animate .grid-stack-item{transition:left .3s,top .3s,height .3s,width .3s}.grid-stack-animate .grid-stack-item.grid-stack-placeholder,.grid-stack-animate .grid-stack-item.ui-draggable-dragging,.grid-stack-animate .grid-stack-item.ui-resizable-resizing{transition:left 0s,top 0s,height 0s,width 0s}.grid-stack>.grid-stack-item[gs-y="0"]{top:0}.grid-stack>.grid-stack-item[gs-x="0"]{left:0}
+
 /* ── Design Tokens ──────────────────────────────────────── */
 :root {
   /* Override these in snippets/homepage.css to customise layout */
@@ -6,7 +9,6 @@
   --hp-card-padding: clamp(12px, 2cqi, 20px);
   --hp-card-min-width: 200px;
   --hp-content-max-width: 1400px;
-  --hp-row-unit: 200px;
 }
 
 /* ── Homepage View ──────────────────────────────────────── */
@@ -19,29 +21,15 @@
   position: relative;
 }
 
-/* ── Row break — sentinel that forces the next block onto a new grid row ── */
-/* Negative margins cancel the extra row-gap that a zero-height grid row would add */
-.homepage-row-break {
-  grid-column: 1 / -1;
-  height: 0;
-  pointer-events: none;
-  margin-block: calc(var(--hp-gap, 16px) * -0.5);
-}
-
-/* ── Homepage Grid ─────────────────────────────────────── */
-.homepage-grid {
+/* ── GridStack Overrides ───────────────────────────────── */
+.homepage-grid.grid-stack {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
-  display: grid;
-  /* grid-template-columns set inline from JS: repeat(N, 1fr) */
-  gap: var(--hp-gap);
   padding: var(--hp-padding);
-  align-items: start;
-  align-content: start;
   max-width: var(--hp-content-max-width);
   width: 100%;
   box-sizing: border-box;
@@ -50,6 +38,47 @@
   scroll-padding-top: 8px;
 }
 
+/* GridStack widget item — reset its defaults */
+.homepage-grid .grid-stack-item {
+  padding: calc(var(--hp-gap) / 2);
+}
+
+/* The .grid-stack-item-content is our card container */
+.homepage-grid .grid-stack-item-content {
+  overflow: visible;
+  inset: 0;
+}
+
+/* GridStack placeholder during drag */
+.homepage-grid .grid-stack-placeholder > .placeholder-content {
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-m, 8px);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+/* GridStack resize handle override */
+.homepage-grid .ui-resizable-se {
+  width: 16px;
+  height: 16px;
+  bottom: 8px;
+  right: 8px;
+  cursor: se-resize;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+.homepage-grid.edit-mode .ui-resizable-se {
+  opacity: 0.5;
+}
+
+.homepage-grid.edit-mode .grid-stack-item:hover .ui-resizable-se {
+  opacity: 1;
+}
+
+/* Hide resize handles when not in edit mode */
+.homepage-grid:not(.edit-mode) .ui-resizable-handle {
+  display: none !important;
+}
 
 /* ── Block Card ─────────────────────────────────────────── */
 .homepage-block-wrapper {
@@ -62,17 +91,16 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 60px;
+  height: 100%;
   min-width: 0;
   box-sizing: border-box;
   transition:
     opacity 0.15s ease-out,
     transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.2s ease-out;
-  /* animation applied only on initial render via .homepage-grid--animating */
 }
 
-/* Staggered card entry — animation-delay set inline from JS (immune to interleaved sentinel divs) */
+/* Staggered card entry — animation-delay set inline from JS */
 .homepage-grid--animating .homepage-block-wrapper {
   animation: hp-card-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
@@ -88,7 +116,6 @@
   }
 }
 
-/* No hover lift — flat style */
 .homepage-block-wrapper:hover {
   box-shadow: none;
 }
@@ -113,7 +140,6 @@
 
 /* ── Homepage-level Empty State ─────────────────────────── */
 .homepage-empty-state {
-  grid-column: 1 / -1; /* span all grid columns */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -408,14 +434,10 @@
   align-items: start;
 }
 
-/* Extend mode: remove overflow constraint so card grows to fit all quotes */
-/* overflow: visible here overrides the collapse-system's overflow: hidden,
-   letting intrinsic content height propagate upward to size the card */
 .homepage-block-wrapper .block-content > .quotes-list-block--extend {
   overflow: visible;
 }
 
-/* Re-clip during collapse so the grid-template-rows animation still works */
 .homepage-block-wrapper.block-collapsed .block-content > .quotes-list-block--extend {
   overflow: hidden;
 }
@@ -532,7 +554,6 @@
   overflow-y: auto;
 }
 
-/* Grow mode: card expands to show full note */
 .homepage-block-wrapper .block-content > .embedded-note-block--grow {
   overflow: visible;
 }
@@ -603,7 +624,6 @@
     box-shadow 0.2s ease-out;
 }
 
-/* Appear when hovering the top-left zone of the page */
 .homepage-view:hover .homepage-edit-fab {
   opacity: 1;
   transform: scale(1);
@@ -640,7 +660,6 @@
   display: flex;
 }
 
-/* Edit mode indicator pill — left side of toolbar (always visible when toolbar shown) */
 .toolbar-edit-indicator {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--color-accent);
@@ -713,7 +732,6 @@
   transform: scale(0.97);
 }
 
-/* Compound selector replaces !important */
 .toolbar-edit-btn.toolbar-btn-active,
 .toolbar-add-btn.toolbar-btn-active {
   background: var(--color-accent);
@@ -730,12 +748,24 @@
   cursor: pointer;
   user-select: none;
   margin-bottom: 8px;
+  border-radius: var(--radius-s, 4px);
+  padding: 2px 4px;
+  margin: 0 -4px 8px -4px;
+  transition: background 0.1s ease-out;
+}
+
+.block-header-zone:hover {
+  background: var(--background-modifier-hover);
 }
 
 /* In edit mode the handle bar owns interaction — header zone is not clickable */
 .edit-mode .block-header-zone {
   cursor: default;
   pointer-events: none;
+}
+
+.edit-mode .block-header-zone:hover {
+  background: transparent;
 }
 
 .block-header-zone .block-header {
@@ -751,7 +781,7 @@
   line-height: 1;
   flex-shrink: 0;
   display: inline-block;
-  transform: rotate(270deg); /* expanded: points down */
+  transform: rotate(270deg);
   transition: opacity 0.15s ease-out, transform 0.2s ease-out;
 }
 
@@ -759,18 +789,16 @@
   content: '›';
 }
 
-/* Collapsed: points right, always visible */
 .block-collapse-chevron.is-collapsed {
   transform: rotate(90deg);
   opacity: 1;
 }
 
-/* Show on card hover */
 .homepage-block-wrapper:hover .block-collapse-chevron {
   opacity: 1;
 }
 
-/* Smooth collapse via grid-template-rows (animates to/from auto height without JS measurement) */
+/* Smooth collapse via grid-template-rows */
 .homepage-block-wrapper .block-content {
   display: grid;
   grid-template-rows: 1fr;
@@ -844,14 +872,7 @@
   cursor: grabbing;
 }
 
-/* Force grabbing cursor on the entire page during drag */
-body.is-dragging-block,
-body.is-dragging-block * {
-  cursor: grabbing !important;
-}
-
 .block-handle-bar button svg,
-.block-resize-grip svg,
 .block-move-handle svg {
   width: 16px;
   height: 16px;
@@ -922,67 +943,13 @@ body.is-dragging-block * {
   transform: scale(0.95);
 }
 
-.block-resize-grip {
-  position: absolute;
-  bottom: 4px;
-  right: 4px;
-  width: 16px;
-  height: 16px;
-  cursor: se-resize;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.5;
-  user-select: none;
-  transition: opacity 0.15s ease-out, color 0.15s ease-out;
-}
-
-.block-resize-grip:hover {
-  opacity: 1;
-  color: var(--color-accent);
-}
-
-/* Drag clone — GPU-composited floating card (position via transform in JS) */
-.block-drag-clone {
-  position: fixed;
-  left: 0;
-  top: 0;
-  pointer-events: none;
-  opacity: 0.92;
-  z-index: 9999;
-  border-radius: var(--radius-m, 8px);
+/* GridStack drag styling */
+.grid-stack-item.ui-draggable-dragging > .grid-stack-item-content .homepage-block-wrapper {
   box-shadow:
     0 20px 48px rgba(0, 0, 0, 0.22),
-    0 8px 20px rgba(0, 0, 0, 0.14),
-    0 2px 6px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  animation: drag-clone-appear 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
-  will-change: transform;
-  backdrop-filter: blur(2px);
-  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
-}
-
-@keyframes drag-clone-appear {
-  from {
-    opacity: 0;
-    filter: brightness(1.08);
-  }
-  to {
-    opacity: 0.92;
-    filter: brightness(1);
-  }
-}
-
-/* Block being dragged — ghosted source card */
-.homepage-block-wrapper.block-dragging {
-  opacity: 0.2;
-  transform: scale(0.97);
-  filter: grayscale(0.5) brightness(0.95);
-  transition:
-    opacity 0.25s ease-out,
-    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-    filter 0.25s ease-out;
+    0 8px 20px rgba(0, 0, 0, 0.14);
+  border-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  opacity: 0.95;
 }
 
 /* Drop confirmation — brief highlight flash on the landed block */
@@ -1000,78 +967,6 @@ body.is-dragging-block * {
   100% {
     box-shadow: none;
   }
-}
-
-/* Drop placeholder — instant reposition, no opacity animation (prevents strobe on fast moves) */
-.block-drag-placeholder {
-  border: 2px dashed var(--color-accent);
-  border-radius: var(--radius-m, 8px);
-  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
-  box-sizing: border-box;
-  pointer-events: none;
-  position: relative;
-  animation: hp-placeholder-dash 8s linear infinite;
-  background-image:
-    repeating-linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--color-accent) 8%, transparent) 0px,
-      color-mix(in srgb, var(--color-accent) 8%, transparent) 8px,
-      transparent 8px,
-      transparent 16px
-    );
-  background-size: 200% 100%;
-  box-shadow:
-    inset 0 0 12px color-mix(in srgb, var(--color-accent) 6%, transparent),
-    0 0 8px color-mix(in srgb, var(--color-accent) 8%, transparent);
-}
-
-@keyframes hp-placeholder-dash {
-  from { background-position: 0 0; }
-  to   { background-position: 200% 0; }
-}
-
-/* New-row drop: full-width horizontal bar with distinct style */
-.block-drag-placeholder--new-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-style: solid;
-  border-width: 2px;
-  background:
-    linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-accent) 12%, transparent) 50%,
-      transparent 100%
-    );
-  background-image: none;
-  background-size: auto;
-  box-shadow:
-    inset 0 0 16px color-mix(in srgb, var(--color-accent) 10%, transparent),
-    0 0 12px color-mix(in srgb, var(--color-accent) 12%, transparent);
-  animation: hp-newrow-glow 1.5s ease-in-out infinite alternate;
-}
-
-@keyframes hp-newrow-glow {
-  from {
-    box-shadow:
-      inset 0 0 12px color-mix(in srgb, var(--color-accent) 8%, transparent),
-      0 0 8px color-mix(in srgb, var(--color-accent) 8%, transparent);
-  }
-  to {
-    box-shadow:
-      inset 0 0 20px color-mix(in srgb, var(--color-accent) 14%, transparent),
-      0 0 16px color-mix(in srgb, var(--color-accent) 14%, transparent);
-  }
-}
-
-.block-drag-placeholder--new-row::after {
-  content: '\21B5  new row';
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--color-accent);
-  letter-spacing: 0.04em;
-  opacity: 0.85;
 }
 
 /* ── Add Block Modal ────────────────────────────────────── */
@@ -1352,11 +1247,9 @@ body.is-dragging-block * {
 }
 
 /* ── Container Query Responsive Breakpoints ────────────── */
-/* Mobile: single column, tighter padding */
 @container (max-width: 540px) {
   .homepage-grid {
     padding: 12px;
-    gap: 12px;
   }
 
   .homepage-toolbar {
@@ -1364,38 +1257,20 @@ body.is-dragging-block * {
     gap: 6px;
   }
 
-  .homepage-block-wrapper {
-    min-height: 48px;
-  }
-
-  /* Gallery and quotes go single-column */
-  .quotes-columns {
-    max-height: 400px;
-  }
-
-  /* Don't override extend mode on small screens */
-  .quotes-list-block--extend .quotes-columns {
-    max-height: none;
-  }
-
   .homepage-empty-state {
     padding: 40px 16px;
   }
 }
 
-/* Tablet: 2-column comfort zone */
 @container (min-width: 541px) and (max-width: 840px) {
   .homepage-grid {
     padding: 16px;
-    gap: 14px;
   }
 }
 
-/* Wide: generous breathing room */
 @container (min-width: 1200px) {
   .homepage-grid {
     padding: 32px;
-    gap: 20px;
   }
 }
 
@@ -1413,22 +1288,6 @@ body.is-dragging-block * {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-}
-
-/* ── Header Zone Hover Affordance ──────────────────────── */
-.block-header-zone {
-  border-radius: var(--radius-s, 4px);
-  padding: 2px 4px;
-  margin: 0 -4px 8px -4px;
-  transition: background 0.1s ease-out;
-}
-
-.block-header-zone:hover {
-  background: var(--background-modifier-hover);
-}
-
-.edit-mode .block-header-zone:hover {
-  background: transparent;
 }
 
 /* ── Reduced Motion ─────────────────────────────────────── */

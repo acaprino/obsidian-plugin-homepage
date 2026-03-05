@@ -15,7 +15,7 @@ export function getFilesWithTag(app: App, tag: string): TFile[] {
 
     const rawFmTags = cache.frontmatter?.tags;
     const fmTagArray: string[] =
-      Array.isArray(rawFmTags) ? rawFmTags :
+      Array.isArray(rawFmTags) ? rawFmTags.filter((t): t is string => typeof t === 'string') :
       typeof rawFmTags === 'string' ? [rawFmTags] :
       [];
     const normalizedFmTags = fmTagArray.map(t => t.startsWith('#') ? t : `#${t}`);

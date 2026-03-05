@@ -19,13 +19,6 @@
   position: relative;
 }
 
-/* ── Row break — forces next block onto a new flex row ── */
-.homepage-row-break {
-  flex: 1 0 100%;
-  height: 0;
-  pointer-events: none;
-}
-
 /* ── Homepage Grid ─────────────────────────────────────── */
 .homepage-grid {
   flex: 1;
@@ -34,8 +27,8 @@
   overflow-x: hidden;
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  /* grid-template-columns set inline from JS: repeat(N, 1fr) */
   gap: var(--hp-gap);
   padding: var(--hp-padding);
   align-items: start;
@@ -45,7 +38,6 @@
   box-sizing: border-box;
   margin-inline: auto;
   line-height: 1.5;
-  /* Smooth scroll for keyboard navigation */
   scroll-padding-top: 8px;
 }
 
@@ -121,8 +113,7 @@
 
 /* ── Homepage-level Empty State ─────────────────────────── */
 .homepage-empty-state {
-  /* flex-basis 100% fills the row in a flex-wrap container */
-  flex: 1 0 100%;
+  grid-column: 1 / -1; /* span all grid columns */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1041,7 +1032,6 @@ body.is-dragging-block * {
 
 /* New-row drop: full-width horizontal bar with distinct style */
 .block-drag-placeholder--new-row {
-  flex: 1 1 100% !important;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -58,6 +58,7 @@ export class GridLayout {
     this.gridEl.setAttribute('role', 'list');
     this.gridEl.setAttribute('aria-label', 'Homepage blocks');
     this.effectiveColumns = this.computeEffectiveColumns(columns);
+    this.gridEl.style.gridTemplateColumns = `repeat(${this.effectiveColumns}, 1fr)`;
 
     // Stagger animation only on the initial render (not reorder/collapse/column change)
     if (isInitial) {
@@ -96,10 +97,6 @@ export class GridLayout {
   private renderBlock(instance: BlockInstance): void {
     const factory = BlockRegistry.get(instance.type);
     if (!factory) return;
-
-    if (instance.newRow) {
-      this.gridEl.createDiv({ cls: 'homepage-row-break' });
-    }
 
     const wrapper = this.gridEl.createDiv({ cls: 'homepage-block-wrapper' });
     wrapper.dataset.blockId = instance.id;
@@ -163,14 +160,8 @@ export class GridLayout {
   private applyGridPosition(wrapper: HTMLElement, instance: BlockInstance): void {
     const cols = this.effectiveColumns;
     const colSpan = Math.min(instance.colSpan, cols);
-    // For N columns there are (N-1) gaps distributed across N slots.
-    // A block spanning S columns covers S slots and (S-1) internal gaps,
-    // so it must subtract (N-S)/N share of the total gap space.
-    // Formula: basis = S/N * 100% - (N-S)/N * gap
-    const basisPercent = (colSpan / cols) * 100;
-    const gapFraction = (cols - colSpan) / cols;
-    wrapper.style.flex = `${colSpan} 1 calc(${basisPercent}% - var(--hp-gap, 16px) * ${gapFraction.toFixed(4)})`;
-    wrapper.style.minWidth = cols === 1 ? '0' : 'var(--hp-card-min-width, 200px)';
+    // CSS Grid: start on column 1 if newRow is set, otherwise span normally
+    wrapper.style.gridColumn = instance.newRow ? `1 / span ${colSpan}` : `span ${colSpan}`;
     wrapper.style.minHeight = this.rowMinHeight(instance.rowSpan);
   }
 
@@ -275,8 +266,7 @@ export class GridLayout {
       // Placeholder — instant DOM insertion, no opacity animation (prevents strobe on fast moves)
       const placeholder = document.createElement('div');
       placeholder.addClass('block-drag-placeholder');
-      placeholder.style.flex = wrapper.style.flex;
-      placeholder.style.minWidth = wrapper.style.minWidth;
+      placeholder.style.gridColumn = wrapper.style.gridColumn;
       placeholder.style.height = `${wrapper.offsetHeight}px`;
       wrapper.insertAdjacentElement('afterend', placeholder);
 
@@ -305,10 +295,10 @@ export class GridLayout {
         placeholder.remove();
         placeholder.toggleClass('block-drag-placeholder--new-row', newRow);
         if (newRow) {
-          placeholder.style.flex = '1 1 100%';
+          placeholder.style.gridColumn = '1 / -1';
           placeholder.style.height = '48px';
         } else {
-          placeholder.style.flex = wrapper.style.flex;
+          placeholder.style.gridColumn = wrapper.style.gridColumn;
           placeholder.style.height = `${wrapper.offsetHeight}px`;
         }
         if (insertBeforeId) {
@@ -392,9 +382,7 @@ export class GridLayout {
         const deltaRows = Math.round(deltaY / rowUnitPx);
         currentColSpan = Math.max(1, Math.min(columns, startColSpan + deltaCols));
         currentRowSpan = Math.max(1, Math.min(MAX_ROW_SPAN, startRowSpan + deltaRows));
-        const basisPercent = (currentColSpan / columns) * 100;
-        const gapFraction = (columns - currentColSpan) / columns;
-        wrapper.style.flex = `${currentColSpan} 1 calc(${basisPercent}% - var(--hp-gap, 16px) * ${gapFraction.toFixed(4)})`;
+        wrapper.style.gridColumn = instance.newRow ? `1 / span ${currentColSpan}` : `span ${currentColSpan}`;
         wrapper.style.minHeight = this.rowMinHeight(currentRowSpan);
       };
 
@@ -490,13 +478,12 @@ export class GridLayout {
     this.rerender();
   }
 
-  /** Update column count, clamping each block's col and colSpan to fit. */
+  /** Update column count, clamping each block's colSpan to fit. */
   setColumns(n: number): void {
-    const newBlocks = this.plugin.layout.blocks.map(b => {
-      const col = Math.min(b.col, n);
-      const colSpan = Math.min(b.colSpan, n - col + 1);
-      return { ...b, col, colSpan };
-    });
+    const newBlocks = this.plugin.layout.blocks.map(b => ({
+      ...b,
+      colSpan: Math.min(b.colSpan, n),
+    }));
     this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
     this.rerender();
   }

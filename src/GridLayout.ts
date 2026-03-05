@@ -284,11 +284,21 @@ export class GridLayout {
       }
 
       let lastInsertBeforeId: string | null = null;
+      let lastNewRow = false;
 
-      const movePlaceholder = (insertBeforeId: string | null) => {
-        if (insertBeforeId === lastInsertBeforeId) return;
+      const movePlaceholder = (insertBeforeId: string | null, newRow: boolean) => {
+        if (insertBeforeId === lastInsertBeforeId && newRow === lastNewRow) return;
         lastInsertBeforeId = insertBeforeId;
+        lastNewRow = newRow;
         placeholder.remove();
+        placeholder.toggleClass('block-drag-placeholder--new-row', newRow);
+        if (newRow) {
+          placeholder.style.flex = '1 1 100%';
+          placeholder.style.height = '48px';
+        } else {
+          placeholder.style.flex = wrapper.style.flex;
+          placeholder.style.height = `${wrapper.offsetHeight}px`;
+        }
         if (insertBeforeId) {
           const targetWrapper = this.blocks.get(insertBeforeId)?.wrapper;
           if (targetWrapper) {
@@ -303,7 +313,7 @@ export class GridLayout {
         clone.style.left = `${me.clientX - wrapper.offsetWidth / 2}px`;
         clone.style.top = `${me.clientY - 20}px`;
         const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
-        movePlaceholder(pt.insertBeforeId);
+        movePlaceholder(pt.insertBeforeId, pt.newRow);
       };
 
       const onMouseUp = (me: MouseEvent) => {
@@ -315,7 +325,7 @@ export class GridLayout {
         wrapper.removeClass('block-dragging');
 
         const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, cachedRects);
-        this.reorderBlock(sourceId, pt.insertBeforeId);
+        this.reorderBlock(sourceId, pt.insertBeforeId, pt.newRow);
       };
 
       document.addEventListener('mousemove', onMouseMove, { signal: ac.signal });
@@ -379,10 +389,11 @@ export class GridLayout {
     y: number,
     excludeId: string,
     rects: Map<string, DOMRect>,
-  ): { targetId: string | null; insertBefore: boolean; insertBeforeId: string | null } {
+  ): { insertBeforeId: string | null; newRow: boolean } {
     let bestTargetId: string | null = null;
     let bestDist = Infinity;
     let bestInsertBefore = true;
+    let bestNewRow = false;
 
     for (const [id, rect] of rects) {
       if (id === excludeId) continue;
@@ -391,8 +402,13 @@ export class GridLayout {
 
       // If cursor is directly over this card, use it immediately
       if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        const inBottomHalf = y > cy;
+        if (inBottomHalf) {
+          // Drop below → new row after this block
+          return { insertBeforeId: this.nextBlockId(id), newRow: true };
+        }
         const insertBefore = x < cx;
-        return { targetId: id, insertBefore, insertBeforeId: insertBefore ? id : this.nextBlockId(id) };
+        return { insertBeforeId: insertBefore ? id : this.nextBlockId(id), newRow: false };
       }
 
       // Beyond 300px from center, don't show indicator — prevents unintuitive highlights
@@ -401,14 +417,14 @@ export class GridLayout {
         bestDist = dist;
         bestTargetId = id;
         bestInsertBefore = x < cx;
+        bestNewRow = y > cy + rect.height / 4; // only flag newRow if clearly below center
       }
     }
 
-    if (!bestTargetId) return { targetId: null, insertBefore: true, insertBeforeId: null };
+    if (!bestTargetId) return { insertBeforeId: null, newRow: false };
     return {
-      targetId: bestTargetId,
-      insertBefore: bestInsertBefore,
       insertBeforeId: bestInsertBefore ? bestTargetId : this.nextBlockId(bestTargetId),
+      newRow: bestNewRow,
     };
   }
 
@@ -419,7 +435,7 @@ export class GridLayout {
   }
 
   /** Remove the dragged block from its current position and insert it before insertBeforeId (null = append). */
-  private reorderBlock(draggedId: string, insertBeforeId: string | null): void {
+  private reorderBlock(draggedId: string, insertBeforeId: string | null, newRow: boolean): void {
     const blocks = this.plugin.layout.blocks;
     const dragged = blocks.find(b => b.id === draggedId);
     if (!dragged) return;
@@ -429,14 +445,16 @@ export class GridLayout {
       ? withoutDragged.findIndex(b => b.id === insertBeforeId)
       : withoutDragged.length;
 
-    // No-op if effectively same position
+    // No-op if effectively same position and newRow flag unchanged
     const originalIdx = blocks.findIndex(b => b.id === draggedId);
     const resolvedAt = insertAt === -1 ? withoutDragged.length : insertAt;
-    if (resolvedAt === originalIdx || resolvedAt === originalIdx + 1) return;
+    const samePosition = resolvedAt === originalIdx || resolvedAt === originalIdx + 1;
+    if (samePosition && !!dragged.newRow === newRow) return;
 
+    const draggedWithRow = newRow ? { ...dragged, newRow: true as const } : { ...dragged, newRow: undefined };
     const newBlocks = [
       ...withoutDragged.slice(0, resolvedAt),
-      dragged,
+      draggedWithRow,
       ...withoutDragged.slice(resolvedAt),
     ];
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });

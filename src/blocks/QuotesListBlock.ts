@@ -6,6 +6,15 @@ import { BaseBlock } from './BaseBlock';
 // Only assign safe CSS color values; reject potentially malicious strings
 const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|rgba?\([^)]+\)|hsla?\([^)]+\))$/;
 
+type QuotesConfig = {
+  source?: 'tag' | 'text';
+  tag?: string;
+  quotes?: string;
+  title?: string;
+  columns?: number;
+  maxItems?: number;
+};
+
 export class QuotesListBlock extends BaseBlock {
   render(el: HTMLElement): void {
     el.addClass('quotes-list-block');
@@ -16,18 +25,20 @@ export class QuotesListBlock extends BaseBlock {
   }
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
-    const { tag = '', title = 'Quotes', columns = 2, maxItems = 20 } = this.instance.config as {
-      tag?: string;
-      title?: string;
-      columns?: number;
-      maxItems?: number;
-    };
+    const { source = 'tag', tag = '', quotes = '', title = 'Quotes', columns = 2, maxItems = 20 } =
+      this.instance.config as QuotesConfig;
 
     this.renderHeader(el, title);
 
     const colsEl = el.createDiv({ cls: 'quotes-columns' });
     colsEl.style.columnCount = String(columns);
 
+    if (source === 'text') {
+      this.renderTextQuotes(colsEl, quotes, maxItems);
+      return;
+    }
+
+    // source === 'tag'
     if (!tag) {
       colsEl.setText('Configure a tag in settings.');
       return;
@@ -69,6 +80,40 @@ export class QuotesListBlock extends BaseBlock {
     }
   }
 
+  /**
+   * Render quotes from plain text. Each quote is separated by `---` on its own line.
+   * Optionally a source line can follow the quote text, prefixed with `—`, `–`, or `--`.
+   *
+   * Example:
+   *   The only way to do great work is to love what you do.
+   *   — Steve Jobs
+   *   ---
+   *   In the middle of difficulty lies opportunity.
+   *   — Albert Einstein
+   */
+  private renderTextQuotes(colsEl: HTMLElement, raw: string, maxItems: number): void {
+    if (!raw.trim()) {
+      colsEl.setText('Add quotes in settings.');
+      return;
+    }
+
+    const blocks = raw.split(/\n---\n/).map(b => b.trim()).filter(Boolean).slice(0, maxItems);
+
+    for (const block of blocks) {
+      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      const lastLine = lines[lines.length - 1];
+      const hasSource = lines.length > 1 && /^(—|–|--)/.test(lastLine);
+      const sourceText = hasSource ? lastLine.replace(/^(—|–|--)\s*/, '') : '';
+      const bodyLines = hasSource ? lines.slice(0, -1) : lines;
+      const body = bodyLines.join(' ');
+      if (!body) continue;
+
+      const item = colsEl.createDiv({ cls: 'quote-item' });
+      item.createEl('blockquote', { cls: 'quote-content', text: body });
+      if (sourceText) item.createDiv({ cls: 'quote-source', text: sourceText });
+    }
+  }
+
   /** Extract the first few lines of body content using metadataCache frontmatter offset. */
   private extractBody(content: string, cache: CachedMetadata | null): string {
     const fmEnd = cache?.frontmatterPosition?.end.offset ?? 0;
@@ -102,16 +147,57 @@ class QuotesSettingsModal extends Modal {
     contentEl.empty();
     contentEl.createEl('h2', { text: 'Quotes List Settings' });
 
-    const draft = structuredClone(this.config);
+    const draft = structuredClone(this.config) as QuotesConfig;
+    draft.source ??= 'tag';
 
     new Setting(contentEl).setName('Block title').addText(t =>
-      t.setValue(draft.title as string ?? 'Quotes')
+      t.setValue(draft.title ?? 'Quotes')
        .onChange(v => { draft.title = v; }),
     );
-    new Setting(contentEl).setName('Tag').setDesc('Without # prefix').addText(t =>
-      t.setValue(draft.tag as string ?? '')
+
+    // Source toggle — shows/hides the relevant section
+    let tagSection: HTMLElement;
+    let textSection: HTMLElement;
+
+    new Setting(contentEl)
+      .setName('Source')
+      .setDesc('Pull quotes from tagged notes, or enter them manually.')
+      .addDropdown(d =>
+        d.addOption('tag', 'Notes with tag')
+         .addOption('text', 'Manual text')
+         .setValue(draft.source ?? 'tag')
+         .onChange(v => {
+           draft.source = v as 'tag' | 'text';
+           tagSection.style.display = v === 'tag' ? '' : 'none';
+           textSection.style.display = v === 'text' ? '' : 'none';
+         }),
+      );
+
+    // Tag section
+    tagSection = contentEl.createDiv();
+    tagSection.style.display = draft.source === 'tag' ? '' : 'none';
+    new Setting(tagSection).setName('Tag').setDesc('Without # prefix').addText(t =>
+      t.setValue(draft.tag ?? '')
        .onChange(v => { draft.tag = v; }),
     );
+
+    // Text section
+    textSection = contentEl.createDiv();
+    textSection.style.display = draft.source === 'text' ? '' : 'none';
+    const textSetting = new Setting(textSection)
+      .setName('Quotes')
+      .setDesc('Separate quotes with --- on its own line. Add a source line starting with — (e.g. — Author).');
+    textSetting.settingEl.style.flexDirection = 'column';
+    textSetting.settingEl.style.alignItems = 'stretch';
+    const textarea = textSetting.settingEl.createEl('textarea');
+    textarea.rows = 8;
+    textarea.style.width = '100%';
+    textarea.style.marginTop = '8px';
+    textarea.style.fontFamily = 'var(--font-monospace)';
+    textarea.style.fontSize = '12px';
+    textarea.value = draft.quotes ?? '';
+    textarea.addEventListener('input', () => { draft.quotes = textarea.value; });
+
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3')
        .setValue(String(draft.columns ?? 2))

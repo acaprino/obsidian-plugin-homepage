@@ -98,6 +98,19 @@ export class EditToolbar {
   }
 }
 
+const BLOCK_ICONS: Record<BlockType, string> = {
+  'greeting':      '👋',
+  'clock':         '🕐',
+  'folder-links':  '🔗',
+  'insight':       '💡',
+  'tag-grid':      '🏷️',
+  'quotes-list':   '💬',
+  'image-gallery': '🖼️',
+  'embedded-note': '📄',
+  'static-text':   '📝',
+  'html':          '</>',
+};
+
 class AddBlockModal extends Modal {
   constructor(
     app: App,
@@ -109,13 +122,14 @@ class AddBlockModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Add Block' });
+    contentEl.createEl('h2', { text: 'Add Block', cls: 'add-block-modal-title' });
+
+    const grid = contentEl.createDiv({ cls: 'add-block-grid' });
 
     for (const factory of BlockRegistry.getAll()) {
-      const btn = contentEl.createEl('button', {
-        cls: 'add-block-option',
-        text: factory.displayName,
-      });
+      const btn = grid.createEl('button', { cls: 'add-block-option' });
+      btn.createSpan({ cls: 'add-block-icon', text: BLOCK_ICONS[factory.type] ?? '▪' });
+      btn.createSpan({ cls: 'add-block-name', text: factory.displayName });
       btn.addEventListener('click', () => {
         this.onSelect(factory.type);
         this.close();

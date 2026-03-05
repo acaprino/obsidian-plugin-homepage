@@ -50,7 +50,6 @@ export class GridLayout {
     this.gridEl.setAttribute('role', 'grid');
     this.gridEl.setAttribute('aria-label', 'Homepage blocks');
     this.effectiveColumns = this.computeEffectiveColumns(columns);
-    this.gridEl.style.gridTemplateColumns = `repeat(${this.effectiveColumns}, minmax(0, 1fr))`;
 
     if (this.editMode) {
       this.gridEl.addClass('edit-mode');
@@ -98,10 +97,12 @@ export class GridLayout {
   }
 
   private applyGridPosition(wrapper: HTMLElement, instance: BlockInstance): void {
-    const col = Math.min(instance.col, this.effectiveColumns);
-    const colSpan = Math.min(instance.colSpan, this.effectiveColumns - col + 1);
-    wrapper.style.gridColumn = `${col} / span ${colSpan}`;
-    wrapper.style.gridRow = `${instance.row} / span ${instance.rowSpan}`;
+    const cols = this.effectiveColumns;
+    const colSpan = Math.min(instance.colSpan, cols);
+    // flex-grow proportional to colSpan so wrapped items stretch to fill the row
+    const basisPercent = (colSpan / cols) * 100;
+    wrapper.style.flex = `${colSpan} 0 calc(${basisPercent}% - var(--hp-gap, 16px))`;
+    wrapper.style.minWidth = '0';
   }
 
   private attachEditHandles(wrapper: HTMLElement, instance: BlockInstance): void {
@@ -119,13 +120,14 @@ export class GridLayout {
       e.stopPropagation();
       const entry = this.blocks.get(instance.id);
       if (!entry) return;
-      entry.block.openSettings(() => {
+      const onSave = () => {
         const newBlocks = this.plugin.layout.blocks.map(b =>
           b.id === instance.id ? instance : b,
         );
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
         this.rerender();
-      });
+      };
+      new BlockSettingsModal(this.app, instance, entry.block, onSave).open();
     });
 
     const removeBtn = bar.createEl('button', { cls: 'block-remove-btn' });
@@ -216,16 +218,16 @@ export class GridLayout {
 
       const startX = e.clientX;
       const startColSpan = instance.colSpan;
-      const columns = this.plugin.layout.columns;
+      const columns = this.effectiveColumns;
       const colWidth = this.gridEl.offsetWidth / columns;
       let currentColSpan = startColSpan;
 
       const onMouseMove = (me: MouseEvent) => {
         const deltaX = me.clientX - startX;
         const deltaCols = Math.round(deltaX / colWidth);
-        const max = columns - instance.col + 1;
-        currentColSpan = Math.max(1, Math.min(max, startColSpan + deltaCols));
-        wrapper.style.gridColumn = `${instance.col} / span ${currentColSpan}`;
+        currentColSpan = Math.max(1, Math.min(columns, startColSpan + deltaCols));
+        const basisPercent = (currentColSpan / columns) * 100;
+        wrapper.style.flex = `${currentColSpan} 0 calc(${basisPercent}% - var(--hp-gap, 16px))`;
       };
 
       const onMouseUp = () => {
@@ -323,6 +325,73 @@ export class GridLayout {
     this.destroyAll();
     this.gridEl.remove();
   }
+}
+
+// ── Block settings modal (title section + block-specific settings) ────────────
+
+class BlockSettingsModal extends Modal {
+  constructor(
+    app: App,
+    private instance: BlockInstance,
+    private block: BaseBlock,
+    private onSave: () => void,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h2', { text: 'Block Settings' });
+
+    const draft = structuredClone(this.instance.config);
+
+    new Setting(contentEl)
+      .setName('Title label')
+      .setDesc('Leave empty to use the default title.')
+      .addText(t =>
+        t.setValue(typeof draft._titleLabel === 'string' ? draft._titleLabel : '')
+         .setPlaceholder('Default title')
+         .onChange(v => { draft._titleLabel = v; }),
+      );
+
+    new Setting(contentEl)
+      .setName('Hide title')
+      .addToggle(t =>
+        t.setValue(draft._hideTitle === true)
+         .onChange(v => { draft._hideTitle = v; }),
+      );
+
+    new Setting(contentEl)
+      .addButton(btn =>
+        btn.setButtonText('Save').setCta().onClick(() => {
+          this.instance.config = draft;
+          this.onSave();
+          this.close();
+        }),
+      )
+      .addButton(btn =>
+        btn.setButtonText('Cancel').onClick(() => this.close()),
+      );
+
+    const hr = contentEl.createEl('hr');
+    hr.style.margin = '16px 0';
+
+    contentEl.createEl('p', {
+      text: 'Block-specific settings:',
+      cls: 'setting-item-name',
+    });
+
+    new Setting(contentEl)
+      .addButton(btn =>
+        btn.setButtonText('Configure block...').onClick(() => {
+          this.close();
+          this.block.openSettings(this.onSave);
+        }),
+      );
+  }
+
+  onClose(): void { this.contentEl.empty(); }
 }
 
 // ── Remove confirmation modal ────────────────────────────────────────────────

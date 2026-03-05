@@ -20,7 +20,8 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--hp-gap);
   padding: var(--hp-padding);
   align-items: start;
@@ -525,23 +526,50 @@
 }
 
 /* ── Add Block Modal ────────────────────────────────────── */
+.add-block-modal-title {
+  margin-bottom: 16px;
+}
+
+.add-block-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .add-block-option {
-  display: block;
-  width: 100%;
-  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m, 8px);
-  padding: 10px 16px;
-  margin-bottom: 8px;
+  padding: 16px 12px;
   cursor: pointer;
   font-size: inherit;
   color: var(--text-normal);
-  transition: background 0.15s ease-out;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+  text-align: center;
+  width: 100%;
 }
 
 .add-block-option:hover {
   background: var(--background-modifier-hover);
+  border-color: var(--color-accent);
+}
+
+.add-block-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-normal);
+  font-style: normal;
+}
+
+.add-block-name {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-normal);
+  font-weight: 500;
 }
 
 /* ── Settings rows ──────────────────────────────────────── */

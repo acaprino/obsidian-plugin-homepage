@@ -15,10 +15,16 @@ export abstract class BaseBlock extends Component {
   // Override to open a per-block settings modal
   openSettings(_onSave: () => void): void {}
 
-  // Render the muted uppercase block header label if title is non-empty
+  // Render the muted uppercase block header label.
+  // Respects _hideTitle and _titleLabel from instance.config.
   protected renderHeader(el: HTMLElement, title: string): void {
-    if (title) {
-      el.createDiv({ cls: 'block-header', text: title });
+    const cfg = this.instance.config;
+    if (cfg._hideTitle === true) return;
+    const label = (typeof cfg._titleLabel === 'string' && cfg._titleLabel.trim())
+      ? cfg._titleLabel.trim()
+      : title;
+    if (label) {
+      el.createDiv({ cls: 'block-header', text: label });
     }
   }
 }

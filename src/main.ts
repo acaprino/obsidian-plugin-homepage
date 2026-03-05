@@ -37,7 +37,7 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
       id: 'default-folder-links',
       type: 'folder-links',
       col: 3, row: 1, colSpan: 1, rowSpan: 1,
-      config: { title: 'Dataviews', links: [] },
+      config: { title: 'Quick Links', links: [] },
     },
     // Row 2
     {
@@ -143,7 +143,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'folder-links',
     displayName: 'Folder Links',
-    defaultConfig: { title: 'Links', links: [] },
+    defaultConfig: { title: 'Quick Links', folder: '', links: [] },
     defaultSize: { colSpan: 1, rowSpan: 1 },
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),
   });

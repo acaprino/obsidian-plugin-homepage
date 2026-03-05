@@ -1,0 +1,62 @@
+import { ItemView, WorkspaceLeaf } from 'obsidian';
+import { IHomepagePlugin, LayoutConfig } from './types';
+import { GridLayout } from './GridLayout';
+import { EditToolbar } from './EditToolbar';
+
+export const VIEW_TYPE = 'homepage-blocks';
+
+export class HomepageView extends ItemView {
+  private grid: GridLayout | null = null;
+  private toolbar: EditToolbar | null = null;
+
+  constructor(leaf: WorkspaceLeaf, private plugin: IHomepagePlugin) {
+    super(leaf);
+  }
+
+  getViewType(): string { return VIEW_TYPE; }
+  getDisplayText(): string { return 'Homepage'; }
+  getIcon(): string { return 'home'; }
+
+  async onOpen(): Promise<void> {
+    // Full teardown: unloads blocks AND removes the grid DOM element
+    this.grid?.destroy();
+    this.toolbar?.destroy();
+
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass('homepage-view');
+
+    const layout: LayoutConfig = this.plugin.layout;
+
+    const onLayoutChange = (newLayout: LayoutConfig) => {
+      this.plugin.layout = newLayout;
+      void this.plugin.saveLayout(newLayout);
+    };
+
+    this.grid = new GridLayout(contentEl, this.app, this.plugin, onLayoutChange);
+
+    this.toolbar = new EditToolbar(
+      contentEl,
+      this.app,
+      this.plugin,
+      this.grid,
+      (columns) => {
+        this.plugin.layout.columns = columns;
+        void this.plugin.saveLayout(this.plugin.layout);
+        this.grid?.setColumns(columns);
+      },
+    );
+
+    this.grid.render(layout.blocks, layout.columns);
+  }
+
+  async onClose(): Promise<void> {
+    this.grid?.destroy();
+    this.toolbar?.destroy();
+  }
+
+  /** Re-render the view from scratch (e.g. after settings reset). */
+  async reload(): Promise<void> {
+    await this.onOpen();
+  }
+}

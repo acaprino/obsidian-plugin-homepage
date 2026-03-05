@@ -13,6 +13,7 @@ type QuotesConfig = {
   title?: string;
   columns?: number;
   maxItems?: number;
+  heightMode?: 'wrap' | 'extend';
 };
 
 export class QuotesListBlock extends BaseBlock {
@@ -25,10 +26,12 @@ export class QuotesListBlock extends BaseBlock {
   }
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
-    const { source = 'tag', tag = '', quotes = '', title = 'Quotes', columns = 2, maxItems = 20 } =
+    const { source = 'tag', tag = '', quotes = '', title = 'Quotes', columns = 2, maxItems = 20, heightMode = 'wrap' } =
       this.instance.config as QuotesConfig;
 
     this.renderHeader(el, title);
+
+    if (heightMode === 'extend') el.addClass('quotes-list-block--extend');
 
     const colsEl = el.createDiv({ cls: 'quotes-columns' });
 
@@ -217,6 +220,15 @@ class QuotesSettingsModal extends Modal {
        .setValue(String(draft.columns ?? 2))
        .onChange(v => { draft.columns = Number(v); }),
     );
+    new Setting(contentEl)
+      .setName('Height mode')
+      .setDesc('Wrap: fixed height with scrollbar. Extend: block grows to show all quotes.')
+      .addDropdown(d =>
+        d.addOption('wrap', 'Wrap (scroll)')
+         .addOption('extend', 'Extend (show all)')
+         .setValue(draft.heightMode ?? 'wrap')
+         .onChange(v => { draft.heightMode = v as 'wrap' | 'extend'; }),
+      );
     new Setting(contentEl).setName('Max items').addText(t =>
       t.setValue(String(draft.maxItems ?? 20))
        .onChange(v => { draft.maxItems = parseInt(v) || 20; }),

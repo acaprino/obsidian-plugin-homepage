@@ -415,6 +415,16 @@
   align-items: start;
 }
 
+/* Extend mode: let the block grow to show all quotes without a scrollbar */
+.homepage-block-wrapper .block-content > .quotes-list-block--extend {
+  overflow: visible;
+}
+
+.quotes-list-block--extend .quotes-columns {
+  max-height: none;
+  overflow-y: visible;
+}
+
 .quote-item {
   margin-bottom: 16px;
 }

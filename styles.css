@@ -229,16 +229,14 @@
 
 /* ── Quotes List Block ──────────────────────────────────── */
 .quotes-columns {
-  column-gap: 20px;
+  display: grid;
+  gap: 12px 20px;
   max-height: 500px;
-  overflow-x: hidden;
   overflow-y: auto;
-  width: 100%;
-  box-sizing: border-box;
+  align-items: start;
 }
 
 .quote-item {
-  break-inside: avoid;
   margin-bottom: 16px;
 }
 

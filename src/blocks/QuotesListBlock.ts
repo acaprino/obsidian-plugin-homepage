@@ -31,7 +31,7 @@ export class QuotesListBlock extends BaseBlock {
     this.renderHeader(el, title);
 
     const colsEl = el.createDiv({ cls: 'quotes-columns' });
-    colsEl.style.columnCount = String(columns);
+    colsEl.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
 
     if (source === 'text') {
       this.renderTextQuotes(colsEl, quotes, maxItems);

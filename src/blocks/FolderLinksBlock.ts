@@ -1,4 +1,4 @@
-import { App, Modal, Setting, SuggestModal, TFile, TFolder } from 'obsidian';
+import { App, Modal, Setting, SuggestModal, TFolder } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
@@ -44,11 +44,27 @@ class FolderSuggestModal extends SuggestModal<TFolder> {
 
 export class FolderLinksBlock extends BaseBlock {
   private containerEl: HTMLElement | null = null;
+  private renderTimer: number | null = null;
 
   render(el: HTMLElement): void {
     this.containerEl = el;
     el.addClass('folder-links-block');
-    this.renderContent();
+
+    // Re-render when vault files are created, deleted, or renamed (debounced)
+    this.registerEvent(this.app.vault.on('create', () => this.scheduleRender()));
+    this.registerEvent(this.app.vault.on('delete', () => this.scheduleRender()));
+    this.registerEvent(this.app.vault.on('rename', () => this.scheduleRender()));
+
+    // Defer first render so vault is fully indexed
+    this.app.workspace.onLayoutReady(() => this.renderContent());
+  }
+
+  private scheduleRender(): void {
+    if (this.renderTimer !== null) window.clearTimeout(this.renderTimer);
+    this.renderTimer = window.setTimeout(() => {
+      this.renderTimer = null;
+      this.renderContent();
+    }, 150);
   }
 
   private renderContent(): void {
@@ -68,26 +84,34 @@ export class FolderLinksBlock extends BaseBlock {
 
     // Auto-list notes from selected folder (sorted alphabetically)
     if (folder) {
-      const folderObj = this.app.vault.getAbstractFileByPath(folder);
-      if (folderObj instanceof TFolder) {
-        const notes = folderObj.children
-          .filter((child): child is TFile => child instanceof TFile && child.extension === 'md')
-          .sort((a, b) => a.basename.localeCompare(b.basename));
+      const normalised = folder.trim().replace(/\/+$/, '');
 
-        for (const file of notes) {
-          const item = list.createDiv({ cls: 'folder-link-item' });
-          const btn = item.createEl('button', { cls: 'folder-link-btn' });
-          btn.createSpan({ text: file.basename });
-          btn.addEventListener('click', () => {
-            this.app.workspace.openLinkText(file.path, '');
-          });
-        }
-
-        if (notes.length === 0) {
-          list.createEl('p', { text: 'No notes in this folder.', cls: 'block-loading' });
-        }
+      if (!normalised) {
+        list.createEl('p', { text: 'Vault root listing is not supported. Select a subfolder.', cls: 'block-loading' });
       } else {
-        list.createEl('p', { text: `Folder "${folder}" not found.`, cls: 'block-loading' });
+        const folderObj = this.app.vault.getAbstractFileByPath(normalised);
+
+        if (!(folderObj instanceof TFolder)) {
+          list.createEl('p', { text: `Folder "${normalised}" not found.`, cls: 'block-loading' });
+        } else {
+          const prefix = folderObj.path + '/';
+          const notes = this.app.vault.getFiles()
+            .filter(f => f.path.startsWith(prefix))
+            .sort((a, b) => a.basename.localeCompare(b.basename));
+
+          for (const file of notes) {
+            const item = list.createDiv({ cls: 'folder-link-item' });
+            const btn = item.createEl('button', { cls: 'folder-link-btn' });
+            btn.createSpan({ text: file.basename });
+            btn.addEventListener('click', () => {
+              this.app.workspace.openLinkText(file.path, '');
+            });
+          }
+
+          if (notes.length === 0) {
+            list.createEl('p', { text: `No notes in "${folderObj.path}".`, cls: 'block-loading' });
+          }
+        }
       }
     }
 

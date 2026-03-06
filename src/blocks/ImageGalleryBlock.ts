@@ -100,13 +100,20 @@ export class ImageGalleryBlock extends BaseBlock {
       const ext = `.${file.extension.toLowerCase()}`;
       const wrapper = gallery.createDiv({ cls: 'gallery-item' });
 
+      wrapper.setAttribute('tabindex', '0');
+      wrapper.setAttribute('role', 'button');
+      wrapper.setAttribute('aria-label', file.basename);
+      const openFile = () => { this.app.workspace.openLinkText(file.path, ''); };
+      wrapper.addEventListener('click', openFile);
+      wrapper.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFile(); }
+      });
+
       if (IMAGE_EXTS.has(ext)) {
         const img = wrapper.createEl('img');
         img.src = this.app.vault.getResourcePath(file);
+        img.alt = file.basename;
         img.loading = 'lazy';
-        img.addEventListener('click', () => {
-          this.app.workspace.openLinkText(file.path, '');
-        });
       } else if (VIDEO_EXTS.has(ext)) {
         wrapper.addClass('gallery-item-video');
         wrapper.createDiv({ cls: 'video-play-overlay', text: '▶' });
@@ -120,9 +127,6 @@ export class ImageGalleryBlock extends BaseBlock {
 
         wrapper.addEventListener('mouseenter', () => { void video.play(); });
         wrapper.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
-        wrapper.addEventListener('click', () => {
-          this.app.workspace.openLinkText(file.path, '');
-        });
       }
     }
   }

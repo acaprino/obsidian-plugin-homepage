@@ -75,24 +75,21 @@ export class GridLayout {
   }
 
   private initGridStack(blocks: BlockInstance[], columns: number, isInitial: boolean): void {
-    // Build widget items for GridStack
-    const items: GridStackWidget[] = blocks.map((instance, i) => {
-      const content = this.buildBlockContent(instance, isInitial ? i : undefined);
-      return {
-        id: instance.id,
-        x: instance.x,
-        y: instance.y,
-        w: Math.min(instance.w, columns),
-        h: instance.h,
-        content,
-      };
-    });
+    // Build widget items WITHOUT content — DOM will be built manually using Obsidian API
+    // (GridStack sets content via innerHTML which Obsidian blocks)
+    const items: GridStackWidget[] = blocks.map((instance) => ({
+      id: instance.id,
+      x: instance.x,
+      y: instance.y,
+      w: Math.min(instance.w, columns),
+      h: instance.h,
+    }));
 
     this.gridStack = GridStack.init({
       column: columns,
       cellHeight: 200,
-      margin: 0,
-      float: false,
+      margin: 8,
+      float: true,
       columnOpts: { breakpoints: [{ w: 0, c: columns }] },
       animate: true,
       staticGrid: !this.editMode,
@@ -105,13 +102,26 @@ export class GridLayout {
     this.gridStack.load(items);
     this.suppressChange = false;
 
+    // Persist GridStack's auto-compacted positions so stale data gets corrected
+    this.syncLayoutFromGrid();
+
     // Wire up block Component lifecycle after DOM is created
-    for (const instance of blocks) {
+    for (const [i, instance] of blocks.entries()) {
       const gsEl = this.gridEl.querySelector(`[gs-id="${instance.id}"]`) as HTMLElement | null;
       if (!gsEl) continue;
 
-      const contentEl = gsEl.querySelector('.block-content') as HTMLElement | null;
-      const headerZone = gsEl.querySelector('.block-header-zone') as HTMLElement | null;
+      // ARIA: mark grid items as listitems to match parent role="list"
+      gsEl.setAttribute('role', 'listitem');
+
+      // Find the GridStack item content container and populate it via Obsidian DOM API
+      const gsContent = gsEl.querySelector('.grid-stack-item-content') as HTMLElement | null;
+      if (!gsContent) continue;
+
+      const animDelayMs = isInitial ? ([0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240) : undefined;
+      const wrapper = this.buildBlockWrapper(gsContent, instance, animDelayMs);
+
+      const headerZone = wrapper.querySelector('.block-header-zone') as HTMLElement | null;
+      const contentEl = wrapper.querySelector('.block-content') as HTMLElement | null;
       if (!contentEl || !headerZone) continue;
 
       const factory = BlockRegistry.get(instance.type);
@@ -128,20 +138,19 @@ export class GridLayout {
         });
       }
 
-      const wrapper = gsEl.querySelector('.homepage-block-wrapper') as HTMLElement;
-      this.blocks.set(instance.id, { block, wrapper: wrapper ?? gsEl });
+      this.blocks.set(instance.id, { block, wrapper });
 
       // Collapse toggle
       this.setupCollapseToggle(gsEl, instance, headerZone);
 
       // Edit handles
       if (this.editMode) {
-        this.attachEditHandles(wrapper ?? gsEl, instance);
+        this.attachEditHandles(wrapper, instance);
       }
     }
 
     // Listen for GridStack changes (drag/resize) to persist layout
-    this.gridStack.on('change', (_event: Event, nodes: GridStackNode[]) => {
+    this.gridStack.on('change', (_event: Event, _nodes: GridStackNode[]) => {
       if (this.suppressChange) return;
       this.syncLayoutFromGrid();
     });
@@ -158,20 +167,25 @@ export class GridLayout {
     }
   }
 
-  /** Build the inner HTML string for a GridStack widget. */
-  private buildBlockContent(instance: BlockInstance, blockIndex?: number): string {
-    const collapsed = instance.collapsed ? ' block-collapsed' : '';
-    const chevronCollapsed = instance.collapsed ? ' is-collapsed' : '';
-    const animDelay = blockIndex !== undefined
-      ? ` style="animation-delay: ${[0, 50, 100, 140, 170, 195, 215, 230][blockIndex] ?? 240}ms"`
-      : '';
-
-    return `<div class="homepage-block-wrapper${collapsed}" data-block-id="${instance.id}"${animDelay}>
-      <div class="block-header-zone" role="button" tabindex="0" aria-expanded="${!instance.collapsed}">
-        <span class="block-collapse-chevron${chevronCollapsed}" aria-hidden="true"></span>
-      </div>
-      <div class="block-content"></div>
-    </div>`;
+  /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
+  private buildBlockWrapper(container: HTMLElement, instance: BlockInstance, animDelayMs?: number): HTMLElement {
+    const wrapper = container.createDiv({
+      cls: 'homepage-block-wrapper' + (instance.collapsed ? ' block-collapsed' : ''),
+      attr: { 'data-block-id': instance.id },
+    });
+    if (animDelayMs !== undefined) {
+      wrapper.style.animationDelay = `${animDelayMs}ms`;
+    }
+    const headerZone = wrapper.createDiv({
+      cls: 'block-header-zone',
+      attr: { role: 'button', tabindex: '0', 'aria-expanded': String(!instance.collapsed) },
+    });
+    headerZone.createSpan({
+      cls: 'block-collapse-chevron' + (instance.collapsed ? ' is-collapsed' : ''),
+      attr: { 'aria-hidden': 'true' },
+    });
+    wrapper.createDiv({ cls: 'block-content' });
+    return wrapper;
   }
 
   private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {
@@ -186,9 +200,28 @@ export class GridLayout {
       wrapper.toggleClass('block-collapsed', isNowCollapsed);
       chevron.toggleClass('is-collapsed', isNowCollapsed);
       headerZone.setAttribute('aria-expanded', String(!isNowCollapsed));
-      const newBlocks = this.plugin.layout.blocks.map(b =>
-        b.id === instance.id ? { ...b, collapsed: isNowCollapsed } : b,
-      );
+
+      // Tell GridStack to resize the cell so the grid reflows, and persist the height
+      const gsNode = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+      let newBlocks: BlockInstance[];
+
+      if (isNowCollapsed) {
+        // Read live height from GridStack (accounts for user resizes since render)
+        const liveH = gsNode?.h ?? instance.h;
+        if (this.gridStack) this.gridStack.update(gsEl, { h: 1 });
+        newBlocks = this.plugin.layout.blocks.map(b =>
+          b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b,
+        );
+      } else {
+        // Restore the saved expanded height
+        const currentBlock = this.plugin.layout.blocks.find(b => b.id === instance.id);
+        const origH = currentBlock?._expandedH ?? instance.h;
+        if (this.gridStack) this.gridStack.update(gsEl, { h: origH });
+        newBlocks = this.plugin.layout.blocks.map(b =>
+          b.id === instance.id ? { ...b, collapsed: false, h: origH } : b,
+        );
+      }
+
       void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
     };
 
@@ -201,11 +234,30 @@ export class GridLayout {
   private attachEditHandles(wrapper: HTMLElement, instance: BlockInstance): void {
     const bar = wrapper.createDiv({ cls: 'block-handle-bar' });
 
+    // Drag handle (left)
     const handle = bar.createDiv({ cls: 'block-move-handle' });
     setIcon(handle, 'grip-vertical');
     handle.setAttribute('aria-label', 'Drag to reorder');
     handle.setAttribute('title', 'Drag to reorder');
 
+    // Move up / down (grouped next to drag handle for logical order)
+    const moveUpBtn = bar.createEl('button', { cls: 'block-move-up-btn' });
+    setIcon(moveUpBtn, 'chevron-up');
+    moveUpBtn.setAttribute('aria-label', 'Move block up');
+    moveUpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.swapWithNeighbor(instance, 'up');
+    });
+
+    const moveDownBtn = bar.createEl('button', { cls: 'block-move-down-btn' });
+    setIcon(moveDownBtn, 'chevron-down');
+    moveDownBtn.setAttribute('aria-label', 'Move block down');
+    moveDownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.swapWithNeighbor(instance, 'down');
+    });
+
+    // Settings (right group)
     const settingsBtn = bar.createEl('button', { cls: 'block-settings-btn' });
     setIcon(settingsBtn, 'settings');
     settingsBtn.setAttribute('aria-label', 'Block settings');
@@ -223,60 +275,30 @@ export class GridLayout {
       new BlockSettingsModal(this.app, instance, entry.block, onSave).open();
     });
 
+    // Remove (last — destructive action at the end)
     const removeBtn = bar.createEl('button', { cls: 'block-remove-btn' });
     setIcon(removeBtn, 'x');
     removeBtn.setAttribute('aria-label', 'Remove block');
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       new RemoveBlockConfirmModal(this.app, () => {
-        // Remove from GridStack
         const gsItem = this.gridEl.querySelector(`[gs-id="${instance.id}"]`) as HTMLElement | null;
         if (gsItem && this.gridStack) {
           this.suppressChange = true;
           this.gridStack.removeWidget(gsItem);
           this.suppressChange = false;
         }
-        // Unload block component
         const entry = this.blocks.get(instance.id);
         if (entry) {
           entry.block.unload();
           this.blocks.delete(instance.id);
         }
-        // Update persisted layout
         const newBlocks = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-        // If no blocks left, show empty state
         if (newBlocks.length === 0) {
           this.rerender();
         }
       }).open();
-    });
-
-    // Move up / down keyboard-accessible reorder buttons
-    const moveUpBtn = bar.createEl('button', { cls: 'block-move-up-btn' });
-    setIcon(moveUpBtn, 'chevron-up');
-    moveUpBtn.setAttribute('aria-label', 'Move block up');
-    moveUpBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const idx = this.plugin.layout.blocks.findIndex(b => b.id === instance.id);
-      if (idx <= 0) return;
-      const newBlocks = [...this.plugin.layout.blocks];
-      [newBlocks[idx - 1], newBlocks[idx]] = [newBlocks[idx], newBlocks[idx - 1]];
-      this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-      this.rerender();
-    });
-
-    const moveDownBtn = bar.createEl('button', { cls: 'block-move-down-btn' });
-    setIcon(moveDownBtn, 'chevron-down');
-    moveDownBtn.setAttribute('aria-label', 'Move block down');
-    moveDownBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const idx = this.plugin.layout.blocks.findIndex(b => b.id === instance.id);
-      if (idx < 0 || idx >= this.plugin.layout.blocks.length - 1) return;
-      const newBlocks = [...this.plugin.layout.blocks];
-      [newBlocks[idx], newBlocks[idx + 1]] = [newBlocks[idx + 1], newBlocks[idx]];
-      this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-      this.rerender();
     });
 
     // Insert handle bar before header zone
@@ -286,6 +308,39 @@ export class GridLayout {
     }
   }
 
+  /** Swap a block's position with its nearest spatial neighbor in the given direction. */
+  private swapWithNeighbor(instance: BlockInstance, direction: 'up' | 'down'): void {
+    const blocks = this.plugin.layout.blocks;
+    const current = blocks.find(b => b.id === instance.id);
+    if (!current) return;
+
+    const columns = this.plugin.layout.columns;
+    const neighbor = blocks
+      .filter(b => b.id !== instance.id && (
+        direction === 'up'
+          ? (b.y < current.y || (b.y === current.y && b.x < current.x))
+          : (b.y > current.y || (b.y === current.y && b.x > current.x))
+      ))
+      .sort((a, b) => direction === 'up'
+        ? (b.y - a.y || b.x - a.x)
+        : (a.y - b.y || a.x - b.x),
+      )[0];
+    if (!neighbor) return;
+
+    // Swap positions, clamping x so that x + w <= columns
+    const newBlocks = blocks.map(b => {
+      if (b.id === current.id) {
+        return { ...b, x: Math.min(neighbor.x, Math.max(0, columns - current.w)), y: neighbor.y };
+      }
+      if (b.id === neighbor.id) {
+        return { ...b, x: Math.min(current.x, Math.max(0, columns - neighbor.w)), y: current.y };
+      }
+      return b;
+    });
+    this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+    this.rerender();
+  }
+
   /** Read current positions from GridStack nodes and persist to layout. */
   private syncLayoutFromGrid(): void {
     if (!this.gridStack) return;
@@ -293,7 +348,7 @@ export class GridLayout {
     const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
 
     for (const el of nodes) {
-      const node = (el as GridStackWidget & { gridstackNode?: GridStackNode }).gridstackNode;
+      const node = (el as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
       const id = el.getAttribute('gs-id');
       if (id && node) {
         posMap.set(id, {
@@ -305,12 +360,16 @@ export class GridLayout {
       }
     }
 
+    // Skip save if nothing actually changed
+    const changed = this.plugin.layout.blocks.some(b => {
+      const pos = posMap.get(b.id);
+      return pos && (b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h);
+    });
+    if (!changed) return;
+
     const newBlocks = this.plugin.layout.blocks.map(b => {
       const pos = posMap.get(b.id);
-      if (pos) {
-        return { ...b, ...pos };
-      }
-      return b;
+      return pos ? { ...b, ...pos } : b;
     });
 
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });

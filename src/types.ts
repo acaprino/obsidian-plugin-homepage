@@ -25,6 +25,8 @@ export interface BlockInstance {
   /** GridStack height in rows */
   h: number;
   collapsed?: boolean;
+  /** Stored expanded height when block is collapsed, so it can be restored */
+  _expandedH?: number;
   config: Record<string, unknown>;
 }
 

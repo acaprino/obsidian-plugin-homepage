@@ -129,9 +129,15 @@ function validateLayout(raw: unknown): LayoutConfig {
   const openOnStartup = typeof r.openOnStartup === 'boolean'
     ? r.openOnStartup
     : defaults.openOnStartup;
-  const blocks = Array.isArray(r.blocks)
+  const rawBlocks = Array.isArray(r.blocks)
     ? r.blocks.filter(isValidBlockInstance)
     : defaults.blocks;
+  // Clamp x/w to fit within the column count (fixes stale 12-column GridStack data)
+  const blocks = rawBlocks.map(b => ({
+    ...b,
+    w: Math.min(b.w, columns),
+    x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
+  }));
 
   return { columns, openOnStartup, blocks };
 }

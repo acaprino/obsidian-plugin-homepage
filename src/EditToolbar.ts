@@ -41,8 +41,6 @@ export class EditToolbar {
   }
 
   private syncVisibility(): void {
-    // Read mode: show FAB, hide toolbar
-    // Edit mode: show toolbar, hide FAB
     this.fabEl.toggleClass('is-hidden', this.editMode);
     this.toolbarEl.toggleClass('is-visible', this.editMode);
   }
@@ -84,17 +82,14 @@ export class EditToolbar {
       const factory = BlockRegistry.get(type);
       if (!factory) return;
 
-      const maxRow = this.plugin.layout.blocks.reduce(
-        (max, b) => Math.max(max, b.row + b.rowSpan - 1), 0,
-      );
-
+      // Place new block at the bottom (y = high number, GridStack will compact)
       const instance: BlockInstance = {
         id: crypto.randomUUID(),
         type,
-        col: 1,
-        row: maxRow + 1,
-        colSpan: Math.min(factory.defaultSize.colSpan, this.plugin.layout.columns),
-        rowSpan: factory.defaultSize.rowSpan,
+        x: 0,
+        y: 1000,
+        w: Math.min(factory.defaultSize.w, this.plugin.layout.columns),
+        h: factory.defaultSize.h,
         config: { ...factory.defaultConfig },
       };
 

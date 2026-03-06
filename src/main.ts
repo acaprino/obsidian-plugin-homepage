@@ -20,50 +20,50 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   columns: 3,
   openOnStartup: false,
   blocks: [
-    // Row 1
+    // Row 0
     {
       id: 'default-static-text',
       type: 'static-text',
-      col: 1, row: 1, colSpan: 1, rowSpan: 1,
+      x: 0, y: 0, w: 1, h: 1,
       config: { title: '', content: '' },
     },
     {
       id: 'default-clock',
       type: 'clock',
-      col: 2, row: 1, colSpan: 1, rowSpan: 1,
+      x: 1, y: 0, w: 1, h: 1,
       config: { showSeconds: false, showDate: true },
     },
     {
       id: 'default-folder-links',
       type: 'folder-links',
-      col: 3, row: 1, colSpan: 1, rowSpan: 1,
+      x: 2, y: 0, w: 1, h: 1,
       config: { title: 'Quick Links', links: [] },
     },
-    // Row 2
+    // Row 1
     {
       id: 'default-insight',
       type: 'insight',
-      col: 1, row: 2, colSpan: 2, rowSpan: 1,
+      x: 0, y: 1, w: 2, h: 1,
       config: { tag: '', title: 'Daily Insight', dailySeed: true },
     },
     {
       id: 'default-tag-grid',
       type: 'tag-grid',
-      col: 3, row: 2, colSpan: 1, rowSpan: 2,
+      x: 2, y: 1, w: 1, h: 2,
       config: { title: 'Values', columns: 2, items: [] },
     },
-    // Row 3
+    // Row 2
     {
       id: 'default-quotes',
       type: 'quotes-list',
-      col: 1, row: 3, colSpan: 2, rowSpan: 1,
+      x: 0, y: 2, w: 2, h: 1,
       config: { tag: '', title: 'Quotes', columns: 2, maxItems: 20 },
     },
-    // Row 4
+    // Row 3
     {
       id: 'default-gallery',
       type: 'image-gallery',
-      col: 1, row: 4, colSpan: 3, rowSpan: 1,
+      x: 0, y: 3, w: 3, h: 1,
       config: { folder: '', title: 'Gallery', columns: 3, maxItems: 20 },
     },
   ],
@@ -82,17 +82,33 @@ const VALID_BLOCK_TYPES = new Set<string>([
   'static-text', 'html',
 ]);
 
+function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknown> {
+  // Migrate old col/row/colSpan/rowSpan to x/y/w/h
+  if (typeof b.col === 'number' && b.x === undefined) {
+    b.x = b.col - 1; // old format was 1-indexed
+  }
+  if (typeof b.row === 'number' && b.y === undefined) {
+    b.y = b.row - 1; // old format was 1-indexed
+  }
+  if (typeof b.colSpan === 'number' && b.w === undefined) {
+    b.w = b.colSpan;
+  }
+  if (typeof b.rowSpan === 'number' && b.h === undefined) {
+    b.h = b.rowSpan;
+  }
+  return b;
+}
+
 function isValidBlockInstance(b: unknown): b is BlockInstance {
   if (!b || typeof b !== 'object') return false;
-  const block = b as Record<string, unknown>;
+  const block = migrateBlockInstance(b as Record<string, unknown>);
   return (
     typeof block.id === 'string' &&
     typeof block.type === 'string' && VALID_BLOCK_TYPES.has(block.type) &&
-    typeof block.col === 'number' && block.col >= 1 &&
-    typeof block.row === 'number' && block.row >= 1 &&
-    typeof block.colSpan === 'number' && block.colSpan >= 1 &&
-    typeof block.rowSpan === 'number' && block.rowSpan >= 1 && Number.isFinite(block.rowSpan) &&
-    (block.newRow === undefined || typeof block.newRow === 'boolean') &&
+    typeof block.x === 'number' && block.x >= 0 &&
+    typeof block.y === 'number' && block.y >= 0 &&
+    typeof block.w === 'number' && block.w >= 1 &&
+    typeof block.h === 'number' && block.h >= 1 && Number.isFinite(block.h) &&
     block.config !== null && typeof block.config === 'object' && !Array.isArray(block.config)
   );
 }
@@ -129,7 +145,7 @@ function registerBlocks(): void {
     type: 'greeting',
     displayName: 'Greeting',
     defaultConfig: { name: 'World', showTime: true },
-    defaultSize: { colSpan: 1, rowSpan: 1 },
+    defaultSize: { w: 1, h: 1 },
     create: (app, instance, plugin) => new GreetingBlock(app, instance, plugin),
   });
 
@@ -137,7 +153,7 @@ function registerBlocks(): void {
     type: 'clock',
     displayName: 'Clock / Date',
     defaultConfig: { showSeconds: false, showDate: true },
-    defaultSize: { colSpan: 1, rowSpan: 1 },
+    defaultSize: { w: 1, h: 1 },
     create: (app, instance, plugin) => new ClockBlock(app, instance, plugin),
   });
 
@@ -145,7 +161,7 @@ function registerBlocks(): void {
     type: 'folder-links',
     displayName: 'Quick Links',
     defaultConfig: { title: 'Quick Links', folder: '', links: [] },
-    defaultSize: { colSpan: 1, rowSpan: 1 },
+    defaultSize: { w: 1, h: 1 },
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),
   });
 
@@ -153,7 +169,7 @@ function registerBlocks(): void {
     type: 'insight',
     displayName: 'Daily Insight',
     defaultConfig: { tag: '', title: 'Daily Insight', dailySeed: true },
-    defaultSize: { colSpan: 2, rowSpan: 1 },
+    defaultSize: { w: 2, h: 1 },
     create: (app, instance, plugin) => new InsightBlock(app, instance, plugin),
   });
 
@@ -161,7 +177,7 @@ function registerBlocks(): void {
     type: 'tag-grid',
     displayName: 'Values',
     defaultConfig: { title: 'Values', columns: 2, items: [] },
-    defaultSize: { colSpan: 1, rowSpan: 2 },
+    defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new TagGridBlock(app, instance, plugin),
   });
 
@@ -169,7 +185,7 @@ function registerBlocks(): void {
     type: 'quotes-list',
     displayName: 'Quotes List',
     defaultConfig: { tag: '', title: 'Quotes', columns: 2, maxItems: 20 },
-    defaultSize: { colSpan: 2, rowSpan: 1 },
+    defaultSize: { w: 2, h: 1 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
   });
 
@@ -177,7 +193,7 @@ function registerBlocks(): void {
     type: 'image-gallery',
     displayName: 'Image Gallery',
     defaultConfig: { folder: '', title: 'Gallery', columns: 3, maxItems: 20 },
-    defaultSize: { colSpan: 3, rowSpan: 1 },
+    defaultSize: { w: 3, h: 1 },
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin),
   });
 
@@ -185,7 +201,7 @@ function registerBlocks(): void {
     type: 'embedded-note',
     displayName: 'Embedded Note',
     defaultConfig: { filePath: '', showTitle: true },
-    defaultSize: { colSpan: 1, rowSpan: 1 },
+    defaultSize: { w: 1, h: 1 },
     create: (app, instance, plugin) => new EmbeddedNoteBlock(app, instance, plugin),
   });
 
@@ -193,7 +209,7 @@ function registerBlocks(): void {
     type: 'static-text',
     displayName: 'Static Text',
     defaultConfig: { title: '', content: '' },
-    defaultSize: { colSpan: 1, rowSpan: 1 },
+    defaultSize: { w: 1, h: 1 },
     create: (app, instance, plugin) => new StaticTextBlock(app, instance, plugin),
   });
 
@@ -201,7 +217,7 @@ function registerBlocks(): void {
     type: 'html',
     displayName: 'HTML Block',
     defaultConfig: { title: '', html: '' },
-    defaultSize: { colSpan: 1, rowSpan: 1 },
+    defaultSize: { w: 1, h: 1 },
     create: (app, instance, plugin) => new HtmlBlock(app, instance, plugin),
   });
 }

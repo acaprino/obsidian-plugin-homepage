@@ -1,26 +1,22 @@
 import { App, Modal, Setting, setIcon } from 'obsidian';
+import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
 import { BlockInstance, LayoutConfig, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
-const MAX_ROW_SPAN = 12;
-
 export class GridLayout {
   private gridEl: HTMLElement;
+  private gridStack: GridStack | null = null;
   private blocks = new Map<string, { block: BaseBlock; wrapper: HTMLElement }>();
   private editMode = false;
-  /** AbortController for the currently active drag or resize operation. */
-  private activeAbortController: AbortController | null = null;
-  /** Drag clone appended to document.body; tracked so we can remove it on early teardown. */
-  private activeClone: HTMLElement | null = null;
-  private resizeObserver: ResizeObserver | null = null;
-  private effectiveColumns = 3;
   /** Callback to trigger the Add Block modal from the empty state CTA. */
   onRequestAddBlock: (() => void) | null = null;
   /** ID of the most recently added block — used for scroll-into-view. */
   private lastAddedBlockId: string | null = null;
+  /** Suppress change events during programmatic updates. */
+  private suppressChange = false;
 
   constructor(
     containerEl: HTMLElement,
@@ -28,14 +24,7 @@ export class GridLayout {
     private plugin: IHomepagePlugin,
     private onLayoutChange: LayoutChangeCallback,
   ) {
-    this.gridEl = containerEl.createDiv({ cls: 'homepage-grid' });
-    this.resizeObserver = new ResizeObserver(() => {
-      const newEffective = this.computeEffectiveColumns(this.plugin.layout.columns);
-      if (newEffective !== this.effectiveColumns) {
-        this.rerender();
-      }
-    });
-    this.resizeObserver.observe(this.gridEl);
+    this.gridEl = containerEl.createDiv({ cls: 'homepage-grid grid-stack' });
   }
 
   /** Expose the root grid element so HomepageView can reorder it in the DOM. */
@@ -43,24 +32,12 @@ export class GridLayout {
     return this.gridEl;
   }
 
-  private computeEffectiveColumns(layoutColumns: number): number {
-    const w = this.gridEl.offsetWidth;
-    if (w <= 0) return layoutColumns;
-    if (w <= 540) return 1;
-    if (w <= 840) return Math.min(2, layoutColumns);
-    if (w <= 1024) return Math.min(3, layoutColumns);
-    return layoutColumns;
-  }
-
   render(blocks: BlockInstance[], columns: number, isInitial = false): void {
     this.destroyAll();
-    this.gridEl.empty();
+
     this.gridEl.setAttribute('role', 'list');
     this.gridEl.setAttribute('aria-label', 'Homepage blocks');
-    this.effectiveColumns = this.computeEffectiveColumns(columns);
-    this.gridEl.style.gridTemplateColumns = `repeat(${this.effectiveColumns}, 1fr)`;
 
-    // Stagger animation only on the initial render (not reorder/collapse/column change)
     if (isInitial) {
       this.gridEl.addClass('homepage-grid--animating');
       setTimeout(() => this.gridEl.removeClass('homepage-grid--animating'), 500);
@@ -73,75 +50,138 @@ export class GridLayout {
     }
 
     if (blocks.length === 0) {
-      const empty = this.gridEl.createDiv({ cls: 'homepage-empty-state' });
-      empty.createDiv({ cls: 'homepage-empty-icon', text: '\u{1F3E0}' });
-      empty.createEl('p', { cls: 'homepage-empty-title', text: 'Your homepage is empty' });
-      empty.createEl('p', {
-        cls: 'homepage-empty-desc',
-        text: this.editMode
-          ? 'Click the button below to add your first block.'
-          : 'Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started.',
-      });
-      if (this.editMode && this.onRequestAddBlock) {
-        const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add Your First Block' });
-        cta.addEventListener('click', () => { this.onRequestAddBlock?.(); });
-      }
+      this.renderEmptyState();
       return;
     }
 
-    blocks.forEach((instance, i) => {
-      this.renderBlock(instance, isInitial ? i : undefined);
-    });
+    this.initGridStack(blocks, columns, isInitial);
   }
 
-  private renderBlock(instance: BlockInstance, blockIndex?: number): void {
-    const factory = BlockRegistry.get(instance.type);
-    if (!factory) return;
+  private renderEmptyState(): void {
+    this.gridEl.empty();
+    const empty = this.gridEl.createDiv({ cls: 'homepage-empty-state' });
+    empty.createDiv({ cls: 'homepage-empty-icon', text: '\u{1F3E0}' });
+    empty.createEl('p', { cls: 'homepage-empty-title', text: 'Your homepage is empty' });
+    empty.createEl('p', {
+      cls: 'homepage-empty-desc',
+      text: this.editMode
+        ? 'Click the button below to add your first block.'
+        : 'Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started.',
+    });
+    if (this.editMode && this.onRequestAddBlock) {
+      const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add Your First Block' });
+      cta.addEventListener('click', () => { this.onRequestAddBlock?.(); });
+    }
+  }
 
-    // Grid sentinel: forces the block to start on a new row without breaking auto-placement order
-    if (instance.newRow) {
-      this.gridEl.createDiv({ cls: 'homepage-row-break' });
+  private initGridStack(blocks: BlockInstance[], columns: number, isInitial: boolean): void {
+    // Build widget items for GridStack
+    const items: GridStackWidget[] = blocks.map((instance, i) => {
+      const content = this.buildBlockContent(instance, isInitial ? i : undefined);
+      return {
+        id: instance.id,
+        x: instance.x,
+        y: instance.y,
+        w: Math.min(instance.w, columns),
+        h: instance.h,
+        content,
+      };
+    });
+
+    this.gridStack = GridStack.init({
+      column: columns,
+      cellHeight: 200,
+      margin: 0,
+      float: false,
+      columnOpts: { breakpoints: [{ w: 0, c: columns }] },
+      animate: true,
+      staticGrid: !this.editMode,
+      removable: false,
+      resizable: { handles: 'se' },
+    }, this.gridEl);
+
+    // Load items
+    this.suppressChange = true;
+    this.gridStack.load(items);
+    this.suppressChange = false;
+
+    // Wire up block Component lifecycle after DOM is created
+    for (const instance of blocks) {
+      const gsEl = this.gridEl.querySelector(`[gs-id="${instance.id}"]`) as HTMLElement | null;
+      if (!gsEl) continue;
+
+      const contentEl = gsEl.querySelector('.block-content') as HTMLElement | null;
+      const headerZone = gsEl.querySelector('.block-header-zone') as HTMLElement | null;
+      if (!contentEl || !headerZone) continue;
+
+      const factory = BlockRegistry.get(instance.type);
+      if (!factory) continue;
+
+      const block = factory.create(this.app, instance, this.plugin);
+      block.setHeaderContainer(headerZone);
+      block.load();
+      const result = block.render(contentEl);
+      if (result instanceof Promise) {
+        result.catch(e => {
+          console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
+          contentEl.setText('Error rendering block. Check console for details.');
+        });
+      }
+
+      const wrapper = gsEl.querySelector('.homepage-block-wrapper') as HTMLElement;
+      this.blocks.set(instance.id, { block, wrapper: wrapper ?? gsEl });
+
+      // Collapse toggle
+      this.setupCollapseToggle(gsEl, instance, headerZone);
+
+      // Edit handles
+      if (this.editMode) {
+        this.attachEditHandles(wrapper ?? gsEl, instance);
+      }
     }
 
-    const wrapper = this.gridEl.createDiv({ cls: 'homepage-block-wrapper' });
-    wrapper.dataset.blockId = instance.id;
-    wrapper.setAttribute('role', 'listitem');
-    this.applyGridPosition(wrapper, instance);
-    // Inline animation delay — immune to interleaved sentinel divs skewing nth-child counts
-    if (blockIndex !== undefined) {
-      const DELAYS = [0, 50, 100, 140, 170, 195, 215, 230];
-      wrapper.style.animationDelay = `${DELAYS[blockIndex] ?? 240}ms`;
+    // Listen for GridStack changes (drag/resize) to persist layout
+    this.gridStack.on('change', (_event: Event, nodes: GridStackNode[]) => {
+      if (this.suppressChange) return;
+      this.syncLayoutFromGrid();
+    });
+
+    // Scroll to newly added block
+    if (this.lastAddedBlockId) {
+      const targetId = this.lastAddedBlockId;
+      this.lastAddedBlockId = null;
+      const el = this.gridEl.querySelector(`[gs-id="${targetId}"]`) as HTMLElement | null;
+      if (el) {
+        el.querySelector('.homepage-block-wrapper')?.addClass('block-just-added');
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
     }
+  }
 
-    if (this.editMode) {
-      this.attachEditHandles(wrapper, instance);
-    }
+  /** Build the inner HTML string for a GridStack widget. */
+  private buildBlockContent(instance: BlockInstance, blockIndex?: number): string {
+    const collapsed = instance.collapsed ? ' block-collapsed' : '';
+    const chevronCollapsed = instance.collapsed ? ' is-collapsed' : '';
+    const animDelay = blockIndex !== undefined
+      ? ` style="animation-delay: ${[0, 50, 100, 140, 170, 195, 215, 230][blockIndex] ?? 240}ms"`
+      : '';
 
-    // Header zone — always visible; houses title + collapse chevron
-    const headerZone = wrapper.createDiv({ cls: 'block-header-zone' });
-    headerZone.setAttribute('role', 'button');
-    headerZone.setAttribute('tabindex', '0');
-    headerZone.setAttribute('aria-expanded', String(!instance.collapsed));
-    const chevron = headerZone.createSpan({ cls: 'block-collapse-chevron' });
-    chevron.setAttribute('aria-hidden', 'true');
+    return `<div class="homepage-block-wrapper${collapsed}" data-block-id="${instance.id}"${animDelay}>
+      <div class="block-header-zone" role="button" tabindex="0" aria-expanded="${!instance.collapsed}">
+        <span class="block-collapse-chevron${chevronCollapsed}" aria-hidden="true"></span>
+      </div>
+      <div class="block-content"></div>
+    </div>`;
+  }
 
-    const contentEl = wrapper.createDiv({ cls: 'block-content' });
-    const block = factory.create(this.app, instance, this.plugin);
-    block.setHeaderContainer(headerZone);
-    block.load();
-    const result = block.render(contentEl);
-    if (result instanceof Promise) {
-      result.catch(e => {
-        console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
-        contentEl.setText('Error rendering block. Check console for details.');
-      });
-    }
-
-    if (instance.collapsed) wrapper.addClass('block-collapsed');
+  private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {
+    const wrapper = gsEl.querySelector('.homepage-block-wrapper') as HTMLElement;
+    const chevron = headerZone.querySelector('.block-collapse-chevron') as HTMLElement;
+    if (!wrapper || !chevron) return;
 
     const toggleCollapse = (e: Event) => {
       e.stopPropagation();
-      if (this.editMode) return; // edit mode: handle bar owns interaction
+      if (this.editMode) return;
       const isNowCollapsed = !wrapper.hasClass('block-collapsed');
       wrapper.toggleClass('block-collapsed', isNowCollapsed);
       chevron.toggleClass('is-collapsed', isNowCollapsed);
@@ -156,22 +196,6 @@ export class GridLayout {
     headerZone.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(e); }
     });
-
-    if (instance.collapsed) chevron.addClass('is-collapsed');
-
-    this.blocks.set(instance.id, { block, wrapper });
-  }
-
-  private rowMinHeight(rowSpan: number): string {
-    if (rowSpan <= 1) return '';
-    return `calc(var(--hp-row-unit, 200px) * ${rowSpan} + var(--hp-gap, 16px) * ${rowSpan - 1})`;
-  }
-
-  private applyGridPosition(wrapper: HTMLElement, instance: BlockInstance): void {
-    const cols = this.effectiveColumns;
-    const colSpan = Math.min(instance.colSpan, cols);
-    wrapper.style.gridColumn = `span ${colSpan}`;
-    wrapper.style.minHeight = this.rowMinHeight(instance.rowSpan);
   }
 
   private attachEditHandles(wrapper: HTMLElement, instance: BlockInstance): void {
@@ -189,9 +213,9 @@ export class GridLayout {
       e.stopPropagation();
       const entry = this.blocks.get(instance.id);
       if (!entry) return;
-      const onSave = (config: Record<string, unknown>, newRow: boolean | undefined) => {
+      const onSave = (config: Record<string, unknown>) => {
         const newBlocks = this.plugin.layout.blocks.map(b =>
-          b.id === instance.id ? { ...b, config, newRow } : b,
+          b.id === instance.id ? { ...b, config } : b,
         );
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
         this.rerender();
@@ -205,9 +229,26 @@ export class GridLayout {
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       new RemoveBlockConfirmModal(this.app, () => {
+        // Remove from GridStack
+        const gsItem = this.gridEl.querySelector(`[gs-id="${instance.id}"]`) as HTMLElement | null;
+        if (gsItem && this.gridStack) {
+          this.suppressChange = true;
+          this.gridStack.removeWidget(gsItem);
+          this.suppressChange = false;
+        }
+        // Unload block component
+        const entry = this.blocks.get(instance.id);
+        if (entry) {
+          entry.block.unload();
+          this.blocks.delete(instance.id);
+        }
+        // Update persisted layout
         const newBlocks = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-        this.rerender();
+        // If no blocks left, show empty state
+        if (newBlocks.length === 0) {
+          this.rerender();
+        }
       }).open();
     });
 
@@ -238,260 +279,56 @@ export class GridLayout {
       this.rerender();
     });
 
-    const grip = wrapper.createDiv({ cls: 'block-resize-grip' });
-    setIcon(grip, 'maximize-2');
-    grip.setAttribute('aria-label', 'Drag to resize');
-    grip.setAttribute('title', 'Drag to resize');
-    this.attachResizeHandler(grip, wrapper, instance);
-
-    this.attachDragHandler(handle, wrapper, instance);
+    // Insert handle bar before header zone
+    const headerZone = wrapper.querySelector('.block-header-zone');
+    if (headerZone) {
+      wrapper.insertBefore(bar, headerZone);
+    }
   }
 
-  private attachDragHandler(handle: HTMLElement, wrapper: HTMLElement, instance: BlockInstance): void {
-    handle.addEventListener('mousedown', (e: MouseEvent) => {
-      e.preventDefault();
+  /** Read current positions from GridStack nodes and persist to layout. */
+  private syncLayoutFromGrid(): void {
+    if (!this.gridStack) return;
+    const nodes = this.gridStack.getGridItems();
+    const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
 
-      this.activeAbortController?.abort();
-      const ac = new AbortController();
-      this.activeAbortController = ac;
-
-      // Clone: position via GPU-composited transform (no layout recalc on every mousemove)
-      const clone = wrapper.cloneNode(true) as HTMLElement;
-      clone.addClass('block-drag-clone');
-      clone.style.width = `${wrapper.offsetWidth}px`;
-      clone.style.height = `${wrapper.offsetHeight}px`;
-      clone.style.position = 'fixed';
-      clone.style.left = '0';
-      clone.style.top = '0';
-      clone.style.pointerEvents = 'none';
-      const cloneOffsetX = wrapper.offsetWidth / 2;
-      clone.style.transform = `translate(${e.clientX - cloneOffsetX}px, ${e.clientY - 20}px) rotate(1.5deg) scale(1.03)`;
-      clone.querySelectorAll<HTMLElement>('button,input,a,[contenteditable]')
-        .forEach(el => { el.setAttribute('tabindex', '-1'); el.style.pointerEvents = 'none'; });
-      const themed = (this.gridEl.closest('.app-container') ?? document.body) as HTMLElement;
-      themed.appendChild(clone);
-      this.activeClone = clone;
-
-      // Placeholder — instant DOM insertion, no opacity animation (prevents strobe on fast moves)
-      const placeholder = document.createElement('div');
-      placeholder.addClass('block-drag-placeholder');
-      placeholder.style.gridColumn = wrapper.style.gridColumn;
-      placeholder.style.height = `${wrapper.offsetHeight}px`;
-      wrapper.insertAdjacentElement('afterend', placeholder);
-
-      const sourceId = instance.id;
-      wrapper.addClass('block-dragging');
-      document.body.addClass('is-dragging-block');
-
-      let lastInsertBeforeId: string | null = null;
-      let lastNewRow = false;
-      let pendingX = e.clientX;
-      let pendingY = e.clientY;
-      let rafId: number | null = null;
-
-      const getLiveRects = (): Map<string, DOMRect> => {
-        const rects = new Map<string, DOMRect>();
-        for (const [id, { wrapper: w }] of this.blocks) {
-          if (id !== sourceId) rects.set(id, w.getBoundingClientRect());
-        }
-        return rects;
-      };
-
-      const movePlaceholder = (insertBeforeId: string | null, newRow: boolean) => {
-        if (insertBeforeId === lastInsertBeforeId && newRow === lastNewRow) return;
-        lastInsertBeforeId = insertBeforeId;
-        lastNewRow = newRow;
-        placeholder.remove();
-        placeholder.toggleClass('block-drag-placeholder--new-row', newRow);
-        if (newRow) {
-          placeholder.style.gridColumn = '1 / -1';
-          placeholder.style.height = '48px';
-        } else {
-          placeholder.style.gridColumn = wrapper.style.gridColumn;
-          placeholder.style.height = `${wrapper.offsetHeight}px`;
-        }
-        if (insertBeforeId) {
-          const targetWrapper = this.blocks.get(insertBeforeId)?.wrapper;
-          if (targetWrapper) {
-            this.gridEl.insertBefore(placeholder, targetWrapper);
-          } else {
-            this.gridEl.appendChild(placeholder);
-          }
-        } else {
-          this.gridEl.appendChild(placeholder);
-        }
-      };
-
-      // rAF-throttled frame: batches clone move + placeholder update into one paint cycle
-      const processFrame = () => {
-        rafId = null;
-        clone.style.transform = `translate(${pendingX - cloneOffsetX}px, ${pendingY - 20}px) rotate(1.5deg) scale(1.03)`;
-        const pt = this.findInsertionPointCached(pendingX, pendingY, sourceId, getLiveRects());
-        movePlaceholder(pt.insertBeforeId, pt.newRow);
-      };
-
-      const onMouseMove = (me: MouseEvent) => {
-        pendingX = me.clientX;
-        pendingY = me.clientY;
-        if (rafId === null) rafId = requestAnimationFrame(processFrame);
-      };
-
-      const onMouseUp = (me: MouseEvent) => {
-        ac.abort();
-        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-        this.activeAbortController = null;
-        clone.remove();
-        this.activeClone = null;
-        placeholder.remove();
-        wrapper.removeClass('block-dragging');
-        document.body.removeClass('is-dragging-block');
-
-        const pt = this.findInsertionPointCached(me.clientX, me.clientY, sourceId, getLiveRects());
-        this.reorderBlock(sourceId, pt.insertBeforeId, pt.newRow);
-
-        // Drop confirmation flash on the landed wrapper
-        const landedEntry = this.blocks.get(sourceId);
-        if (landedEntry) {
-          landedEntry.wrapper.addClass('block-drop-landed');
-          setTimeout(() => landedEntry.wrapper.removeClass('block-drop-landed'), 450);
-        }
-      };
-
-      document.addEventListener('mousemove', onMouseMove, { signal: ac.signal });
-      document.addEventListener('mouseup', onMouseUp, { signal: ac.signal });
-    });
-  }
-
-  private attachResizeHandler(grip: HTMLElement, wrapper: HTMLElement, instance: BlockInstance): void {
-    grip.addEventListener('mousedown', (e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      this.activeAbortController?.abort();
-      const ac = new AbortController();
-      this.activeAbortController = ac;
-
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startColSpan = instance.colSpan;
-      const startRowSpan = instance.rowSpan;
-      const columns = this.effectiveColumns;
-      const colWidth = this.gridEl.offsetWidth / columns;
-      const rowUnitPx =
-        Math.max(50, parseFloat(
-          getComputedStyle(this.gridEl).getPropertyValue('--hp-row-unit').trim(),
-        ) || 200);
-      let currentColSpan = startColSpan;
-      let currentRowSpan = startRowSpan;
-
-      const onMouseMove = (me: MouseEvent) => {
-        const deltaX = me.clientX - startX;
-        const deltaY = me.clientY - startY;
-        const deltaCols = Math.round(deltaX / colWidth);
-        const deltaRows = Math.round(deltaY / rowUnitPx);
-        currentColSpan = Math.max(1, Math.min(columns, startColSpan + deltaCols));
-        currentRowSpan = Math.max(1, Math.min(MAX_ROW_SPAN, startRowSpan + deltaRows));
-        wrapper.style.gridColumn = `span ${currentColSpan}`;
-        wrapper.style.minHeight = this.rowMinHeight(currentRowSpan);
-      };
-
-      const onMouseUp = () => {
-        ac.abort();
-        this.activeAbortController = null;
-
-        const newBlocks = this.plugin.layout.blocks.map(b =>
-          b.id === instance.id ? { ...b, colSpan: currentColSpan, rowSpan: currentRowSpan } : b,
-        );
-        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-        this.rerender();
-      };
-
-      document.addEventListener('mousemove', onMouseMove, { signal: ac.signal });
-      document.addEventListener('mouseup', onMouseUp, { signal: ac.signal });
-    });
-  }
-
-  private findInsertionPointCached(
-    x: number,
-    y: number,
-    excludeId: string,
-    rects: Map<string, DOMRect>,
-  ): { insertBeforeId: string | null; newRow: boolean } {
-    let bestTargetId: string | null = null;
-    let bestDist = Infinity;
-    let bestInsertBefore = true;
-    let bestNewRow = false;
-
-    for (const [id, rect] of rects) {
-      if (id === excludeId) continue;
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-
-      // If cursor is directly over this card, use horizontal position only (no new-row)
-      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
-        const insertBefore = x < cx;
-        return { insertBeforeId: insertBefore ? id : this.nextBlockId(id), newRow: false };
-      }
-
-      const dist = Math.hypot(x - cx, y - cy);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestTargetId = id;
-        bestInsertBefore = x < cx;
-        bestNewRow = y > cy + rect.height / 4; // only flag newRow if clearly below center
+    for (const el of nodes) {
+      const node = (el as GridStackWidget & { gridstackNode?: GridStackNode }).gridstackNode;
+      const id = el.getAttribute('gs-id');
+      if (id && node) {
+        posMap.set(id, {
+          x: node.x ?? 0,
+          y: node.y ?? 0,
+          w: node.w ?? 1,
+          h: node.h ?? 1,
+        });
       }
     }
 
-    if (!bestTargetId) return { insertBeforeId: null, newRow: false };
-    return {
-      insertBeforeId: bestInsertBefore ? bestTargetId : this.nextBlockId(bestTargetId),
-      newRow: bestNewRow,
-    };
-  }
+    const newBlocks = this.plugin.layout.blocks.map(b => {
+      const pos = posMap.get(b.id);
+      if (pos) {
+        return { ...b, ...pos };
+      }
+      return b;
+    });
 
-  private nextBlockId(id: string): string | null {
-    const blocks = this.plugin.layout.blocks;
-    const idx = blocks.findIndex(b => b.id === id);
-    return idx >= 0 && idx < blocks.length - 1 ? blocks[idx + 1].id : null;
-  }
-
-  /** Remove the dragged block from its current position and insert it before insertBeforeId (null = append). */
-  private reorderBlock(draggedId: string, insertBeforeId: string | null, newRow: boolean): void {
-    const blocks = this.plugin.layout.blocks;
-    const dragged = blocks.find(b => b.id === draggedId);
-    if (!dragged) return;
-
-    const withoutDragged = blocks.filter(b => b.id !== draggedId);
-    const insertAt = insertBeforeId
-      ? withoutDragged.findIndex(b => b.id === insertBeforeId)
-      : withoutDragged.length;
-
-    // No-op if effectively same position and newRow flag unchanged
-    const originalIdx = blocks.findIndex(b => b.id === draggedId);
-    const resolvedAt = insertAt === -1 ? withoutDragged.length : insertAt;
-    const samePosition = resolvedAt === originalIdx || resolvedAt === originalIdx + 1;
-    if (samePosition && !!dragged.newRow === newRow) return;
-
-    const draggedWithRow = newRow ? { ...dragged, newRow: true as const } : { ...dragged, newRow: undefined };
-    const newBlocks = [
-      ...withoutDragged.slice(0, resolvedAt),
-      draggedWithRow,
-      ...withoutDragged.slice(resolvedAt),
-    ];
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-    this.rerender();
   }
 
   setEditMode(enabled: boolean): void {
     this.editMode = enabled;
+    if (this.gridStack) {
+      this.gridStack.setStatic(!enabled);
+    }
     this.rerender();
   }
 
-  /** Update column count, clamping each block's colSpan to fit. */
+  /** Update column count, clamping each block's w to fit. */
   setColumns(n: number): void {
     const newBlocks = this.plugin.layout.blocks.map(b => ({
       ...b,
-      colSpan: Math.min(b.colSpan, n),
+      w: Math.min(b.w, n),
     }));
     this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
     this.rerender();
@@ -505,43 +342,26 @@ export class GridLayout {
   }
 
   private rerender(): void {
-    const focused = document.activeElement;
-    const focusedBlockId = (focused?.closest('[data-block-id]') as HTMLElement | null)?.dataset.blockId;
-    const scrollTargetId = this.lastAddedBlockId;
-    this.lastAddedBlockId = null;
-
     this.render(this.plugin.layout.blocks, this.plugin.layout.columns);
-
-    if (scrollTargetId) {
-      const entry = this.blocks.get(scrollTargetId);
-      if (entry) {
-        entry.wrapper.addClass('block-just-added');
-        entry.wrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    } else if (focusedBlockId) {
-      const el = this.gridEl.querySelector<HTMLElement>(`[data-block-id="${focusedBlockId}"]`);
-      el?.focus();
-    }
   }
 
-  /** Unload all blocks and cancel any in-progress drag/resize. */
+  /** Unload all blocks and destroy GridStack instance. */
   destroyAll(): void {
-    this.activeAbortController?.abort();
-    this.activeAbortController = null;
-    this.activeClone?.remove();
-    this.activeClone = null;
-    document.body.removeClass('is-dragging-block');
-
     for (const { block } of this.blocks.values()) {
       block.unload();
     }
     this.blocks.clear();
+
+    if (this.gridStack) {
+      this.gridStack.removeAll(false);
+      this.gridStack.destroy(false);
+      this.gridStack = null;
+    }
+    this.gridEl.empty();
   }
 
   /** Full teardown: unload blocks and remove the grid element from the DOM. */
   destroy(): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
     this.destroyAll();
     this.gridEl.remove();
   }
@@ -625,7 +445,7 @@ class BlockSettingsModal extends Modal {
     app: App,
     private instance: BlockInstance,
     private block: BaseBlock,
-    private onSave: (config: Record<string, unknown>, newRow: boolean | undefined) => void,
+    private onSave: (config: Record<string, unknown>) => void,
   ) {
     super(app);
   }
@@ -722,19 +542,10 @@ class BlockSettingsModal extends Modal {
          .onChange(v => { draft._hideTitle = v; }),
       );
 
-    let draftNewRow = this.instance.newRow === true;
-    new Setting(contentEl)
-      .setName('Start on new row')
-      .setDesc('Force this block to begin on a new row.')
-      .addToggle(t =>
-        t.setValue(draftNewRow)
-         .onChange(v => { draftNewRow = v; }),
-      );
-
     new Setting(contentEl)
       .addButton(btn =>
         btn.setButtonText('Save').setCta().onClick(() => {
-          this.onSave(draft, draftNewRow || undefined);
+          this.onSave(draft);
           this.close();
         }),
       )
@@ -754,7 +565,7 @@ class BlockSettingsModal extends Modal {
       .addButton(btn =>
         btn.setButtonText('Configure block...').onClick(() => {
           this.close();
-          this.block.openSettings(() => this.onSave(this.instance.config, this.instance.newRow));
+          this.block.openSettings(() => this.onSave(this.instance.config));
         }),
       );
   }

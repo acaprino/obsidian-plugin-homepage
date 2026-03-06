@@ -87,6 +87,8 @@ export class GridLayout {
       y: instance.y,
       w: Math.min(instance.w, columns),
       h: instance.h,
+      // Let GridStack manage height for blocks that need to fit all content
+      ...(!this.editMode && this.shouldAutoHeight(instance) ? { sizeToContent: true } : {}),
     }));
 
     this.columns = columns;
@@ -100,7 +102,9 @@ export class GridLayout {
       staticGrid: !this.editMode,
       removable: false,
       handleClass: 'block-move-handle',
-      resizable: { handles: 'e, se, s' },
+      // Horizontal-only resize in edit mode (vertical managed by sizeToContent / GridStack rows).
+      // In view mode, staticGrid disables all interaction so handles are irrelevant.
+      resizable: { handles: 'e' },
     }, this.gridEl);
 
     this.gridStack.load(items);
@@ -137,10 +141,14 @@ export class GridLayout {
         block.load();
         const result = block.render(contentEl);
         if (result instanceof Promise) {
-          result.catch(e => {
-            console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
-            contentEl.setText('Error rendering block. Check console for details.');
-          });
+          // After async render, tell GridStack to re-measure auto-height blocks
+          const needsResize = this.shouldAutoHeight(instance);
+          result
+            .then(() => { if (needsResize && this.gridStack) this.gridStack.resizeToContent(gsEl); })
+            .catch(e => {
+              console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
+              contentEl.setText('Error rendering block. Check console for details.');
+            });
         }
         this.blocks.set(instance.id, { block, wrapper });
       }
@@ -221,6 +229,16 @@ export class GridLayout {
     const info = contentEl.createDiv({ cls: 'block-compact-info' });
     info.createSpan({ cls: 'block-compact-type', text: instance.type });
     info.createSpan({ cls: 'block-compact-size', text: `${instance.w}\u00D7${instance.h}` });
+  }
+
+  /** Determine if a block should auto-expand beyond its grid cell height. */
+  private shouldAutoHeight(instance: BlockInstance): boolean {
+    const hm = instance.config.heightMode;
+    const heightMode = typeof hm === 'string' ? hm : '';
+    if (instance.type === 'image-gallery') return true;
+    if (instance.type === 'quotes-list' && heightMode === 'extend') return true;
+    if (instance.type === 'embedded-note' && heightMode === 'grow') return true;
+    return false;
   }
 
   private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {

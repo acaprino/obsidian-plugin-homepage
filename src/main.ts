@@ -1,6 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from './HomepageView';
-import { BlockInstance, BlockType, LayoutConfig, IHomepagePlugin } from './types';
+import { BLOCK_TYPES, BlockInstance, BlockType, LayoutConfig, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
@@ -20,50 +20,50 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   columns: 3,
   openOnStartup: false,
   blocks: [
-    // Row 0
+    // Row 0 (y: 0–2)
     {
       id: 'default-static-text',
       type: 'static-text',
-      x: 0, y: 0, w: 1, h: 1,
+      x: 0, y: 0, w: 1, h: 3,
       config: { title: '', content: '' },
     },
     {
       id: 'default-clock',
       type: 'clock',
-      x: 1, y: 0, w: 1, h: 1,
+      x: 1, y: 0, w: 1, h: 3,
       config: { showSeconds: false, showDate: true },
     },
     {
       id: 'default-folder-links',
       type: 'folder-links',
-      x: 2, y: 0, w: 1, h: 1,
+      x: 2, y: 0, w: 1, h: 3,
       config: { title: 'Quick Links', links: [] },
     },
-    // Row 1
+    // Row 1 (y: 3–5)
     {
       id: 'default-insight',
       type: 'insight',
-      x: 0, y: 1, w: 2, h: 1,
+      x: 0, y: 3, w: 2, h: 3,
       config: { tag: '', title: 'Daily Insight', dailySeed: true },
     },
     {
       id: 'default-tag-grid',
       type: 'tag-grid',
-      x: 2, y: 1, w: 1, h: 2,
+      x: 2, y: 3, w: 1, h: 5,
       config: { title: 'Values', columns: 2, items: [] },
     },
-    // Row 2
+    // Row 2 (y: 6–8)
     {
       id: 'default-quotes',
       type: 'quotes-list',
-      x: 0, y: 2, w: 2, h: 1,
+      x: 0, y: 6, w: 2, h: 3,
       config: { tag: '', title: 'Quotes', columns: 2, maxItems: 20 },
     },
-    // Row 3
+    // Row 3 (y: 9–11)
     {
       id: 'default-gallery',
       type: 'image-gallery',
-      x: 0, y: 3, w: 3, h: 1,
+      x: 0, y: 9, w: 3, h: 3,
       config: { folder: '', title: 'Gallery', columns: 3, maxItems: 20 },
     },
   ],
@@ -76,34 +76,30 @@ function getDefaultLayout(): LayoutConfig {
 
 // ── Layout validation / migration ───────────────────────────────────────────
 
-const VALID_BLOCK_TYPES = new Set<string>([
-  'greeting', 'folder-links', 'insight', 'tag-grid',
-  'quotes-list', 'image-gallery', 'clock', 'embedded-note',
-  'static-text', 'html',
-]);
+const VALID_BLOCK_TYPES = new Set<string>(BLOCK_TYPES);
+
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+const MAX_BLOCKS = 100;
 
 function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknown> {
-  // Migrate old col/row/colSpan/rowSpan to x/y/w/h
-  if (typeof b.col === 'number' && b.x === undefined) {
-    b.x = b.col - 1; // old format was 1-indexed
-  }
-  if (typeof b.row === 'number' && b.y === undefined) {
-    b.y = b.row - 1; // old format was 1-indexed
-  }
-  if (typeof b.colSpan === 'number' && b.w === undefined) {
-    b.w = b.colSpan;
-  }
-  if (typeof b.rowSpan === 'number' && b.h === undefined) {
-    b.h = b.rowSpan;
-  }
-  return b;
+  const m = { ...b };
+  if (typeof m.col === 'number') { m.x = m.col - 1; }
+  if (typeof m.row === 'number') { m.y = m.row - 1; }
+  if (typeof m.colSpan === 'number') { m.w = m.colSpan; }
+  if (typeof m.rowSpan === 'number') { m.h = m.rowSpan; }
+  delete m.col;
+  delete m.row;
+  delete m.colSpan;
+  delete m.rowSpan;
+  delete m.newRow;
+  return m;
 }
 
 function isValidBlockInstance(b: unknown): b is BlockInstance {
   if (!b || typeof b !== 'object') return false;
-  const block = migrateBlockInstance(b as Record<string, unknown>);
+  const block = b as Record<string, unknown>;
   return (
-    typeof block.id === 'string' &&
+    typeof block.id === 'string' && SAFE_ID_RE.test(block.id) &&
     typeof block.type === 'string' && VALID_BLOCK_TYPES.has(block.type) &&
     typeof block.x === 'number' && block.x >= 0 &&
     typeof block.y === 'number' && block.y >= 0 &&
@@ -129,11 +125,11 @@ function validateLayout(raw: unknown): LayoutConfig {
   const openOnStartup = typeof r.openOnStartup === 'boolean'
     ? r.openOnStartup
     : defaults.openOnStartup;
-  const rawBlocks = Array.isArray(r.blocks)
-    ? r.blocks.filter(isValidBlockInstance)
+  const rawBlocks: BlockInstance[] = Array.isArray(r.blocks)
+    ? (r.blocks.map(b => migrateBlockInstance(b as Record<string, unknown>)) as unknown[]).filter(isValidBlockInstance).slice(0, MAX_BLOCKS)
     : defaults.blocks;
   // Clamp x/w to fit within the column count (fixes stale 12-column GridStack data)
-  const blocks = rawBlocks.map(b => ({
+  const blocks: BlockInstance[] = rawBlocks.map(b => ({
     ...b,
     w: Math.min(b.w, columns),
     x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
@@ -151,7 +147,7 @@ function registerBlocks(): void {
     type: 'greeting',
     displayName: 'Greeting',
     defaultConfig: { name: 'World', showTime: true },
-    defaultSize: { w: 1, h: 1 },
+    defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new GreetingBlock(app, instance, plugin),
   });
 
@@ -159,7 +155,7 @@ function registerBlocks(): void {
     type: 'clock',
     displayName: 'Clock / Date',
     defaultConfig: { showSeconds: false, showDate: true },
-    defaultSize: { w: 1, h: 1 },
+    defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new ClockBlock(app, instance, plugin),
   });
 
@@ -167,7 +163,7 @@ function registerBlocks(): void {
     type: 'folder-links',
     displayName: 'Quick Links',
     defaultConfig: { title: 'Quick Links', folder: '', links: [] },
-    defaultSize: { w: 1, h: 1 },
+    defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),
   });
 
@@ -175,7 +171,7 @@ function registerBlocks(): void {
     type: 'insight',
     displayName: 'Daily Insight',
     defaultConfig: { tag: '', title: 'Daily Insight', dailySeed: true },
-    defaultSize: { w: 2, h: 1 },
+    defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new InsightBlock(app, instance, plugin),
   });
 
@@ -183,7 +179,7 @@ function registerBlocks(): void {
     type: 'tag-grid',
     displayName: 'Values',
     defaultConfig: { title: 'Values', columns: 2, items: [] },
-    defaultSize: { w: 1, h: 2 },
+    defaultSize: { w: 1, h: 5 },
     create: (app, instance, plugin) => new TagGridBlock(app, instance, plugin),
   });
 
@@ -191,7 +187,7 @@ function registerBlocks(): void {
     type: 'quotes-list',
     displayName: 'Quotes List',
     defaultConfig: { tag: '', title: 'Quotes', columns: 2, maxItems: 20 },
-    defaultSize: { w: 2, h: 1 },
+    defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
   });
 
@@ -199,7 +195,7 @@ function registerBlocks(): void {
     type: 'image-gallery',
     displayName: 'Image Gallery',
     defaultConfig: { folder: '', title: 'Gallery', columns: 3, maxItems: 20 },
-    defaultSize: { w: 3, h: 1 },
+    defaultSize: { w: 3, h: 3 },
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin),
   });
 
@@ -207,7 +203,7 @@ function registerBlocks(): void {
     type: 'embedded-note',
     displayName: 'Embedded Note',
     defaultConfig: { filePath: '', showTitle: true },
-    defaultSize: { w: 1, h: 1 },
+    defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new EmbeddedNoteBlock(app, instance, plugin),
   });
 
@@ -215,7 +211,7 @@ function registerBlocks(): void {
     type: 'static-text',
     displayName: 'Static Text',
     defaultConfig: { title: '', content: '' },
-    defaultSize: { w: 1, h: 1 },
+    defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new StaticTextBlock(app, instance, plugin),
   });
 
@@ -223,7 +219,7 @@ function registerBlocks(): void {
     type: 'html',
     displayName: 'HTML Block',
     defaultConfig: { title: '', html: '' },
-    defaultSize: { w: 1, h: 1 },
+    defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new HtmlBlock(app, instance, plugin),
   });
 }
@@ -238,6 +234,8 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
     const raw = await this.loadData() as unknown;
     this.layout = validateLayout(raw);
+    // Persist cleaned layout to remove old-format properties and fix corruption
+    await this.saveData(this.layout);
 
     this.registerView(VIEW_TYPE, (leaf) => new HomepageView(leaf, this));
 
@@ -271,7 +269,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     });
   }
 
-  async onunload(): Promise<void> {
+  onunload(): void {
     this.app.workspace.detachLeavesOfType(VIEW_TYPE);
   }
 
@@ -312,8 +310,7 @@ class HomepageSettingTab extends PluginSettingTab {
         toggle
           .setValue(this.plugin.layout.openOnStartup)
           .onChange(async (value) => {
-            this.plugin.layout.openOnStartup = value;
-            await this.plugin.saveLayout(this.plugin.layout);
+            await this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value });
           }),
       );
 
@@ -327,8 +324,7 @@ class HomepageSettingTab extends PluginSettingTab {
           .addOption('4', '4 columns')
           .setValue(String(this.plugin.layout.columns))
           .onChange(async (value) => {
-            this.plugin.layout.columns = Number(value);
-            await this.plugin.saveLayout(this.plugin.layout);
+            await this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
           }),
       );
 

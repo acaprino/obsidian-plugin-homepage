@@ -21,7 +21,8 @@ export class TagGridBlock extends BaseBlock {
     this.renderHeader(el, title);
 
     const grid = el.createDiv({ cls: 'tag-grid' });
-    grid.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+    const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 2)));
+    grid.style.gridTemplateColumns = `repeat(${safeCols}, 1fr)`;
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });
@@ -46,11 +47,8 @@ export class TagGridBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: () => void): void {
-    new ValuesSettingsModal(this.app, this.instance.config, (cfg) => {
-      this.instance.config = cfg;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new ValuesSettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 

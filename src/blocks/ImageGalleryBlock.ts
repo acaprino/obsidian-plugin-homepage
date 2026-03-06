@@ -78,7 +78,8 @@ export class ImageGalleryBlock extends BaseBlock {
       ro.observe(gallery);
       this.register(() => ro.disconnect());
     } else {
-      gallery.style.gridTemplateColumns = `repeat(auto-fill, minmax(max(70px, calc(100% / ${columns})), 1fr))`;
+      const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
+      gallery.style.gridTemplateColumns = `repeat(auto-fill, minmax(max(70px, calc(100% / ${safeCols})), 1fr))`;
     }
 
     if (!folder) {
@@ -149,11 +150,8 @@ export class ImageGalleryBlock extends BaseBlock {
     return files;
   }
 
-  openSettings(onSave: () => void): void {
-    new ImageGallerySettingsModal(this.app, this.instance.config, (cfg) => {
-      this.instance.config = cfg;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new ImageGallerySettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 
@@ -208,7 +206,7 @@ class ImageGallerySettingsModal extends Modal {
     );
     new Setting(contentEl).setName('Max items').addText(t =>
       t.setValue(String(draft.maxItems ?? 20))
-       .onChange(v => { draft.maxItems = parseInt(v) || 20; }),
+       .onChange(v => { draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200); }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {

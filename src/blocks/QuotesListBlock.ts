@@ -147,11 +147,8 @@ export class QuotesListBlock extends BaseBlock {
     return lines.slice(0, 3).join(' ');
   }
 
-  openSettings(onSave: () => void): void {
-    new QuotesSettingsModal(this.app, this.instance.config, (cfg) => {
-      this.instance.config = cfg;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new QuotesSettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 
@@ -236,7 +233,7 @@ class QuotesSettingsModal extends Modal {
       );
     new Setting(contentEl).setName('Max items').addText(t =>
       t.setValue(String(draft.maxItems ?? 20))
-       .onChange(v => { draft.maxItems = parseInt(v) || 20; }),
+       .onChange(v => { draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200); }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {

@@ -41,11 +41,8 @@ export class GreetingBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: () => void): void {
-    new GreetingSettingsModal(this.app, this.instance.config, (newConfig) => {
-      this.instance.config = newConfig;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new GreetingSettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 

@@ -9,14 +9,14 @@ type LayoutChangeCallback = (layout: LayoutConfig) => void;
 export class GridLayout {
   private gridEl: HTMLElement;
   private gridStack: GridStack | null = null;
-  private blocks = new Map<string, { block: BaseBlock; wrapper: HTMLElement }>();
+  private blocks = new Map<string, { block: BaseBlock | null; wrapper: HTMLElement }>();
+  private animTimer: ReturnType<typeof setTimeout> | null = null;
   private editMode = false;
+  private columns = 3;
   /** Callback to trigger the Add Block modal from the empty state CTA. */
   onRequestAddBlock: (() => void) | null = null;
   /** ID of the most recently added block — used for scroll-into-view. */
   private lastAddedBlockId: string | null = null;
-  /** Suppress change events during programmatic updates. */
-  private suppressChange = false;
 
   constructor(
     containerEl: HTMLElement,
@@ -40,7 +40,11 @@ export class GridLayout {
 
     if (isInitial) {
       this.gridEl.addClass('homepage-grid--animating');
-      setTimeout(() => this.gridEl.removeClass('homepage-grid--animating'), 500);
+      if (this.animTimer) clearTimeout(this.animTimer);
+      this.animTimer = setTimeout(() => {
+        this.animTimer = null;
+        this.gridEl.removeClass('homepage-grid--animating');
+      }, 500);
     }
 
     if (this.editMode) {
@@ -85,29 +89,25 @@ export class GridLayout {
       h: instance.h,
     }));
 
+    this.columns = columns;
+
     this.gridStack = GridStack.init({
       column: columns,
-      cellHeight: 200,
+      cellHeight: this.editMode ? 40 : 80,
       margin: 8,
       float: true,
-      columnOpts: { breakpoints: [{ w: 0, c: columns }] },
       animate: true,
       staticGrid: !this.editMode,
       removable: false,
-      resizable: { handles: 'se' },
+      handleClass: 'block-move-handle',
+      resizable: { handles: 'e, se, s' },
     }, this.gridEl);
 
-    // Load items
-    this.suppressChange = true;
     this.gridStack.load(items);
-    this.suppressChange = false;
-
-    // Persist GridStack's auto-compacted positions so stale data gets corrected
-    this.syncLayoutFromGrid();
 
     // Wire up block Component lifecycle after DOM is created
     for (const [i, instance] of blocks.entries()) {
-      const gsEl = this.gridEl.querySelector(`[gs-id="${instance.id}"]`) as HTMLElement | null;
+      const gsEl = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`) as HTMLElement | null;
       if (!gsEl) continue;
 
       // ARIA: mark grid items as listitems to match parent role="list"
@@ -127,18 +127,23 @@ export class GridLayout {
       const factory = BlockRegistry.get(instance.type);
       if (!factory) continue;
 
-      const block = factory.create(this.app, instance, this.plugin);
-      block.setHeaderContainer(headerZone);
-      block.load();
-      const result = block.render(contentEl);
-      if (result instanceof Promise) {
-        result.catch(e => {
-          console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
-          contentEl.setText('Error rendering block. Check console for details.');
-        });
+      if (this.editMode) {
+        // Symbolic compact card — no content rendering for easy drag & drop
+        this.renderCompactPlaceholder(headerZone, contentEl, factory, instance);
+        this.blocks.set(instance.id, { block: null, wrapper });
+      } else {
+        const block = factory.create(this.app, instance, this.plugin);
+        block.setHeaderContainer(headerZone);
+        block.load();
+        const result = block.render(contentEl);
+        if (result instanceof Promise) {
+          result.catch(e => {
+            console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
+            contentEl.setText('Error rendering block. Check console for details.');
+          });
+        }
+        this.blocks.set(instance.id, { block, wrapper });
       }
-
-      this.blocks.set(instance.id, { block, wrapper });
 
       // Collapse toggle
       this.setupCollapseToggle(gsEl, instance, headerZone);
@@ -149,9 +154,17 @@ export class GridLayout {
       }
     }
 
-    // Listen for GridStack changes (drag/resize) to persist layout
-    this.gridStack.on('change', (_event: Event, _nodes: GridStackNode[]) => {
-      if (this.suppressChange) return;
+    // Temporarily disable float during drag so items push/swap
+    this.gridStack.on('dragstart', () => { this.gridStack?.float(false); });
+    this.gridStack.on('dragstop', () => {
+      this.gridStack?.float(true);
+      this.syncLayoutFromGrid();
+    });
+
+    // Temporarily disable float during resize so grid reflows correctly
+    this.gridStack.on('resizestart', () => { this.gridStack?.float(false); });
+    this.gridStack.on('resizestop', () => {
+      this.gridStack?.float(true);
       this.syncLayoutFromGrid();
     });
 
@@ -159,7 +172,7 @@ export class GridLayout {
     if (this.lastAddedBlockId) {
       const targetId = this.lastAddedBlockId;
       this.lastAddedBlockId = null;
-      const el = this.gridEl.querySelector(`[gs-id="${targetId}"]`) as HTMLElement | null;
+      const el = this.gridEl.querySelector(`[gs-id="${CSS.escape(targetId)}"]`) as HTMLElement | null;
       if (el) {
         el.querySelector('.homepage-block-wrapper')?.addClass('block-just-added');
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -186,6 +199,28 @@ export class GridLayout {
     });
     wrapper.createDiv({ cls: 'block-content' });
     return wrapper;
+  }
+
+  /** Render a lightweight symbolic placeholder for edit mode (no real block content). */
+  private renderCompactPlaceholder(
+    headerZone: HTMLElement,
+    contentEl: HTMLElement,
+    factory: { displayName: string },
+    instance: BlockInstance,
+  ): void {
+    // Show block type name in header zone
+    const titleLabel = typeof instance.config._titleLabel === 'string' && instance.config._titleLabel
+      ? instance.config._titleLabel
+      : factory.displayName;
+    const emoji = typeof instance.config._titleEmoji === 'string' ? instance.config._titleEmoji : '';
+    const header = headerZone.createDiv({ cls: 'block-header' });
+    if (emoji) header.createEl('em', { cls: 'block-header-emoji', text: emoji });
+    header.createSpan({ text: titleLabel });
+
+    // Compact info in content area
+    const info = contentEl.createDiv({ cls: 'block-compact-info' });
+    info.createSpan({ cls: 'block-compact-type', text: instance.type });
+    info.createSpan({ cls: 'block-compact-size', text: `${instance.w}\u00D7${instance.h}` });
   }
 
   private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {
@@ -272,7 +307,20 @@ export class GridLayout {
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
         this.rerender();
       };
-      new BlockSettingsModal(this.app, instance, entry.block, onSave).open();
+      // In edit mode blocks aren't instantiated — create a temporary one for settings
+      let tempBlock: BaseBlock | null = null;
+      const block = entry.block ?? (() => {
+        const factory = BlockRegistry.get(instance.type);
+        if (!factory) return null;
+        tempBlock = factory.create(this.app, instance, this.plugin);
+        return tempBlock;
+      })();
+      if (!block) return;
+      const modal = new BlockSettingsModal(this.app, instance, block, (config) => {
+        if (tempBlock) tempBlock.unload();
+        onSave(config);
+      });
+      modal.open();
     });
 
     // Remove (last — destructive action at the end)
@@ -282,15 +330,13 @@ export class GridLayout {
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       new RemoveBlockConfirmModal(this.app, () => {
-        const gsItem = this.gridEl.querySelector(`[gs-id="${instance.id}"]`) as HTMLElement | null;
+        const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`) as HTMLElement | null;
         if (gsItem && this.gridStack) {
-          this.suppressChange = true;
           this.gridStack.removeWidget(gsItem);
-          this.suppressChange = false;
         }
         const entry = this.blocks.get(instance.id);
         if (entry) {
-          entry.block.unload();
+          entry.block?.unload();
           this.blocks.delete(instance.id);
         }
         const newBlocks = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
@@ -351,10 +397,11 @@ export class GridLayout {
       const node = (el as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
       const id = el.getAttribute('gs-id');
       if (id && node) {
+        const w = Math.min(node.w ?? 1, this.columns);
         posMap.set(id, {
-          x: node.x ?? 0,
+          x: Math.min(node.x ?? 0, Math.max(0, this.columns - w)),
           y: node.y ?? 0,
-          w: node.w ?? 1,
+          w,
           h: node.h ?? 1,
         });
       }
@@ -406,8 +453,9 @@ export class GridLayout {
 
   /** Unload all blocks and destroy GridStack instance. */
   destroyAll(): void {
+    if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
     for (const { block } of this.blocks.values()) {
-      block.unload();
+      block?.unload();
     }
     this.blocks.clear();
 
@@ -624,7 +672,10 @@ class BlockSettingsModal extends Modal {
       .addButton(btn =>
         btn.setButtonText('Configure block...').onClick(() => {
           this.close();
-          this.block.openSettings(() => this.onSave(this.instance.config));
+          this.block.openSettings((blockConfig) => {
+            // Merge block-specific config with draft title/emoji/hide settings
+            this.onSave({ ...blockConfig, _titleLabel: draft._titleLabel, _titleEmoji: draft._titleEmoji, _hideTitle: draft._hideTitle });
+          });
         }),
       );
   }

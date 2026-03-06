@@ -35,11 +35,8 @@ export class StaticTextBlock extends BaseBlock {
     await MarkdownRenderer.render(this.app, content, contentEl, '', this);
   }
 
-  openSettings(onSave: () => void): void {
-    new StaticTextSettingsModal(this.app, this.instance.config, (cfg) => {
-      this.instance.config = cfg;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new StaticTextSettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 

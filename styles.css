@@ -854,6 +854,40 @@
   outline-offset: 2px;
 }
 
+/* ── Edit Mode Compact Placeholder ──────────────────────── */
+.edit-mode .block-collapse-chevron {
+  display: none;
+}
+
+.block-compact-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 0;
+  color: var(--text-muted);
+  font-size: var(--font-interface-size, 0.8125rem);
+}
+
+.block-compact-type {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.block-compact-size {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.5;
+}
+
+.edit-mode .block-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .block-handle-bar {
   display: flex;
   align-items: center;

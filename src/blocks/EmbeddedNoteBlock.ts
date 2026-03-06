@@ -87,11 +87,8 @@ export class EmbeddedNoteBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: () => void): void {
-    new EmbeddedNoteSettingsModal(this.app, this.instance.config, (cfg) => {
-      this.instance.config = cfg;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new EmbeddedNoteSettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 

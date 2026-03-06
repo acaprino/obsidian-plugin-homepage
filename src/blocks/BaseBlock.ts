@@ -14,8 +14,9 @@ export abstract class BaseBlock extends Component {
 
   abstract render(el: HTMLElement): void | Promise<void>;
 
-  // Override to open a per-block settings modal
-  openSettings(_onSave: () => void): void {}
+  // Override to open a per-block settings modal.
+  // onSave receives the new config; do NOT mutate this.instance.config directly.
+  openSettings(_onSave: (config: Record<string, unknown>) => void): void {}
 
   // Called by GridLayout to redirect renderHeader output outside block-content.
   setHeaderContainer(el: HTMLElement): void {

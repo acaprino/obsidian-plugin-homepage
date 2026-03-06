@@ -1,17 +1,13 @@
 import { App } from 'obsidian';
 import type { BaseBlock } from './blocks/BaseBlock';
 
-export type BlockType =
-  | 'greeting'
-  | 'folder-links'
-  | 'insight'
-  | 'tag-grid'
-  | 'quotes-list'
-  | 'image-gallery'
-  | 'clock'
-  | 'embedded-note'
-  | 'static-text'
-  | 'html';
+export const BLOCK_TYPES = [
+  'greeting', 'folder-links', 'insight', 'tag-grid',
+  'quotes-list', 'image-gallery', 'clock', 'embedded-note',
+  'static-text', 'html',
+] as const;
+
+export type BlockType = typeof BLOCK_TYPES[number];
 
 export interface BlockInstance {
   id: string;

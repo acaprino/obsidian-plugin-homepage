@@ -27,11 +27,8 @@ export class HtmlBlock extends BaseBlock {
     contentEl.appendChild(sanitizeHTMLToDom(html));
   }
 
-  openSettings(onSave: () => void): void {
-    new HtmlBlockSettingsModal(this.app, this.instance.config, (cfg) => {
-      this.instance.config = cfg;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new HtmlBlockSettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 

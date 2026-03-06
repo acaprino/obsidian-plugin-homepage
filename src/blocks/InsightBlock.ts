@@ -82,11 +82,8 @@ export class InsightBlock extends BaseBlock {
     return { heading, body };
   }
 
-  openSettings(onSave: () => void): void {
-    new InsightSettingsModal(this.app, this.instance.config, (cfg) => {
-      this.instance.config = cfg;
-      onSave();
-    }).open();
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
+    new InsightSettingsModal(this.app, this.instance.config, onSave).open();
   }
 }
 

@@ -142,14 +142,12 @@ export class FolderLinksBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: () => void): void {
+  openSettings(onSave: (config: Record<string, unknown>) => void): void {
     new FolderLinksSettingsModal(
       this.app,
       this.instance.config as { title?: string; folder?: string; links?: LinkItem[] },
       (newConfig) => {
-        this.instance.config = newConfig as Record<string, unknown>;
-        this.renderContent();
-        onSave();
+        onSave(newConfig as Record<string, unknown>);
       },
     ).open();
   }

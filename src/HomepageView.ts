@@ -9,6 +9,7 @@ export class HomepageView extends ItemView {
   private grid: GridLayout | null = null;
   private toolbar: EditToolbar | null = null;
   private previousThemeColor: string | null = null;
+  private themeColorObserver: MutationObserver | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: IHomepagePlugin) {
     super(leaf);
@@ -70,16 +71,53 @@ export class HomepageView extends ItemView {
   }
 
   /**
+   * Read the current accent color from CSS custom properties.
+   * Falls back through several Obsidian variables to maximise compatibility.
+   */
+  private getAccentColor(): string {
+    const style = getComputedStyle(document.body);
+    return (
+      style.getPropertyValue('--color-accent').trim() ||
+      style.getPropertyValue('--interactive-accent').trim()
+    );
+  }
+
+  /**
    * Set the PWA theme-color meta tag to match the current accent color.
    * This controls the status bar / navigation bar color on mobile PWAs.
+   *
+   * Uses requestAnimationFrame to ensure CSS variables are resolved,
+   * and a MutationObserver to re-apply if Obsidian resets the tag.
    */
   private applyThemeColor(): void {
-    const accent = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
+    // Defer to next frame so CSS custom properties are fully resolved.
+    requestAnimationFrame(() => this.setThemeColorMeta());
+
+    // Watch for external mutations (Obsidian may reset the tag).
+    this.themeColorObserver?.disconnect();
+    this.themeColorObserver = new MutationObserver(() => {
+      const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+      const accent = this.getAccentColor();
+      if (meta && accent && meta.getAttribute('content') !== accent) {
+        meta.setAttribute('content', accent);
+      }
+    });
+    this.themeColorObserver.observe(document.head, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['content'],
+    });
+  }
+
+  /** Actually write the meta tag value. */
+  private setThemeColorMeta(): void {
+    const accent = this.getAccentColor();
     if (!accent) return;
 
     let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (meta) {
-      this.previousThemeColor = meta.getAttribute('content');
+      this.previousThemeColor ??= meta.getAttribute('content');
       meta.setAttribute('content', accent);
     } else {
       this.previousThemeColor = null;
@@ -92,6 +130,9 @@ export class HomepageView extends ItemView {
 
   /** Restore the previous theme-color value (or remove the tag we created). */
   private restoreThemeColor(): void {
+    this.themeColorObserver?.disconnect();
+    this.themeColorObserver = null;
+
     const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
     if (!meta) return;
 

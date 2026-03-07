@@ -27,10 +27,12 @@ Build a personal dashboard from ten native block types: clock, daily insight, im
 - **10 built-in block types** — clock, greeting, daily insight, quotes, quick links, values grid, image gallery, embedded note, static text, HTML
 - **Drag-to-reorder** — grab the grip handle and drop blocks anywhere; a live placeholder shows the landing spot
 - **2D resize** — drag the corner grip to change column width *and* row height simultaneously
-- **Force new row** — pin any block to the start of its own row, regardless of what comes before it
+- **Zoom slider** — in edit mode, zoom out from 100% to 10% to see the full layout at a glance
+- **Accent colors** — pick one color per block and the header, background, border, and divider are auto-tinted to match
 - **Collapsible blocks** — click any block header to collapse or expand it
+- **Per-block styling** — custom title, emoji, show/hide divider, transparent mode, and accent color
 - **Responsive** — automatically switches to fewer columns on narrow panes
-- **Zero dependencies** — pure TypeScript, no Dataview, no runtime npm packages
+- **Zero external dependencies** — only [GridStack](https://gridstackjs.com/) is bundled; no Dataview, no Templater
 
 ---
 
@@ -55,6 +57,7 @@ Edit mode reveals the toolbar and a set of controls on each block:
 | Gear icon | Handle bar | Open block settings |
 | X button | Handle bar | Remove block (with confirmation) |
 | Corner grip | Bottom-right of block | Drag to resize column width and row height |
+| Zoom slider | Toolbar | Zoom out (100%–10%) to see the full grid at a glance |
 
 ### Resizing blocks
 
@@ -64,6 +67,18 @@ Drag the **corner grip** diagonally:
 - **Vertical** — changes the row height (1 to 12 row units; one unit is 200 px by default)
 
 The block updates live while dragging.
+
+### Accent Colors
+
+Open a block's settings (gear icon) and pick an **Accent color**. A single color automatically derives:
+
+- Header background (12% tint)
+- Card background (8% tint)
+- Border (25% tint)
+- Title text (70% blend)
+- Divider (20% tint)
+
+Works in both light and dark themes via CSS `color-mix()`. Click the **X** button to clear the accent and return to the default style.
 
 ---
 
@@ -207,6 +222,21 @@ A block for custom HTML. Useful for embedding widgets or anything that needs raw
 
 ---
 
+## Shared Block Settings
+
+Every block has these options in its settings modal (gear icon):
+
+| Setting | Description |
+|---------|-------------|
+| Title label | Custom title text (leave empty for the default) |
+| Title emoji | Pick an emoji from the built-in picker |
+| Hide title | Hides the title bar entirely |
+| Show divider | Thin separator line between title and content |
+| Transparent card | Removes background, border, and padding |
+| Accent color | Tints the entire card based on a single color |
+
+---
+
 ## Layout Controls
 
 ### Column width
@@ -216,10 +246,6 @@ Each block occupies 1 to N columns, where N is the current column count (set glo
 ### Row height
 
 Drag the corner grip downward to increase a block's minimum height. Each unit is 200 px by default (configurable via CSS). Maximum is 12 units.
-
-### Force new row
-
-In the block's gear menu, enable **Start on new row** to always place the block at the beginning of a new row, regardless of what comes before it.
 
 ### Collapsing blocks
 
@@ -292,3 +318,14 @@ Bug reports and pull requests are welcome at [github.com/acaprino/obsidian-plugi
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<!--
+TODO before publishing:
+- [ ] Add hero screenshot (screenshots/hero.png) — dark theme, 3-column layout with several block types
+- [ ] Add edit mode screenshot (screenshots/edit-mode.png) — showing drag handles and zoom slider
+- [ ] Add accent color screenshot (screenshots/accent-colors.png) — blocks with different accent tints
+- [ ] Create a GitHub release with main.js, manifest.json, styles.css
+- [ ] Submit PR to obsidianmd/obsidian-releases with community-plugins.json entry
+-->

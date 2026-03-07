@@ -54,17 +54,19 @@ export class ImageGalleryBlock extends BaseBlock {
   }
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
-    const { folder = '', title = 'Gallery', columns = 3, maxItems = 20, layout = 'grid' } = this.instance.config as {
+    const { folder = '', title = 'Gallery', columns = 3, maxItems = 20, layout = 'grid', heightMode = 'auto' } = this.instance.config as {
       folder?: string;
       title?: string;
       columns?: number;
       maxItems?: number;
       layout?: 'grid' | 'masonry';
+      heightMode?: 'auto' | 'fixed';
     };
 
     this.renderHeader(el, title);
 
     const gallery = el.createDiv({ cls: 'image-gallery' });
+    if (heightMode === 'fixed') gallery.addClass('image-gallery--fixed-height');
 
     if (layout === 'masonry') {
       gallery.addClass('masonry-layout');
@@ -193,6 +195,15 @@ class ImageGallerySettingsModal extends Modal {
             folderText.setValue(path);
           }).open();
         }),
+      );
+    new Setting(contentEl)
+      .setName('Height')
+      .setDesc('Auto: expands to show all images. Fixed: uses the block\'s row height and scrolls.')
+      .addDropdown(d =>
+        d.addOption('auto', 'Auto (fit all images)')
+         .addOption('fixed', 'Fixed (scroll)')
+         .setValue(String(draft.heightMode ?? 'auto'))
+         .onChange(v => { draft.heightMode = v === 'fixed' ? 'fixed' : 'auto'; }),
       );
     new Setting(contentEl).setName('Layout').addDropdown(d =>
       d.addOption('grid', 'Grid').addOption('masonry', 'Masonry')

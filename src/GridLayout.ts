@@ -11,6 +11,7 @@ export class GridLayout {
   private gridStack: GridStack | null = null;
   private blocks = new Map<string, { block: BaseBlock | null; wrapper: HTMLElement }>();
   private animTimer: ReturnType<typeof setTimeout> | null = null;
+  private fitTimer: ReturnType<typeof setTimeout> | null = null;
   private editMode = false;
   private columns = 3;
   /** Callback to trigger the Add Block modal from the empty state CTA. */
@@ -162,18 +163,27 @@ export class GridLayout {
       }
     }
 
-    // Temporarily disable float during drag so items push/swap
-    this.gridStack.on('dragstart', () => { this.gridStack?.float(false); });
+    // Temporarily disable float during drag so items push/swap.
+    // Also clear the viewport-fit scale so pointer coordinates match visual positions.
+    this.gridStack.on('dragstart', () => {
+      this.gridStack?.float(false);
+      this.gridEl.style.transform = '';
+    });
     this.gridStack.on('dragstop', () => {
       this.gridStack?.float(true);
       this.syncLayoutFromGrid();
+      this.scheduleFitToViewport(true);
     });
 
-    // Temporarily disable float during resize so grid reflows correctly
-    this.gridStack.on('resizestart', () => { this.gridStack?.float(false); });
+    // Same for resize: clear scale so resize handles align with pointer.
+    this.gridStack.on('resizestart', () => {
+      this.gridStack?.float(false);
+      this.gridEl.style.transform = '';
+    });
     this.gridStack.on('resizestop', () => {
       this.gridStack?.float(true);
       this.syncLayoutFromGrid();
+      this.scheduleFitToViewport(true);
     });
 
     // Scroll to newly added block
@@ -235,7 +245,7 @@ export class GridLayout {
   private shouldAutoHeight(instance: BlockInstance): boolean {
     const hm = instance.config.heightMode;
     const heightMode = typeof hm === 'string' ? hm : '';
-    if (instance.type === 'image-gallery') return true;
+    if (instance.type === 'image-gallery') return heightMode !== 'fixed';
     if (instance.type === 'quotes-list' && heightMode === 'extend') return true;
     if (instance.type === 'embedded-note' && heightMode === 'grow') return true;
     return false;
@@ -446,6 +456,44 @@ export class GridLayout {
       this.gridStack.setStatic(!enabled);
     }
     this.rerender();
+    this.scheduleFitToViewport(enabled);
+  }
+
+  /** Schedule a fitToViewport call, cancelling any pending one first. */
+  private scheduleFitToViewport(enable: boolean): void {
+    if (this.fitTimer !== null) { clearTimeout(this.fitTimer); this.fitTimer = null; }
+    // setTimeout(0) lets GridStack's own async layout ops complete before we measure;
+    // the inner rAF fires after the browser applies the resulting styles.
+    this.fitTimer = setTimeout(() => {
+      this.fitTimer = null;
+      requestAnimationFrame(() => this.fitToViewport(enable));
+    }, 0);
+  }
+
+  private fitToViewport(enable: boolean): void {
+    if (!this.gridEl.isConnected) return;
+    if (!enable) {
+      this.gridEl.style.transform = '';
+      this.gridEl.style.transformOrigin = '';
+      this.gridEl.removeClass('viewport-fit');
+      return;
+    }
+
+    // clientHeight = flex-assigned visible height; scrollHeight = full GridStack content.
+    // Scale down only if content overflows the visible area.
+    const availH = this.gridEl.clientHeight;
+    const naturalH = this.gridEl.scrollHeight;
+    if (availH <= 0 || naturalH <= 0) {
+      this.gridEl.style.transform = '';
+      this.gridEl.removeClass('viewport-fit');
+      return;
+    }
+
+    const scale = Math.min(availH / naturalH, 1);
+
+    this.gridEl.style.transformOrigin = 'top center';
+    this.gridEl.style.transform = scale < 1 ? `scale(${scale})` : '';
+    this.gridEl.toggleClass('viewport-fit', scale < 1);
   }
 
   /** Update column count, clamping each block's w to fit. */
@@ -456,6 +504,7 @@ export class GridLayout {
     }));
     this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
     this.rerender();
+    if (this.editMode) this.scheduleFitToViewport(true);
   }
 
   addBlock(instance: BlockInstance): void {
@@ -463,6 +512,7 @@ export class GridLayout {
     this.lastAddedBlockId = instance.id;
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
     this.rerender();
+    if (this.editMode) this.scheduleFitToViewport(true);
   }
 
   private rerender(): void {
@@ -472,6 +522,7 @@ export class GridLayout {
   /** Unload all blocks and destroy GridStack instance. */
   destroyAll(): void {
     if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
+    if (this.fitTimer !== null) { clearTimeout(this.fitTimer); this.fitTimer = null; }
     for (const { block } of this.blocks.values()) {
       block?.unload();
     }
@@ -483,6 +534,10 @@ export class GridLayout {
       this.gridStack = null;
     }
     this.gridEl.empty();
+    // Clear inline styles GridStack or fitToViewport may have set.
+    this.gridEl.style.height = '';
+    this.gridEl.style.transform = '';
+    this.gridEl.style.transformOrigin = '';
   }
 
   /** Full teardown: unload blocks and remove the grid element from the DOM. */

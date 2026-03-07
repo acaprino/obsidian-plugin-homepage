@@ -495,6 +495,12 @@
   outline-offset: 2px;
 }
 
+/* Fixed-height mode: scroll instead of auto-expand */
+.image-gallery.image-gallery--fixed-height {
+  overflow-y: auto;
+  height: 100%;
+}
+
 /* Masonry layout */
 .image-gallery.masonry-layout {
   display: block;
@@ -847,6 +853,11 @@
   outline: 2px solid var(--color-accent);
   outline-offset: 0;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+/* ── Viewport-fit (scale-to-fit in edit mode) ───────────── */
+.homepage-grid.viewport-fit {
+  overflow: hidden;
 }
 
 /* ── Edit Mode ──────────────────────────────────────────── */

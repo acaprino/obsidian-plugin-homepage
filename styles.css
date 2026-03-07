@@ -387,22 +387,32 @@
 /* ── Greeting Block ─────────────────────────────────────── */
 .greeting-block {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
   min-height: 90px;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.greeting-emoji {
+  font-size: clamp(1.75rem, 4cqi, 2.5rem);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.greeting-name {
+  font-size: clamp(1.75rem, 4cqi, 2.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 0;
+  color: var(--text-normal);
 }
 
 .greeting-time {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-.greeting-name {
-  font-size: var(--h3-size, 1.625rem);
-  font-weight: var(--h3-weight, 600);
-  margin: 0;
-  color: var(--text-normal);
+  flex-shrink: 0;
 }
 
 /* ── Clock Block ────────────────────────────────────────── */
@@ -426,6 +436,49 @@
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+/* Clock styles */
+.clock-style-centered {
+  align-items: center;
+  text-align: center;
+}
+.clock-style-centered .clock-time {
+  font-size: 2.5rem;
+  font-weight: 200;
+}
+.clock-style-centered .clock-date {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.clock-style-large {
+  align-items: center;
+  text-align: center;
+}
+.clock-style-large .clock-time {
+  font-size: 3.75rem;
+  font-weight: 100;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.clock-style-large .clock-date {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-top: 8px;
+}
+
+.clock-style-accent .clock-time {
+  font-size: 2.25rem;
+  font-weight: 600;
+  color: var(--block-accent, var(--color-accent));
+}
+.clock-style-accent .clock-date {
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--block-accent, var(--color-accent)) 60%, var(--text-muted));
+  letter-spacing: 0.04em;
 }
 
 /* ── Folder Links Block ─────────────────────────────────── */

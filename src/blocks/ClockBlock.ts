@@ -2,14 +2,27 @@ import { App, Modal, Setting, moment } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
+type ClockStyle = 'minimal' | 'centered' | 'large' | 'accent';
+
+const CLOCK_STYLES: Record<ClockStyle, string> = {
+  minimal:  'Minimal',
+  centered: 'Centered',
+  large:    'Large',
+  accent:   'Accent',
+};
+
 export class ClockBlock extends BaseBlock {
   private timeEl: HTMLElement | null = null;
   private dateEl: HTMLElement | null = null;
 
   render(el: HTMLElement): void {
-    el.addClass('clock-block');
+    const { showDate = true, clockStyle = 'minimal' } = this.instance.config as {
+      showDate?: boolean;
+      clockStyle?: ClockStyle;
+    };
 
-    const { showDate = true } = this.instance.config as { showDate?: boolean };
+    el.addClass('clock-block');
+    el.addClass(`clock-style-${clockStyle}`);
 
     this.timeEl = el.createDiv({ cls: 'clock-time' });
     if (showDate) {
@@ -61,6 +74,14 @@ class ClockSettingsModal extends Modal {
 
     const draft = structuredClone(this.config);
 
+    new Setting(contentEl)
+      .setName('Style')
+      .setDesc('Visual style of the clock.')
+      .addDropdown(d =>
+        d.addOptions(CLOCK_STYLES)
+         .setValue(draft.clockStyle as string ?? 'minimal')
+         .onChange(v => { draft.clockStyle = v; }),
+      );
     new Setting(contentEl).setName('Show seconds').addToggle(t =>
       t.setValue(draft.showSeconds as boolean ?? false)
        .onChange(v => { draft.showSeconds = v; }),

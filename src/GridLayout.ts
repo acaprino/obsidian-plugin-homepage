@@ -1,10 +1,11 @@
-import { App, Modal, Setting, setIcon } from 'obsidian';
+import { App, ColorComponent, Modal, Setting, setIcon } from 'obsidian';
 import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
 import { BlockInstance, LayoutConfig, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 export class GridLayout {
   private gridEl: HTMLElement;
@@ -201,10 +202,14 @@ export class GridLayout {
     const classes = ['homepage-block-wrapper'];
     if (instance.collapsed) classes.push('block-collapsed');
     if (instance.config._transparent === true) classes.push('block-transparent');
+    const accentColor = typeof instance.config._accentColor === 'string'
+      && HEX_COLOR_RE.test(instance.config._accentColor) ? instance.config._accentColor : '';
+    if (accentColor) classes.push('block-accented');
     const wrapper = container.createDiv({
       cls: classes.join(' '),
       attr: { 'data-block-id': instance.id },
     });
+    if (accentColor) wrapper.style.setProperty('--block-accent', accentColor);
     if (animDelayMs !== undefined) {
       wrapper.style.animationDelay = `${animDelayMs}ms`;
     }
@@ -809,9 +814,50 @@ class BlockSettingsModal extends Modal {
          .onChange(v => { draft._transparent = v; }),
       );
 
+    // ── Accent color picker ─────────────────────────────────────────────────
+    const accentRow = new Setting(contentEl)
+      .setName('Accent color')
+      .setDesc('Pick a color to tint the card header, background, and border.');
+
+    const currentColor = typeof draft._accentColor === 'string' ? draft._accentColor : '';
+    let accentDirty = !!currentColor;
+    let cpRef: ColorComponent | null = null;
+
+    accentRow.addColorPicker(cp => {
+      cpRef = cp;
+      cp.setValue(currentColor || '#888888')
+        .onChange(v => { draft._accentColor = v; accentDirty = true; updatePreview(v); });
+    });
+
+    accentRow.addExtraButton(btn =>
+      btn.setIcon('x').setTooltip('Clear accent color').onClick(() => {
+        draft._accentColor = '';
+        accentDirty = false;
+        cpRef?.setValue('#888888');
+        updatePreview('');
+      }),
+    );
+
+    const previewCard = contentEl.createDiv({ cls: 'accent-preview-card' });
+    previewCard.createDiv({ cls: 'accent-preview-header', text: 'Header' });
+    previewCard.createDiv({ cls: 'accent-preview-body', text: 'Body content' });
+
+    const updatePreview = (color: string) => {
+      if (color) {
+        previewCard.style.setProperty('--block-accent', color);
+        previewCard.addClass('block-accented');
+      } else {
+        previewCard.style.removeProperty('--block-accent');
+        previewCard.removeClass('block-accented');
+      }
+    };
+    updatePreview(currentColor);
+    // ─────────────────────────────────────────────────────────────────────────
+
     new Setting(contentEl)
       .addButton(btn =>
         btn.setButtonText('Save').setCta().onClick(() => {
+          if (!accentDirty) draft._accentColor = '';
           this.onSave(draft);
           this.close();
         }),
@@ -833,8 +879,11 @@ class BlockSettingsModal extends Modal {
         btn.setButtonText('Configure block...').onClick(() => {
           this.close();
           this.block.openSettings((blockConfig) => {
-            // Merge block-specific config with draft title/emoji/hide settings
-            this.onSave({ ...blockConfig, _titleLabel: draft._titleLabel, _titleEmoji: draft._titleEmoji, _hideTitle: draft._hideTitle, _showDivider: draft._showDivider, _transparent: draft._transparent });
+            // Merge block-specific config with shared _-prefixed settings from draft
+            const shared = Object.fromEntries(
+              Object.entries(draft).filter(([k]) => k.startsWith('_')),
+            );
+            this.onSave({ ...blockConfig, ...shared });
           });
         }),
       );

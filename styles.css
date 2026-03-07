@@ -141,6 +141,77 @@
   border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
 
+/* ── Accent Color ────────────────────────────────────────── */
+/* A single --block-accent color derives the entire card palette.
+   Shared custom properties so both live cards and the preview card stay in sync. */
+.block-accented {
+  --_accent-bg: color-mix(in srgb, var(--block-accent) 8%, var(--background-secondary));
+  --_accent-border: color-mix(in srgb, var(--block-accent) 25%, var(--background-modifier-border));
+  --_accent-border-hover: color-mix(in srgb, var(--block-accent) 40%, var(--background-modifier-border));
+  --_accent-header-bg: color-mix(in srgb, var(--block-accent) 12%, transparent);
+  --_accent-header-text: color-mix(in srgb, var(--block-accent) 70%, var(--text-normal));
+  --_accent-divider: color-mix(in srgb, var(--block-accent) 20%, var(--background-modifier-border));
+  background: var(--_accent-bg);
+  border-color: var(--_accent-border);
+}
+
+.block-accented:hover {
+  border-color: var(--_accent-border-hover);
+}
+
+.block-accented .block-header-zone,
+.block-accented .accent-preview-header {
+  background: var(--_accent-header-bg);
+  border-radius: var(--radius-s, 4px);
+  margin: -4px -6px 4px;
+  padding: 4px 6px;
+}
+
+.block-accented .block-header,
+.block-accented .accent-preview-header {
+  color: var(--_accent-header-text);
+}
+
+.block-accented .block-header-divider {
+  background: var(--_accent-divider);
+}
+
+/* Transparent overrides accent — no tinted background/border on transparent cards */
+.homepage-block-wrapper.block-transparent.block-accented {
+  background: transparent;
+  border-color: transparent;
+}
+
+.homepage-block-wrapper.block-transparent.block-accented .block-header-zone {
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+/* Preview card in settings modal */
+.accent-preview-card {
+  border-radius: var(--radius-m, 8px);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  overflow: hidden;
+  margin: 8px 0 16px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.accent-preview-header {
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-normal);
+  transition: background 0.15s, color 0.15s;
+}
+
+.accent-preview-body {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 .homepage-block-wrapper.block-transparent {
   background: transparent;
   border-color: transparent;

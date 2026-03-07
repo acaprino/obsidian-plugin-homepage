@@ -11,7 +11,6 @@ export class GridLayout {
   private gridStack: GridStack | null = null;
   private blocks = new Map<string, { block: BaseBlock | null; wrapper: HTMLElement }>();
   private animTimer: ReturnType<typeof setTimeout> | null = null;
-  private fitTimer: ReturnType<typeof setTimeout> | null = null;
   private editMode = false;
   private columns = 3;
   private pendingRafs = new Set<number>();
@@ -98,7 +97,7 @@ export class GridLayout {
 
     this.gridStack = GridStack.init({
       column: columns,
-      cellHeight: this.editMode ? 40 : 80,
+      cellHeight: 80,
       margin: 8,
       float: true,
       animate: true,
@@ -542,51 +541,23 @@ export class GridLayout {
       this.gridStack.setStatic(!enabled);
     }
     this.rerender();
-    this.scheduleFitToViewport(enabled);
+    if (!enabled) {
+      // Exiting edit mode — clear any zoom transform
+      this.setZoom(1);
+    }
   }
 
-  /** Schedule a fitToViewport call, cancelling any pending one first. */
-  private scheduleFitToViewport(enable: boolean): void {
-    if (this.fitTimer !== null) { clearTimeout(this.fitTimer); this.fitTimer = null; }
-    // setTimeout(0) lets GridStack's own async layout ops complete before we measure;
-    // the inner rAF fires after the browser applies the resulting styles.
-    this.fitTimer = setTimeout(() => {
-      this.fitTimer = null;
-      requestAnimationFrame(() => this.fitToViewport(enable));
-    }, 0);
-  }
-
-  private fitToViewport(enable: boolean): void {
+  /** Apply a zoom scale (0.1–1) via CSS transform. */
+  setZoom(scale: number): void {
     if (!this.gridEl.isConnected) return;
-    if (!enable) {
+    if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+    if (scale >= 1) {
       this.gridEl.style.transform = '';
       this.gridEl.style.transformOrigin = '';
       this.gridEl.style.flexShrink = '';
       this.gridEl.removeClass('viewport-fit');
       return;
     }
-
-    // Remove viewport-fit class FIRST: its overflow:hidden would clip scrollHeight,
-    // causing an incorrect naturalH measurement on repeated calls.
-    // Also restore flex-shrink so clientHeight reflects the true available space.
-    this.gridEl.style.flexShrink = '';
-    this.gridEl.style.transform = '';
-    this.gridEl.removeClass('viewport-fit');
-
-    // availH: flex compresses the grid to the space the view allocates.
-    // naturalH: GridStack's full content height — accurate now that overflow-y:auto is restored.
-    const availH = this.gridEl.clientHeight;
-    const naturalH = this.gridEl.scrollHeight;
-
-    const scale = availH / naturalH;
-
-    if (!availH || !naturalH || scale >= 1) {
-      return;
-    }
-
-    // flex-shrink:0 expands the box to naturalH so the transform scales the full content.
-    // Without this, flex-shrink keeps the box at availH and the transform only scales
-    // that clipped portion — bottom rows are invisible and resize handles are inaccessible.
     this.gridEl.style.flexShrink = '0';
     this.gridEl.style.transformOrigin = 'top center';
     this.gridEl.style.transform = `scale(${scale})`;
@@ -601,7 +572,6 @@ export class GridLayout {
     }));
     this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
     this.rerender();
-    if (this.editMode) this.scheduleFitToViewport(true);
   }
 
   addBlock(instance: BlockInstance): void {
@@ -611,7 +581,6 @@ export class GridLayout {
     this.lastAddedBlockId = positioned.id;
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
     this.rerender();
-    if (this.editMode) this.scheduleFitToViewport(true);
   }
 
   private rerender(): void {
@@ -621,7 +590,6 @@ export class GridLayout {
   /** Unload all blocks and destroy GridStack instance. */
   destroyAll(): void {
     if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
-    if (this.fitTimer !== null) { clearTimeout(this.fitTimer); this.fitTimer = null; }
     for (const id of this.pendingRafs) cancelAnimationFrame(id);
     this.pendingRafs.clear();
     for (const { block } of this.blocks.values()) {
@@ -635,7 +603,8 @@ export class GridLayout {
       this.gridStack = null;
     }
     this.gridEl.empty();
-    // Clear inline styles GridStack or fitToViewport may have set.
+    // Clear inline styles GridStack or setZoom may have set.
+    this.gridEl.removeClass('viewport-fit');
     this.gridEl.style.height = '';
     this.gridEl.style.transform = '';
     this.gridEl.style.transformOrigin = '';

@@ -101,9 +101,9 @@ function isValidBlockInstance(b: unknown): b is BlockInstance {
   return (
     typeof block.id === 'string' && SAFE_ID_RE.test(block.id) &&
     typeof block.type === 'string' && VALID_BLOCK_TYPES.has(block.type) &&
-    typeof block.x === 'number' && block.x >= 0 &&
-    typeof block.y === 'number' && block.y >= 0 &&
-    typeof block.w === 'number' && block.w >= 1 &&
+    typeof block.x === 'number' && Number.isFinite(block.x) && block.x >= 0 &&
+    typeof block.y === 'number' && Number.isFinite(block.y) && block.y >= 0 &&
+    typeof block.w === 'number' && Number.isFinite(block.w) && block.w >= 1 &&
     typeof block.h === 'number' && block.h >= 1 && Number.isFinite(block.h) &&
     block.config !== null && typeof block.config === 'object' && !Array.isArray(block.config)
   );

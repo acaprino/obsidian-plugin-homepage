@@ -7,6 +7,7 @@ export class EditToolbar {
   private toolbarEl: HTMLElement;
   private fabEl: HTMLElement;
   private editMode = false;
+  private zoomScale = 1;
 
   constructor(
     private containerEl: HTMLElement,
@@ -35,6 +36,7 @@ export class EditToolbar {
   /** Toggle edit mode — called from FAB, Done button, and keyboard shortcut command. */
   toggleEditMode(): void {
     this.editMode = !this.editMode;
+    if (!this.editMode) this.zoomScale = 1;
     this.grid.setEditMode(this.editMode);
     this.syncVisibility();
     this.renderToolbar();
@@ -62,6 +64,21 @@ export class EditToolbar {
     });
     colSelect.addEventListener('change', () => {
       this.onColumnsChange(Number(colSelect.value));
+    });
+
+    // Zoom slider
+    const zoomGroup = this.toolbarEl.createDiv({ cls: 'toolbar-zoom-group' });
+    zoomGroup.createSpan({ cls: 'toolbar-zoom-label', text: 'Zoom' });
+    const zoomSlider = zoomGroup.createEl('input', {
+      cls: 'toolbar-zoom-slider',
+      type: 'range',
+      attr: { min: '0.1', max: '1', step: '0.05', value: String(this.zoomScale), 'aria-label': 'Zoom level' },
+    });
+    const zoomValue = zoomGroup.createSpan({ cls: 'toolbar-zoom-value', text: this.formatZoom(this.zoomScale) });
+    zoomSlider.addEventListener('input', () => {
+      this.zoomScale = parseFloat(zoomSlider.value);
+      zoomValue.setText(this.formatZoom(this.zoomScale));
+      this.grid.setZoom(this.zoomScale);
     });
 
     // Add Block button (only in edit mode)
@@ -95,6 +112,10 @@ export class EditToolbar {
 
       this.grid.addBlock(instance);
     }).open();
+  }
+
+  private formatZoom(scale: number): string {
+    return `${Math.round(scale * 100)}%`;
   }
 
   getElement(): HTMLElement {

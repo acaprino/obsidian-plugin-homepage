@@ -217,6 +217,9 @@ export class GridLayout {
       cls: 'block-collapse-chevron' + (instance.collapsed ? ' is-collapsed' : ''),
       attr: { 'aria-hidden': 'true' },
     });
+    if (instance.config._showDivider === true) {
+      wrapper.createDiv({ cls: 'block-header-divider' });
+    }
     wrapper.createDiv({ cls: 'block-content' });
     return wrapper;
   }
@@ -822,6 +825,14 @@ class BlockSettingsModal extends Modal {
       );
 
     new Setting(contentEl)
+      .setName('Show divider after title')
+      .setDesc('Display a thin separator line between the title and the block content.')
+      .addToggle(t =>
+        t.setValue(draft._showDivider === true)
+         .onChange(v => { draft._showDivider = v; }),
+      );
+
+    new Setting(contentEl)
       .setName('Transparent card')
       .setDesc('Remove background, border, and padding — the block blends into the page.')
       .addToggle(t =>
@@ -854,7 +865,7 @@ class BlockSettingsModal extends Modal {
           this.close();
           this.block.openSettings((blockConfig) => {
             // Merge block-specific config with draft title/emoji/hide settings
-            this.onSave({ ...blockConfig, _titleLabel: draft._titleLabel, _titleEmoji: draft._titleEmoji, _hideTitle: draft._hideTitle, _transparent: draft._transparent });
+            this.onSave({ ...blockConfig, _titleLabel: draft._titleLabel, _titleEmoji: draft._titleEmoji, _hideTitle: draft._hideTitle, _showDivider: draft._showDivider, _transparent: draft._transparent });
           });
         }),
       );

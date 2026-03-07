@@ -8,6 +8,7 @@ export const VIEW_TYPE = 'homepage-blocks';
 export class HomepageView extends ItemView {
   private grid: GridLayout | null = null;
   private toolbar: EditToolbar | null = null;
+  private previousThemeColor: string | null = null;
 
   constructor(leaf: WorkspaceLeaf, private plugin: IHomepagePlugin) {
     super(leaf);
@@ -25,6 +26,8 @@ export class HomepageView extends ItemView {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('homepage-view');
+
+    this.applyThemeColor();
 
     const layout: LayoutConfig = this.plugin.layout;
 
@@ -53,6 +56,7 @@ export class HomepageView extends ItemView {
   async onClose(): Promise<void> {
     this.grid?.destroy();
     this.toolbar?.destroy();
+    this.restoreThemeColor();
   }
 
   /** Toggle edit mode — called from keyboard shortcut command. */
@@ -63,5 +67,38 @@ export class HomepageView extends ItemView {
   /** Re-render the view from scratch (e.g. after settings reset). */
   async reload(): Promise<void> {
     await this.onOpen();
+  }
+
+  /**
+   * Set the PWA theme-color meta tag to match the current accent color.
+   * This controls the status bar / navigation bar color on mobile PWAs.
+   */
+  private applyThemeColor(): void {
+    const accent = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
+    if (!accent) return;
+
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) {
+      this.previousThemeColor = meta.getAttribute('content');
+      meta.setAttribute('content', accent);
+    } else {
+      this.previousThemeColor = null;
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      meta.content = accent;
+      document.head.appendChild(meta);
+    }
+  }
+
+  /** Restore the previous theme-color value (or remove the tag we created). */
+  private restoreThemeColor(): void {
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) return;
+
+    if (this.previousThemeColor !== null) {
+      meta.setAttribute('content', this.previousThemeColor);
+    } else {
+      meta.remove();
+    }
   }
 }

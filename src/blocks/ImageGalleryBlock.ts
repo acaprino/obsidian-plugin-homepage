@@ -45,9 +45,9 @@ const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
 
 export class ImageGalleryBlock extends BaseBlock {
-  render(el: HTMLElement): void {
+  render(el: HTMLElement): Promise<void> {
     el.addClass('image-gallery-block');
-    this.loadAndRender(el).catch(e => {
+    return this.loadAndRender(el).catch(e => {
       console.error('[Homepage Blocks] ImageGalleryBlock failed to render:', e);
       el.setText('Error loading gallery. Check console for details.');
     });
@@ -66,7 +66,12 @@ export class ImageGalleryBlock extends BaseBlock {
     this.renderHeader(el, title);
 
     const gallery = el.createDiv({ cls: 'image-gallery' });
-    if (heightMode === 'fixed') gallery.addClass('image-gallery--fixed-height');
+    if (heightMode === 'fixed') {
+      gallery.addClass('image-gallery--fixed-height');
+    } else {
+      // Mark for natural-height measurement after images load
+      gallery.setAttribute('data-auto-height-content', '');
+    }
 
     if (layout === 'masonry') {
       gallery.addClass('masonry-layout');
@@ -99,6 +104,8 @@ export class ImageGalleryBlock extends BaseBlock {
 
     const files = this.getMediaFiles(folderObj).slice(0, maxItems);
 
+    const imageLoadPromises: Promise<void>[] = [];
+
     for (const file of files) {
       const ext = `.${file.extension.toLowerCase()}`;
       const wrapper = gallery.createDiv({ cls: 'gallery-item' });
@@ -116,7 +123,14 @@ export class ImageGalleryBlock extends BaseBlock {
         const img = wrapper.createEl('img');
         img.src = this.app.vault.getResourcePath(file);
         img.alt = file.basename;
-        img.loading = 'lazy';
+        // Not lazy — we need dimensions before GridStack can measure the block height.
+        imageLoadPromises.push(
+          new Promise<void>(resolve => {
+            if (img.complete) { resolve(); return; }
+            img.addEventListener('load', () => resolve(), { once: true });
+            img.addEventListener('error', () => resolve(), { once: true });
+          }),
+        );
       } else if (VIDEO_EXTS.has(ext)) {
         wrapper.addClass('gallery-item-video');
         wrapper.createDiv({ cls: 'video-play-overlay', text: '▶' });
@@ -132,6 +146,10 @@ export class ImageGalleryBlock extends BaseBlock {
         wrapper.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0; });
       }
     }
+
+    // Wait for images to report their natural dimensions so GridStack can
+    // measure the block's true height before calling resizeToContent.
+    await Promise.all(imageLoadPromises);
   }
 
   private getMediaFiles(folder: TFolder): TFile[] {

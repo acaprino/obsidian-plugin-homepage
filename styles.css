@@ -111,6 +111,17 @@
   border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
 
+.homepage-block-wrapper.block-transparent {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.homepage-block-wrapper.block-transparent:hover {
+  border-color: transparent;
+}
+
 .block-content {
   flex: 1;
   min-height: 0;

@@ -88,8 +88,9 @@ export class GridLayout {
       y: instance.y,
       w: Math.min(instance.w, columns),
       h: instance.h,
-      // Let GridStack manage height for blocks that need to fit all content
-      ...(!this.editMode && this.shouldAutoHeight(instance) ? { sizeToContent: true } : {}),
+      // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
+      // load() before we've added any DOM content, causing "firstElementChild is null".
+      // We call resizeToContent() manually after building each block's DOM below.
     }));
 
     this.columns = columns;
@@ -140,16 +141,18 @@ export class GridLayout {
         const block = factory.create(this.app, instance, this.plugin);
         block.setHeaderContainer(headerZone);
         block.load();
+        const needsResize = !this.editMode && this.shouldAutoHeight(instance);
         const result = block.render(contentEl);
         if (result instanceof Promise) {
           // After async render, tell GridStack to re-measure auto-height blocks
-          const needsResize = this.shouldAutoHeight(instance);
           result
-            .then(() => { if (needsResize && this.gridStack) this.gridStack.resizeToContent(gsEl); })
+            .then(() => { if (needsResize) this.resizeBlockToContent(gsEl, instance); })
             .catch(e => {
               console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
               contentEl.setText('Error rendering block. Check console for details.');
             });
+        } else if (needsResize) {
+          this.resizeBlockToContent(gsEl, instance);
         }
         this.blocks.set(instance.id, { block, wrapper });
       }
@@ -200,8 +203,11 @@ export class GridLayout {
 
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
   private buildBlockWrapper(container: HTMLElement, instance: BlockInstance, animDelayMs?: number): HTMLElement {
+    const classes = ['homepage-block-wrapper'];
+    if (instance.collapsed) classes.push('block-collapsed');
+    if (instance.config._transparent === true) classes.push('block-transparent');
     const wrapper = container.createDiv({
-      cls: 'homepage-block-wrapper' + (instance.collapsed ? ' block-collapsed' : ''),
+      cls: classes.join(' '),
       attr: { 'data-block-id': instance.id },
     });
     if (animDelayMs !== undefined) {
@@ -239,6 +245,54 @@ export class GridLayout {
     const info = contentEl.createDiv({ cls: 'block-compact-info' });
     info.createSpan({ cls: 'block-compact-type', text: instance.type });
     info.createSpan({ cls: 'block-compact-size', text: `${instance.w}\u00D7${instance.h}` });
+  }
+
+  /**
+   * Resize a block's grid row to fit its natural content height.
+   *
+   * GridStack's built-in resizeToContent() measures .homepage-block-wrapper which has
+   * height:100%, so it always returns the current cell height — never growing.
+   * Instead we look for a [data-auto-height-content] element placed by the block,
+   * which has height:auto and reports its true rendered height via offsetHeight.
+   */
+  private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): void {
+    if (!this.gridStack || !gsEl.isConnected) return;
+
+    const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
+    const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
+    if (!contentEl || !headerZone) return;
+
+    // grid-template-rows: 1fr constrains the gallery to the available flex space.
+    // Temporarily switch to max-content so the gallery reports its natural height.
+    const blockContent = gsEl.querySelector<HTMLElement>('.block-content');
+    const savedGridRows = blockContent?.style.gridTemplateRows ?? '';
+    if (blockContent) blockContent.style.gridTemplateRows = 'max-content';
+
+    const contentH = contentEl.offsetHeight; // forces reflow at natural height
+
+    if (blockContent) blockContent.style.gridTemplateRows = savedGridRows;
+
+    if (contentH <= 0) return;
+
+    const wrapper = gsEl.querySelector<HTMLElement>('.homepage-block-wrapper');
+    const pad = wrapper
+      ? parseFloat(window.getComputedStyle(wrapper).paddingTop) * 2
+      : 24;
+    const margin = typeof this.gridStack.opts.margin === 'number' ? this.gridStack.opts.margin : 8;
+    const totalH = headerZone.offsetHeight + pad + contentH + margin * 2;
+    const cell = this.gridStack.getCellHeight();
+    const rows = Math.max(1, Math.ceil(totalH / cell));
+
+    const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+    const currentH = node?.h ?? instance.h;
+    if (rows !== currentH) {
+      this.gridStack.update(gsEl, { h: rows });
+      // Persist so re-renders (edit mode toggle, settings change) start at the correct height
+      const newBlocks = this.plugin.layout.blocks.map(b =>
+        b.id === instance.id ? { ...b, h: rows } : b,
+      );
+      void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+    }
   }
 
   /** Determine if a block should auto-expand beyond its grid cell height. */
@@ -723,6 +777,14 @@ class BlockSettingsModal extends Modal {
       );
 
     new Setting(contentEl)
+      .setName('Transparent card')
+      .setDesc('Remove background, border, and padding — the block blends into the page.')
+      .addToggle(t =>
+        t.setValue(draft._transparent === true)
+         .onChange(v => { draft._transparent = v; }),
+      );
+
+    new Setting(contentEl)
       .addButton(btn =>
         btn.setButtonText('Save').setCta().onClick(() => {
           this.onSave(draft);
@@ -747,7 +809,7 @@ class BlockSettingsModal extends Modal {
           this.close();
           this.block.openSettings((blockConfig) => {
             // Merge block-specific config with draft title/emoji/hide settings
-            this.onSave({ ...blockConfig, _titleLabel: draft._titleLabel, _titleEmoji: draft._titleEmoji, _hideTitle: draft._hideTitle });
+            this.onSave({ ...blockConfig, _titleLabel: draft._titleLabel, _titleEmoji: draft._titleEmoji, _hideTitle: draft._hideTitle, _transparent: draft._transparent });
           });
         }),
       );

@@ -14,6 +14,7 @@ export class GridLayout {
   private fitTimer: ReturnType<typeof setTimeout> | null = null;
   private editMode = false;
   private columns = 3;
+  private pendingRafs = new Set<number>();
   /** Callback to trigger the Add Block modal from the empty state CTA. */
   onRequestAddBlock: (() => void) | null = null;
   /** ID of the most recently added block — used for scroll-into-view. */
@@ -106,7 +107,7 @@ export class GridLayout {
       handleClass: 'block-move-handle',
       // Horizontal-only resize in edit mode (vertical managed by sizeToContent / GridStack rows).
       // In view mode, staticGrid disables all interaction so handles are irrelevant.
-      resizable: { handles: 'e' },
+      resizable: { handles: 'e,s,se' },
     }, this.gridEl);
 
     this.gridStack.load(items);
@@ -137,22 +138,25 @@ export class GridLayout {
         // Symbolic compact card — no content rendering for easy drag & drop
         this.renderCompactPlaceholder(headerZone, contentEl, factory, instance);
         this.blocks.set(instance.id, { block: null, wrapper });
+        // Mark auto-height blocks so CSS can hide vertical resize handles
+        if (this.shouldAutoHeight(instance)) gsEl.addClass('gs-auto-height');
       } else {
         const block = factory.create(this.app, instance, this.plugin);
         block.setHeaderContainer(headerZone);
         block.load();
-        const needsResize = !this.editMode && this.shouldAutoHeight(instance);
+        const needsResize = this.shouldAutoHeight(instance);
         const result = block.render(contentEl);
         if (result instanceof Promise) {
-          // After async render, tell GridStack to re-measure auto-height blocks
+          // After async render, wait one frame for the browser to lay out the new DOM,
+          // then measure and resize the block to its natural content height.
           result
-            .then(() => { if (needsResize) this.resizeBlockToContent(gsEl, instance); })
+            .then(() => { if (needsResize) this.scheduleResize(gsEl, instance); })
             .catch(e => {
               console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
               contentEl.setText('Error rendering block. Check console for details.');
             });
         } else if (needsResize) {
-          this.resizeBlockToContent(gsEl, instance);
+          this.scheduleResize(gsEl, instance);
         }
         this.blocks.set(instance.id, { block, wrapper });
       }
@@ -247,6 +251,15 @@ export class GridLayout {
    * Instead we look for a [data-auto-height-content] element placed by the block,
    * which has height:auto and reports its true rendered height via offsetHeight.
    */
+  /** Schedule a resizeBlockToContent call on the next animation frame, tracking the ID for cancellation. */
+  private scheduleResize(gsEl: HTMLElement, instance: BlockInstance): void {
+    const id = requestAnimationFrame(() => {
+      this.pendingRafs.delete(id);
+      this.resizeBlockToContent(gsEl, instance);
+    });
+    this.pendingRafs.add(id);
+  }
+
   private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): void {
     if (!this.gridStack || !gsEl.isConnected) return;
 
@@ -278,7 +291,11 @@ export class GridLayout {
     const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
     const currentH = node?.h ?? instance.h;
     if (rows !== currentH) {
+      // Temporarily lift staticGrid so programmatic update() is not silently ignored.
+      const isStatic = !!this.gridStack.opts.staticGrid;
+      if (isStatic) this.gridStack.setStatic(false);
       this.gridStack.update(gsEl, { h: rows });
+      if (isStatic) this.gridStack.setStatic(true);
       // Persist so re-renders (edit mode toggle, settings change) start at the correct height
       const newBlocks = this.plugin.layout.blocks.map(b =>
         b.id === instance.id ? { ...b, h: rows } : b,
@@ -292,7 +309,7 @@ export class GridLayout {
     const hm = instance.config.heightMode;
     const heightMode = typeof hm === 'string' ? hm : '';
     if (instance.type === 'image-gallery') return heightMode !== 'fixed';
-    if (instance.type === 'quotes-list' && heightMode === 'extend') return true;
+    if (instance.type === 'quotes-list') return heightMode === 'extend';
     if (instance.type === 'embedded-note' && heightMode === 'grow') return true;
     return false;
   }
@@ -407,17 +424,37 @@ export class GridLayout {
         const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`) as HTMLElement | null;
         if (gsItem && this.gridStack) {
           this.gridStack.removeWidget(gsItem);
+          this.gridStack.compact();
         }
         const entry = this.blocks.get(instance.id);
         if (entry) {
           entry.block?.unload();
           this.blocks.delete(instance.id);
         }
-        const newBlocks = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
-        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
-        if (newBlocks.length === 0) {
+        const remaining = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
+        if (remaining.length === 0) {
+          this.onLayoutChange({ ...this.plugin.layout, blocks: [] });
           this.rerender();
+          return;
         }
+        // Read compacted positions from GridStack and persist them
+        if (!this.gridStack) {
+          this.onLayoutChange({ ...this.plugin.layout, blocks: remaining });
+          return;
+        }
+        const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
+        for (const el of this.gridStack.getGridItems()) {
+          const node = (el as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+          const id = el.getAttribute('gs-id');
+          if (id && node) {
+            posMap.set(id, { x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+          }
+        }
+        const newBlocks = remaining.map(b => {
+          const pos = posMap.get(b.id);
+          return pos ? { ...b, ...pos } : b;
+        });
+        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
       }).open();
     });
 
@@ -481,7 +518,7 @@ export class GridLayout {
       }
     }
 
-    // Skip save if nothing actually changed
+    // Skip save if nothing actually changed.
     const changed = this.plugin.layout.blocks.some(b => {
       const pos = posMap.get(b.id);
       return pos && (b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h);
@@ -521,25 +558,36 @@ export class GridLayout {
     if (!enable) {
       this.gridEl.style.transform = '';
       this.gridEl.style.transformOrigin = '';
+      this.gridEl.style.flexShrink = '';
       this.gridEl.removeClass('viewport-fit');
       return;
     }
 
-    // clientHeight = flex-assigned visible height; scrollHeight = full GridStack content.
-    // Scale down only if content overflows the visible area.
+    // Remove viewport-fit class FIRST: its overflow:hidden would clip scrollHeight,
+    // causing an incorrect naturalH measurement on repeated calls.
+    // Also restore flex-shrink so clientHeight reflects the true available space.
+    this.gridEl.style.flexShrink = '';
+    this.gridEl.style.transform = '';
+    this.gridEl.removeClass('viewport-fit');
+
+    // availH: flex compresses the grid to the space the view allocates.
+    // naturalH: GridStack's full content height — accurate now that overflow-y:auto is restored.
     const availH = this.gridEl.clientHeight;
     const naturalH = this.gridEl.scrollHeight;
-    if (availH <= 0 || naturalH <= 0) {
-      this.gridEl.style.transform = '';
-      this.gridEl.removeClass('viewport-fit');
+
+    const scale = availH / naturalH;
+
+    if (!availH || !naturalH || scale >= 1) {
       return;
     }
 
-    const scale = Math.min(availH / naturalH, 1);
-
+    // flex-shrink:0 expands the box to naturalH so the transform scales the full content.
+    // Without this, flex-shrink keeps the box at availH and the transform only scales
+    // that clipped portion — bottom rows are invisible and resize handles are inaccessible.
+    this.gridEl.style.flexShrink = '0';
     this.gridEl.style.transformOrigin = 'top center';
-    this.gridEl.style.transform = scale < 1 ? `scale(${scale})` : '';
-    this.gridEl.toggleClass('viewport-fit', scale < 1);
+    this.gridEl.style.transform = `scale(${scale})`;
+    this.gridEl.addClass('viewport-fit');
   }
 
   /** Update column count, clamping each block's w to fit. */
@@ -554,8 +602,10 @@ export class GridLayout {
   }
 
   addBlock(instance: BlockInstance): void {
-    const newBlocks = [...this.plugin.layout.blocks, instance];
-    this.lastAddedBlockId = instance.id;
+    const maxY = this.plugin.layout.blocks.reduce((m, b) => Math.max(m, b.y + b.h), 0);
+    const positioned = { ...instance, y: maxY };
+    const newBlocks = [...this.plugin.layout.blocks, positioned];
+    this.lastAddedBlockId = positioned.id;
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
     this.rerender();
     if (this.editMode) this.scheduleFitToViewport(true);
@@ -569,6 +619,8 @@ export class GridLayout {
   destroyAll(): void {
     if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
     if (this.fitTimer !== null) { clearTimeout(this.fitTimer); this.fitTimer = null; }
+    for (const id of this.pendingRafs) cancelAnimationFrame(id);
+    this.pendingRafs.clear();
     for (const { block } of this.blocks.values()) {
       block?.unload();
     }
@@ -584,6 +636,7 @@ export class GridLayout {
     this.gridEl.style.height = '';
     this.gridEl.style.transform = '';
     this.gridEl.style.transformOrigin = '';
+    this.gridEl.style.flexShrink = '';
   }
 
   /** Full teardown: unload blocks and remove the grid element from the DOM. */

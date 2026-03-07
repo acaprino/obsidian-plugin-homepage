@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TFile, MarkdownRenderer } from 'obsidian';
+import { App, AbstractInputSuggest, Modal, Setting, TFile, MarkdownRenderer } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
@@ -8,14 +8,9 @@ export class EmbeddedNoteBlock extends BaseBlock {
   private containerEl: HTMLElement | null = null;
   private debounceTimer: number | null = null;
 
-  render(el: HTMLElement): void {
+  render(el: HTMLElement): Promise<void> {
     this.containerEl = el;
     el.addClass('embedded-note-block');
-
-    this.renderContent(el).catch(e => {
-      console.error('[Homepage Blocks] EmbeddedNoteBlock failed to render:', e);
-      el.setText('Error rendering file. Check console for details.');
-    });
 
     // Register vault listener once; debounce rapid saves
     this.registerEvent(
@@ -35,6 +30,11 @@ export class EmbeddedNoteBlock extends BaseBlock {
         }
       }),
     );
+
+    return this.renderContent(el).catch(e => {
+      console.error('[Homepage Blocks] EmbeddedNoteBlock failed to render:', e);
+      el.setText('Error rendering file. Check console for details.');
+    });
   }
 
   onunload(): void {
@@ -92,6 +92,32 @@ export class EmbeddedNoteBlock extends BaseBlock {
   }
 }
 
+class FileSuggest extends AbstractInputSuggest<TFile> {
+  constructor(app: App, private inputEl: HTMLInputElement) {
+    super(app, inputEl);
+  }
+
+  getSuggestions(query: string): TFile[] {
+    const q = query.toLowerCase();
+    return this.app.vault.getMarkdownFiles()
+      .filter(f => f.path.toLowerCase().includes(q))
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .slice(0, 30);
+  }
+
+  renderSuggestion(file: TFile, el: HTMLElement): void {
+    el.createEl('span', { text: file.path });
+  }
+
+  selectSuggestion(file: TFile): void {
+    this.setValue(file.path);
+    // setValue doesn't dispatch a DOM event, so the TextComponent's onChange
+    // won't fire. Dispatch manually so onChange updates the draft.
+    this.inputEl.dispatchEvent(new Event('input'));
+    this.close();
+  }
+}
+
 class EmbeddedNoteSettingsModal extends Modal {
   constructor(
     app: App,
@@ -108,10 +134,12 @@ class EmbeddedNoteSettingsModal extends Modal {
 
     const draft = structuredClone(this.config);
 
-    new Setting(contentEl).setName('File path').setDesc('Vault path to the note (e.g. Notes/MyNote.md)').addText(t =>
+    new Setting(contentEl).setName('File path').setDesc('Vault path to the note (e.g. Notes/MyNote.md)').addText(t => {
       t.setValue(draft.filePath as string ?? '')
-       .onChange(v => { draft.filePath = v; }),
-    );
+       .setPlaceholder('Start typing to search…')
+       .onChange(v => { draft.filePath = v; });
+      new FileSuggest(this.app, t.inputEl);
+    });
     new Setting(contentEl).setName('Show title').addToggle(t =>
       t.setValue(draft.showTitle as boolean ?? true)
        .onChange(v => { draft.showTitle = v; }),

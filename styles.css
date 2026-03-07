@@ -47,27 +47,57 @@
   background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }
 
-/* GridStack resize handle override */
+/* GridStack resize handles */
+.homepage-grid .ui-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  z-index: 10;
+}
+
+/* South (bottom) handle — full-width strip */
+.homepage-grid .ui-resizable-s {
+  height: 8px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  cursor: s-resize;
+}
+
+/* East (right) handle — full-height strip */
+.homepage-grid .ui-resizable-e {
+  width: 8px;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  cursor: e-resize;
+}
+
+/* South-East corner handle */
 .homepage-grid .ui-resizable-se {
   width: 20px;
   height: 20px;
-  bottom: 8px;
-  right: 8px;
+  bottom: 4px;
+  right: 4px;
   cursor: se-resize;
-  opacity: 0;
-  transition: opacity 0.15s ease-out;
 }
 
-.homepage-grid.edit-mode .ui-resizable-se {
-  opacity: 0.7;
+/* Show handles in edit mode */
+.homepage-grid.edit-mode .ui-resizable-handle {
+  opacity: 0.5;
 }
 
-.homepage-grid.edit-mode .grid-stack-item:hover .ui-resizable-se {
+.homepage-grid.edit-mode .grid-stack-item:hover .ui-resizable-handle {
   opacity: 1;
 }
 
 /* Hide resize handles when not in edit mode */
 .homepage-grid:not(.edit-mode) .ui-resizable-handle {
+  display: none !important;
+}
+
+/* Auto-height blocks: only allow horizontal resize (height is managed automatically) */
+.homepage-grid .gs-auto-height > .ui-resizable-s,
+.homepage-grid .gs-auto-height > .ui-resizable-se {
   display: none !important;
 }
 
@@ -433,11 +463,9 @@
 
 /* ── Quotes List Block ──────────────────────────────────── */
 .quotes-columns {
-  display: grid;
-  gap: 12px 20px;
+  column-gap: 20px;
   max-height: 500px;
   overflow-y: auto;
-  align-items: start;
 }
 
 .homepage-block-wrapper .block-content > .quotes-list-block--extend {
@@ -454,6 +482,7 @@
 
 .quote-item {
   margin-bottom: 16px;
+  break-inside: avoid;
 }
 
 .quote-content {
@@ -867,14 +896,16 @@
 }
 
 /* ── Viewport-fit (scale-to-fit in edit mode) ───────────── */
+/* overflow:visible prevents clipping GridStack resize handles at the last card's edge. */
+/* The grid box = naturalH (flex-shrink:0) so there is no actual overflow to hide. */
 .homepage-grid.viewport-fit {
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* ── Edit Mode ──────────────────────────────────────────── */
 .homepage-grid.edit-mode .homepage-block-wrapper {
-  outline: 2px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
-  outline-offset: 2px;
+  border: 2px dashed var(--color-accent);
+  outline: none;
 }
 
 /* ── Edit Mode Compact Placeholder ──────────────────────── */
@@ -1061,7 +1092,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
@@ -1077,6 +1108,8 @@
     box-shadow 0.15s ease-out;
   text-align: center;
   width: 100%;
+  overflow: hidden;
+  min-height: 88px;
 }
 
 .add-block-option:hover {

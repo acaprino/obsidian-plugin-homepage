@@ -17,16 +17,16 @@ type QuotesConfig = {
 };
 
 export class QuotesListBlock extends BaseBlock {
-  render(el: HTMLElement): void {
+  render(el: HTMLElement): Promise<void> {
     el.addClass('quotes-list-block');
-    this.loadAndRender(el).catch(e => {
+    return this.loadAndRender(el).catch(e => {
       console.error('[Homepage Blocks] QuotesListBlock failed to render:', e);
       el.setText('Error loading quotes. Check console for details.');
     });
   }
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
-    const { source = 'tag', tag = '', quotes = '', title = 'Quotes', columns = 2, maxItems = 20, heightMode = 'wrap' } =
+    const { source = 'tag', tag = '', quotes = '', title = 'Quotes', columns = 2, maxItems = 20, heightMode = 'extend' } =
       this.instance.config as QuotesConfig;
 
     this.renderHeader(el, title);
@@ -34,6 +34,7 @@ export class QuotesListBlock extends BaseBlock {
     el.toggleClass('quotes-list-block--extend', heightMode === 'extend');
 
     const colsEl = el.createDiv({ cls: 'quotes-columns' });
+    if (heightMode !== 'wrap') colsEl.setAttribute('data-auto-height-content', '');
     if (heightMode === 'wrap') {
       colsEl.setAttribute('tabindex', '0');
       colsEl.setAttribute('role', 'region');
@@ -44,7 +45,7 @@ export class QuotesListBlock extends BaseBlock {
     const updateCols = () => {
       const w = colsEl.offsetWidth;
       const effective = w > 0 ? Math.max(1, Math.min(columns, Math.floor(w / MIN_COL_WIDTH))) : columns;
-      colsEl.style.gridTemplateColumns = `repeat(${effective}, 1fr)`;
+      colsEl.style.columnCount = String(effective);
     };
     updateCols();
     const ro = new ResizeObserver(updateCols);
@@ -228,7 +229,7 @@ class QuotesSettingsModal extends Modal {
       .addDropdown(d =>
         d.addOption('wrap', 'Scroll (fixed height)')
          .addOption('extend', 'Grow to fit all')
-         .setValue(draft.heightMode ?? 'wrap')
+         .setValue(draft.heightMode ?? 'extend')
          .onChange(v => { draft.heightMode = v as 'wrap' | 'extend'; }),
       );
     new Setting(contentEl).setName('Max items').addText(t =>

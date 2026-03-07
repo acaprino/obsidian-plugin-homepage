@@ -166,27 +166,19 @@ export class GridLayout {
       }
     }
 
-    // Temporarily disable float during drag so items push/swap.
-    // Also clear the viewport-fit scale so pointer coordinates match visual positions.
-    this.gridStack.on('dragstart', () => {
-      this.gridStack?.float(false);
-      this.gridEl.style.transform = '';
-    });
+    // Temporarily disable float during drag/resize so items push/swap.
+    // GridStack already compensates for CSS transform via getValuesFromTransformedElement
+    // (dragTransform.xScale/yScale), so we do NOT need to clear the viewport-fit scale.
+    this.gridStack.on('dragstart', () => { this.gridStack?.float(false); });
     this.gridStack.on('dragstop', () => {
       this.gridStack?.float(true);
       this.syncLayoutFromGrid();
-      this.scheduleFitToViewport(true);
     });
 
-    // Same for resize: clear scale so resize handles align with pointer.
-    this.gridStack.on('resizestart', () => {
-      this.gridStack?.float(false);
-      this.gridEl.style.transform = '';
-    });
+    this.gridStack.on('resizestart', () => { this.gridStack?.float(false); });
     this.gridStack.on('resizestop', () => {
       this.gridStack?.float(true);
       this.syncLayoutFromGrid();
-      this.scheduleFitToViewport(true);
     });
 
     // Scroll to newly added block

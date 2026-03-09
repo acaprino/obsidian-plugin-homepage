@@ -12,16 +12,20 @@ interface LightboxItem { src: string; alt: string; type: 'image' | 'video'; }
 const SWIPE_THRESHOLD_PX = 50;
 const SWIPE_DIRECTION_RATIO = 1.5;
 
-let activeLightboxAbort: AbortController | null = null;
+/** Tracks the currently open lightbox so only one can exist at a time. */
+let activeLightboxAc: AbortController | null = null;
+
+/** Returns true when a lightbox is currently visible. */
+function isLightboxOpen(): boolean { return activeLightboxAc !== null; }
 
 function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
   if (items.length === 0) return;
   // Abort previous lightbox listeners and remove its overlay
-  activeLightboxAbort?.abort();
+  activeLightboxAc?.abort();
   document.querySelector('.gallery-lightbox')?.remove();
 
   const ac = new AbortController();
-  activeLightboxAbort = ac;
+  activeLightboxAc = ac;
   const { signal } = ac;
 
   let current = startIndex;
@@ -74,16 +78,19 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
     pauseCurrentVideo();
     overlay.remove();
     ac.abort();
-    activeLightboxAbort = null;
+    activeLightboxAc = null;
   };
 
   prevBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current - 1); }, { signal });
   nextBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current + 1); }, { signal });
   overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target === mediaContainer) close(); }, { signal });
   document.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.key === 'Escape') close();
-    else if (e.key === 'ArrowLeft') showItem(current - 1);
-    else if (e.key === 'ArrowRight') showItem(current + 1);
+    // Ignore when focus is in an input/textarea (e.g. another modal)
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); showItem(current - 1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); showItem(current + 1); }
   }, { signal });
 
   // Swipe navigation for touch devices
@@ -113,12 +120,18 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
 const DEBOUNCE_MS = 300;
 
 export class ImageGalleryBlock extends BaseBlock {
+  /** The AbortController for the lightbox opened by THIS instance (if any). */
+  private myLightboxAc: AbortController | null = null;
+
   onunload(): void {
     super.onunload();
-    // Clean up any lightbox that may be open when this block is unloaded
-    activeLightboxAbort?.abort();
-    document.querySelector('.gallery-lightbox')?.remove();
-    activeLightboxAbort = null;
+    // Only clean up the lightbox if THIS block instance owns it
+    if (this.myLightboxAc && this.myLightboxAc === activeLightboxAc) {
+      this.myLightboxAc.abort();
+      document.querySelector('.gallery-lightbox')?.remove();
+      activeLightboxAc = null;
+    }
+    this.myLightboxAc = null;
   }
 
   render(el: HTMLElement): Promise<void> {
@@ -153,13 +166,18 @@ export class ImageGalleryBlock extends BaseBlock {
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
-    const { folder = '', columns = 3, maxItems = 20, layout = 'grid', heightMode = 'auto' } = this.instance.config as {
+    const cfg = this.instance.config as {
       folder?: string;
       columns?: number;
       maxItems?: number;
       layout?: 'grid' | 'masonry';
       heightMode?: 'auto' | 'fixed';
     };
+    const folder = cfg.folder ?? '';
+    const columns = Math.max(1, Math.min(6, Math.floor(Number(cfg.columns) || 3)));
+    const maxItems = Math.max(1, Math.min(200, Math.floor(Number(cfg.maxItems) || 20)));
+    const layout = cfg.layout ?? 'grid';
+    const heightMode = cfg.heightMode ?? 'auto';
 
     this.renderHeader(el, 'Gallery');
 
@@ -169,6 +187,8 @@ export class ImageGalleryBlock extends BaseBlock {
     } else {
       // Mark for natural-height measurement after images load
       gallery.setAttribute('data-auto-height-content', '');
+      // Width observer is started after images load (see below) to avoid
+      // measuring before content is laid out.
     }
 
     if (layout === 'masonry') {
@@ -188,7 +208,7 @@ export class ImageGalleryBlock extends BaseBlock {
       this.register(() => ro.disconnect());
     } else {
       const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
-      gallery.style.gridTemplateColumns = responsiveGridColumns(safeCols, 70);
+      gallery.style.gridTemplateColumns = responsiveGridColumns(safeCols, 150);
     }
 
     if (!folder) {
@@ -227,7 +247,7 @@ export class ImageGalleryBlock extends BaseBlock {
       wrapper.setAttribute('aria-label', file.basename);
 
       const index = i;
-      const action = () => openMediaLightbox(lightboxItems, index);
+      const action = () => { openMediaLightbox(lightboxItems, index); this.myLightboxAc = activeLightboxAc; };
       wrapper.addEventListener('click', action);
       wrapper.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); action(); }
@@ -258,7 +278,7 @@ export class ImageGalleryBlock extends BaseBlock {
         // Seek to first frame so thumbnail isn't a black box
         video.addEventListener('loadedmetadata', () => { video.currentTime = 0.1; }, { once: true });
 
-        wrapper.addEventListener('mouseenter', () => { video.play().catch(() => { /* hover preview — ignore if autoplay restricted */ }); });
+        wrapper.addEventListener('mouseenter', () => { if (!isLightboxOpen()) video.play().catch(() => { /* hover preview — ignore if autoplay restricted */ }); });
         wrapper.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0.1; });
       }
     }
@@ -267,6 +287,11 @@ export class ImageGalleryBlock extends BaseBlock {
     // measure the block's true height before calling resizeToContent.
     await Promise.all(imageLoadPromises);
     if (this.isStale(gen)) return; // a newer render superseded this one
+
+    // Start width observer AFTER images load so the initial measurement is accurate.
+    if (heightMode !== 'fixed') {
+      this.observeWidthForAutoHeight(gallery);
+    }
   }
 
   private getMediaFiles(folder: TFolder, limit = Infinity): TFile[] {

@@ -51,8 +51,8 @@ export class StaticTextBlock extends BaseBlock {
     // Hide rendered content and pencil button
     const contentEl = el.querySelector('.static-text-content') as HTMLElement | null;
     const editBtn = el.querySelector('.static-text-edit-btn') as HTMLElement | null;
-    if (contentEl) contentEl.style.display = 'none';
-    if (editBtn) editBtn.style.display = 'none';
+    if (contentEl) contentEl.addClass('hp-hidden');
+    if (editBtn) editBtn.addClass('hp-hidden');
 
     // Create inline editor
     const editor = el.createDiv({ cls: 'static-text-inline-editor' });
@@ -123,7 +123,7 @@ class StaticTextSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Static Text Settings' });
+    contentEl.createEl('h2', { text: 'Static text settings' });
 
     const draft = structuredClone(this.config);
 

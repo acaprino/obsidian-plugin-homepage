@@ -231,7 +231,7 @@ export class GridLayout {
     });
     applyBlockStyling(wrapper, instance.config);
     if (animDelayMs !== undefined) {
-      wrapper.style.animationDelay = `${animDelayMs}ms`;
+      wrapper.style.setProperty('--hp-card-anim-delay', `${animDelayMs}ms`);
     }
     const headerZone = wrapper.createDiv({
       cls: 'block-header-zone',
@@ -314,20 +314,18 @@ export class GridLayout {
     // transition keeps the computed value as 1fr at t=0 and offsetHeight returns
     // the constrained height instead of the natural content height.
     const blockContent = gsEl.querySelector<HTMLElement>('.block-content');
-    const savedGridRows = blockContent?.style.gridTemplateRows ?? '';
-    const savedTransition = blockContent?.style.transition ?? '';
     if (blockContent) {
-      blockContent.style.transition = 'none';
-      blockContent.style.gridTemplateRows = 'max-content';
+      blockContent.addClass('hp-no-transition');
+      blockContent.addClass('hp-auto-rows');
     }
 
     const contentH = contentEl.offsetHeight; // forces reflow at natural height
 
     if (blockContent) {
-      blockContent.style.gridTemplateRows = savedGridRows;
+      blockContent.removeClass('hp-auto-rows');
       // Force reflow before restoring transition so the browser doesn't animate the restore
       void blockContent.offsetHeight;
-      blockContent.style.transition = savedTransition;
+      blockContent.removeClass('hp-no-transition');
     }
 
     if (contentH <= 0) return;
@@ -640,15 +638,13 @@ export class GridLayout {
     if (!this.gridEl.isConnected) return;
     if (!Number.isFinite(scale) || scale <= 0) scale = 1;
     if (scale >= 1) {
-      this.gridEl.style.transform = '';
-      this.gridEl.style.transformOrigin = '';
-      this.gridEl.style.flexShrink = '';
+      this.gridEl.style.removeProperty('--hp-grid-transform');
+      this.gridEl.removeClass('hp-zoomed');
       this.gridEl.removeClass('viewport-fit');
       return;
     }
-    this.gridEl.style.flexShrink = '0';
-    this.gridEl.style.transformOrigin = 'top center';
-    this.gridEl.style.transform = `scale(${scale})`;
+    this.gridEl.style.setProperty('--hp-grid-transform', `scale(${scale})`);
+    this.gridEl.addClass('hp-zoomed');
     this.gridEl.addClass('viewport-fit');
   }
 
@@ -745,10 +741,8 @@ export class GridLayout {
     this.gridEl.empty();
     // Clear inline styles GridStack or setZoom may have set.
     this.gridEl.removeClass('viewport-fit');
-    this.gridEl.style.height = '';
-    this.gridEl.style.transform = '';
-    this.gridEl.style.transformOrigin = '';
-    this.gridEl.style.flexShrink = '';
+    this.gridEl.style.removeProperty('--hp-grid-transform');
+    this.gridEl.removeClass('hp-zoomed');
   }
 
   /** Full teardown: unload blocks and remove the grid element from the DOM. */
@@ -790,7 +784,7 @@ class BlockSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Block Settings' });
+    contentEl.createEl('h2', { text: 'Block settings' });
 
     const draft = structuredClone(this.instance.config);
     const factory = BlockRegistry.get(this.instance.type);
@@ -815,13 +809,13 @@ class BlockSettingsModal extends Modal {
       const label = (typeof draft._titleLabel === 'string' && draft._titleLabel) || defaultTitle;
       const emoji = typeof draft._titleEmoji === 'string' ? draft._titleEmoji : '';
       previewEmoji.setText(emoji);
-      previewEmoji.style.display = emoji ? '' : 'none';
+      previewEmoji.toggleClass('hp-hidden', !emoji);
       previewTitle.setText(label);
       previewHeader.className = 'block-header';
       const sz = typeof draft._titleSize === 'string' && /^h[1-6]$/.test(draft._titleSize) ? draft._titleSize : '';
       if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.style.display = draft._hideTitle === true ? 'none' : '';
-      previewDivider.style.display = draft._showDivider === true ? '' : 'none';
+      previewHeaderZone.toggleClass('hp-hidden', draft._hideTitle === true);
+      previewDivider.toggleClass('hp-hidden', draft._showDivider !== true);
       applyBlockStyling(previewCard, draft);
     };
     refreshPreview();
@@ -925,7 +919,7 @@ class BlockSettingsModal extends Modal {
     const swatchRow = cardBody.createDiv({ cls: 'accent-preset-row' });
     for (const hex of ACCENT_PRESETS) {
       const swatch = swatchRow.createDiv({ cls: 'accent-preset-swatch' });
-      swatch.style.background = hex;
+      swatch.style.setProperty('--hp-swatch-bg', hex);
       swatch.setAttribute('aria-label', hex);
       swatch.addEventListener('click', () => {
         draft._accentColor = hex;
@@ -935,14 +929,12 @@ class BlockSettingsModal extends Modal {
       });
     }
 
-    let intensitySlider: import('obsidian').SliderComponent | null = null;
     new Setting(cardBody)
       .setName('Accent intensity')
       .setDesc('How strong the accent tint appears on the card background (5–100%).')
       .addSlider(s => {
-        intensitySlider = s;
         s.setLimits(5, 100, 5)
-         .setValue(typeof draft._accentIntensity === 'number' ? draft._accentIntensity as number : 15)
+         .setValue(typeof draft._accentIntensity === 'number' ? draft._accentIntensity : 15)
          .setDynamicTooltip()
          .onChange(v => { draft._accentIntensity = v; refreshPreview(); });
         // Live preview while dragging — sliderEl is Obsidian's public API
@@ -990,7 +982,7 @@ class BlockSettingsModal extends Modal {
     const advancedBody = this.createSection(contentEl, 'Advanced Styling', 'Shadow, blur, gradients');
 
     new Setting(advancedBody)
-      .setName('Shadow / Elevation')
+      .setName('Shadow / elevation')
       .setDesc('Card shadow depth (0 = none).')
       .addDropdown(d =>
         d.addOption('0', 'None')
@@ -1056,7 +1048,7 @@ class BlockSettingsModal extends Modal {
       text: 'Background gradient (overrides background color when both colors are set):',
       cls: 'setting-item-name',
     });
-    gradientNote.style.margin = '12px 0 4px';
+    gradientNote.addClass('hp-gradient-note');
 
     let gradStartRef: ColorComponent | null = null;
     let gradEndRef: ColorComponent | null = null;
@@ -1064,14 +1056,14 @@ class BlockSettingsModal extends Modal {
     const gradStartRow = new Setting(advancedBody).setName('Gradient start');
     gradStartRow.addColorPicker(cp => {
       gradStartRef = cp;
-      cp.setValue(hasGradStart ? draft._gradientStart as string : '#667eea')
+      cp.setValue(typeof draft._gradientStart === 'string' ? draft._gradientStart : '#667eea')
         .onChange(v => { draft._gradientStart = v; gradDirty = true; refreshPreview(); });
     });
 
     const gradEndRow = new Setting(advancedBody).setName('Gradient end');
     gradEndRow.addColorPicker(cp => {
       gradEndRef = cp;
-      cp.setValue(hasGradEnd ? draft._gradientEnd as string : '#764ba2')
+      cp.setValue(typeof draft._gradientEnd === 'string' ? draft._gradientEnd : '#764ba2')
         .onChange(v => { draft._gradientEnd = v; gradDirty = true; refreshPreview(); });
     });
 

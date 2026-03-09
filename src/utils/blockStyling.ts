@@ -53,8 +53,8 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   // ── Border radius ──────────────────────────────────────────────────
   const borderRadius = typeof config._borderRadius === 'number'
     ? Math.max(0, Math.min(24, config._borderRadius)) : 0;
-  if (borderRadius) el.style.borderRadius = `${borderRadius}px`;
-  else el.style.borderRadius = '';
+  if (borderRadius) el.style.setProperty('--hp-border-radius', `${borderRadius}px`);
+  else el.style.removeProperty('--hp-border-radius');
 
   // ── Background opacity ─────────────────────────────────────────────
   const bgOpacity = typeof config._bgOpacity === 'number'
@@ -67,11 +67,9 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   const backdropBlur = typeof config._backdropBlur === 'number'
     ? Math.max(0, Math.min(20, config._backdropBlur)) : 0;
   if (backdropBlur > 0 && bgOpacity < 100) {
-    el.style.backdropFilter = `blur(${backdropBlur}px)`;
-    el.style.setProperty('-webkit-backdrop-filter', `blur(${backdropBlur}px)`);
+    el.style.setProperty('--hp-backdrop-blur', `blur(${backdropBlur}px)`);
   } else {
-    el.style.backdropFilter = '';
-    el.style.removeProperty('-webkit-backdrop-filter');
+    el.style.removeProperty('--hp-backdrop-blur');
   }
 
   // ── Background gradient ────────────────────────────────────────────
@@ -82,21 +80,23 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   const gradAngle = typeof config._gradientAngle === 'number'
     ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
   if (gradStart && gradEnd && config._hideBackground !== true) {
-    el.style.background = `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`;
+    el.style.setProperty('--hp-bg-gradient', `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
+    el.toggleClass('block-has-gradient', true);
   } else if (config._hideBackground !== true) {
-    el.style.background = '';
+    el.style.removeProperty('--hp-bg-gradient');
+    el.toggleClass('block-has-gradient', false);
   }
 
   // ── Border width ───────────────────────────────────────────────────
   const borderWidth = typeof config._borderWidth === 'number'
     ? Math.max(0, Math.min(4, config._borderWidth)) : 0;
-  if (borderWidth) el.style.borderWidth = `${borderWidth}px`;
-  else el.style.borderWidth = '';
+  if (borderWidth) el.style.setProperty('--hp-border-width', `${borderWidth}px`);
+  else el.style.removeProperty('--hp-border-width');
 
   // ── Border style ───────────────────────────────────────────────────
   const borderStyle = typeof config._borderStyle === 'string'
     && VALID_BORDER_STYLES.includes(config._borderStyle)
     ? config._borderStyle : '';
-  if (borderStyle) el.style.borderStyle = borderStyle;
-  else el.style.borderStyle = '';
+  if (borderStyle) el.style.setProperty('--hp-border-style', borderStyle);
+  else el.style.removeProperty('--hp-border-style');
 }

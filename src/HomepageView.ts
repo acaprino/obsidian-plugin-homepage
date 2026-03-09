@@ -17,7 +17,7 @@ export class HomepageView extends ItemView {
   getDisplayText(): string { return 'Homepage'; }
   getIcon(): string { return 'home'; }
 
-  async onOpen(): Promise<void> {
+  onOpen(): Promise<void> {
     // Full teardown: unloads blocks AND removes the grid DOM element
     this.grid?.destroy();
     this.toolbar?.destroy();
@@ -49,11 +49,13 @@ export class HomepageView extends ItemView {
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
 
     this.grid.render(layout.blocks, layout.columns, true);
+    return Promise.resolve();
   }
 
-  async onClose(): Promise<void> {
+  onClose(): Promise<void> {
     this.grid?.destroy();
     this.toolbar?.destroy();
+    return Promise.resolve();
   }
 
   /** Toggle edit mode — called from keyboard shortcut command. */

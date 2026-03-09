@@ -1,5 +1,4 @@
-import { App, CachedMetadata, Modal, Setting, TFile } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
+import { App, CachedMetadata, Modal, Setting } from 'obsidian';
 import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { BaseBlock } from './BaseBlock';
 
@@ -69,7 +68,7 @@ export class QuotesListBlock extends BaseBlock {
     const updateCols = () => {
       const w = colsEl.offsetWidth;
       const effective = w > 0 ? Math.max(1, Math.min(columns, Math.floor(w / MIN_COL_WIDTH))) : columns;
-      colsEl.style.columnCount = String(effective);
+      colsEl.style.setProperty('--hp-column-count', String(effective));
     };
     updateCols();
     const ro = new ResizeObserver(updateCols);
@@ -124,8 +123,8 @@ export class QuotesListBlock extends BaseBlock {
 
       // Validate color before applying to prevent CSS injection
       if (color && COLOR_RE.test(color)) {
-        quote.style.borderLeftColor = color;
-        quote.style.color = color;
+        quote.style.setProperty('--hp-quote-color', color);
+        quote.addClass('quote-colored');
       }
 
       item.createDiv({ cls: 'quote-source', text: file.basename });
@@ -196,7 +195,7 @@ class QuotesSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Quotes List Settings' });
+    contentEl.createEl('h2', { text: 'Quotes list settings' });
 
     const draft = structuredClone(this.config) as QuotesConfig;
     draft.source ??= 'tag';
@@ -213,15 +212,15 @@ class QuotesSettingsModal extends Modal {
          .addOption('text', 'Manual text')
          .setValue(draft.source ?? 'tag')
          .onChange(v => {
-           draft.source = v as 'tag' | 'text';
-           tagSection.style.display = v === 'tag' ? '' : 'none';
-           textSection.style.display = v === 'text' ? '' : 'none';
+           draft.source = v === 'text' ? 'text' : 'tag';
+           tagSection.toggleClass('hp-hidden', v !== 'tag');
+           textSection.toggleClass('hp-hidden', v !== 'text');
          }),
       );
 
     // Tag section
     tagSection = contentEl.createDiv();
-    tagSection.style.display = draft.source === 'tag' ? '' : 'none';
+    tagSection.toggleClass('hp-hidden', draft.source !== 'tag');
     new Setting(tagSection).setName('Tag').setDesc('Without # prefix').addText(t =>
       t.setValue(draft.tag ?? '')
        .onChange(v => { draft.tag = v; }),
@@ -229,24 +228,20 @@ class QuotesSettingsModal extends Modal {
 
     // Text section
     textSection = contentEl.createDiv();
-    textSection.style.display = draft.source === 'text' ? '' : 'none';
+    textSection.toggleClass('hp-hidden', draft.source !== 'text');
     const textSetting = new Setting(textSection)
       .setName('Quotes')
       .setDesc('Separate quotes with --- on its own line. Add a source line starting with — (e.g. — Author).');
-    textSetting.settingEl.style.flexDirection = 'column';
-    textSetting.settingEl.style.alignItems = 'stretch';
+    textSetting.settingEl.addClass('hp-setting-column');
     const textarea = textSetting.settingEl.createEl('textarea');
     textarea.rows = 8;
-    textarea.style.width = '100%';
-    textarea.style.marginTop = '8px';
-    textarea.style.fontFamily = 'var(--font-monospace)';
-    textarea.style.fontSize = '12px';
+    textarea.addClass('hp-textarea-full');
     textarea.value = draft.quotes ?? '';
     textarea.addEventListener('input', () => { draft.quotes = textarea.value; });
 
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3')
-       .setValue(String(draft.columns ?? 2))
+       .setValue(String(typeof draft.columns === 'number' ? draft.columns : 2))
        .onChange(v => { draft.columns = Number(v); }),
     );
     new Setting(contentEl)
@@ -255,11 +250,11 @@ class QuotesSettingsModal extends Modal {
       .addDropdown(d =>
         d.addOption('wrap', 'Scroll (fixed height)')
          .addOption('extend', 'Grow to fit all')
-         .setValue(draft.heightMode ?? 'extend')
-         .onChange(v => { draft.heightMode = v as 'wrap' | 'extend'; }),
+         .setValue(typeof draft.heightMode === 'string' ? draft.heightMode : 'extend')
+         .onChange(v => { draft.heightMode = v === 'wrap' ? 'wrap' : 'extend'; }),
       );
     new Setting(contentEl).setName('Max items').addText(t =>
-      t.setValue(String(draft.maxItems ?? 20))
+      t.setValue(String(typeof draft.maxItems === 'number' ? draft.maxItems : 20))
        .onChange(v => { draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200); }),
     );
     new Setting(contentEl).addButton(btn =>

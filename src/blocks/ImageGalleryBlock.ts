@@ -1,5 +1,4 @@
 import { App, Modal, setIcon, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
@@ -199,7 +198,7 @@ export class ImageGalleryBlock extends BaseBlock {
         const effective = w > 0 ? Math.max(1, Math.min(columns, Math.floor(w / 100))) : columns;
         if (effective !== currentCols) {
           currentCols = effective;
-          gallery.style.columns = String(effective);
+          gallery.style.setProperty('--hp-masonry-cols', String(effective));
         }
       };
       updateCols();
@@ -208,7 +207,7 @@ export class ImageGalleryBlock extends BaseBlock {
       this.register(() => ro.disconnect());
     } else {
       const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
-      gallery.style.gridTemplateColumns = responsiveGridColumns(safeCols, 150);
+      gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols, 150));
     }
 
     if (!folder) {
@@ -330,7 +329,7 @@ class ImageGallerySettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Image Gallery Settings' });
+    contentEl.createEl('h2', { text: 'Image gallery settings' });
 
     const draft = structuredClone(this.config);
 
@@ -359,21 +358,21 @@ class ImageGallerySettingsModal extends Modal {
       .addDropdown(d =>
         d.addOption('auto', 'Auto (fit all images)')
          .addOption('fixed', 'Fixed (scroll)')
-         .setValue(String(draft.heightMode ?? 'auto'))
+         .setValue(typeof draft.heightMode === 'string' ? draft.heightMode : 'auto')
          .onChange(v => { draft.heightMode = v === 'fixed' ? 'fixed' : 'auto'; }),
       );
     new Setting(contentEl).setName('Layout').addDropdown(d =>
       d.addOption('grid', 'Grid').addOption('masonry', 'Masonry')
-       .setValue(String(draft.layout ?? 'grid'))
+       .setValue(typeof draft.layout === 'string' ? draft.layout : 'grid')
        .onChange(v => { draft.layout = v; }),
     );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
-       .setValue(String(draft.columns ?? 3))
+       .setValue(String(typeof draft.columns === 'number' ? draft.columns : 3))
        .onChange(v => { draft.columns = Number(v); }),
     );
     new Setting(contentEl).setName('Max items').addText(t =>
-      t.setValue(String(draft.maxItems ?? 20))
+      t.setValue(String(typeof draft.maxItems === 'number' ? draft.maxItems : 20))
        .onChange(v => { draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200); }),
     );
     new Setting(contentEl).addButton(btn =>

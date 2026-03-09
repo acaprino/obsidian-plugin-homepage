@@ -1,5 +1,4 @@
-import { App, CachedMetadata, Modal, Setting, TFile, moment } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
+import { App, CachedMetadata, Modal, Setting, moment } from 'obsidian';
 import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { BaseBlock } from './BaseBlock';
 
@@ -121,7 +120,7 @@ class InsightSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Insight Settings' });
+    contentEl.createEl('h2', { text: 'Insight settings' });
 
     const draft = structuredClone(this.config);
 

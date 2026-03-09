@@ -82,6 +82,29 @@ export abstract class BaseBlock extends Component {
     this.containerEl?.dispatchEvent(new CustomEvent('request-auto-height', { bubbles: true }));
   }
 
+  /**
+   * Watch an element for width changes and dispatch request-auto-height when
+   * the width changes.  Useful for blocks whose content reflows (e.g. grid
+   * galleries, multi-column lists) when the container narrows/widens.
+   * Cleanup is registered automatically via `this.register()`.
+   */
+  protected observeWidthForAutoHeight(el: HTMLElement): void {
+    let prevWidth = 0; // 0 skips the initial observe() callback
+    let rafId = 0;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0 && w !== prevWidth) {
+        prevWidth = w;
+        // Throttle to one dispatch per animation frame to avoid hammering
+        // GridStack with layout recalculations during continuous resize.
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => this.requestAutoHeight());
+      }
+    });
+    ro.observe(el);
+    this.register(() => { ro.disconnect(); cancelAnimationFrame(rafId); });
+  }
+
   /** Increment and return a new render generation. Call at the start of async renders. */
   protected nextGeneration(): number {
     return ++this._renderGen;

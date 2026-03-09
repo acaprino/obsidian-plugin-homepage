@@ -4,8 +4,9 @@ import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { BaseBlock } from './BaseBlock';
 
 // Only assign safe CSS color values; reject potentially malicious strings.
-// Tightened to allow only numeric/comma/dot/space/% inside function calls.
-const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|rgba?\([\d.,\s/%]+\)|hsla?\([\d.,\s/%deg]+\))$/;
+// Hex, rgb/rgba, hsl/hsla with strict numeric internals. Bare-word colors
+// (e.g. "red") are allowed only if they contain no digits (blocks "expression").
+const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\))$/;
 
 const DEBOUNCE_MS = 500;
 
@@ -74,6 +75,11 @@ export class QuotesListBlock extends BaseBlock {
     const ro = new ResizeObserver(updateCols);
     ro.observe(colsEl);
     this.register(() => ro.disconnect());
+
+    // Watch width changes for auto-height recalculation
+    if (heightMode !== 'wrap') {
+      this.observeWidthForAutoHeight(colsEl);
+    }
 
     if (source === 'text') {
       this.renderTextQuotes(colsEl, quotes, maxItems);

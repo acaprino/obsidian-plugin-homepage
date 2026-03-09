@@ -12,13 +12,13 @@ TypeScript + Obsidian DOM API. GridStack for layout. No Dataview.
 - `src/types.ts` -- `BlockType`, `BlockInstance`, `LayoutConfig`, `BlockFactory`, `IHomepagePlugin`
 - `src/BlockRegistry.ts` -- singleton `BlockRegistryClass` wrapping `Map<BlockType, BlockFactory>`
 - `src/blocks/BaseBlock.ts` -- abstract base extending `Component`
-- `src/utils/tags.ts` -- `getFilesWithTag(app, tag)` and `cacheHasTag(cache, tag)`
-- `src/blocks/` -- one file per block type (14 total)
+- `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag), `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts`, `dragReorder.ts`, `emojis.ts`, `FolderSuggestModal.ts`
+- `src/blocks/` -- one file per block type (15 total)
 - `styles.css` -- all styles at repo root
 
-## Block Types (14)
+## Block Types (15)
 
-`greeting`, `clock`, `folder-links`, `insight`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`
+`greeting`, `clock`, `folder-links`, `insight`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`, `spacer`
 
 Each defined in `BLOCK_TYPES` array in `src/types.ts` and registered in `registerBlocks()` in `src/main.ts`.
 
@@ -64,14 +64,16 @@ void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
 - `nextGeneration()` / `isStale(gen)` -- async staleness check (prevents race conditions when a newer render supersedes an older one)
 - `containerEl` -- set by subclass in `render()` to enable `scheduleRender`
 - `setHeaderContainer(el)` -- called by GridLayout to redirect header output to `block-header-zone` (outside `block-content`)
+- `requestAutoHeight()` -- dispatches `request-auto-height` CustomEvent (bubbles) so GridLayout recalculates the block's row height
+- `observeWidthForAutoHeight(el)` -- ResizeObserver that dispatches `requestAutoHeight()` when element width changes, rAF-throttled. Used by blocks whose content reflows on resize (ImageGallery, QuotesList). Cleanup auto-registered via `this.register()`.
 
 ### Auto-Height
 Blocks that expand beyond their grid cell set `data-auto-height-content` attribute on the measurement element. `GridLayout.resizeBlockToContent()` reads its `offsetHeight` and calls `gridStack.update()`. Controlled per block by `shouldAutoHeight()` which checks `heightMode` config. Currently used by: `image-gallery`, `quotes-list` (extend mode), `embedded-note` (grow mode), `static-text`.
 
 ### Live Reactivity
 Data-driven blocks watch vault events via `this.registerEvent()` and re-render through `scheduleRender()`:
-- `vault.on('create' | 'delete' | 'rename')` -- FolderLinks, ImageGallery
-- `vault.on('modify')` -- EmbeddedNote
+- `vault.on('create' | 'delete' | 'rename')` -- FolderLinks, ImageGallery, RecentFiles
+- `vault.on('modify')` -- EmbeddedNote, RecentFiles
 - `metadataCache.on('changed')` -- Insight, QuotesList (only when cache matches configured tag)
 
 ### Edit Mode
@@ -81,10 +83,10 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 `GridLayout.BlockSettingsModal` provides shared settings (_titleLabel, _titleEmoji, _hideTitle, _titleSize, _showDivider, _hideBorder, _hideBackground, _hideHeaderAccent, _cardPadding, _accentColor). A "Configure block..." button opens the block's own `openSettings()` modal. Shared `_`-prefixed config keys are merged with block-specific config on save.
 
 ### Lightbox
-`ImageGalleryBlock` opens a full-screen lightbox overlay on click. Implemented as plain DOM on `document.body`, closed by click or Escape.
+`ImageGalleryBlock` opens a full-screen lightbox overlay on click. Implemented as plain DOM on `document.body`. Supports arrow key navigation, swipe gestures on touch, prev/next buttons, and close via click/Escape. Lightbox ownership is scoped per block instance (`myLightboxAc`) to prevent cross-instance interference.
 
-### Quick-Edit Pattern
-`StaticTextBlock` has a pencil button in view mode that opens `QuickEditModal` -- a lightweight modal that directly mutates layout via `plugin.saveLayout()` and refreshes the block. Use this pattern for blocks where in-place editing is important.
+### Inline Edit Pattern
+`StaticTextBlock` has a pencil button in view mode that opens an inline textarea editor directly within the block DOM. On save it mutates layout via `plugin.saveLayout()` and re-renders. Use this pattern for blocks where in-place editing is important.
 
 ## Layout Persistence
 
@@ -100,7 +102,7 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
    - Use `this.renderHeader(el, title)` for block label
    - Use `this.registerInterval` / `this.registerEvent` / `this.register` for cleanup
    - For live data: set `this.containerEl = el` and use `scheduleRender()` + `nextGeneration()`/`isStale()`
-   - For auto-height: set `data-auto-height-content` attribute on the measurement element
+   - For auto-height: set `data-auto-height-content` attribute on the measurement element, and call `this.observeWidthForAutoHeight(el)` if content reflows on width changes
    - Implement `openSettings(onSave)` with a `Modal` subclass in the same file
 2. Add the type literal to `BLOCK_TYPES` array in `src/types.ts`
 3. Register in `src/main.ts` -> `registerBlocks()`:
@@ -123,13 +125,13 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 | API | Used in |
 |-----|---------|
 | `app.vault.getMarkdownFiles()` | tags.ts, EmbeddedNote |
-| `app.vault.getFiles()` | FolderLinks |
+| `app.vault.getFiles()` | RecentFiles |
 | `app.vault.read(file)` | Insight, QuotesList, EmbeddedNote |
 | `app.vault.getAbstractFileByPath(path)` | FolderLinks, ImageGallery, EmbeddedNote |
 | `app.vault.getResourcePath(file)` | ImageGallery (images/videos) |
 | `app.vault.getRoot()` | FolderSuggestModal |
 | `app.metadataCache.getFileCache(file)` | Insight, QuotesList, tags.ts |
-| `app.workspace.openLinkText(path, '')` | FolderLinks, ButtonGrid -- always `''` as source path |
+| `app.workspace.openLinkText(path, '')` | FolderLinks, ButtonGrid, Bookmarks, RecentFiles -- always `''` as source path |
 | `MarkdownRenderer.render(app, md, el, path, component)` | EmbeddedNote, StaticText |
 | `sanitizeHTMLToDom(html)` | HtmlBlock |
 | `moment` (from `'obsidian'`) | Greeting, Clock, Insight |

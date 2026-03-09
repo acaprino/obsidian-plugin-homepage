@@ -9,6 +9,11 @@ import { applyBlockStyling } from './utils/blockStyling';
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
+const ACCENT_PRESETS = [
+  '#c0392b', '#e67e22', '#f1c40f', '#ffef3a', '#27ae60', '#16a085',
+  '#2980b9', '#8e44ad', '#e84393', '#6c5ce7', '#636e72',
+];
+
 export class GridLayout {
   private gridEl: HTMLElement;
   private gridStack: GridStack | null = null;
@@ -270,13 +275,27 @@ export class GridLayout {
    * Instead we look for a [data-auto-height-content] element placed by the block,
    * which has height:auto and reports its true rendered height via offsetHeight.
    */
-  /** Schedule a resizeBlockToContent call on the next animation frame, tracking the ID for cancellation. */
+  /**
+   * Schedule a resizeBlockToContent call.  All requests within the same frame
+   * are coalesced into a single batch to prevent cross-block resize cascading
+   * (Block A resize → column reflow → Block B width change → Block B resize → …).
+   */
+  private pendingResizes = new Map<string, { gsEl: HTMLElement; instance: BlockInstance }>();
+  private batchRafId: number | null = null;
+
   private scheduleResize(gsEl: HTMLElement, instance: BlockInstance): void {
-    const id = requestAnimationFrame(() => {
-      this.pendingRafs.delete(id);
-      this.resizeBlockToContent(gsEl, instance);
+    this.pendingResizes.set(instance.id, { gsEl, instance });
+    if (this.batchRafId !== null) return; // already scheduled
+    this.batchRafId = requestAnimationFrame(() => {
+      this.pendingRafs.delete(this.batchRafId!);
+      this.batchRafId = null;
+      const batch = Array.from(this.pendingResizes.values());
+      this.pendingResizes.clear();
+      for (const { gsEl: el, instance: inst } of batch) {
+        this.resizeBlockToContent(el, inst);
+      }
     });
-    this.pendingRafs.add(id);
+    this.pendingRafs.add(this.batchRafId);
   }
 
   private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): void {
@@ -900,11 +919,6 @@ class BlockSettingsModal extends Modal {
       }),
     );
 
-    const ACCENT_PRESETS = [
-      '#c0392b', '#e67e22', '#f1c40f', '#27ae60', '#16a085',
-      '#2980b9', '#8e44ad', '#e84393', '#6c5ce7', '#636e72',
-    ];
-
     const swatchRow = cardBody.createDiv({ cls: 'accent-preset-row' });
     for (const hex of ACCENT_PRESETS) {
       const swatch = swatchRow.createDiv({ cls: 'accent-preset-swatch' });
@@ -917,6 +931,23 @@ class BlockSettingsModal extends Modal {
         refreshPreview();
       });
     }
+
+    let intensitySlider: import('obsidian').SliderComponent | null = null;
+    new Setting(cardBody)
+      .setName('Accent intensity')
+      .setDesc('How strong the accent tint appears on the card background (5–100%).')
+      .addSlider(s => {
+        intensitySlider = s;
+        s.setLimits(5, 100, 5)
+         .setValue(typeof draft._accentIntensity === 'number' ? draft._accentIntensity as number : 15)
+         .setDynamicTooltip()
+         .onChange(v => { draft._accentIntensity = v; refreshPreview(); });
+        // Live preview while dragging — sliderEl is Obsidian's public API
+        s.sliderEl.addEventListener('input', () => {
+          draft._accentIntensity = s.getValue();
+          refreshPreview();
+        });
+      });
 
     new Setting(cardBody)
       .setName('Hide border')

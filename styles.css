@@ -570,6 +570,42 @@
   }
 }
 
+/* ── Greeting emoji pool chips (settings modal) ────────── */
+.greeting-emoji-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.greeting-emoji-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-s, 4px);
+  padding: 2px 4px 2px 6px;
+  font-size: 1.2em;
+}
+
+.greeting-emoji-chip-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.7em;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.greeting-emoji-chip-del:hover {
+  color: var(--text-error);
+}
+
+.greeting-emoji-pool-add {
+  display: inline-flex;
+}
+
 /* ── Clock Block ────────────────────────────────────────── */
 .clock-block {
   display: flex;
@@ -764,6 +800,10 @@
 }
 
 /* ── Button Grid Block ──────────────────────────────────── */
+.button-grid-block {
+  container-type: inline-size;
+}
+
 .button-grid {
   display: grid;
   gap: 8px;
@@ -787,6 +827,27 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid-btn > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Button Grid responsive ───────────────────────────── */
+@container (max-width: 300px) {
+  .button-grid {
+    grid-template-columns: 1fr !important;
+    gap: 6px;
+  }
+  .grid-btn {
+    padding: 6px 10px;
+    font-size: 0.9em;
+  }
 }
 
 .grid-btn:hover {

@@ -382,9 +382,25 @@ export class VideoEmbedBlock extends BaseBlock {
     });
   }
 
-  // SECURITY: allow-same-origin + allow-scripts is required by YouTube IFrame API.
-  // Safe because parseUrl() only permits cross-origin YouTube/Vimeo/Dailymotion URLs.
+  // SECURITY INVARIANT: allow-same-origin + allow-scripts nullifies the sandbox.
+  // This is required by the YouTube IFrame API.  The origin guard below ensures
+  // only YouTube/Vimeo/Dailymotion URLs can ever reach this code path.
+  // Do NOT add new providers without a security review.
+  private static readonly ALLOWED_EMBED_HOSTS =
+    /^(?:www\.)?youtube\.com$|^player\.vimeo\.com$|^www\.dailymotion\.com$/;
+
   private createIframe(container: HTMLElement, src: string): HTMLIFrameElement {
+    try {
+      const host = new URL(src).hostname;
+      if (!VideoEmbedBlock.ALLOWED_EMBED_HOSTS.test(host)) {
+        throw new Error(`Blocked iframe src from unknown origin: ${host}`);
+      }
+    } catch (e) {
+      console.error('[Homepage Blocks] VideoEmbed origin check failed:', e);
+      container.setText('Video source blocked for security reasons.');
+      return container.createEl('iframe'); // return dummy — never displayed
+    }
+
     this.iframeEl = container.createEl('iframe', {
       cls: 'video-embed-iframe',
       attr: {

@@ -1,6 +1,7 @@
 import { App, Modal, Setting, moment } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
+import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 
 type EmojiMode = 'auto' | 'custom' | 'random';
 
@@ -306,7 +307,10 @@ class GreetingSettingsModal extends Modal {
     );
 
     const emojiSection = contentEl.createDiv();
+    let slotPickers: EmojiPickerInstance[] = [];
     const buildEmojiSettings = () => {
+      for (const p of slotPickers) p.destroy();
+      slotPickers = [];
       emojiSection.empty();
       if (draft.showEmoji === false) return;
 
@@ -331,26 +335,63 @@ class GreetingSettingsModal extends Modal {
           { key: 'emojiNight',     label: 'Night',      default: '🌙',  time: '21:00–5:00' },
         ];
         for (const slot of slots) {
-          new Setting(emojiSection)
-            .setName(`${slot.label} emoji`)
-            .setDesc(slot.time)
-            .addText(t =>
-              t.setValue((draft[slot.key] as string) ?? slot.default)
-               .setPlaceholder(slot.default)
-               .onChange(v => { (draft as Record<string, unknown>)[slot.key] = v; }),
-            );
+          const row = emojiSection.createDiv({ cls: 'setting-item' });
+          row.createDiv({ cls: 'setting-item-info' }).createDiv({ cls: 'setting-item-name', text: `${slot.label} emoji (${slot.time})` });
+          const control = row.createDiv({ cls: 'setting-item-control' });
+          const closePickers = () => { for (const p of slotPickers) p.close(); };
+          const picker = createEmojiPicker({
+            container: control,
+            value: (draft[slot.key] as string) ?? slot.default,
+            placeholder: slot.default,
+            onSelect: (emoji) => { (draft as Record<string, unknown>)[slot.key] = emoji; },
+            onClear: () => { (draft as Record<string, unknown>)[slot.key] = ''; },
+            onBeforeOpen: closePickers,
+          });
+          slotPickers.push(picker);
         }
       }
 
       if (mode === 'random') {
-        new Setting(emojiSection)
-          .setName('Emoji pool')
-          .setDesc('Emoji separated by spaces or commas.')
-          .addText(t =>
-            t.setValue(draft.emojiPool ?? '')
-             .setPlaceholder('🚀 🎯 💡 🌟 🔥 ✨ 🎉 💪')
-             .onChange(v => { draft.emojiPool = v; }),
-          );
+        // Pool: use multiple emoji pickers in a row, shown as chips
+        const poolRow = emojiSection.createDiv({ cls: 'setting-item' });
+        const poolInfo = poolRow.createDiv({ cls: 'setting-item-info' });
+        poolInfo.createDiv({ cls: 'setting-item-name', text: 'Emoji pool' });
+        poolInfo.createDiv({ cls: 'setting-item-description', text: 'Click to add emoji. Remove by clicking the ✕ on each.' });
+        const poolControl = poolRow.createDiv({ cls: 'setting-item-control' });
+        const poolContainer = poolControl.createDiv({ cls: 'greeting-emoji-pool' });
+
+        const currentPool = parseEmojiPool(draft.emojiPool ?? '');
+        const renderPool = () => {
+          poolContainer.empty();
+          for (let i = 0; i < currentPool.length; i++) {
+            const chip = poolContainer.createDiv({ cls: 'greeting-emoji-chip' });
+            chip.createSpan({ text: currentPool[i] });
+            const del = chip.createEl('button', { cls: 'greeting-emoji-chip-del', text: '✕' });
+            del.addEventListener('click', () => {
+              currentPool.splice(i, 1);
+              draft.emojiPool = currentPool.join(' ');
+              renderPool();
+            });
+          }
+          // Add button using the emoji picker
+          const addBtn = poolContainer.createDiv({ cls: 'greeting-emoji-pool-add' });
+          const closePickers = () => { for (const p of slotPickers) p.close(); };
+          const addPicker = createEmojiPicker({
+            container: addBtn,
+            value: '',
+            placeholder: '＋',
+            onSelect: (emoji) => {
+              currentPool.push(emoji);
+              draft.emojiPool = currentPool.join(' ');
+              renderPool();
+            },
+            onClear: () => {},
+            onBeforeOpen: closePickers,
+          });
+          slotPickers.push(addPicker);
+        };
+        renderPool();
+
         new Setting(emojiSection)
           .setName('Same emoji all day')
           .setDesc('Pick one at midnight and keep it all day.')

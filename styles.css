@@ -147,20 +147,41 @@
 
 /* ── Accent Color ────────────────────────────────────────── */
 /* A single --block-accent color derives the entire card palette.
-   Shared custom properties so both live cards and the preview card stay in sync. */
+   --block-accent-pct sets the background tint strength (default 15%).
+   All other derived values scale proportionally.
+   Using srgb to avoid oklch hue shifts (e.g. yellow → green). */
 .block-accented {
-  --_accent-bg: color-mix(in oklch, var(--block-accent) 15%, var(--background-secondary));
-  --_accent-border: color-mix(in oklch, var(--block-accent) 50%, var(--background-modifier-border));
-  --_accent-border-hover: color-mix(in oklch, var(--block-accent) 70%, var(--background-modifier-border));
-  --_accent-header-bg: color-mix(in oklch, var(--block-accent) 22%, transparent);
-  --_accent-header-text: color-mix(in oklch, var(--block-accent) 85%, var(--text-normal));
-  --_accent-divider: color-mix(in oklch, var(--block-accent) 40%, var(--background-modifier-border));
+  --_ap: var(--block-accent-pct, 15%);
+  --_accent-bg: color-mix(in srgb, var(--block-accent) var(--_ap), var(--background-secondary));
+  --_accent-border: color-mix(in srgb, var(--block-accent) 50%, var(--background-modifier-border));
+  --_accent-border-hover: color-mix(in srgb, var(--block-accent) 70%, var(--background-modifier-border));
+  --_accent-header-bg: color-mix(in srgb, var(--block-accent) 22%, transparent);
+  --_accent-header-text: color-mix(in srgb, var(--block-accent) 85%, var(--text-normal));
+  --_accent-divider: color-mix(in srgb, var(--block-accent) 40%, var(--background-modifier-border));
   background: var(--_accent-bg);
   border-color: var(--_accent-border);
 }
 
 .block-accented:hover {
   border-color: var(--_accent-border-hover);
+}
+
+/* Override Obsidian interactive-accent variables so radio buttons, checkboxes,
+   toggles, buttons, links, and other themed controls follow the card accent.
+   Use a darkened variant (40% black mix) so controls stay visible on the
+   accent-tinted background — light accents like yellow need this contrast. */
+.block-accented {
+  --_ctrl: color-mix(in srgb, var(--block-accent) 60%, black);
+  --_ctrl-hover: color-mix(in srgb, var(--block-accent) 50%, black);
+  --interactive-accent: var(--_ctrl);
+  --interactive-accent-hover: var(--_ctrl-hover);
+  --color-accent: var(--_ctrl);
+  --color-accent-1: color-mix(in srgb, var(--_ctrl) 90%, white);
+  --color-accent-2: var(--_ctrl);
+  --text-accent: var(--_ctrl);
+  --text-accent-hover: var(--_ctrl-hover);
+  --checkbox-color: var(--_ctrl);
+  --checkbox-color-hover: var(--_ctrl-hover);
 }
 
 .block-accented .block-header-zone {
@@ -504,7 +525,7 @@
   justify-content: flex-start;
   min-height: 90px;
   gap: 10px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   overflow: visible;
 }
 
@@ -521,15 +542,32 @@
   margin: 0;
   color: var(--text-normal);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .greeting-time {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* ── Greeting responsive ──────────────────────────────── */
+/* Narrow block: stack vertically, center content */
+@container (max-width: 300px) {
+  .homepage-block-wrapper .block-content.greeting-block {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+    min-height: auto;
+  }
+  .greeting-name {
+    font-size: clamp(1.25rem, 6cqi, 1.75rem);
+  }
+  .greeting-emoji {
+    font-size: clamp(1.5rem, 6cqi, 2rem);
+  }
 }
 
 /* ── Clock Block ────────────────────────────────────────── */
@@ -881,30 +919,43 @@
 }
 
 /* ── Gallery responsive ───────────────────────────────── */
-/* 350px ≈ single-column gallery in a multi-col grid layout */
-@container (max-width: 350px) {
-  .image-gallery { gap: 4px; }
+/* 500px — cap at 3 columns, slightly tighter gap */
+@container (max-width: 500px) {
+  .image-gallery {
+    gap: 6px;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)) !important;
+  }
+  .image-gallery.masonry-layout { column-gap: 6px; columns: 3 !important; }
+}
+
+/* 400px — force 2 columns max */
+@container (max-width: 400px) {
+  .image-gallery {
+    gap: 4px;
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
   .gallery-item,
   .gallery-item img,
   .gallery-item video {
     border-radius: var(--radius-s, 4px);
   }
-  .image-gallery.masonry-layout { column-gap: 4px; }
+  .image-gallery.masonry-layout { column-gap: 4px; columns: 2 !important; }
   .image-gallery.masonry-layout .gallery-item { margin-bottom: 4px; }
 }
 
-/* 200px ≈ sidebar-width or very narrow widget */
-@container (max-width: 200px) {
-  .image-gallery { gap: 4px; }
-  .image-gallery.masonry-layout { column-gap: 4px; }
-  .image-gallery.masonry-layout .gallery-item { margin-bottom: 4px; }
+/* 280px — single column */
+@container (max-width: 280px) {
+  .image-gallery {
+    grid-template-columns: 1fr !important;
+  }
+  .image-gallery.masonry-layout { columns: 1 !important; }
 }
 
 /* ── Lightbox ──────────────────────────────────────────── */
 .gallery-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 99999; /* Above Obsidian modals (which use ~9000-10000) */
   background: rgba(0, 0, 0, 0.92);
   display: flex;
   align-items: center;

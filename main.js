@@ -6258,7 +6258,8 @@ var GridLayout = class {
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
   buildBlockWrapper(container, instance, animDelayMs) {
     const classes = ["homepage-block-wrapper"];
-    if (instance.collapsed) classes.push("block-collapsed");
+    const effectiveCollapsed = instance.collapsed && instance.config._hideTitle !== true;
+    if (effectiveCollapsed) classes.push("block-collapsed");
     const wrapper = container.createDiv({
       cls: classes.join(" "),
       attr: { "data-block-id": instance.id }
@@ -6269,10 +6270,10 @@ var GridLayout = class {
     }
     const headerZone = wrapper.createDiv({
       cls: "block-header-zone",
-      attr: { role: "button", tabindex: "0", "aria-expanded": String(!instance.collapsed) }
+      attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
     });
     headerZone.createSpan({
-      cls: "block-collapse-chevron" + (instance.collapsed ? " is-collapsed" : ""),
+      cls: "block-collapse-chevron" + (effectiveCollapsed ? " is-collapsed" : ""),
       attr: { "aria-hidden": "true" }
     });
     if (instance.config._showDivider === true) {
@@ -7385,11 +7386,123 @@ var BaseBlock = class extends import_obsidian4.Component {
 };
 
 // src/blocks/GreetingBlock.ts
-function timeOfDayEmoji(hour) {
-  if (hour >= 5 && hour < 12) return "\u2600\uFE0F";
-  if (hour >= 12 && hour < 17) return "\u{1F324}\uFE0F";
-  if (hour >= 17 && hour < 21) return "\u{1F306}";
-  return "\u{1F319}";
+var LANG_PRESETS = {
+  it: { label: "Italiano", morning: "Buongiorno", afternoon: "Buon pomeriggio", evening: "Buonasera" },
+  en: { label: "English", morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening" },
+  es: { label: "Espa\xF1ol", morning: "Buenos d\xEDas", afternoon: "Buenas tardes", evening: "Buenas noches" },
+  fr: { label: "Fran\xE7ais", morning: "Bonjour", afternoon: "Bon apr\xE8s-midi", evening: "Bonsoir" },
+  de: { label: "Deutsch", morning: "Guten Morgen", afternoon: "Guten Tag", evening: "Guten Abend" },
+  pt: { label: "Portugu\xEAs", morning: "Bom dia", afternoon: "Boa tarde", evening: "Boa noite" },
+  nl: { label: "Nederlands", morning: "Goedemorgen", afternoon: "Goedemiddag", evening: "Goedenavond" },
+  sv: { label: "Svenska", morning: "God morgon", afternoon: "God eftermiddag", evening: "God kv\xE4ll" },
+  no: { label: "Norsk", morning: "God morgen", afternoon: "God ettermiddag", evening: "God kveld" },
+  da: { label: "Dansk", morning: "God morgen", afternoon: "God eftermiddag", evening: "God aften" },
+  fi: { label: "Suomi", morning: "Hyv\xE4\xE4 huomenta", afternoon: "Hyv\xE4\xE4 iltap\xE4iv\xE4\xE4", evening: "Hyv\xE4\xE4 iltaa" },
+  pl: { label: "Polski", morning: "Dzie\u0144 dobry", afternoon: "Dzie\u0144 dobry", evening: "Dobry wiecz\xF3r" },
+  cs: { label: "\u010Ce\u0161tina", morning: "Dobr\xE9 r\xE1no", afternoon: "Dobr\xE9 odpoledne", evening: "Dobr\xFD ve\u010Der" },
+  sk: { label: "Sloven\u010Dina", morning: "Dobr\xE9 r\xE1no", afternoon: "Dobr\xE9 popoludnie", evening: "Dobr\xFD ve\u010Der" },
+  hu: { label: "Magyar", morning: "J\xF3 reggelt", afternoon: "J\xF3 napot", evening: "J\xF3 est\xE9t" },
+  ro: { label: "Rom\xE2n\u0103", morning: "Bun\u0103 diminea\u021Ba", afternoon: "Bun\u0103 ziua", evening: "Bun\u0103 seara" },
+  hr: { label: "Hrvatski", morning: "Dobro jutro", afternoon: "Dobar dan", evening: "Dobra ve\u010Der" },
+  sr: { label: "Srpski", morning: "Dobro jutro", afternoon: "Dobar dan", evening: "Dobro ve\u010De" },
+  bg: { label: "\u0411\u044A\u043B\u0433\u0430\u0440\u0441\u043A\u0438", morning: "\u0414\u043E\u0431\u0440\u043E \u0443\u0442\u0440\u043E", afternoon: "\u0414\u043E\u0431\u044A\u0440 \u0434\u0435\u043D", evening: "\u0414\u043E\u0431\u044A\u0440 \u0432\u0435\u0447\u0435\u0440" },
+  uk: { label: "\u0423\u043A\u0440\u0430\u0457\u043D\u0441\u044C\u043A\u0430", morning: "\u0414\u043E\u0431\u0440\u043E\u0433\u043E \u0440\u0430\u043D\u043A\u0443", afternoon: "\u0414\u043E\u0431\u0440\u0438\u0439 \u0434\u0435\u043D\u044C", evening: "\u0414\u043E\u0431\u0440\u0438\u0439 \u0432\u0435\u0447\u0456\u0440" },
+  ru: { label: "\u0420\u0443\u0441\u0441\u043A\u0438\u0439", morning: "\u0414\u043E\u0431\u0440\u043E\u0435 \u0443\u0442\u0440\u043E", afternoon: "\u0414\u043E\u0431\u0440\u044B\u0439 \u0434\u0435\u043D\u044C", evening: "\u0414\u043E\u0431\u0440\u044B\u0439 \u0432\u0435\u0447\u0435\u0440" },
+  el: { label: "\u0395\u03BB\u03BB\u03B7\u03BD\u03B9\u03BA\u03AC", morning: "\u039A\u03B1\u03BB\u03B7\u03BC\u03AD\u03C1\u03B1", afternoon: "\u039A\u03B1\u03BB\u03CC \u03B1\u03C0\u03CC\u03B3\u03B5\u03C5\u03BC\u03B1", evening: "\u039A\u03B1\u03BB\u03B7\u03C3\u03C0\u03AD\u03C1\u03B1" },
+  tr: { label: "T\xFCrk\xE7e", morning: "G\xFCnayd\u0131n", afternoon: "T\xFCnayd\u0131n", evening: "\u0130yi ak\u015Famlar" },
+  ar: { label: "\u0627\u0644\u0639\u0631\u0628\u064A\u0629", morning: "\u0635\u0628\u0627\u062D \u0627\u0644\u062E\u064A\u0631", afternoon: "\u0645\u0633\u0627\u0621 \u0627\u0644\u062E\u064A\u0631", evening: "\u0645\u0633\u0627\u0621 \u0627\u0644\u062E\u064A\u0631" },
+  he: { label: "\u05E2\u05D1\u05E8\u05D9\u05EA", morning: "\u05D1\u05D5\u05E7\u05E8 \u05D8\u05D5\u05D1", afternoon: "\u05E6\u05D4\u05E8\u05D9\u05D9\u05DD \u05D8\u05D5\u05D1\u05D9\u05DD", evening: "\u05E2\u05E8\u05D1 \u05D8\u05D5\u05D1" },
+  fa: { label: "\u0641\u0627\u0631\u0633\u06CC", morning: "\u0635\u0628\u062D \u0628\u062E\u06CC\u0631", afternoon: "\u0639\u0635\u0631 \u0628\u062E\u06CC\u0631", evening: "\u0634\u0628 \u0628\u062E\u06CC\u0631" },
+  hi: { label: "\u0939\u093F\u0928\u094D\u0926\u0940", morning: "\u0938\u0941\u092A\u094D\u0930\u092D\u093E\u0924", afternoon: "\u0928\u092E\u0938\u094D\u0915\u093E\u0930", evening: "\u0936\u0941\u092D \u0938\u0902\u0927\u094D\u092F\u093E" },
+  bn: { label: "\u09AC\u09BE\u0982\u09B2\u09BE", morning: "\u09B8\u09C1\u09AA\u09CD\u09B0\u09AD\u09BE\u09A4", afternoon: "\u09B6\u09C1\u09AD \u0985\u09AA\u09B0\u09BE\u09B9\u09CD\u09A3", evening: "\u09B6\u09C1\u09AD \u09B8\u09A8\u09CD\u09A7\u09CD\u09AF\u09BE" },
+  ta: { label: "\u0BA4\u0BAE\u0BBF\u0BB4\u0BCD", morning: "\u0B95\u0BBE\u0BB2\u0BC8 \u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD", afternoon: "\u0BAE\u0BA4\u0BBF\u0BAF \u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD", evening: "\u0BAE\u0BBE\u0BB2\u0BC8 \u0BB5\u0BA3\u0B95\u0BCD\u0B95\u0BAE\u0BCD" },
+  te: { label: "\u0C24\u0C46\u0C32\u0C41\u0C17\u0C41", morning: "\u0C36\u0C41\u0C2D\u0C4B\u0C26\u0C2F\u0C02", afternoon: "\u0C36\u0C41\u0C2D \u0C2E\u0C27\u0C4D\u0C2F\u0C3E\u0C39\u0C4D\u0C28\u0C02", evening: "\u0C36\u0C41\u0C2D \u0C38\u0C3E\u0C2F\u0C02\u0C24\u0C4D\u0C30\u0C02" },
+  mr: { label: "\u092E\u0930\u093E\u0920\u0940", morning: "\u0938\u0941\u092A\u094D\u0930\u092D\u093E\u0924", afternoon: "\u0936\u0941\u092D \u0926\u0941\u092A\u093E\u0930", evening: "\u0936\u0941\u092D \u0938\u0902\u0927\u094D\u092F\u093E\u0915\u093E\u0933" },
+  gu: { label: "\u0A97\u0AC1\u0A9C\u0AB0\u0ABE\u0AA4\u0AC0", morning: "\u0AB8\u0AC1\u0AAA\u0ACD\u0AB0\u0AAD\u0ABE\u0AA4", afternoon: "\u0AB6\u0AC1\u0AAD \u0AAC\u0AAA\u0ACB\u0AB0", evening: "\u0AB6\u0AC1\u0AAD \u0AB8\u0ABE\u0A82\u0A9C" },
+  ur: { label: "\u0627\u0631\u062F\u0648", morning: "\u0635\u0628\u062D \u0628\u062E\u06CC\u0631", afternoon: "\u0633\u06C1 \u067E\u06C1\u0631 \u0628\u062E\u06CC\u0631", evening: "\u0634\u0627\u0645 \u0628\u062E\u06CC\u0631" },
+  th: { label: "\u0E44\u0E17\u0E22", morning: "\u0E2A\u0E27\u0E31\u0E2A\u0E14\u0E35\u0E15\u0E2D\u0E19\u0E40\u0E0A\u0E49\u0E32", afternoon: "\u0E2A\u0E27\u0E31\u0E2A\u0E14\u0E35\u0E15\u0E2D\u0E19\u0E1A\u0E48\u0E32\u0E22", evening: "\u0E2A\u0E27\u0E31\u0E2A\u0E14\u0E35\u0E15\u0E2D\u0E19\u0E40\u0E22\u0E47\u0E19" },
+  vi: { label: "Ti\u1EBFng Vi\u1EC7t", morning: "Ch\xE0o bu\u1ED5i s\xE1ng", afternoon: "Ch\xE0o bu\u1ED5i chi\u1EC1u", evening: "Ch\xE0o bu\u1ED5i t\u1ED1i" },
+  id: { label: "Bahasa Indonesia", morning: "Selamat pagi", afternoon: "Selamat siang", evening: "Selamat malam" },
+  ms: { label: "Bahasa Melayu", morning: "Selamat pagi", afternoon: "Selamat petang", evening: "Selamat malam" },
+  tl: { label: "Filipino", morning: "Magandang umaga", afternoon: "Magandang hapon", evening: "Magandang gabi" },
+  zh: { label: "\u4E2D\u6587", morning: "\u65E9\u4E0A\u597D", afternoon: "\u4E0B\u5348\u597D", evening: "\u665A\u4E0A\u597D" },
+  ja: { label: "\u65E5\u672C\u8A9E", morning: "\u304A\u306F\u3088\u3046\u3054\u3056\u3044\u307E\u3059", afternoon: "\u3053\u3093\u306B\u3061\u306F", evening: "\u3053\u3093\u3070\u3093\u306F" },
+  ko: { label: "\uD55C\uAD6D\uC5B4", morning: "\uC88B\uC740 \uC544\uCE68", afternoon: "\uC88B\uC740 \uC624\uD6C4", evening: "\uC88B\uC740 \uC800\uB141" },
+  sw: { label: "Kiswahili", morning: "Habari ya asubuhi", afternoon: "Habari ya mchana", evening: "Habari ya jioni" },
+  am: { label: "\u12A0\u121B\u122D\u129B", morning: "\u12A5\u1295\u12F0\u121D\u1295 \u12A0\u12F0\u122D\u12AD", afternoon: "\u12A5\u1295\u12F0\u121D\u1295 \u12CB\u120D\u12AD", evening: "\u12A5\u1295\u12F0\u121D\u1295 \u12A0\u1218\u1238\u1205" },
+  yo: { label: "Yor\xF9b\xE1", morning: "E kaaro", afternoon: "E kaasan", evening: "E kaal\u1EB9" },
+  zu: { label: "isiZulu", morning: "Sawubona ekuseni", afternoon: "Sawubona emini", evening: "Sawubona kusihlwa" },
+  ha: { label: "Hausa", morning: "Ina kwana", afternoon: "Barka da rana", evening: "Barka da yamma" },
+  ga: { label: "Gaeilge", morning: "Maidin mhaith", afternoon: "Tr\xE1thn\xF3na maith", evening: "O\xEDche mhaith" },
+  cy: { label: "Cymraeg", morning: "Bore da", afternoon: "Prynhawn da", evening: "Noswaith dda" },
+  ca: { label: "Catal\xE0", morning: "Bon dia", afternoon: "Bona tarda", evening: "Bona nit" },
+  eu: { label: "Euskara", morning: "Egun on", afternoon: "Arratsalde on", evening: "Gabon" },
+  gl: { label: "Galego", morning: "Bo d\xEDa", afternoon: "Boa tarde", evening: "Boa noite" }
+};
+var PRESET_KEYS = Object.keys(LANG_PRESETS).sort(
+  (a, b) => LANG_PRESETS[a].label.localeCompare(LANG_PRESETS[b].label)
+);
+var DEFAULT_SALUT = LANG_PRESETS["it"];
+var DEFAULT_EMOJIS = {
+  morning: "\u2600\uFE0F",
+  afternoon: "\u{1F324}\uFE0F",
+  evening: "\u{1F306}",
+  night: "\u{1F319}"
+};
+function timeSlot(hour) {
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 21) return "evening";
+  return "night";
+}
+function salutSlot(hour) {
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 18) return "afternoon";
+  return "evening";
+}
+function getSalutation(cfg, hour) {
+  const mode = cfg.salutationMode ?? "auto";
+  if (mode === "custom") {
+    const slot = salutSlot(hour);
+    const map = {
+      morning: cfg.salutMorning,
+      afternoon: cfg.salutAfternoon,
+      evening: cfg.salutEvening
+    };
+    const custom = map[slot]?.trim();
+    if (custom) return custom;
+  }
+  const presetKey = cfg.salutationPreset ?? "it";
+  const preset = LANG_PRESETS[presetKey] ?? DEFAULT_SALUT;
+  return preset[salutSlot(hour)];
+}
+function pickEmoji(cfg, hour) {
+  const mode = cfg.emojiMode ?? "auto";
+  if (mode === "custom") {
+    const slot = timeSlot(hour);
+    const map = {
+      morning: cfg.emojiMorning,
+      afternoon: cfg.emojiAfternoon,
+      evening: cfg.emojiEvening,
+      night: cfg.emojiNight
+    };
+    return map[slot]?.trim() || DEFAULT_EMOJIS[slot];
+  }
+  if (mode === "random") {
+    const pool = parseEmojiPool(cfg.emojiPool ?? "");
+    if (pool.length === 0) return DEFAULT_EMOJIS[timeSlot(hour)];
+    if (cfg.emojiDailySeed) {
+      const dayOfYear = (0, import_obsidian5.moment)().dayOfYear();
+      return pool[dayOfYear % pool.length];
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  return DEFAULT_EMOJIS[timeSlot(hour)];
+}
+function parseEmojiPool(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return trimmed.split(/[\s,]+/).filter((s) => s.length > 0);
 }
 var GreetingBlock = class extends BaseBlock {
   emojiEl = null;
@@ -7397,7 +7510,8 @@ var GreetingBlock = class extends BaseBlock {
   timeEl = null;
   render(el) {
     el.addClass("greeting-block");
-    const { showTime = true, showEmoji = true } = this.instance.config;
+    const cfg = this.instance.config;
+    const { showTime = true, showEmoji = true } = cfg;
     if (showEmoji) {
       this.emojiEl = el.createDiv({ cls: "greeting-emoji" });
     }
@@ -7411,13 +7525,13 @@ var GreetingBlock = class extends BaseBlock {
   tick() {
     const now = (0, import_obsidian5.moment)();
     const hour = now.hour();
-    const { name = "bentornato", showTime = true, showEmoji = true } = this.instance.config;
-    const salutation = hour >= 5 && hour < 12 ? "Buongiorno" : hour >= 12 && hour < 18 ? "Buon pomeriggio" : "Buonasera";
+    const cfg = this.instance.config;
+    const { name = "bentornato", showTime = true, showEmoji = true } = cfg;
     if (this.emojiEl && showEmoji) {
-      this.emojiEl.setText(timeOfDayEmoji(hour));
+      this.emojiEl.setText(pickEmoji(cfg, hour));
     }
     if (this.nameEl) {
-      this.nameEl.setText(`${salutation}, ${name}`);
+      this.nameEl.setText(`${getSalutation(cfg, hour)}, ${name}`);
     }
     if (this.timeEl && showTime) {
       this.timeEl.setText(now.format("HH:mm"));
@@ -7443,16 +7557,100 @@ var GreetingSettingsModal = class extends import_obsidian5.Modal {
         draft.name = v;
       })
     );
-    new import_obsidian5.Setting(contentEl).setName("Show emoji").setDesc("Auto-selected based on time of day.").addToggle(
-      (t) => t.setValue(draft.showEmoji ?? true).onChange((v) => {
-        draft.showEmoji = v;
-      })
-    );
     new import_obsidian5.Setting(contentEl).setName("Show time").addToggle(
       (t) => t.setValue(draft.showTime ?? true).onChange((v) => {
         draft.showTime = v;
       })
     );
+    contentEl.createEl("h3", { text: "Salutation" });
+    const salutSection = contentEl.createDiv();
+    const buildSalutSettings = () => {
+      salutSection.empty();
+      const mode = draft.salutationMode ?? "auto";
+      new import_obsidian5.Setting(salutSection).setName("Salutation mode").setDesc("Auto: pick a language preset. Custom: write your own for each time slot.").addDropdown(
+        (d) => d.addOption("auto", "Language preset").addOption("custom", "Custom text").setValue(mode).onChange((v) => {
+          draft.salutationMode = v;
+          buildSalutSettings();
+        })
+      );
+      if (mode === "auto") {
+        new import_obsidian5.Setting(salutSection).setName("Language").addDropdown((d) => {
+          for (const key of PRESET_KEYS) {
+            d.addOption(key, LANG_PRESETS[key].label);
+          }
+          d.setValue(draft.salutationPreset ?? "it").onChange((v) => {
+            draft.salutationPreset = v;
+          });
+        });
+        const preset = LANG_PRESETS[draft.salutationPreset ?? "it"] ?? DEFAULT_SALUT;
+        const preview = salutSection.createDiv({ cls: "setting-item-description" });
+        preview.style.padding = "0 0 8px 0";
+        preview.style.opacity = "0.7";
+        preview.setText(`${preset.morning} / ${preset.afternoon} / ${preset.evening}`);
+      }
+      if (mode === "custom") {
+        const slots = [
+          { key: "salutMorning", label: "Morning", time: "5:00\u201312:00", fallback: DEFAULT_SALUT.morning },
+          { key: "salutAfternoon", label: "Afternoon", time: "12:00\u201318:00", fallback: DEFAULT_SALUT.afternoon },
+          { key: "salutEvening", label: "Evening", time: "18:00\u20135:00", fallback: DEFAULT_SALUT.evening }
+        ];
+        for (const slot of slots) {
+          new import_obsidian5.Setting(salutSection).setName(`${slot.label} greeting`).setDesc(slot.time).addText(
+            (t) => t.setValue(draft[slot.key] ?? slot.fallback).setPlaceholder(slot.fallback).onChange((v) => {
+              draft[slot.key] = v;
+            })
+          );
+        }
+      }
+    };
+    buildSalutSettings();
+    contentEl.createEl("h3", { text: "Emoji" });
+    new import_obsidian5.Setting(contentEl).setName("Show emoji").addToggle(
+      (t) => t.setValue(draft.showEmoji ?? true).onChange((v) => {
+        draft.showEmoji = v;
+        buildEmojiSettings();
+      })
+    );
+    const emojiSection = contentEl.createDiv();
+    const buildEmojiSettings = () => {
+      emojiSection.empty();
+      if (draft.showEmoji === false) return;
+      new import_obsidian5.Setting(emojiSection).setName("Emoji mode").setDesc("Auto: time-of-day. Custom: pick one per time slot. Random: pick from a pool.").addDropdown(
+        (d) => d.addOption("auto", "Auto (time of day)").addOption("custom", "Custom per slot").addOption("random", "Random pool").setValue(draft.emojiMode ?? "auto").onChange((v) => {
+          draft.emojiMode = v;
+          buildEmojiSettings();
+        })
+      );
+      const mode = draft.emojiMode ?? "auto";
+      if (mode === "custom") {
+        const slots = [
+          { key: "emojiMorning", label: "Morning", default: "\u2600\uFE0F", time: "5:00\u201312:00" },
+          { key: "emojiAfternoon", label: "Afternoon", default: "\u{1F324}\uFE0F", time: "12:00\u201317:00" },
+          { key: "emojiEvening", label: "Evening", default: "\u{1F306}", time: "17:00\u201321:00" },
+          { key: "emojiNight", label: "Night", default: "\u{1F319}", time: "21:00\u20135:00" }
+        ];
+        for (const slot of slots) {
+          new import_obsidian5.Setting(emojiSection).setName(`${slot.label} emoji`).setDesc(slot.time).addText(
+            (t) => t.setValue(draft[slot.key] ?? slot.default).setPlaceholder(slot.default).onChange((v) => {
+              draft[slot.key] = v;
+            })
+          );
+        }
+      }
+      if (mode === "random") {
+        new import_obsidian5.Setting(emojiSection).setName("Emoji pool").setDesc("Emoji separated by spaces or commas.").addText(
+          (t) => t.setValue(draft.emojiPool ?? "").setPlaceholder("\u{1F680} \u{1F3AF} \u{1F4A1} \u{1F31F} \u{1F525} \u2728 \u{1F389} \u{1F4AA}").onChange((v) => {
+            draft.emojiPool = v;
+          })
+        );
+        new import_obsidian5.Setting(emojiSection).setName("Same emoji all day").setDesc("Pick one at midnight and keep it all day.").addToggle(
+          (t) => t.setValue(draft.emojiDailySeed ?? false).onChange((v) => {
+            draft.emojiDailySeed = v;
+          })
+        );
+      }
+    };
+    buildEmojiSettings();
     new import_obsidian5.Setting(contentEl).addButton(
       (btn) => btn.setButtonText("Save").setCta().onClick(() => {
         this.onSave(draft);

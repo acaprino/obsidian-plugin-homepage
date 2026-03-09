@@ -221,7 +221,10 @@ export class GridLayout {
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
   private buildBlockWrapper(container: HTMLElement, instance: BlockInstance, animDelayMs?: number): HTMLElement {
     const classes = ['homepage-block-wrapper'];
-    if (instance.collapsed) classes.push('block-collapsed');
+    // Don't collapse blocks with hidden titles — there's no visible header
+    // to click for re-expansion, making them appear completely invisible.
+    const effectiveCollapsed = instance.collapsed && instance.config._hideTitle !== true;
+    if (effectiveCollapsed) classes.push('block-collapsed');
     const wrapper = container.createDiv({
       cls: classes.join(' '),
       attr: { 'data-block-id': instance.id },
@@ -232,10 +235,10 @@ export class GridLayout {
     }
     const headerZone = wrapper.createDiv({
       cls: 'block-header-zone',
-      attr: { role: 'button', tabindex: '0', 'aria-expanded': String(!instance.collapsed) },
+      attr: { role: 'button', tabindex: '0', 'aria-expanded': String(!effectiveCollapsed) },
     });
     headerZone.createSpan({
-      cls: 'block-collapse-chevron' + (instance.collapsed ? ' is-collapsed' : ''),
+      cls: 'block-collapse-chevron' + (effectiveCollapsed ? ' is-collapsed' : ''),
       attr: { 'aria-hidden': 'true' },
     });
     if (instance.config._showDivider === true) {

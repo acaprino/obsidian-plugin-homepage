@@ -6023,8 +6023,18 @@ function applyBlockStyling(el, config) {
   const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
   el.toggleClass("block-accented", !!accentColor);
   el.toggleClass("block-no-header-accent", config._hideHeaderAccent === true);
-  if (accentColor) el.style.setProperty("--block-accent", accentColor);
-  else el.style.removeProperty("--block-accent");
+  if (accentColor) {
+    el.style.setProperty("--block-accent", accentColor);
+    const intensity = typeof config._accentIntensity === "number" ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
+    if (intensity && intensity !== 15) {
+      el.style.setProperty("--block-accent-pct", `${intensity}%`);
+    } else {
+      el.style.removeProperty("--block-accent-pct");
+    }
+  } else {
+    el.style.removeProperty("--block-accent");
+    el.style.removeProperty("--block-accent-pct");
+  }
   el.toggleClass("block-no-border", config._hideBorder === true);
   el.toggleClass("block-no-background", config._hideBackground === true);
   const pad = typeof config._cardPadding === "number" ? Math.max(0, Math.min(48, config._cardPadding)) : 0;
@@ -6069,6 +6079,19 @@ function applyBlockStyling(el, config) {
 
 // src/GridLayout.ts
 var HEX_COLOR_RE2 = /^#[0-9a-fA-F]{6}$/;
+var ACCENT_PRESETS = [
+  "#c0392b",
+  "#e67e22",
+  "#f1c40f",
+  "#ffef3a",
+  "#27ae60",
+  "#16a085",
+  "#2980b9",
+  "#8e44ad",
+  "#e84393",
+  "#6c5ce7",
+  "#636e72"
+];
 var GridLayout = class {
   constructor(containerEl, app, plugin, onLayoutChange) {
     this.app = app;
@@ -6277,13 +6300,26 @@ var GridLayout = class {
    * Instead we look for a [data-auto-height-content] element placed by the block,
    * which has height:auto and reports its true rendered height via offsetHeight.
    */
-  /** Schedule a resizeBlockToContent call on the next animation frame, tracking the ID for cancellation. */
+  /**
+   * Schedule a resizeBlockToContent call.  All requests within the same frame
+   * are coalesced into a single batch to prevent cross-block resize cascading
+   * (Block A resize → column reflow → Block B width change → Block B resize → …).
+   */
+  pendingResizes = /* @__PURE__ */ new Map();
+  batchRafId = null;
   scheduleResize(gsEl, instance) {
-    const id = requestAnimationFrame(() => {
-      this.pendingRafs.delete(id);
-      this.resizeBlockToContent(gsEl, instance);
+    this.pendingResizes.set(instance.id, { gsEl, instance });
+    if (this.batchRafId !== null) return;
+    this.batchRafId = requestAnimationFrame(() => {
+      this.pendingRafs.delete(this.batchRafId);
+      this.batchRafId = null;
+      const batch = Array.from(this.pendingResizes.values());
+      this.pendingResizes.clear();
+      for (const { gsEl: el, instance: inst } of batch) {
+        this.resizeBlockToContent(el, inst);
+      }
     });
-    this.pendingRafs.add(id);
+    this.pendingRafs.add(this.batchRafId);
   }
   resizeBlockToContent(gsEl, instance) {
     if (!this.gridStack || !gsEl.isConnected) return;
@@ -6797,18 +6833,6 @@ var BlockSettingsModal = class extends import_obsidian.Modal {
         refreshPreview();
       })
     );
-    const ACCENT_PRESETS = [
-      "#c0392b",
-      "#e67e22",
-      "#f1c40f",
-      "#27ae60",
-      "#16a085",
-      "#2980b9",
-      "#8e44ad",
-      "#e84393",
-      "#6c5ce7",
-      "#636e72"
-    ];
     const swatchRow = cardBody.createDiv({ cls: "accent-preset-row" });
     for (const hex of ACCENT_PRESETS) {
       const swatch = swatchRow.createDiv({ cls: "accent-preset-swatch" });
@@ -6821,6 +6845,18 @@ var BlockSettingsModal = class extends import_obsidian.Modal {
         refreshPreview();
       });
     }
+    let intensitySlider = null;
+    new import_obsidian.Setting(cardBody).setName("Accent intensity").setDesc("How strong the accent tint appears on the card background (5\u2013100%).").addSlider((s) => {
+      intensitySlider = s;
+      s.setLimits(5, 100, 5).setValue(typeof draft._accentIntensity === "number" ? draft._accentIntensity : 15).setDynamicTooltip().onChange((v) => {
+        draft._accentIntensity = v;
+        refreshPreview();
+      });
+      s.sliderEl.addEventListener("input", () => {
+        draft._accentIntensity = s.getValue();
+        refreshPreview();
+      });
+    });
     new import_obsidian.Setting(cardBody).setName("Hide border").setDesc("Remove the card border and hover highlight.").addToggle(
       (t) => t.setValue(draft._hideBorder === true).onChange((v) => {
         draft._hideBorder = v;
@@ -7308,6 +7344,29 @@ var BaseBlock = class extends import_obsidian4.Component {
   /** Dispatch an event so GridLayout recalculates auto-height for this block. */
   requestAutoHeight() {
     this.containerEl?.dispatchEvent(new CustomEvent("request-auto-height", { bubbles: true }));
+  }
+  /**
+   * Watch an element for width changes and dispatch request-auto-height when
+   * the width changes.  Useful for blocks whose content reflows (e.g. grid
+   * galleries, multi-column lists) when the container narrows/widens.
+   * Cleanup is registered automatically via `this.register()`.
+   */
+  observeWidthForAutoHeight(el) {
+    let prevWidth = 0;
+    let rafId = 0;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0 && w !== prevWidth) {
+        prevWidth = w;
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => this.requestAutoHeight());
+      }
+    });
+    ro.observe(el);
+    this.register(() => {
+      ro.disconnect();
+      cancelAnimationFrame(rafId);
+    });
   }
   /** Increment and return a new render generation. Call at the start of async renders. */
   nextGeneration() {
@@ -8005,7 +8064,7 @@ var ButtonGridSettingsModal = class extends import_obsidian10.Modal {
 
 // src/blocks/QuotesListBlock.ts
 var import_obsidian11 = require("obsidian");
-var COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]+|rgba?\([\d.,\s/%]+\)|hsla?\([\d.,\s/%deg]+\))$/;
+var COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\))$/;
 var DEBOUNCE_MS2 = 500;
 var QuotesListBlock = class extends BaseBlock {
   render(el) {
@@ -8053,6 +8112,9 @@ var QuotesListBlock = class extends BaseBlock {
     const ro = new ResizeObserver(updateCols);
     ro.observe(colsEl);
     this.register(() => ro.disconnect());
+    if (heightMode !== "wrap") {
+      this.observeWidthForAutoHeight(colsEl);
+    }
     if (source === "text") {
       this.renderTextQuotes(colsEl, quotes, maxItems);
       return;
@@ -8210,13 +8272,16 @@ var IMAGE_EXTS = /* @__PURE__ */ new Set([".png", ".jpg", ".jpeg", ".gif", ".web
 var VIDEO_EXTS = /* @__PURE__ */ new Set([".mp4", ".webm", ".mov", ".mkv"]);
 var SWIPE_THRESHOLD_PX = 50;
 var SWIPE_DIRECTION_RATIO = 1.5;
-var activeLightboxAbort = null;
+var activeLightboxAc = null;
+function isLightboxOpen() {
+  return activeLightboxAc !== null;
+}
 function openMediaLightbox(items, startIndex) {
   if (items.length === 0) return;
-  activeLightboxAbort?.abort();
+  activeLightboxAc?.abort();
   document.querySelector(".gallery-lightbox")?.remove();
   const ac = new AbortController();
-  activeLightboxAbort = ac;
+  activeLightboxAc = ac;
   const { signal } = ac;
   let current = startIndex;
   const overlay = document.body.createDiv({ cls: "gallery-lightbox" });
@@ -8265,7 +8330,7 @@ function openMediaLightbox(items, startIndex) {
     pauseCurrentVideo();
     overlay.remove();
     ac.abort();
-    activeLightboxAbort = null;
+    activeLightboxAc = null;
   };
   prevBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -8279,9 +8344,18 @@ function openMediaLightbox(items, startIndex) {
     if (e.target === overlay || e.target === mediaContainer) close();
   }, { signal });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") close();
-    else if (e.key === "ArrowLeft") showItem(current - 1);
-    else if (e.key === "ArrowRight") showItem(current + 1);
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      close();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      showItem(current - 1);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      showItem(current + 1);
+    }
   }, { signal });
   let touchStartX = 0;
   let touchStartY = 0;
@@ -8305,11 +8379,16 @@ function openMediaLightbox(items, startIndex) {
 }
 var DEBOUNCE_MS3 = 300;
 var ImageGalleryBlock = class extends BaseBlock {
+  /** The AbortController for the lightbox opened by THIS instance (if any). */
+  myLightboxAc = null;
   onunload() {
     super.onunload();
-    activeLightboxAbort?.abort();
-    document.querySelector(".gallery-lightbox")?.remove();
-    activeLightboxAbort = null;
+    if (this.myLightboxAc && this.myLightboxAc === activeLightboxAc) {
+      this.myLightboxAc.abort();
+      document.querySelector(".gallery-lightbox")?.remove();
+      activeLightboxAc = null;
+    }
+    this.myLightboxAc = null;
   }
   render(el) {
     this.containerEl = el;
@@ -8344,7 +8423,12 @@ var ImageGalleryBlock = class extends BaseBlock {
   }
   async loadAndRender(el) {
     const gen = this.nextGeneration();
-    const { folder = "", columns = 3, maxItems = 20, layout = "grid", heightMode = "auto" } = this.instance.config;
+    const cfg = this.instance.config;
+    const folder = cfg.folder ?? "";
+    const columns = Math.max(1, Math.min(6, Math.floor(Number(cfg.columns) || 3)));
+    const maxItems = Math.max(1, Math.min(200, Math.floor(Number(cfg.maxItems) || 20)));
+    const layout = cfg.layout ?? "grid";
+    const heightMode = cfg.heightMode ?? "auto";
     this.renderHeader(el, "Gallery");
     const gallery = el.createDiv({ cls: "image-gallery" });
     if (heightMode === "fixed") {
@@ -8369,7 +8453,7 @@ var ImageGalleryBlock = class extends BaseBlock {
       this.register(() => ro.disconnect());
     } else {
       const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
-      gallery.style.gridTemplateColumns = responsiveGridColumns(safeCols, 70);
+      gallery.style.gridTemplateColumns = responsiveGridColumns(safeCols, 150);
     }
     if (!folder) {
       const hint = gallery.createDiv({ cls: "block-empty-hint" });
@@ -8400,7 +8484,10 @@ var ImageGalleryBlock = class extends BaseBlock {
       wrapper.setAttribute("role", "button");
       wrapper.setAttribute("aria-label", file.basename);
       const index = i;
-      const action = () => openMediaLightbox(lightboxItems, index);
+      const action = () => {
+        openMediaLightbox(lightboxItems, index);
+        this.myLightboxAc = activeLightboxAc;
+      };
       wrapper.addEventListener("click", action);
       wrapper.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -8435,7 +8522,7 @@ var ImageGalleryBlock = class extends BaseBlock {
           video.currentTime = 0.1;
         }, { once: true });
         wrapper.addEventListener("mouseenter", () => {
-          video.play().catch(() => {
+          if (!isLightboxOpen()) video.play().catch(() => {
           });
         });
         wrapper.addEventListener("mouseleave", () => {
@@ -8446,6 +8533,9 @@ var ImageGalleryBlock = class extends BaseBlock {
     }
     await Promise.all(imageLoadPromises);
     if (this.isStale(gen)) return;
+    if (heightMode !== "fixed") {
+      this.observeWidthForAutoHeight(gallery);
+    }
   }
   getMediaFiles(folder, limit = Infinity) {
     const files = [];
@@ -8791,7 +8881,8 @@ var HtmlBlock = class extends BaseBlock {
       hint.createDiv({ cls: "block-empty-hint-text", text: "No HTML content yet. Add your markup in settings." });
       return;
     }
-    contentEl.appendChild((0, import_obsidian15.sanitizeHTMLToDom)(html));
+    const DANGEROUS_TAGS_RE = /<\s*(iframe|object|embed|form|meta|link|base)\b[^>]*>/gi;
+    contentEl.appendChild((0, import_obsidian15.sanitizeHTMLToDom)(html.replace(DANGEROUS_TAGS_RE, "")));
   }
   openSettings(onSave) {
     new HtmlBlockSettingsModal(this.app, this.instance.config, onSave).open();
@@ -8888,7 +8979,7 @@ function playlistEmbedUrl(listId, opts) {
   const base = opts?.videoId ? `${YT_ORIGIN}/embed/${opts.videoId}` : `${YT_ORIGIN}/embed/videoseries`;
   return `${base}?${params.toString()}`;
 }
-var VideoEmbedBlock = class extends BaseBlock {
+var VideoEmbedBlock = class _VideoEmbedBlock extends BaseBlock {
   currentIndex = 0;
   playlistLength = 0;
   playlistVideoIds = [];
@@ -9100,9 +9191,22 @@ var VideoEmbedBlock = class extends BaseBlock {
       window.open(`${YT_ORIGIN}/watch?v=${videoId}`, "_blank");
     });
   }
-  // SECURITY: allow-same-origin + allow-scripts is required by YouTube IFrame API.
-  // Safe because parseUrl() only permits cross-origin YouTube/Vimeo/Dailymotion URLs.
+  // SECURITY INVARIANT: allow-same-origin + allow-scripts nullifies the sandbox.
+  // This is required by the YouTube IFrame API.  The origin guard below ensures
+  // only YouTube/Vimeo/Dailymotion URLs can ever reach this code path.
+  // Do NOT add new providers without a security review.
+  static ALLOWED_EMBED_HOSTS = /^(?:www\.)?youtube\.com$|^player\.vimeo\.com$|^www\.dailymotion\.com$/;
   createIframe(container, src) {
+    try {
+      const host = new URL(src).hostname;
+      if (!_VideoEmbedBlock.ALLOWED_EMBED_HOSTS.test(host)) {
+        throw new Error(`Blocked iframe src from unknown origin: ${host}`);
+      }
+    } catch (e) {
+      console.error("[Homepage Blocks] VideoEmbed origin check failed:", e);
+      container.setText("Video source blocked for security reasons.");
+      return container.createEl("iframe");
+    }
     this.iframeEl = container.createEl("iframe", {
       cls: "video-embed-iframe",
       attr: {

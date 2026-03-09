@@ -12,8 +12,21 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
     && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : '';
   el.toggleClass('block-accented', !!accentColor);
   el.toggleClass('block-no-header-accent', config._hideHeaderAccent === true);
-  if (accentColor) el.style.setProperty('--block-accent', accentColor);
-  else el.style.removeProperty('--block-accent');
+  if (accentColor) {
+    el.style.setProperty('--block-accent', accentColor);
+    // Only set --block-accent-pct when it differs from the CSS default (15%)
+    // so the CSS fallback governs unless explicitly overridden.
+    const intensity = typeof config._accentIntensity === 'number'
+      ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
+    if (intensity && intensity !== 15) {
+      el.style.setProperty('--block-accent-pct', `${intensity}%`);
+    } else {
+      el.style.removeProperty('--block-accent-pct');
+    }
+  } else {
+    el.style.removeProperty('--block-accent');
+    el.style.removeProperty('--block-accent-pct');
+  }
 
   // ── Visibility flags ───────────────────────────────────────────────
   el.toggleClass('block-no-border', config._hideBorder === true);

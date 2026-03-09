@@ -1,0 +1,2579 @@
+/* ── GridStack Core CSS (bundled from gridstack/dist/gridstack.min.css) ── */
+.grid-stack{position:relative}.grid-stack-rtl{direction:ltr}.grid-stack-rtl>.grid-stack-item{direction:rtl}.grid-stack-placeholder>.placeholder-content{background-color:rgba(0,0,0,.1);margin:0;position:absolute;width:auto;z-index:0!important}.grid-stack>.grid-stack-item{position:absolute;padding:0;top:0;left:0;width:var(--gs-column-width);height:var(--gs-cell-height)}.grid-stack>.grid-stack-item>.grid-stack-item-content{margin:0;position:absolute;width:auto;overflow-x:hidden;overflow-y:auto}.grid-stack>.grid-stack-item.size-to-content:not(.size-to-content-max)>.grid-stack-item-content{overflow-y:hidden}.grid-stack>.grid-stack-item>.grid-stack-item-content,.grid-stack>.grid-stack-placeholder>.placeholder-content{top:var(--gs-item-margin-top);right:var(--gs-item-margin-right);bottom:var(--gs-item-margin-bottom);left:var(--gs-item-margin-left)}.grid-stack-item>.ui-resizable-handle{position:absolute;font-size:.1px;display:block;-ms-touch-action:none;touch-action:none}.grid-stack-item.ui-resizable-autohide>.ui-resizable-handle,.grid-stack-item.ui-resizable-disabled>.ui-resizable-handle{display:none}.grid-stack-item>.ui-resizable-ne,.grid-stack-item>.ui-resizable-nw,.grid-stack-item>.ui-resizable-se,.grid-stack-item>.ui-resizable-sw{background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="%23666" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 20 20"><path d="m10 3 2 2H8l2-2v14l-2-2h4l-2 2"/></svg>');background-repeat:no-repeat;background-position:center}.grid-stack-item>.ui-resizable-ne{transform:rotate(45deg)}.grid-stack-item>.ui-resizable-sw{transform:rotate(45deg)}.grid-stack-item>.ui-resizable-nw{transform:rotate(-45deg)}.grid-stack-item>.ui-resizable-se{transform:rotate(-45deg)}.grid-stack-item>.ui-resizable-nw{cursor:nw-resize;width:20px;height:20px;top:var(--gs-item-margin-top);left:var(--gs-item-margin-left)}.grid-stack-item>.ui-resizable-n{cursor:n-resize;height:10px;top:var(--gs-item-margin-top);left:25px;right:25px}.grid-stack-item>.ui-resizable-ne{cursor:ne-resize;width:20px;height:20px;top:var(--gs-item-margin-top);right:var(--gs-item-margin-right)}.grid-stack-item>.ui-resizable-e{cursor:e-resize;width:10px;top:15px;bottom:15px;right:var(--gs-item-margin-right)}.grid-stack-item>.ui-resizable-se{cursor:se-resize;width:20px;height:20px;bottom:var(--gs-item-margin-bottom);right:var(--gs-item-margin-right)}.grid-stack-item>.ui-resizable-s{cursor:s-resize;height:10px;left:25px;bottom:var(--gs-item-margin-bottom);right:25px}.grid-stack-item>.ui-resizable-sw{cursor:sw-resize;width:20px;height:20px;bottom:var(--gs-item-margin-bottom);left:var(--gs-item-margin-left)}.grid-stack-item>.ui-resizable-w{cursor:w-resize;width:10px;top:15px;bottom:15px;left:var(--gs-item-margin-left)}.grid-stack-item.ui-draggable-dragging>.ui-resizable-handle{display:none!important}.grid-stack-item.ui-draggable-dragging{will-change:left,top}.grid-stack-item.ui-resizable-resizing{will-change:width,height}.ui-draggable-dragging,.ui-resizable-resizing{z-index:10000}.ui-draggable-dragging>.grid-stack-item-content,.ui-resizable-resizing>.grid-stack-item-content{box-shadow:1px 4px 6px rgba(0,0,0,.2);opacity:.8}.grid-stack-animate,.grid-stack-animate .grid-stack-item{transition:left .3s,top .3s,height .3s,width .3s}.grid-stack-animate .grid-stack-item.grid-stack-placeholder,.grid-stack-animate .grid-stack-item.ui-draggable-dragging,.grid-stack-animate .grid-stack-item.ui-resizable-resizing{transition:left 0s,top 0s,height 0s,width 0s}.grid-stack>.grid-stack-item[gs-y="0"]{top:0}.grid-stack>.grid-stack-item[gs-x="0"]{left:0}
+
+/* ── Design Tokens ──────────────────────────────────────── */
+/* Scoped to .homepage-view so they participate in container queries.
+   Override in snippets/homepage.css via .homepage-view { ... } */
+.homepage-view {
+  --hp-padding: clamp(8px, 1.5cqi, 16px);
+  --hp-card-padding: clamp(12px, 2cqi, 20px);
+  --hp-content-max-width: 1400px;
+}
+
+/* ── Homepage View ──────────────────────────────────────── */
+.homepage-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: homepage;
+  position: relative;
+}
+
+/* ── GridStack Overrides ───────────────────────────────── */
+.homepage-grid.grid-stack {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  padding: var(--hp-padding);
+  max-width: var(--hp-content-max-width);
+  width: 100%;
+  box-sizing: border-box;
+  margin-inline: auto;
+  line-height: 1.5;
+  scroll-padding-top: 8px;
+}
+
+/* The .grid-stack-item-content is our card container */
+.homepage-grid .grid-stack-item-content {
+  overflow: visible;
+}
+
+/* GridStack placeholder during drag */
+.homepage-grid .grid-stack-placeholder > .placeholder-content {
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-m, 8px);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+/* GridStack resize handles */
+.homepage-grid .ui-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  z-index: 10;
+}
+
+/* South (bottom) handle — full-width strip */
+.homepage-grid .ui-resizable-s {
+  height: 8px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  cursor: s-resize;
+}
+
+/* East (right) handle — full-height strip */
+.homepage-grid .ui-resizable-e {
+  width: 8px;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  cursor: e-resize;
+}
+
+/* South-East corner handle */
+.homepage-grid .ui-resizable-se {
+  width: 20px;
+  height: 20px;
+  bottom: 4px;
+  right: 4px;
+  cursor: se-resize;
+}
+
+/* Show handles in edit mode */
+.homepage-grid.edit-mode .ui-resizable-handle {
+  opacity: 0.5;
+}
+
+.homepage-grid.edit-mode .grid-stack-item:hover .ui-resizable-handle {
+  opacity: 1;
+}
+
+/* Hide resize handles when not in edit mode */
+.homepage-grid:not(.edit-mode) .ui-resizable-handle {
+  display: none !important;
+}
+
+/* Auto-height blocks: only allow horizontal resize (height is managed automatically) */
+.homepage-grid .gs-auto-height > .ui-resizable-s,
+.homepage-grid .gs-auto-height > .ui-resizable-se {
+  display: none !important;
+}
+
+/* ── Block Card ─────────────────────────────────────────── */
+.homepage-block-wrapper {
+  background: var(--background-secondary);
+  border-radius: var(--radius-m, 8px);
+  padding: var(--hp-card-padding);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--hp-title-gap, 8px);
+  height: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  container-type: inline-size;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s ease-out;
+}
+
+/* Staggered card entry — animation-delay set inline from JS */
+.homepage-grid--animating .homepage-block-wrapper {
+  animation: hp-card-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes hp-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.homepage-block-wrapper:hover {
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+/* ── Accent Color ────────────────────────────────────────── */
+/* A single --block-accent color derives the entire card palette.
+   Shared custom properties so both live cards and the preview card stay in sync. */
+.block-accented {
+  --_accent-bg: color-mix(in oklch, var(--block-accent) 15%, var(--background-secondary));
+  --_accent-border: color-mix(in oklch, var(--block-accent) 50%, var(--background-modifier-border));
+  --_accent-border-hover: color-mix(in oklch, var(--block-accent) 70%, var(--background-modifier-border));
+  --_accent-header-bg: color-mix(in oklch, var(--block-accent) 22%, transparent);
+  --_accent-header-text: color-mix(in oklch, var(--block-accent) 85%, var(--text-normal));
+  --_accent-divider: color-mix(in oklch, var(--block-accent) 40%, var(--background-modifier-border));
+  background: var(--_accent-bg);
+  border-color: var(--_accent-border);
+}
+
+.block-accented:hover {
+  border-color: var(--_accent-border-hover);
+}
+
+.block-accented .block-header-zone {
+  background: var(--_accent-header-bg);
+  border-radius: var(--radius-s, 4px);
+  margin: -4px -6px 0;
+  padding: 4px 6px;
+}
+
+.block-accented .block-header {
+  color: var(--_accent-header-text);
+}
+
+.block-accented .block-header-divider {
+  background: var(--_accent-divider);
+}
+
+/* Hide header accent — keep card border/bg tint but neutralize header zone */
+.block-accented.block-no-header-accent .block-header-zone {
+  background: transparent;
+  margin: 0 -4px;
+  padding: 2px 4px;
+}
+.block-accented.block-no-header-accent .block-header {
+  color: var(--text-normal);
+}
+
+/* DEPRECATED: kept for layouts not yet migrated by migrateBlockInstance().
+   Remove once _transparent migration has been in place for a few releases. */
+
+/* Transparent overrides accent — no tinted background/border on transparent cards */
+.homepage-block-wrapper.block-transparent.block-accented {
+  background: transparent;
+  border-color: transparent;
+}
+
+.homepage-block-wrapper.block-transparent.block-accented .block-header-zone {
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+/* Preset color swatches */
+.accent-preset-row {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 12px;
+  flex-wrap: wrap;
+}
+
+.accent-preset-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.12s ease-out, border-color 0.12s ease-out, box-shadow 0.12s ease-out;
+}
+
+.accent-preset-swatch:hover {
+  transform: scale(1.2);
+  border-color: var(--text-normal);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Live preview card in block settings modal */
+.settings-preview-card {
+  margin: 0 0 16px;
+  pointer-events: none;
+  transition: background 0.15s, border-color 0.15s, padding 0.15s;
+}
+
+.settings-preview-body {
+  padding: 12px 0 4px;
+}
+
+.settings-preview-body-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.homepage-block-wrapper.block-transparent {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  --hp-card-padding: 0px;
+}
+
+.homepage-block-wrapper.block-transparent:hover {
+  border-color: transparent;
+}
+
+/* ── Granular visibility flags ──────────────────────────── */
+.homepage-block-wrapper.block-no-border,
+.homepage-block-wrapper.block-no-border:hover,
+.homepage-block-wrapper.block-no-border.block-accented,
+.homepage-block-wrapper.block-no-border.block-accented:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.homepage-block-wrapper.block-no-background,
+.homepage-block-wrapper.block-no-background:hover,
+.homepage-block-wrapper.block-no-background.block-accented,
+.homepage-block-wrapper.block-no-background.block-accented:hover {
+  background: transparent;
+}
+
+.homepage-block-wrapper.block-no-background.block-accented .block-header-zone {
+  background: transparent;
+  margin: 0;
+  padding: 0;
+}
+
+.homepage-view.homepage-no-scrollbar,
+.homepage-view.homepage-no-scrollbar * {
+  scrollbar-width: none;           /* Firefox */
+}
+.homepage-view.homepage-no-scrollbar::-webkit-scrollbar,
+.homepage-view.homepage-no-scrollbar *::-webkit-scrollbar {
+  display: none;                   /* Chrome / Safari / Electron */
+}
+
+.block-content {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Block Header / Label ───────────────────────────────── */
+.block-header {
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-normal);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.block-header-h1 {
+  font-size: var(--h1-size, 2.4rem);
+  font-weight: var(--h1-weight, 700);
+  line-height: var(--h1-line-height, 1.2);
+  letter-spacing: -0.015em;
+  font-style: var(--h1-style, normal);
+  font-family: var(--h1-font, inherit);
+  color: var(--h1-color, var(--text-normal));
+}
+.block-header-h2 {
+  font-size: var(--h2-size, 1.9rem);
+  font-weight: var(--h2-weight, 600);
+  line-height: var(--h2-line-height, 1.3);
+  font-style: var(--h2-style, normal);
+  font-family: var(--h2-font, inherit);
+  color: var(--h2-color, var(--text-normal));
+}
+.block-header-h3 {
+  font-size: var(--h3-size, 1.5rem);
+  font-weight: var(--h3-weight, 600);
+  line-height: var(--h3-line-height, 1.4);
+  font-style: var(--h3-style, normal);
+  font-family: var(--h3-font, inherit);
+  color: var(--h3-color, var(--text-normal));
+}
+.block-header-h4 {
+  font-size: var(--h4-size, 1.25rem);
+  font-weight: var(--h4-weight, 600);
+  line-height: var(--h4-line-height, 1.5);
+  font-style: var(--h4-style, normal);
+  font-family: var(--h4-font, inherit);
+  color: var(--h4-color, var(--text-normal));
+}
+.block-header-h5 {
+  font-size: var(--h5-size, 1.05rem);
+  font-weight: var(--h5-weight, 600);
+  line-height: var(--h5-line-height, 1.5);
+  font-style: var(--h5-style, normal);
+  font-family: var(--h5-font, inherit);
+  color: var(--h5-color, var(--text-normal));
+}
+.block-header-h6 {
+  font-size: var(--h6-size, 0.95rem);
+  font-weight: var(--h6-weight, 400);
+  line-height: var(--h6-line-height, 1.5);
+  font-style: var(--h6-style, normal);
+  font-family: var(--h6-font, inherit);
+  color: var(--h6-color, var(--text-muted));
+}
+
+/* ── Block Header Divider ──────────────────────────────── */
+.block-header-divider {
+  height: 1px;
+  background: var(--background-modifier-border);
+  margin: 4px 0 8px 0;
+  flex-shrink: 0;
+}
+
+/* Hide divider when block is collapsed (content is hidden) */
+.homepage-block-wrapper.block-collapsed .block-header-divider {
+  display: none;
+}
+
+/* Hide divider in edit mode (compact placeholder, no real content) */
+.edit-mode .block-header-divider {
+  display: none;
+}
+
+/* ── Homepage-level Empty State ─────────────────────────── */
+.homepage-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(40px, 8cqi, 80px) clamp(16px, 4cqi, 32px);
+  color: var(--text-muted);
+  text-align: center;
+  gap: 16px;
+}
+
+.homepage-empty-state p {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.homepage-empty-icon {
+  font-size: 3rem;
+  line-height: 1;
+  opacity: 0.3;
+}
+
+.homepage-empty-state .homepage-empty-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-normal);
+  margin: 0;
+}
+
+.homepage-empty-state .homepage-empty-desc {
+  font-size: var(--font-interface-size, 0.8125rem);
+  margin: 0;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.homepage-empty-cta {
+  margin-top: 8px;
+  background: var(--color-accent);
+  color: var(--text-on-accent, #fff);
+  border: none;
+  border-radius: var(--radius-m, 8px);
+  padding: 8px 20px;
+  font-size: var(--font-interface-size, 0.8125rem);
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease-out;
+  box-shadow: none;
+}
+
+.homepage-empty-cta:hover {
+  opacity: 0.85;
+}
+
+.homepage-empty-cta:active {
+  transform: scale(0.97);
+}
+
+/* ── Block-level Empty Hint ────────────────────────────── */
+.block-empty-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.block-empty-hint-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  opacity: 0.4;
+}
+
+.block-empty-hint-text {
+  font-size: var(--font-interface-size, 0.8125rem);
+  line-height: 1.5;
+}
+
+.block-empty-hint-action {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-accent, var(--color-accent));
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 12px;
+  border-radius: var(--radius-s, 4px);
+  transition: background 0.12s ease-out;
+  box-shadow: none;
+}
+
+.block-empty-hint-action:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* ── Block Loading Placeholder ──────────────────────────── */
+.block-loading {
+  color: var(--text-muted);
+  font-size: var(--font-interface-size, 0.8125rem);
+  padding: 8px 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.block-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-accent) 8%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: hp-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes hp-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Greeting Block ─────────────────────────────────────── */
+.homepage-block-wrapper .block-content.greeting-block {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 90px;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+
+.greeting-emoji {
+  font-size: clamp(1.75rem, 4cqi, 2.5rem);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.greeting-name {
+  font-size: clamp(1.75rem, 4cqi, 2.5rem);
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+  color: var(--text-normal);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.greeting-time {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ── Clock Block ────────────────────────────────────────── */
+.clock-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 90px;
+}
+
+.clock-time {
+  font-size: var(--h3-size, 2rem);
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.clock-date {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Clock styles */
+.clock-style-centered {
+  align-items: center;
+  text-align: center;
+}
+.clock-style-centered .clock-time {
+  font-size: 2.5rem;
+  font-weight: 200;
+}
+.clock-style-centered .clock-date {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.clock-style-large {
+  align-items: center;
+  text-align: center;
+}
+.clock-style-large .clock-time {
+  font-size: 3.75rem;
+  font-weight: 100;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.clock-style-large .clock-date {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  margin-top: 8px;
+}
+
+.clock-style-accent .clock-time {
+  font-size: 2.25rem;
+  font-weight: 600;
+  color: var(--block-accent, var(--color-accent));
+}
+.clock-style-accent .clock-date {
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--block-accent, var(--color-accent)) 60%, var(--text-muted));
+  letter-spacing: 0.04em;
+}
+
+/* ── Folder Links Block ─────────────────────────────────── */
+.folder-links-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 -6px;
+}
+
+.folder-link-item {
+  display: flex;
+  align-items: center;
+}
+
+.folder-links-align-left .folder-link-btn,
+.folder-links-align-center .folder-link-btn,
+.folder-links-align-right .folder-link-btn {
+  width: auto;
+  display: inline-flex;
+}
+
+.folder-links-align-center .folder-link-item {
+  justify-content: center;
+}
+
+.folder-links-align-right .folder-link-item {
+  justify-content: flex-end;
+}
+
+.folder-links-align-center .folder-link-btn:hover,
+.folder-links-align-right .folder-link-btn:hover {
+  transform: none;
+}
+
+.folder-link-btn {
+  background: none;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: var(--text-normal);
+  font-size: var(--font-text-size, 0.875rem);
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border-radius: var(--radius-s, 4px);
+  transition:
+    background 0.12s ease-out,
+    color 0.12s ease-out,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+  text-decoration: none;
+}
+
+.folder-link-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-accent, var(--color-accent));
+  text-decoration: none;
+  transform: translateX(2px);
+}
+
+.folder-link-btn:active {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+}
+
+.link-emoji {
+  font-size: 1em;
+  flex-shrink: 0;
+  opacity: 0.85;
+  transition: transform 0.15s ease-out;
+}
+
+.folder-link-btn:hover .link-emoji {
+  transform: scale(1.1);
+}
+
+/* Link emoji picker row */
+.link-emoji-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0 8px 0;
+}
+
+.link-emoji-picker-row .emoji-picker-trigger.is-placeholder span:first-child {
+  color: var(--text-muted);
+  font-size: var(--font-smallest);
+}
+
+.link-emoji-panel {
+  margin-bottom: 8px;
+}
+
+/* Accent-aware link colors */
+.block-accented .folder-link-btn {
+  color: var(--_accent-header-text);
+}
+
+.block-accented .folder-link-btn:hover {
+  color: var(--block-accent);
+  background: color-mix(in oklch, var(--block-accent) 15%, transparent);
+}
+
+/* ── Insight Block ──────────────────────────────────────── */
+.insight-block {
+  min-height: 100px;
+}
+
+.insight-card {
+  margin-top: 4px;
+}
+
+.insight-title {
+  color: var(--color-accent);
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-size: inherit;
+}
+
+.insight-body {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 12px;
+  color: var(--text-normal);
+  font-size: inherit;
+  line-height: 1.6;
+}
+
+/* ── Button Grid Block ──────────────────────────────────── */
+.button-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.grid-btn {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+  font-size: inherit;
+  color: var(--text-normal);
+  transition:
+    background 0.15s ease-out,
+    border-color 0.15s ease-out,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s ease-out;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grid-btn:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+.grid-btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+}
+
+.grid-btn-emoji {
+  font-size: 1rem;
+}
+
+/* ── Quotes List Block ──────────────────────────────────── */
+.quotes-columns {
+  column-gap: 20px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* In extend mode, block-content itself gets the --extend class (el IS block-content).
+   Allow overflow so CSS columns can report their natural height for auto-height. */
+.homepage-block-wrapper .block-content.quotes-list-block--extend {
+  overflow: visible;
+}
+
+.homepage-block-wrapper .block-content.quotes-list-block--extend > * {
+  overflow: visible;
+}
+
+.homepage-block-wrapper.block-collapsed .block-content.quotes-list-block--extend {
+  overflow: hidden;
+}
+
+.homepage-block-wrapper.block-collapsed .block-content.quotes-list-block--extend > * {
+  overflow: hidden;
+}
+
+.quotes-list-block--extend .quotes-columns {
+  max-height: none;
+}
+
+.quote-item {
+  margin-bottom: 16px;
+  break-inside: avoid;
+}
+
+.quote-content {
+  border-left: 3px solid var(--color-accent);
+  margin: 0 0 4px 0;
+  padding: 4px 0 4px 12px;
+  font-size: inherit;
+  line-height: 1.6;
+  color: var(--text-normal);
+}
+
+.quote-source {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-muted);
+  padding-left: 12px;
+}
+
+/* ── Image Gallery Block ────────────────────────────────── */
+.image-gallery {
+  display: grid;
+  gap: 8px;
+}
+
+.gallery-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+}
+
+.gallery-item img {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-m, 8px);
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    filter 0.25s ease-out;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.gallery-item:hover img,
+.gallery-item:focus-visible img {
+  transform: scale(1.03);
+  filter: brightness(1.04);
+}
+
+.gallery-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Fixed-height mode: scroll instead of auto-expand */
+.image-gallery.image-gallery--fixed-height {
+  overflow-y: auto;
+  height: 100%;
+}
+
+/* Masonry layout */
+.image-gallery.masonry-layout {
+  display: block;
+  column-gap: 8px;
+}
+
+.image-gallery.masonry-layout .gallery-item {
+  break-inside: avoid;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.image-gallery.masonry-layout .gallery-item img {
+  aspect-ratio: auto;
+  object-fit: unset;
+}
+
+/* ── Lightbox ──────────────────────────────────────────── */
+.gallery-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  animation: lightbox-fade-in 0.15s ease-out;
+}
+
+.gallery-lightbox-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gallery-lightbox-img,
+.gallery-lightbox-video {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: var(--radius-m, 8px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+
+.gallery-lightbox-prev,
+.gallery-lightbox-next {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  --_lb-nav-bg: rgba(255, 255, 255, 0.15);
+  --_lb-nav-color: rgba(255, 255, 255, 0.8);
+  background: var(--_lb-nav-bg);
+  color: var(--_lb-nav-color);
+  border: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  z-index: 1;
+}
+
+.gallery-lightbox-prev:hover,
+.gallery-lightbox-next:hover {
+  --_lb-nav-bg: rgba(255, 255, 255, 0.3);
+  --_lb-nav-color: #fff;
+}
+
+.gallery-lightbox-prev { left: 16px; }
+.gallery-lightbox-next { right: 16px; }
+
+.gallery-lightbox-nav-hidden { display: none; }
+
+.gallery-lightbox-counter {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+}
+
+@keyframes lightbox-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.gallery-item video {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-m, 8px);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.video-play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text-on-accent, #fff);
+  font-size: 1.25rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out,
+    background 0.2s ease-out;
+  z-index: 1;
+  backdrop-filter: blur(4px);
+}
+
+.gallery-item-video:hover .video-play-overlay {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.8);
+}
+
+/* ── Embedded Note Block ────────────────────────────────── */
+.embedded-note-content {
+  font-size: inherit;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* In grow mode, block-content itself gets the --grow class (el IS block-content). */
+.homepage-block-wrapper .block-content.embedded-note-block--grow {
+  overflow: visible;
+}
+
+.homepage-block-wrapper .block-content.embedded-note-block--grow > * {
+  overflow: visible;
+}
+
+.homepage-block-wrapper.block-collapsed .block-content.embedded-note-block--grow {
+  overflow: hidden;
+}
+
+.homepage-block-wrapper.block-collapsed .block-content.embedded-note-block--grow > * {
+  overflow: hidden;
+}
+
+.embedded-note-block--grow .embedded-note-content {
+  max-height: none;
+  overflow-y: visible;
+}
+
+/* ── Static Text Block ──────────────────────────────────── */
+.static-text-block {
+  position: relative;
+}
+
+.static-text-edit-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 5;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.static-text-block:hover .static-text-edit-btn {
+  opacity: 1;
+}
+
+.static-text-edit-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.edit-mode .static-text-edit-btn {
+  display: none;
+}
+
+.homepage-block-wrapper .block-content > .static-text-content {
+  font-size: inherit;
+  line-height: 1.6;
+  overflow-y: auto;
+}
+
+/* ── Inline Editor (Static Text) ────────────────────────── */
+.static-text-inline-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 120px;
+}
+
+.static-text-inline-editor textarea {
+  flex: 1;
+  min-height: 100px;
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 8px;
+  resize: vertical;
+}
+
+.static-text-inline-editor textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.inline-edit-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.inline-edit-btn {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.inline-edit-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.inline-edit-save:hover {
+  color: var(--color-accent);
+}
+
+/* ── Video Embed Block ──────────────────────────────────── */
+.video-embed-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.video-embed-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-m, 8px);
+}
+
+.video-embed-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: var(--radius-m, 8px);
+}
+
+/* Playlist navigator overlay — show on hover */
+.video-embed-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  border-radius: 0 0 var(--radius-m, 8px) var(--radius-m, 8px);
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.video-embed-container:hover .video-embed-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.video-embed-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-s, 4px);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.video-embed-ctrl-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.video-embed-index-label {
+  font-size: var(--font-ui-smaller);
+  color: rgba(255, 255, 255, 0.8);
+  min-width: 28px;
+  text-align: center;
+}
+
+/* ── Video Thumbnail Fallback ──────────────────────────── */
+.video-embed-thumbnail {
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.video-embed-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-m, 8px);
+}
+
+.video-embed-play-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 64px;
+  height: 64px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+
+.video-embed-thumbnail:hover .video-embed-play-overlay {
+  background: rgba(255, 0, 0, 0.85);
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+.video-embed-play-icon {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 12px 0 12px 22px;
+  border-color: transparent transparent transparent #fff;
+  margin-left: 4px;
+}
+
+.video-embed-thumb-label {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: var(--font-ui-smaller);
+  padding: 4px 12px;
+  border-radius: var(--radius-s, 4px);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* When thumbnail is shown in a playlist, move label above controls */
+.video-embed-thumbnail .video-embed-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.video-embed-thumbnail .video-embed-thumb-label {
+  bottom: 44px;
+}
+
+/* ── HTML Block ─────────────────────────────────────────── */
+.html-block-content {
+  font-size: inherit;
+  line-height: 1.6;
+}
+
+/* ── Settings textarea (Static Text and HTML blocks) ────── */
+.static-text-settings-textarea,
+.html-settings-textarea {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: 0.8125rem;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 8px;
+  resize: vertical;
+  margin-bottom: 16px;
+}
+
+.static-text-settings-textarea:focus-visible,
+.html-settings-textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ── Edit FAB — floating trigger visible in read mode ────── */
+.homepage-edit-fab {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 20;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s, 0 1px 4px rgba(0,0,0,0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.3;
+  transform: scale(0.85);
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.2s ease-out;
+}
+
+.homepage-edit-fab:hover,
+.homepage-edit-fab:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.homepage-edit-fab:hover {
+  box-shadow: var(--shadow-l, 0 4px 12px rgba(0,0,0,0.12));
+  background: var(--background-modifier-hover);
+}
+
+.homepage-edit-fab:active {
+  transform: scale(0.94);
+}
+
+.homepage-edit-fab.is-hidden {
+  display: none;
+}
+
+/* ── Toolbar — hidden in read mode, shown in edit mode ───── */
+.homepage-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 var(--hp-padding, 16px);
+  border-bottom: 1px solid transparent;
+  background: var(--background-secondary);
+  flex-shrink: 0;
+  z-index: 10;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease-out,
+    padding 0.25s ease-out,
+    border-color 0.2s ease-out;
+}
+
+.homepage-toolbar.is-visible {
+  max-height: 60px;
+  opacity: 1;
+  padding: 8px var(--hp-padding, 16px);
+  border-bottom-color: var(--color-accent);
+  overflow: visible;
+  position: sticky;
+  top: 0;
+}
+
+/* When toolbar is visible (edit mode), the view itself scrolls so the
+   toolbar can stick to the top. The grid yields scrolling to the view. */
+.homepage-view:has(.homepage-toolbar.is-visible) {
+  overflow-y: auto;
+}
+
+.homepage-view:has(.homepage-toolbar.is-visible) .homepage-grid.grid-stack {
+  overflow-y: visible;
+  min-height: auto;
+  /* Pull the grid up by exactly the GridStack item margin (8 px, set in
+     GridStack.init — see GridLayout.ts) so the first row of blocks lands
+     flush with the editing toolbar. Using a negative margin rather than
+     overriding --gs-item-margin-top keeps normal 16 px gaps between all
+     other rows intact. Review this offset if the GridStack margin changes. */
+  margin-top: -8px;
+}
+
+.toolbar-edit-indicator {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--color-accent);
+  font-weight: 500;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.toolbar-edit-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: hp-edit-dot-pulse 2s ease-in-out 4;
+}
+
+@keyframes hp-edit-dot-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Reset Obsidian's default button box-shadow for all plugin buttons */
+.homepage-view button {
+  box-shadow: none;
+}
+
+.toolbar-col-select {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 8px;
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.toolbar-col-select:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.toolbar-col-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-col-auto-hint {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Zoom slider ──────────────────────────────────────────── */
+.toolbar-zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-zoom-label {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.toolbar-zoom-slider {
+  width: 90px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.toolbar-zoom-value {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: right;
+}
+
+.toolbar-edit-btn,
+.toolbar-add-btn,
+.toolbar-discard-btn {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 12px;
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition:
+    background 0.15s ease-out,
+    border-color 0.15s ease-out,
+    color 0.15s ease-out,
+    transform 0.12s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+.toolbar-edit-btn:hover,
+.toolbar-add-btn:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.toolbar-edit-btn:active,
+.toolbar-add-btn:active {
+  transform: scale(0.97);
+}
+
+.toolbar-edit-btn.toolbar-btn-active,
+.toolbar-add-btn.toolbar-btn-active {
+  background: var(--color-accent);
+  color: var(--text-on-accent, #fff);
+  border-color: var(--color-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+/* Discard button — inherits base from the shared selector above, overrides color only */
+.toolbar-discard-btn {
+  color: var(--text-muted);
+}
+
+.toolbar-discard-btn:hover {
+  background: var(--background-modifier-error, rgba(220, 50, 50, 0.1));
+  border-color: var(--text-error, #e05252);
+  color: var(--text-error, #e05252);
+}
+
+/* ── Collapsible blocks ─────────────────────────────────── */
+.block-header-zone {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-s, 4px);
+  padding: 2px 4px;
+  margin: 0 -4px;
+  transition: background 0.1s ease-out;
+}
+
+.block-header-zone:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* In edit mode the handle bar owns interaction — header zone is not clickable */
+.edit-mode .block-header-zone {
+  cursor: default;
+  pointer-events: none;
+}
+
+.edit-mode .block-header-zone:hover {
+  background: transparent;
+}
+
+.block-header-zone .block-header {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* Chevron indicator — CSS-only, rotates on collapse */
+.block-collapse-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  opacity: 0.3;
+  line-height: 1;
+  flex-shrink: 0;
+  display: inline-block;
+  transform: rotate(270deg);
+  transition: opacity 0.15s ease-out, transform 0.2s ease-out;
+}
+
+.block-collapse-chevron::before {
+  content: '›';
+}
+
+.block-collapse-chevron.is-collapsed {
+  transform: rotate(90deg);
+  opacity: 1;
+}
+
+.homepage-block-wrapper:hover .block-collapse-chevron {
+  opacity: 1;
+}
+
+/* Smooth collapse via grid-template-rows */
+.homepage-block-wrapper .block-content {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.25s ease-out, opacity 0.2s ease-out;
+}
+
+.homepage-block-wrapper .block-content > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.homepage-block-wrapper.block-collapsed .block-content {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.homepage-block-wrapper.block-collapsed {
+  min-height: unset;
+}
+
+/* ── Focus visible (keyboard navigation) ────────────────── */
+.homepage-view button:focus-visible,
+.homepage-view select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.homepage-view input:focus-visible,
+.homepage-view textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+/* ── Viewport-fit (scale-to-fit in edit mode) ───────────── */
+/* overflow:visible prevents clipping GridStack resize handles at the last card's edge. */
+/* The grid box = naturalH (flex-shrink:0) so there is no actual overflow to hide. */
+.homepage-grid.viewport-fit {
+  overflow: visible;
+}
+
+/* ── Edit Mode ──────────────────────────────────────────── */
+.homepage-grid.edit-mode .homepage-block-wrapper {
+  border: 2px dashed var(--color-accent);
+  outline: none;
+}
+
+/* ── Edit Mode Compact Placeholder ──────────────────────── */
+.edit-mode .block-collapse-chevron {
+  display: none;
+}
+
+.block-compact-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 0;
+  color: var(--text-muted);
+  font-size: var(--font-interface-size, 0.8125rem);
+}
+
+.block-compact-type {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.block-compact-size {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.5;
+}
+
+.edit-mode .block-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.block-handle-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 6px;
+}
+
+.block-move-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  flex: 1;
+  user-select: none;
+  border-radius: var(--radius-s, 4px);
+  display: flex;
+  align-items: center;
+  transition: color 0.12s ease-out, background 0.12s ease-out;
+}
+
+.block-move-handle:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+
+.block-move-handle:active {
+  cursor: grabbing;
+}
+
+.block-handle-bar button svg,
+.block-move-handle svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.block-move-up-btn,
+.block-move-down-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: var(--radius-s, 4px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.12s ease-out, background 0.12s ease-out;
+}
+
+.block-move-up-btn:hover,
+.block-move-down-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.block-move-up-btn svg,
+.block-move-down-btn svg {
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.block-settings-btn,
+.block-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: var(--radius-s, 4px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.12s ease-out,
+    background 0.12s ease-out,
+    transform 0.12s ease-out;
+}
+
+.block-settings-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  transform: scale(1.1);
+}
+
+.block-settings-btn:active {
+  transform: scale(0.95);
+}
+
+.block-remove-btn:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+  transform: scale(1.1);
+}
+
+.block-remove-btn:active {
+  transform: scale(0.95);
+}
+
+/* GridStack drag styling */
+.grid-stack-item.ui-draggable-dragging > .grid-stack-item-content .homepage-block-wrapper {
+  box-shadow:
+    0 0 0 1px var(--background-modifier-border),
+    0 20px 48px rgba(0, 0, 0, 0.35),
+    0 8px 20px rgba(0, 0, 0, 0.25);
+  border-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  opacity: 0.95;
+}
+
+/* Drop confirmation — brief highlight flash on the landed block */
+.homepage-block-wrapper.block-drop-landed {
+  animation: hp-drop-flash 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes hp-drop-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+  30% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+/* ── Add Block Modal ────────────────────────────────────── */
+.add-block-modal-title {
+  margin-bottom: 16px;
+}
+
+.add-block-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.add-block-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  padding: 16px 12px;
+  cursor: pointer;
+  font-size: inherit;
+  color: var(--text-normal);
+  transition:
+    background 0.15s ease-out,
+    border-color 0.15s ease-out,
+    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s ease-out;
+  text-align: center;
+  width: 100%;
+  overflow: hidden;
+  min-height: 88px;
+}
+
+.add-block-option:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--color-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.add-block-option:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+}
+
+.add-block-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text-normal);
+  font-style: normal;
+}
+
+.add-block-name {
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.add-block-desc {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  max-width: 180px;
+}
+
+/* ── Block header emoji ─────────────────────────────────── */
+.block-header-emoji {
+  font-style: normal;
+  margin-right: 0;
+  font-size: 1.25em;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* ── Emoji picker (BlockSettingsModal) ──────────────────── */
+.emoji-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.emoji-picker-row > .emoji-picker-trigger {
+  margin-left: auto;
+}
+
+.emoji-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  padding: 4px 10px;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text-normal);
+  box-shadow: none;
+  min-width: 52px;
+  transition: border-color 0.12s ease-out;
+}
+
+.emoji-picker-trigger:hover {
+  border-color: var(--color-accent);
+}
+
+.emoji-picker-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.emoji-picker-clear {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-s, 4px);
+  box-shadow: none;
+  line-height: 1.4;
+}
+
+.emoji-picker-clear:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+}
+
+.emoji-picker-panel {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  padding: 8px;
+  margin-bottom: 4px;
+}
+
+.emoji-picker-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 5px 8px;
+  font-size: var(--font-interface-size, 0.8125rem);
+  margin-bottom: 8px;
+}
+
+.emoji-picker-search:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.emoji-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.emoji-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s, 4px);
+  padding: 5px 2px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1;
+  box-shadow: none;
+  transition:
+    background 0.1s ease-out,
+    transform 0.1s ease-out;
+}
+
+.emoji-btn:hover {
+  background: var(--background-modifier-hover);
+  transform: scale(1.15);
+}
+
+.emoji-btn:active {
+  transform: scale(0.95);
+}
+
+.emoji-btn.is-selected {
+  background: var(--background-modifier-hover);
+  border-color: var(--color-accent);
+}
+
+.emoji-picker-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-interface-size, 0.8125rem);
+  padding: 12px 0;
+}
+
+/* ── Button Grid block — item list editor ──────────────── */
+.btn-grid-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.btn-grid-item-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.btn-grid-item-emoji {
+  width: 3.5rem;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 1rem;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 6px;
+}
+
+.btn-grid-item-label {
+  flex: 1;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 8px;
+  font-size: inherit;
+}
+
+.btn-grid-item-link {
+  flex: 1.5;
+  background: var(--background-primary);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 8px;
+  font-size: var(--font-interface-size, 0.8125rem);
+}
+
+.btn-grid-item-emoji:focus-visible,
+.btn-grid-item-label:focus-visible,
+.btn-grid-item-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.btn-grid-item-del {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-s, 4px);
+  font-size: 0.75rem;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.btn-grid-item-del:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+}
+
+/* ── Drag-to-reorder in settings modals ────────────────── */
+.drag-grip {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  padding: 2px 4px;
+  flex-shrink: 0;
+  user-select: none;
+  opacity: 0.5;
+  transition: opacity 0.1s ease-out;
+}
+.drag-grip:hover {
+  opacity: 1;
+}
+.btn-grid-item-row.is-dragging,
+.bookmark-item-row.is-dragging,
+.settings-link-row.is-dragging {
+  opacity: 0.4;
+}
+.btn-grid-item-row.drag-over,
+.bookmark-item-row.drag-over,
+.settings-link-row.drag-over {
+  border-top: 2px solid var(--color-accent);
+}
+
+/* ── Settings rows ──────────────────────────────────────── */
+.settings-link-row .setting-item {
+  border-top: none;
+  padding: 4px 0;
+}
+
+/* ── Container Query Responsive Breakpoints ────────────── */
+/* CSS breakpoints: 380 / 540 / 768 (UI adaptation).
+   See also GridLayout.ts computeEffective(): 480 / 768 / 1024 (column reduction). */
+
+/* ── Medium-narrow (tablets, split panes) ──────────────── */
+@container homepage (max-width: 768px) {
+  /* Enlarge edit-mode handle bar buttons for touch */
+  .block-handle-bar button,
+  .block-move-handle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Enlarge GridStack resize handles for touch */
+  .homepage-grid .ui-resizable-se {
+    width: 28px;
+    height: 28px;
+  }
+  .homepage-grid .ui-resizable-s {
+    height: 16px;
+  }
+  .homepage-grid .ui-resizable-e {
+    width: 16px;
+  }
+
+  /* Enlarge FAB for touch */
+  .homepage-edit-fab {
+    width: 44px;
+    height: 44px;
+    font-size: 1rem;
+  }
+}
+
+/* ── Narrow (phones, narrow panes) ─────────────────────── */
+@container homepage (max-width: 540px) {
+  .homepage-toolbar.is-visible {
+    padding: 6px 12px;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-height: none;
+  }
+
+  /* Touch-friendly toolbar controls */
+  .homepage-toolbar button,
+  .homepage-toolbar select,
+  .toolbar-col-select {
+    min-height: 44px;
+  }
+
+  /* Shrink zoom group */
+  .toolbar-zoom-label { display: none; }
+  .toolbar-zoom-slider { width: 60px; }
+
+  .homepage-empty-state {
+    padding: 40px 16px;
+  }
+
+  /* Disable staggered block entry animation */
+  .homepage-grid--animating .homepage-block-wrapper {
+    animation: none;
+    opacity: 1;
+  }
+
+  /* Disable hover transforms on interactive grids */
+  .grid-btn:hover {
+    transform: none;
+    box-shadow: none;
+  }
+  .bookmark-card:hover {
+    transform: none;
+  }
+}
+
+/* ── Very narrow (small phones) ────────────────────────── */
+@container homepage (max-width: 380px) {
+  /* Reduce grid padding */
+  .homepage-grid.grid-stack {
+    padding: 4px;
+  }
+
+  /* Reduce block card padding */
+  .homepage-block-wrapper {
+    padding: 8px;
+  }
+
+  /* Hide zoom group — auto-columns handles layout */
+  .toolbar-zoom-group { display: none; }
+
+  /* Hide column selector — auto-columns handles it */
+  .toolbar-col-group { display: none; }
+
+  /* Add button: icon only */
+  .toolbar-add-text { display: none; }
+}
+
+@container homepage (min-width: 1200px) {
+  .homepage-grid {
+    padding: 32px;
+  }
+}
+
+/* ── Newly Added Block Highlight ────────────────────────── */
+.homepage-block-wrapper.block-just-added {
+  animation: hp-block-appear 0.4s ease-out;
+}
+
+@keyframes hp-block-appear {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Elevation Presets ──────────────────────────────────── */
+.block-elevation-1 {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.block-elevation-2 {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+.block-elevation-3 {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Background Opacity ────────────────────────────────── */
+.homepage-block-wrapper.block-custom-opacity {
+  background: color-mix(in srgb, var(--background-secondary) var(--hp-bg-opacity, 100%), transparent);
+}
+.homepage-block-wrapper.block-custom-opacity.block-accented {
+  background: color-mix(in srgb, var(--_accent-bg, var(--background-secondary)) var(--hp-bg-opacity, 100%), transparent);
+}
+
+/* ── Collapsible Advanced Styling Section ──────────────── */
+.settings-collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-interface-size, 0.8125rem);
+  font-weight: 500;
+  user-select: none;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 8px;
+}
+.settings-collapsible-header:hover {
+  color: var(--text-normal);
+}
+.settings-collapsible-chevron {
+  display: inline-block;
+  font-size: 0.65rem;
+  transition: transform 0.2s ease-out;
+}
+.settings-collapsible-chevron::before {
+  content: '›';
+}
+.settings-collapsible-header:not(.is-open) .settings-collapsible-chevron {
+  transform: rotate(0deg);
+}
+.settings-collapsible-header.is-open .settings-collapsible-chevron {
+  transform: rotate(90deg);
+}
+.settings-collapsible-body.is-collapsed {
+  display: none;
+}
+.settings-collapsible-desc {
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+/* ── Duplicate Button ──────────────────────────────────── */
+.block-duplicate-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: var(--radius-s, 4px);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.12s ease-out,
+    background 0.12s ease-out,
+    transform 0.12s ease-out;
+}
+.block-duplicate-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  transform: scale(1.1);
+}
+.block-duplicate-btn:active {
+  transform: scale(0.95);
+}
+
+/* ── Bookmark Block ────────────────────────────────────── */
+.bookmark-grid {
+  display: grid;
+  gap: 8px;
+}
+.bookmark-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-normal);
+  font-size: inherit;
+  transition: background 0.12s ease-out, border-color 0.12s ease-out, transform 0.12s ease-out;
+}
+.bookmark-card:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+.bookmark-card:active {
+  transform: translateY(0) scale(0.99);
+}
+.bookmark-emoji {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.bookmark-label {
+  font-weight: 500;
+  font-size: var(--font-interface-size, 0.8125rem);
+}
+.bookmark-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── Bookmark Settings Item List ───────────────────────── */
+.bookmark-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.bookmark-item-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.bookmark-item-row input {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 4px 8px;
+  font-size: var(--font-interface-size, 0.8125rem);
+}
+.bookmark-item-emoji { width: 3.5rem; flex-shrink: 0; text-align: center; }
+.bookmark-item-label { flex: 1; min-width: 80px; }
+.bookmark-item-url { flex: 2; min-width: 120px; }
+.bookmark-item-desc { flex: 2; min-width: 120px; color: var(--text-muted); }
+.bookmark-item-del {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-s, 4px);
+  font-size: 0.75rem;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+.bookmark-item-del:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+}
+
+/* ── Recent Files Block ────────────────────────────────── */
+.recent-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.recent-file-item {
+  border-radius: var(--radius-s, 4px);
+}
+.recent-file-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  font-size: var(--font-interface-size, 0.8125rem);
+  color: var(--text-normal);
+  cursor: pointer;
+  border-radius: var(--radius-s, 4px);
+  text-align: left;
+  transition: background 0.1s ease-out;
+}
+.recent-file-btn:hover {
+  background: var(--background-modifier-hover);
+}
+.recent-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-file-time {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ── Pomodoro Block ────────────────────────────────────── */
+.pomodoro-block {
+  container-type: size;
+  height: 100%;
+}
+
+.pomodoro-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(4px, 3cqh, 12px);
+  height: 100%;
+  padding: clamp(2px, 2cqh, 8px) 0;
+}
+
+.pomodoro-ring {
+  position: relative;
+  --ring-size: min(40cqh, 80cqw, 140px);
+  width: var(--ring-size);
+  height: var(--ring-size);
+  flex-shrink: 0;
+}
+
+.pomodoro-ring svg {
+  width: 100%;
+  height: 100%;
+}
+
+.pomodoro-time {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(0.9rem, 12cqh, 1.8rem);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-normal);
+  line-height: 1;
+}
+
+.pomodoro-phase {
+  font-size: clamp(0.6rem, 5cqh, 0.85rem);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pomodoro-dots {
+  display: flex;
+  gap: clamp(3px, 1.5cqw, 6px);
+}
+
+.pomodoro-dot {
+  --dot-size: clamp(5px, 3cqh, 8px);
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 50%;
+  background: var(--background-modifier-border);
+  transition: background 0.2s ease-out;
+}
+
+.pomodoro-dot.is-complete {
+  background: var(--color-accent);
+}
+
+.pomodoro-controls {
+  display: flex;
+  gap: clamp(4px, 2cqw, 8px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.pomodoro-btn {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: clamp(3px, 2cqh, 6px) clamp(8px, 4cqw, 14px);
+  font-size: clamp(0.65rem, 4cqh, 0.8125rem);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.12s ease-out, border-color 0.12s ease-out;
+}
+
+.pomodoro-btn:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.pomodoro-btn.is-primary {
+  background: var(--color-accent);
+  color: var(--text-on-accent, #fff);
+  border-color: var(--color-accent);
+}
+
+.pomodoro-btn.is-primary:hover {
+  opacity: 0.9;
+}
+
+/* Very small card: hide dots and phase label, compact controls */
+@container (max-height: 140px) {
+  .pomodoro-phase,
+  .pomodoro-dots { display: none; }
+  .pomodoro-container { gap: 2px; }
+}
+
+/* Small card: hide phase label */
+@container (max-height: 180px) {
+  .pomodoro-phase { display: none; }
+}
+
+/* ── Layout Preset Cards ───────────────────────────────── */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 12px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+  text-align: center;
+  color: var(--text-normal);
+  font-size: inherit;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out, transform 0.15s ease-out;
+}
+.preset-card:hover {
+  background: var(--background-modifier-hover);
+  border-color: var(--color-accent);
+  transform: translateY(-2px);
+}
+.preset-card:active {
+  transform: translateY(0) scale(0.98);
+}
+.preset-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.preset-name {
+  font-weight: 500;
+  font-size: var(--font-interface-size, 0.8125rem);
+}
+.preset-desc {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── Reduced Motion ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .homepage-view,
+  .homepage-view * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  /* Allow collapse/expand to still transition at reduced speed */
+  .homepage-block-wrapper .block-content {
+    transition-duration: 0.15s !important;
+  }
+
+  .toolbar-edit-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+}

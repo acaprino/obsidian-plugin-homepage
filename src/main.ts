@@ -219,7 +219,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'clock',
-    displayName: 'Clock / Date',
+    displayName: 'Clock / date',
     defaultConfig: { showSeconds: false, showDate: true },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new ClockBlock(app, instance, plugin),
@@ -227,7 +227,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'folder-links',
-    displayName: 'Quick Links',
+    displayName: 'Quick links',
     defaultConfig: { title: 'Quick Links', folder: '', links: [] },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),
@@ -235,7 +235,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'insight',
-    displayName: 'Daily Insight',
+    displayName: 'Daily insight',
     defaultConfig: { tag: '', title: 'Daily Insight', dailySeed: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new InsightBlock(app, instance, plugin),
@@ -243,7 +243,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'button-grid',
-    displayName: 'Button Grid',
+    displayName: 'Button grid',
     defaultConfig: { title: 'Button Grid', columns: 2, items: [] },
     defaultSize: { w: 1, h: 5 },
     create: (app, instance, plugin) => new ButtonGridBlock(app, instance, plugin),
@@ -251,7 +251,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'quotes-list',
-    displayName: 'Quotes List',
+    displayName: 'Quotes list',
     defaultConfig: { tag: '', title: 'Quotes', columns: 2, maxItems: 20 },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
@@ -259,7 +259,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'image-gallery',
-    displayName: 'Image Gallery',
+    displayName: 'Image gallery',
     defaultConfig: { folder: '', title: 'Gallery', columns: 3, maxItems: 20 },
     defaultSize: { w: 3, h: 3 },
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin),
@@ -267,7 +267,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'embedded-note',
-    displayName: 'Embedded Note',
+    displayName: 'Embedded note',
     defaultConfig: { filePath: '', showTitle: true },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new EmbeddedNoteBlock(app, instance, plugin),
@@ -275,7 +275,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'static-text',
-    displayName: 'Static Text',
+    displayName: 'Static text',
     defaultConfig: { title: '', content: '' },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new StaticTextBlock(app, instance, plugin),
@@ -283,7 +283,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'html',
-    displayName: 'HTML Block',
+    displayName: 'HTML block',
     defaultConfig: { title: '', html: '' },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new HtmlBlock(app, instance, plugin),
@@ -291,7 +291,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'video-embed',
-    displayName: 'Video Embed',
+    displayName: 'Video embed',
     defaultConfig: { title: '', url: '' },
     defaultSize: { w: 2, h: 4 },
     create: (app, instance, plugin) => new VideoEmbedBlock(app, instance, plugin),
@@ -307,7 +307,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'recent-files',
-    displayName: 'Recent Files',
+    displayName: 'Recent files',
     defaultConfig: { title: 'Recent Files', maxItems: 10, showTimestamp: true, excludeFolders: '' },
     defaultSize: { w: 1, h: 4 },
     create: (app, instance, plugin) => new RecentFilesBlock(app, instance, plugin),
@@ -315,7 +315,7 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'pomodoro',
-    displayName: 'Pomodoro Timer',
+    displayName: 'Pomodoro timer',
     defaultConfig: { title: 'Pomodoro', workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLong: 4 },
     defaultSize: { w: 1, h: 4 },
     create: (app, instance, plugin) => new PomodoroBlock(app, instance, plugin),
@@ -347,7 +347,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
     this.addCommand({
       id: 'open-homepage',
-      name: 'Open Homepage',
+      name: 'Open homepage',
       callback: () => { void this.openHomepage(this.layout.manualOpenMode); },
     });
 
@@ -421,7 +421,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     const { workspace } = this.app;
     const existing = workspace.getLeavesOfType(VIEW_TYPE);
     if (existing.length > 0) {
-      workspace.revealLeaf(existing[0]);
+      await workspace.revealLeaf(existing[0]);
       if (this.layout.pin) existing[0].setPinned(true);
       return;
     }
@@ -441,7 +441,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     }
 
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
 
     if (this.layout.pin) leaf.setPinned(true);
   }
@@ -457,7 +457,7 @@ class HomepageSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName('Homepage blocks').setHeading();
+    new Setting(containerEl).setName('General').setHeading();
 
     const openModeOptions: Record<string, string> = {
       'retain': 'Keep existing tabs (new tab)',
@@ -594,7 +594,7 @@ class HomepageSettingTab extends PluginSettingTab {
           } catch {
             btn.setButtonText('Copy failed');
           }
-          setTimeout(() => btn.setButtonText('Copy to clipboard'), 2000);
+          setTimeout(() => { btn.setButtonText('Copy to clipboard'); }, 2000);
         })()),
       );
 
@@ -617,11 +617,11 @@ class HomepageSettingTab extends PluginSettingTab {
                 }
               }
               btn.setButtonText('Imported!');
-              setTimeout(() => btn.setButtonText('Import from clipboard'), 2000);
+              setTimeout(() => { btn.setButtonText('Import from clipboard'); }, 2000);
             }).open();
           } catch {
             btn.setButtonText('Invalid JSON');
-            setTimeout(() => btn.setButtonText('Import from clipboard'), 2000);
+            setTimeout(() => { btn.setButtonText('Import from clipboard'); }, 2000);
           }
         })()),
       );

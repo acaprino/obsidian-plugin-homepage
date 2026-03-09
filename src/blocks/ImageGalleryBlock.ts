@@ -63,7 +63,7 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
       const video = mediaContainer.createEl('video', {
         cls: 'gallery-lightbox-video',
         attr: { src: item.src, 'aria-label': item.alt },
-      }) as HTMLVideoElement;
+      });
       video.controls = true;
       video.muted = true;
       video.loop = true;
@@ -268,7 +268,7 @@ export class ImageGalleryBlock extends BaseBlock {
         wrapper.addClass('gallery-item-video');
         wrapper.createDiv({ cls: 'video-play-overlay', text: '▶' });
 
-        const video = wrapper.createEl('video') as HTMLVideoElement;
+        const video = wrapper.createEl('video');
         video.muted = true;
         video.loop = true;
         video.setAttribute('playsinline', '');

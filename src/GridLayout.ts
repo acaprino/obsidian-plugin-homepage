@@ -127,22 +127,22 @@ export class GridLayout {
 
     // Wire up block Component lifecycle after DOM is created
     for (const [i, instance] of blocks.entries()) {
-      const gsEl = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`) as HTMLElement | null;
-      if (!gsEl) continue;
+      const gsEl = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
+      if (!(gsEl instanceof HTMLElement)) continue;
 
       // ARIA: mark grid items as listitems to match parent role="list"
       gsEl.setAttribute('role', 'listitem');
 
       // Find the GridStack item content container and populate it via Obsidian DOM API
-      const gsContent = gsEl.querySelector('.grid-stack-item-content') as HTMLElement | null;
-      if (!gsContent) continue;
+      const gsContent = gsEl.querySelector('.grid-stack-item-content');
+      if (!(gsContent instanceof HTMLElement)) continue;
 
       const animDelayMs = isInitial ? ([0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240) : undefined;
       const wrapper = this.buildBlockWrapper(gsContent, instance, animDelayMs);
 
-      const headerZone = wrapper.querySelector('.block-header-zone') as HTMLElement | null;
-      const contentEl = wrapper.querySelector('.block-content') as HTMLElement | null;
-      if (!contentEl || !headerZone) continue;
+      const headerZone = wrapper.querySelector('.block-header-zone');
+      const contentEl = wrapper.querySelector('.block-content');
+      if (!(contentEl instanceof HTMLElement) || !(headerZone instanceof HTMLElement)) continue;
 
       const factory = BlockRegistry.get(instance.type);
       if (!factory) continue;
@@ -204,14 +204,15 @@ export class GridLayout {
       this.syncLayoutFromGrid();
     });
 
-    this.setupResponsiveColumns(this.gridEl.closest('.homepage-view') as HTMLElement | null, columns);
+    const viewEl = this.gridEl.closest('.homepage-view');
+    this.setupResponsiveColumns(viewEl instanceof HTMLElement ? viewEl : null, columns);
 
     // Scroll to newly added block
     if (this.lastAddedBlockId) {
       const targetId = this.lastAddedBlockId;
       this.lastAddedBlockId = null;
-      const el = this.gridEl.querySelector(`[gs-id="${CSS.escape(targetId)}"]`) as HTMLElement | null;
-      if (el) {
+      const el = this.gridEl.querySelector(`[gs-id="${CSS.escape(targetId)}"]`);
+      if (el instanceof HTMLElement) {
         el.querySelector('.homepage-block-wrapper')?.addClass('block-just-added');
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
@@ -498,8 +499,8 @@ export class GridLayout {
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       new RemoveBlockConfirmModal(this.app, () => {
-        const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`) as HTMLElement | null;
-        if (gsItem && this.gridStack) {
+        const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
+        if (gsItem instanceof HTMLElement && this.gridStack) {
           this.gridStack.removeWidget(gsItem);
           this.gridStack.compact();
         }
@@ -835,7 +836,7 @@ class BlockSettingsModal extends Modal {
       );
 
     // ── Title & Header (collapsible) ───────────────────────────────────────
-    const titleBody = this.createSection(contentEl, 'Title & Header', 'Label, emoji, size, divider');
+    const titleBody = this.createSection(contentEl, 'Title & header', 'Label, emoji, size, divider');
 
     new Setting(titleBody)
       .setName('Title label')
@@ -891,7 +892,7 @@ class BlockSettingsModal extends Modal {
       );
 
     // ── Card Appearance (collapsible) ──────────────────────────────────────
-    const cardBody = this.createSection(contentEl, 'Card Appearance', 'Colors, borders, padding');
+    const cardBody = this.createSection(contentEl, 'Card appearance', 'Colors, borders, padding');
 
     let cpRef: ColorComponent | null = null;
 
@@ -979,7 +980,7 @@ class BlockSettingsModal extends Modal {
       );
 
     // ── Advanced Styling (collapsible) ─────────────────────────────────────
-    const advancedBody = this.createSection(contentEl, 'Advanced Styling', 'Shadow, blur, gradients');
+    const advancedBody = this.createSection(contentEl, 'Advanced styling', 'Shadow, blur, gradients');
 
     new Setting(advancedBody)
       .setName('Shadow / elevation')

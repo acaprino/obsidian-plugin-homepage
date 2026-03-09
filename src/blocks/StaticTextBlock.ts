@@ -49,8 +49,8 @@ export class StaticTextBlock extends BaseBlock {
     const currentContent = (this.instance.config.content as string) ?? '';
 
     // Hide rendered content and pencil button
-    const contentEl = el.querySelector('.static-text-content') as HTMLElement | null;
-    const editBtn = el.querySelector('.static-text-edit-btn') as HTMLElement | null;
+    const contentEl = el.querySelector('.static-text-content');
+    const editBtn = el.querySelector('.static-text-edit-btn');
     if (contentEl) contentEl.addClass('hp-hidden');
     if (editBtn) editBtn.addClass('hp-hidden');
 
@@ -133,7 +133,7 @@ class StaticTextSettingsModal extends Modal {
       .addDropdown(d =>
         d.addOption('auto', 'Auto (fit content)')
          .addOption('fixed', 'Fixed (scroll)')
-         .setValue(String(draft.heightMode ?? 'auto'))
+         .setValue(typeof draft.heightMode === 'string' ? draft.heightMode : 'auto')
          .onChange(v => { draft.heightMode = v; }),
       );
 

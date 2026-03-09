@@ -1,5 +1,4 @@
 import { App, Modal, Setting } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
@@ -23,7 +22,7 @@ export class ButtonGridBlock extends BaseBlock {
 
     const grid = el.createDiv({ cls: 'button-grid' });
     const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 2)));
-    grid.style.gridTemplateColumns = responsiveGridColumns(safeCols);
+    grid.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols));
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });
@@ -43,7 +42,7 @@ export class ButtonGridBlock extends BaseBlock {
           this.app.workspace.openLinkText(item.link!, '');
         });
       } else {
-        btn.style.cursor = 'default';
+        btn.addClass('hp-cursor-default');
       }
     }
   }
@@ -65,7 +64,7 @@ class ButtonGridSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Button Grid Settings' });
+    contentEl.createEl('h2', { text: 'Button grid settings' });
 
     const draft = structuredClone(this.config) as {
       title?: string;

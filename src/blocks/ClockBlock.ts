@@ -1,5 +1,4 @@
 import { App, Modal, Setting, moment } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
 type ClockStyle = 'minimal' | 'centered' | 'large' | 'accent';
@@ -73,7 +72,7 @@ class ClockSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Clock Settings' });
+    contentEl.createEl('h2', { text: 'Clock settings' });
 
     const draft = structuredClone(this.config);
 

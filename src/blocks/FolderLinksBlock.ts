@@ -1,5 +1,4 @@
 import { App, Modal, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
@@ -153,7 +152,7 @@ class FolderLinksSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Quick Links Settings' });
+    contentEl.createEl('h2', { text: 'Quick links settings' });
 
     const draft: FolderLinksConfig = structuredClone(this.config);
     draft.links ??= [];

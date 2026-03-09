@@ -1,5 +1,4 @@
 import { App, Modal, Setting, setIcon } from 'obsidian';
-import { IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
 interface EmbedInfo {
@@ -119,7 +118,7 @@ export class VideoEmbedBlock extends BaseBlock {
 
     if (!info) {
       const container = wrapper.createDiv({ cls: 'video-embed-container' });
-      container.style.paddingBottom = '0';
+      container.addClass('hp-no-padding-bottom');
       const hint = container.createDiv({ cls: 'block-empty-hint' });
       hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F3AC}' });
       hint.createDiv({ cls: 'block-empty-hint-text', text: 'No video URL. Paste a YouTube, Vimeo, or Dailymotion link in settings.' });
@@ -348,7 +347,7 @@ export class VideoEmbedBlock extends BaseBlock {
     videoId: string,
   ): void {
     if (this.iframeEl) {
-      this.iframeEl.style.display = 'none';
+      this.iframeEl.addClass('hp-hidden');
     }
 
     // Remove any existing thumbnail elements
@@ -419,7 +418,7 @@ export class VideoEmbedBlock extends BaseBlock {
 
   private updateIframe(src: string): void {
     if (this.iframeEl) {
-      this.iframeEl.style.display = '';
+      this.iframeEl.removeClass('hp-hidden');
       this.iframeEl.setAttribute('src', src);
     }
   }
@@ -441,7 +440,7 @@ class VideoEmbedSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Video Embed Settings' });
+    contentEl.createEl('h2', { text: 'Video embed settings' });
 
     const draft = structuredClone(this.config);
 

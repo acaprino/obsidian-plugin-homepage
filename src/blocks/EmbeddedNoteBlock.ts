@@ -1,5 +1,4 @@
 import { App, AbstractInputSuggest, Modal, Setting, TFile, MarkdownRenderer } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
 const DEBOUNCE_MS = 300;
@@ -132,7 +131,7 @@ class EmbeddedNoteSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Embedded Note Settings' });
+    contentEl.createEl('h2', { text: 'Embedded note settings' });
 
     const draft = structuredClone(this.config);
 

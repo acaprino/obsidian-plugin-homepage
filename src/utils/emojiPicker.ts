@@ -59,7 +59,7 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
     triggerBtn.createSpan({ text: currentValue || placeholder });
     triggerBtn.createSpan({ cls: 'emoji-picker-chevron', text: '▾' });
     triggerBtn.toggleClass('is-placeholder', !currentValue);
-    clearBtn.style.display = currentValue ? '' : 'none';
+    clearBtn.toggleClass('hp-hidden', !currentValue);
   };
   updateTrigger();
 
@@ -67,7 +67,7 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
   const panelParent = panelContainer ?? container;
   const panelCls = panelClass ? `emoji-picker-panel ${panelClass}` : 'emoji-picker-panel';
   const panel = panelParent.createDiv({ cls: panelCls });
-  panel.style.display = 'none';
+  panel.addClass('hp-hidden');
 
   const searchInput = panel.createEl('input', {
     cls: 'emoji-picker-search',
@@ -101,11 +101,11 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
 
   // ── Event handlers ─────────────────────────────────────────────────────────
   triggerBtn.addEventListener('click', () => {
-    if (panel.style.display !== 'none') {
+    if (!panel.hasClass('hp-hidden')) {
       close();
     } else {
       onBeforeOpen?.();
-      panel.style.display = '';
+      panel.removeClass('hp-hidden');
       searchInput.value = '';
       renderGrid('');
       searchInput.focus();
@@ -136,7 +136,7 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
 
   // ── Public API ─────────────────────────────────────────────────────────────
   const close = () => {
-    panel.style.display = 'none';
+    panel.addClass('hp-hidden');
     outsideClickAc?.abort();
     outsideClickAc = null;
   };

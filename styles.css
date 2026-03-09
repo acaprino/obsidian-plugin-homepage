@@ -106,9 +106,11 @@
 /* ── Block Card ─────────────────────────────────────────── */
 .homepage-block-wrapper {
   background: var(--background-secondary);
-  border-radius: var(--radius-m, 8px);
+  border-radius: var(--hp-border-radius, var(--radius-m, 8px));
   padding: var(--hp-card-padding);
-  border: 1px solid var(--background-modifier-border);
+  border-width: var(--hp-border-width, 1px);
+  border-style: var(--hp-border-style, solid);
+  border-color: var(--background-modifier-border);
   box-shadow: none;
   overflow: hidden;
   position: relative;
@@ -119,15 +121,18 @@
   min-width: 0;
   box-sizing: border-box;
   container-type: inline-size;
+  backdrop-filter: var(--hp-backdrop-blur, none);
+  -webkit-backdrop-filter: var(--hp-backdrop-blur, none);
   transition:
     opacity 0.15s ease-out,
     transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.2s ease-out;
 }
 
-/* Staggered card entry — animation-delay set inline from JS */
+/* Staggered card entry — animation-delay set via --hp-card-anim-delay custom property */
 .homepage-grid--animating .homepage-block-wrapper {
   animation: hp-card-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: var(--hp-card-anim-delay, 0ms);
 }
 
 @keyframes hp-card-enter {
@@ -238,6 +243,7 @@
   border-radius: 50%;
   cursor: pointer;
   border: 2px solid transparent;
+  background: var(--hp-swatch-bg);
   transition: transform 0.12s ease-out, border-color 0.12s ease-out, box-shadow 0.12s ease-out;
 }
 
@@ -2744,3 +2750,64 @@
     opacity: 0.7;
   }
 }
+
+/* ── Utility Classes (inline style replacements) ──────── */
+.hp-hidden { display: none; }
+
+/* Grid zoom state (GridLayout.ts setZoom) */
+.homepage-grid.grid-stack.hp-zoomed {
+  flex-shrink: 0;
+  transform-origin: top center;
+  transform: var(--hp-grid-transform, none);
+}
+
+/* Auto-height measurement helpers (GridLayout.ts resizeBlockToContent) */
+.hp-no-transition { transition: none !important; }
+.hp-auto-rows { grid-template-rows: max-content; }
+
+/* Gradient background for cards (blockStyling.ts) */
+.homepage-block-wrapper.block-has-gradient {
+  background: var(--hp-bg-gradient);
+}
+
+/* No cursor pointer for unlinked buttons (ButtonGridBlock.ts) */
+.hp-cursor-default { cursor: default; }
+
+/* Greeting settings preview hint */
+.hp-preview-hint {
+  padding: 0 0 8px 0;
+  opacity: 0.7;
+}
+
+/* Gradient note label spacing (GridLayout.ts BlockSettingsModal) */
+.hp-gradient-note { margin: 12px 0 4px; }
+
+/* Full-width textarea in quotes settings */
+.hp-textarea-full {
+  width: 100%;
+  margin-top: 8px;
+  font-family: var(--font-monospace);
+  font-size: 12px;
+}
+
+/* Column-direction setting row */
+.hp-setting-column {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* No bottom padding (VideoEmbedBlock empty state) */
+.hp-no-padding-bottom { padding-bottom: 0; }
+
+/* Quote accent color via custom property */
+.quote-content.quote-colored {
+  border-left-color: var(--hp-quote-color);
+  color: var(--hp-quote-color);
+}
+
+/* Responsive grid columns via custom property */
+.button-grid { grid-template-columns: var(--hp-grid-cols); }
+.bookmark-grid { grid-template-columns: var(--hp-grid-cols); }
+.image-gallery:not(.masonry-layout) { grid-template-columns: var(--hp-grid-cols); }
+.image-gallery.masonry-layout { columns: var(--hp-masonry-cols, 3); }
+.quotes-columns { column-count: var(--hp-column-count, 2); }

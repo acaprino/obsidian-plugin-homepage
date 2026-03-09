@@ -1,5 +1,4 @@
 import { App, Modal, Setting, moment } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
 const DEBOUNCE_MS = 500;
@@ -85,7 +84,7 @@ class RecentFilesSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Recent Files Settings' });
+    contentEl.createEl('h2', { text: 'Recent files settings' });
 
     const draft: RecentFilesConfig = structuredClone(this.config);
 

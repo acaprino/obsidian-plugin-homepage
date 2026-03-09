@@ -1,5 +1,4 @@
 import { App, Modal, Setting, moment } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 
@@ -228,7 +227,7 @@ class GreetingSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Greeting Settings' });
+    contentEl.createEl('h2', { text: 'Greeting settings' });
 
     const draft = structuredClone(this.config) as GreetingConfig & Record<string, unknown>;
 
@@ -257,7 +256,7 @@ class GreetingSettingsModal extends Modal {
           d.addOption('auto', 'Language preset')
            .addOption('custom', 'Custom text')
            .setValue(mode)
-           .onChange(v => { draft.salutationMode = v as 'auto' | 'custom'; buildSalutSettings(); }),
+           .onChange(v => { draft.salutationMode = v === 'custom' ? 'custom' : 'auto'; buildSalutSettings(); }),
         );
 
       if (mode === 'auto') {
@@ -273,8 +272,7 @@ class GreetingSettingsModal extends Modal {
         // Show preview of current preset
         const preset = LANG_PRESETS[draft.salutationPreset ?? 'it'] ?? DEFAULT_SALUT;
         const preview = salutSection.createDiv({ cls: 'setting-item-description' });
-        preview.style.padding = '0 0 8px 0';
-        preview.style.opacity = '0.7';
+        preview.addClass('hp-preview-hint');
         preview.setText(`${preset.morning} / ${preset.afternoon} / ${preset.evening}`);
       }
 
@@ -322,7 +320,7 @@ class GreetingSettingsModal extends Modal {
            .addOption('custom', 'Custom per slot')
            .addOption('random', 'Random pool')
            .setValue(draft.emojiMode ?? 'auto')
-           .onChange(v => { draft.emojiMode = v as EmojiMode; buildEmojiSettings(); }),
+           .onChange(v => { draft.emojiMode = (v === 'custom' || v === 'random') ? v : 'auto'; buildEmojiSettings(); }),
         );
 
       const mode = draft.emojiMode ?? 'auto';

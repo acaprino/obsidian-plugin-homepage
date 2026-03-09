@@ -1,5 +1,4 @@
 import { App, Modal, Setting, sanitizeHTMLToDom } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
 export class HtmlBlock extends BaseBlock {
@@ -44,7 +43,7 @@ class HtmlBlockSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'HTML Block Settings' });
+    contentEl.createEl('h2', { text: 'HTML block settings' });
 
     const draft = structuredClone(this.config);
 

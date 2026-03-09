@@ -123,7 +123,7 @@ export class EditToolbar {
     // Add Block button (only in edit mode)
     const addBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-add-btn' });
     addBtn.createSpan({ cls: 'toolbar-add-icon', text: '+' });
-    addBtn.createSpan({ cls: 'toolbar-add-text', text: ' Add Block' });
+    addBtn.createSpan({ cls: 'toolbar-add-text', text: ' Add block' });
     addBtn.addEventListener('click', () => { this.openAddBlockModal(); });
 
     // Discard button — exits edit mode and reverts all changes
@@ -207,7 +207,7 @@ class AddBlockModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Add Block', cls: 'add-block-modal-title' });
+    contentEl.createEl('h2', { text: 'Add block', cls: 'add-block-modal-title' });
 
     const grid = contentEl.createDiv({ cls: 'add-block-grid' });
 

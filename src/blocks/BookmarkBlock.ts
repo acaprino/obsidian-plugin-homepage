@@ -1,5 +1,4 @@
 import { App, Modal, Setting } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
@@ -28,7 +27,7 @@ export class BookmarkBlock extends BaseBlock {
 
     const grid = el.createDiv({ cls: 'bookmark-grid' });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
-    grid.style.gridTemplateColumns = responsiveGridColumns(safeCols);
+    grid.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols));
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });
@@ -76,7 +75,7 @@ class BookmarkSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Bookmark Settings' });
+    contentEl.createEl('h2', { text: 'Bookmark settings' });
 
     const draft = structuredClone(this.config) as BookmarkConfig;
     if (!Array.isArray(draft.items)) draft.items = [];

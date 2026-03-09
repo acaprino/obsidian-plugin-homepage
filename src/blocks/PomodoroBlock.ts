@@ -1,5 +1,4 @@
 import { App, Modal, Setting } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 
 type PomodoroPhase = 'idle' | 'work' | 'break' | 'longBreak';
@@ -247,7 +246,7 @@ export class PomodoroBlock extends BaseBlock {
         idle: 'Ready',
         work: 'Work',
         break: 'Break',
-        longBreak: 'Long Break',
+        longBreak: 'Long break',
       };
       this.phaseEl.setText(labels[this.phase]);
     }
@@ -293,7 +292,7 @@ class PomodoroSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Pomodoro Settings' });
+    contentEl.createEl('h2', { text: 'Pomodoro settings' });
 
     const draft = structuredClone(this.config);
 

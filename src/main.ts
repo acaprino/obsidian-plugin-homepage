@@ -1,6 +1,6 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from './HomepageView';
-import { BLOCK_TYPES, BlockInstance, BlockType, LayoutConfig, OpenMode, IHomepagePlugin } from './types';
+import { BLOCK_TYPES, BlockInstance, LayoutConfig, OpenMode, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
@@ -22,7 +22,11 @@ import { SpacerBlock } from './blocks/SpacerBlock';
 
 /** Immutable template. Always clone via getDefaultLayout(). */
 /** Must stay in sync with OpenMode in types.ts */
-const VALID_OPEN_MODES = new Set<string>(['replace-all', 'replace-last', 'retain']);
+const VALID_OPEN_MODES = new Set<OpenMode>(['replace-all', 'replace-last', 'retain']);
+
+function isOpenMode(v: unknown): v is OpenMode {
+  return typeof v === 'string' && (VALID_OPEN_MODES as Set<string>).has(v);
+}
 
 const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   columns: 3,
@@ -168,11 +172,11 @@ function validateLayout(raw: unknown): LayoutConfig {
   const openOnStartup = typeof r.openOnStartup === 'boolean'
     ? r.openOnStartup
     : defaults.openOnStartup;
-  const openMode = typeof r.openMode === 'string' && VALID_OPEN_MODES.has(r.openMode)
-    ? r.openMode as OpenMode
+  const openMode = isOpenMode(r.openMode)
+    ? r.openMode
     : defaults.openMode;
-  const manualOpenMode = typeof r.manualOpenMode === 'string' && VALID_OPEN_MODES.has(r.manualOpenMode)
-    ? r.manualOpenMode as OpenMode
+  const manualOpenMode = isOpenMode(r.manualOpenMode)
+    ? r.manualOpenMode
     : defaults.manualOpenMode;
   const openWhenEmpty = typeof r.openWhenEmpty === 'boolean'
     ? r.openWhenEmpty
@@ -183,9 +187,13 @@ function validateLayout(raw: unknown): LayoutConfig {
   const hideScrollbar = typeof r.hideScrollbar === 'boolean'
     ? r.hideScrollbar
     : defaults.hideScrollbar;
-  const rawBlocks: BlockInstance[] = Array.isArray(r.blocks)
-    ? (r.blocks.map(b => migrateBlockInstance(b as Record<string, unknown>)) as unknown[]).filter(isValidBlockInstance).slice(0, MAX_BLOCKS)
-    : defaults.blocks;
+  let rawBlocks: BlockInstance[];
+  if (Array.isArray(r.blocks)) {
+    const migrated: unknown[] = r.blocks.map(b => migrateBlockInstance(b as Record<string, unknown>));
+    rawBlocks = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
+  } else {
+    rawBlocks = defaults.blocks;
+  }
   // Clamp x/w to fit within the column count (fixes stale 12-column GridStack data)
   const blocks: BlockInstance[] = rawBlocks.map(b => ({
     ...b,
@@ -402,9 +410,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     );
   }
 
-  onunload(): void {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE);
-  }
+  onunload(): void { /* Obsidian detaches views automatically */ }
 
   async saveLayout(layout: LayoutConfig): Promise<void> {
     this.layout = layout;
@@ -451,7 +457,7 @@ class HomepageSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl('h2', { text: 'Homepage Blocks' });
+    new Setting(containerEl).setName('Homepage blocks').setHeading();
 
     const openModeOptions: Record<string, string> = {
       'retain': 'Keep existing tabs (new tab)',
@@ -466,9 +472,8 @@ class HomepageSettingTab extends PluginSettingTab {
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.openOnStartup)
-          .onChange(async (value) => {
-            await this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value });
-            this.display();
+          .onChange((value) => {
+            void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
           }),
       );
 
@@ -482,9 +487,9 @@ class HomepageSettingTab extends PluginSettingTab {
           }
           drop
             .setValue(this.plugin.layout.openMode)
-            .onChange(async (value) => {
-              if (!VALID_OPEN_MODES.has(value)) return;
-              await this.plugin.saveLayout({ ...this.plugin.layout, openMode: value as OpenMode });
+            .onChange((value) => {
+              if (!isOpenMode(value)) return;
+              void this.plugin.saveLayout({ ...this.plugin.layout, openMode: value });
             });
         });
     }
@@ -495,8 +500,8 @@ class HomepageSettingTab extends PluginSettingTab {
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.openWhenEmpty)
-          .onChange(async (value) => {
-            await this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
+          .onChange((value) => {
+            void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
           }),
       );
 
@@ -509,9 +514,9 @@ class HomepageSettingTab extends PluginSettingTab {
         }
         drop
           .setValue(this.plugin.layout.manualOpenMode)
-          .onChange(async (value) => {
-            if (!VALID_OPEN_MODES.has(value)) return;
-            await this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value as OpenMode });
+          .onChange((value) => {
+            if (!isOpenMode(value)) return;
+            void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
           });
       });
 
@@ -521,8 +526,8 @@ class HomepageSettingTab extends PluginSettingTab {
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.pin)
-          .onChange(async (value) => {
-            await this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
+          .onChange((value) => {
+            void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
             // Apply pin state to any existing homepage leaves immediately
             for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
               leaf.setPinned(value);
@@ -541,8 +546,8 @@ class HomepageSettingTab extends PluginSettingTab {
           .addOption('4', '4 columns')
           .addOption('5', '5 columns')
           .setValue(String(this.plugin.layout.columns))
-          .onChange(async (value) => {
-            await this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
+          .onChange((value) => {
+            void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
           }),
       );
 
@@ -552,8 +557,8 @@ class HomepageSettingTab extends PluginSettingTab {
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.hideScrollbar)
-          .onChange(async (value) => {
-            await this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
+          .onChange((value) => {
+            void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
             for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
               leaf.view.containerEl.toggleClass('homepage-no-scrollbar', value);
             }
@@ -564,24 +569,24 @@ class HomepageSettingTab extends PluginSettingTab {
       .setName('Reset to default layout')
       .setDesc('Restore all blocks to the original default layout. Cannot be undone.')
       .addButton(btn =>
-        btn.setButtonText('Reset layout').setWarning().onClick(async () => {
+        btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
           await this.plugin.saveLayout(getDefaultLayout());
           for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
             if (leaf.view instanceof HomepageView) {
               await leaf.view.reload();
             }
           }
-        }),
+        })()),
       );
 
     // ── Export / Import ──────────────────────────────────────────────
-    containerEl.createEl('h3', { text: 'Export / Import' });
+    new Setting(containerEl).setName('Export / import').setHeading();
 
     new Setting(containerEl)
       .setName('Export layout')
       .setDesc('Copy the current layout to clipboard as JSON.')
       .addButton(btn =>
-        btn.setButtonText('Copy to clipboard').onClick(async () => {
+        btn.setButtonText('Copy to clipboard').onClick(() => void (async () => {
           try {
             const json = JSON.stringify(this.plugin.layout, null, 2);
             await navigator.clipboard.writeText(json);
@@ -590,14 +595,14 @@ class HomepageSettingTab extends PluginSettingTab {
             btn.setButtonText('Copy failed');
           }
           setTimeout(() => btn.setButtonText('Copy to clipboard'), 2000);
-        }),
+        })()),
       );
 
     new Setting(containerEl)
       .setName('Import layout')
       .setDesc('Paste a previously exported layout JSON to restore it.')
       .addButton(btn =>
-        btn.setButtonText('Import from clipboard').onClick(async () => {
+        btn.setButtonText('Import from clipboard').onClick(() => void (async () => {
           try {
             const text = await navigator.clipboard.readText();
             const parsed = JSON.parse(text) as unknown;
@@ -618,11 +623,11 @@ class HomepageSettingTab extends PluginSettingTab {
             btn.setButtonText('Invalid JSON');
             setTimeout(() => btn.setButtonText('Import from clipboard'), 2000);
           }
-        }),
+        })()),
       );
 
     // ── Layout Presets ───────────────────────────────────────────────
-    containerEl.createEl('h3', { text: 'Layout Presets' });
+    new Setting(containerEl).setName('Layout presets').setHeading();
     containerEl.createEl('p', {
       text: 'Load a preset layout. This will replace your current layout.',
       cls: 'setting-item-description',
@@ -712,8 +717,7 @@ class ConfirmPresetModal extends Modal {
     new Setting(contentEl)
       .addButton(btn =>
         btn.setButtonText('Load preset').setWarning().onClick(() => {
-          const result = this.onConfirm();
-          if (result instanceof Promise) result.catch(e => console.error('[Homepage Blocks] Preset apply failed:', e));
+          void Promise.resolve(this.onConfirm()).catch(e => console.error('[Homepage Blocks] Preset apply failed:', e));
           this.close();
         }),
       )

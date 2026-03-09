@@ -817,6 +817,12 @@
 }
 
 /* ── Image Gallery Block ────────────────────────────────── */
+/* Container queries sized from the block wrapper, not .image-gallery itself,
+   to avoid breaking auto-height offsetHeight measurement. */
+.image-gallery-block {
+  container-type: inline-size;
+}
+
 .image-gallery {
   display: grid;
   gap: 8px;
@@ -872,6 +878,26 @@
 .image-gallery.masonry-layout .gallery-item img {
   aspect-ratio: auto;
   object-fit: unset;
+}
+
+/* ── Gallery responsive ───────────────────────────────── */
+/* 350px ≈ single-column gallery in a multi-col grid layout */
+@container (max-width: 350px) {
+  .image-gallery { gap: 4px; }
+  .gallery-item,
+  .gallery-item img,
+  .gallery-item video {
+    border-radius: var(--radius-s, 4px);
+  }
+  .image-gallery.masonry-layout { column-gap: 4px; }
+  .image-gallery.masonry-layout .gallery-item { margin-bottom: 4px; }
+}
+
+/* 200px ≈ sidebar-width or very narrow widget */
+@container (max-width: 200px) {
+  .image-gallery { gap: 4px; }
+  .image-gallery.masonry-layout { column-gap: 4px; }
+  .image-gallery.masonry-layout .gallery-item { margin-bottom: 4px; }
 }
 
 /* ── Lightbox ──────────────────────────────────────────── */
@@ -942,6 +968,28 @@
   transform: translateX(-50%);
   color: rgba(255, 255, 255, 0.6);
   font-size: 0.85rem;
+}
+
+/* ── Lightbox mobile ───────────────────────────────────── */
+/* Lightbox is position:fixed on document.body — no container ancestor, so @media is correct */
+@media (max-width: 600px) {
+  .gallery-lightbox-img,
+  .gallery-lightbox-video {
+    max-width: 98vw;
+    max-height: 85vh;
+    border-radius: var(--radius-s, 4px);
+  }
+  .gallery-lightbox-prev,
+  .gallery-lightbox-next {
+    width: 36px;
+    height: 36px;
+  }
+  .gallery-lightbox-prev { left: 6px; }
+  .gallery-lightbox-next { right: 6px; }
+  .gallery-lightbox-counter {
+    bottom: 8px;
+    font-size: 0.75rem;
+  }
 }
 
 @keyframes lightbox-fade-in {

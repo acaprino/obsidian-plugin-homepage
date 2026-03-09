@@ -6,6 +6,10 @@ Build a personal dashboard from **15 native block types**: clock, greeting, dail
 
 > **Desktop only** · Requires Obsidian 1.5.0+
 
+![Homepage overview — greeting, clock, quick links, insight, pomodoro, quotes, and post-it note](screenshots/homepage-overview.png)
+
+![Masonry image gallery with video thumbnails](screenshots/gallery-masonry.png)
+
 ---
 
 ## Table of Contents
@@ -408,9 +412,9 @@ Bug reports and pull requests are welcome at [github.com/acaprino/obsidian-plugi
 
 <!--
 TODO before publishing:
-- [ ] Add hero screenshot (screenshots/hero.png) — dark theme, 3-column layout with several block types
+- [x] Add hero screenshot
+- [x] Add gallery screenshot
 - [ ] Add edit mode screenshot (screenshots/edit-mode.png) — showing drag handles and zoom slider
-- [ ] Add accent color screenshot (screenshots/accent-colors.png) — blocks with different accent tints
 - [ ] Create a GitHub release with main.js, manifest.json, styles.css
 - [ ] Submit PR to obsidianmd/obsidian-releases with community-plugins.json entry
 -->

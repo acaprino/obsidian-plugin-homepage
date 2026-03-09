@@ -2,7 +2,7 @@
 
 A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md) — no Dataview required.
 
-Build a personal dashboard from ten native block types: clock, daily insight, image gallery, quotes, quick links, values grid, and more. Everything is saved to your vault and rendered with zero external dependencies.
+Build a personal dashboard from **15 native block types**: clock, greeting, daily insight, image gallery, quotes, quick links, video embeds, pomodoro timer, and more. Everything is saved to your vault and rendered with zero external dependencies.
 
 > **Desktop only** · Requires Obsidian 1.5.0+
 
@@ -14,6 +14,7 @@ Build a personal dashboard from ten native block types: clock, daily insight, im
 - [Quick Start](#quick-start)
 - [Edit Mode](#edit-mode)
 - [Block Types](#block-types)
+- [Per-Block Styling](#per-block-styling)
 - [Layout Controls](#layout-controls)
 - [Global Settings](#global-settings)
 - [CSS Customisation](#css-customisation)
@@ -24,14 +25,15 @@ Build a personal dashboard from ten native block types: clock, daily insight, im
 
 ## Features
 
-- **10 built-in block types** — clock, greeting, daily insight, quotes, quick links, values grid, image gallery, embedded note, static text, HTML
+- **15 built-in block types** — clock, greeting, daily insight, quotes, quick links, values grid, image gallery, embedded note, static text, HTML, video embed, bookmarks, recent files, pomodoro timer, spacer
 - **Drag-to-reorder** — grab the grip handle and drop blocks anywhere; a live placeholder shows the landing spot
 - **2D resize** — drag the corner grip to change column width *and* row height simultaneously
 - **Zoom slider** — in edit mode, zoom out from 100% to 10% to see the full layout at a glance
-- **Accent colors** — pick one color per block and the header, background, border, and divider are auto-tinted to match
+- **Accent colors with intensity control** — pick one color per block and adjust how strong the tint appears (5–100%); header, background, border, divider, and interactive controls are all auto-tinted to match
 - **Collapsible blocks** — click any block header to collapse or expand it
-- **Per-block styling** — custom title, emoji, show/hide divider, transparent mode, and accent color
-- **Responsive** — automatically switches to fewer columns on narrow panes
+- **Per-block styling** — custom title, emoji, divider, padding, elevation, border radius, background opacity, backdrop blur, gradients, and more
+- **Responsive** — blocks automatically adapt to narrow containers using CSS container queries
+- **Full-screen lightbox** — click any gallery image to view it at full size with keyboard and swipe navigation
 - **Zero external dependencies** — only [GridStack](https://gridstackjs.com/) is bundled; no Dataview, no Templater
 
 ---
@@ -68,18 +70,6 @@ Drag the **corner grip** diagonally:
 
 The block updates live while dragging.
 
-### Accent Colors
-
-Open a block's settings (gear icon) and pick an **Accent color**. A single color automatically derives:
-
-- Header background (12% tint)
-- Card background (8% tint)
-- Border (25% tint)
-- Title text (70% blend)
-- Divider (20% tint)
-
-Works in both light and dark themes via CSS `color-mix()`. Click the **X** button to clear the accent and return to the default style.
-
 ---
 
 ## Block Types
@@ -97,11 +87,12 @@ Displays a live clock that updates every second.
 
 ### Greeting
 
-A time-aware welcome message ("Good morning", "Good afternoon", "Good evening") based on the current hour.
+A time-aware, responsive welcome message ("Buongiorno", "Buon pomeriggio", "Buonasera") based on the current hour. Automatically stacks vertically on narrow blocks.
 
 | Setting | Description |
 |---------|-------------|
-| Name | Your name — shown as "Good morning, Name" |
+| Name | Your name — shown as "Buongiorno, Name" |
+| Show emoji | Time-of-day emoji (sun, moon, etc.) |
 | Show time | Include the current time alongside the greeting |
 
 ---
@@ -121,14 +112,14 @@ The excerpt is the first non-heading paragraph of the note, extracted via Obsidi
 
 ### Quotes List
 
-Renders a styled list of quotes, either pulled from tagged notes or entered manually.
+Renders a styled, multi-column list of quotes, either pulled from tagged notes or entered manually.
 
 | Setting | Description |
 |---------|-------------|
 | Source | **Notes with tag** — reads the first lines of each matching note. **Manual text** — paste quotes directly |
 | Tag | Tag to search (when source is "Notes with tag") |
 | Quotes (text) | One quote per block, separated by `---` on its own line. Add a source line starting with `—`, `–`, or `--` |
-| Columns | 2 or 3 columns |
+| Columns | 2 or 3 columns (auto-adjusts to fewer on narrow blocks) |
 | Height mode | **Scroll** — fixed-height card with internal scrollbar. **Grow to fit** — card expands to show all quotes |
 | Max items | Maximum number of quotes to display |
 
@@ -174,18 +165,71 @@ Items without a path are displayed as non-clickable labels.
 
 ### Image Gallery
 
-Displays images and videos from a vault folder.
+Displays images and videos from a vault folder in a responsive grid with a full-screen lightbox.
 
 | Setting | Description |
 |---------|-------------|
 | Folder | The vault folder to scan. Subfolders are included recursively |
 | Layout | **Grid** — uniform squares. **Masonry** — variable-height columns |
-| Columns | 2, 3, or 4 columns |
-| Max items | Maximum number of media files to show |
+| Height mode | **Auto** — card expands to show all images. **Fixed** — scrolls within the card's row height |
+| Columns | 2, 3, or 4 columns (auto-reduces on narrow blocks: ≤500px → 3, ≤400px → 2, ≤280px → 1) |
+| Max items | Maximum number of media files to show (1–200) |
 
 Supported formats: `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`, `.mp4`, `.webm`, `.mov`, `.mkv`.
 
-Videos play silently on hover and stop when the cursor leaves. Click any item to open the full file in Obsidian.
+**Lightbox:** Click any image or video to open it full-screen. Navigate with arrow keys, swipe on touch devices, or click the prev/next buttons. Press Escape to close.
+
+**Videos:** Play silently on hover in the gallery. In the lightbox, videos play with controls.
+
+---
+
+### Video Embed
+
+Embed YouTube, Vimeo, or Dailymotion videos directly on your homepage.
+
+| Setting | Description |
+|---------|-------------|
+| URL | Video or playlist URL |
+| Shuffle on load | Start with a random video from a playlist each time the homepage opens |
+
+Supports YouTube videos, shorts, and playlists; Vimeo videos; and Dailymotion videos.
+
+---
+
+### Bookmarks
+
+A grid of web links and vault bookmarks with optional descriptions.
+
+| Setting | Description |
+|---------|-------------|
+| Columns | 1, 2, or 3 columns |
+| Show descriptions | Display description text under each bookmark |
+| Items | Each item has an optional emoji, label, URL (web link or vault note path), and optional description |
+
+---
+
+### Recent Files
+
+Shows your most recently modified vault notes.
+
+| Setting | Description |
+|---------|-------------|
+| Max items | Number of files to show (5–20, default 10) |
+| Show timestamp | Display relative time (e.g. "2 minutes ago") next to each file |
+| Exclude folders | Comma-separated folder paths to exclude from results |
+
+---
+
+### Pomodoro Timer
+
+A built-in pomodoro timer with configurable work/break cycles.
+
+| Setting | Description |
+|---------|-------------|
+| Work minutes | Work session duration (1–60, default 25) |
+| Break minutes | Short break duration (1–30, default 5) |
+| Long break minutes | Long break duration (1–60, default 15) |
+| Sessions before long break | Work sessions before a long break (2–8, default 4) |
 
 ---
 
@@ -202,7 +246,7 @@ Renders any vault note inline using Obsidian's markdown renderer.
 
 ### Static Text
 
-A freeform markdown block. Supports all standard Obsidian markdown: headings, lists, callouts, bold, links, and more.
+A freeform markdown block. Supports all standard Obsidian markdown: headings, lists, callouts, bold, links, and more. Includes a quick-edit pencil button for fast inline editing.
 
 | Setting | Description |
 |---------|-------------|
@@ -218,22 +262,61 @@ A block for custom HTML. Useful for embedding widgets or anything that needs raw
 |---------|-------------|
 | HTML content | Raw HTML to render inside the block |
 
-> HTML is rendered inside Obsidian's DOM. External scripts are not executed.
+> HTML is sanitized before rendering. Potentially dangerous tags (iframe, object, embed, form) are stripped as a defense-in-depth measure.
 
 ---
 
-## Shared Block Settings
+### Spacer
+
+An empty block for layout spacing. No settings — just drag and resize to create visual gaps between other blocks.
+
+---
+
+## Per-Block Styling
 
 Every block has these options in its settings modal (gear icon):
+
+### Title & Header
 
 | Setting | Description |
 |---------|-------------|
 | Title label | Custom title text (leave empty for the default) |
 | Title emoji | Pick an emoji from the built-in picker |
+| Title size | Header size (h1–h6) |
 | Hide title | Hides the title bar entirely |
 | Show divider | Thin separator line between title and content |
-| Transparent card | Removes background, border, and padding |
-| Accent color | Tints the entire card based on a single color |
+| Title gap | Space between the title and content in pixels |
+
+### Accent Color
+
+| Setting | Description |
+|---------|-------------|
+| Accent color | Pick a color (or use a preset swatch) to tint the entire card |
+| Accent intensity | How strong the tint appears on the background (5–100%, default 15%) |
+| Hide header background | Keep the card tint but remove the colored header bar |
+
+A single accent color automatically derives the header background, card background, border, title text, divider, and all interactive controls (checkboxes, toggles, radio buttons) — using darkened variants for contrast on light accents.
+
+### Card Appearance
+
+| Setting | Description |
+|---------|-------------|
+| Hide border | Remove the card border and hover highlight |
+| Hide background | Remove the card background — the block blends into the page |
+| Card padding | Custom inner padding in pixels |
+| Shadow / Elevation | Card shadow depth (0–3) |
+| Border radius | Corner rounding in pixels |
+| Border width | Border thickness in pixels |
+| Border style | Solid, dashed, or dotted |
+
+### Advanced
+
+| Setting | Description |
+|---------|-------------|
+| Background opacity | Background transparency (100 = fully opaque) |
+| Backdrop blur | Glassmorphism blur behind the card (works when opacity < 100) |
+| Gradient start / end | Two-color background gradient |
+| Gradient angle | Direction of the gradient in degrees |
 
 ---
 
@@ -246,6 +329,10 @@ Each block occupies 1 to N columns, where N is the current column count (set glo
 ### Row height
 
 Drag the corner grip downward to increase a block's minimum height. Each unit is 200 px by default (configurable via CSS). Maximum is 12 units.
+
+### Auto-height
+
+Some blocks (Image Gallery, Quotes List, Embedded Note, Static Text) can auto-expand to fit their content. When the block width changes (e.g. window resize), the height recalculates automatically.
 
 ### Collapsing blocks
 
@@ -318,8 +405,6 @@ Bug reports and pull requests are welcome at [github.com/acaprino/obsidian-plugi
 ## License
 
 [MIT](LICENSE)
-
----
 
 <!--
 TODO before publishing:

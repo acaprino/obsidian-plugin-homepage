@@ -1675,6 +1675,13 @@
   min-height: unset;
 }
 
+/* Override the generic collapse rules for blocks that use flex layout directly
+   on .block-content — their children must remain visible and content-sized. */
+.homepage-block-wrapper .block-content.greeting-block > * {
+  overflow: visible;
+  min-height: auto;
+}
+
 /* ── Focus visible (keyboard navigation) ────────────────── */
 .homepage-view button:focus-visible,
 .homepage-view select:focus-visible {

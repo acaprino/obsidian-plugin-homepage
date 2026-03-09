@@ -53,7 +53,7 @@ export class BookmarkBlock extends BaseBlock {
             return;
           }
         } catch { /* not a valid absolute URL — treat as vault path */ }
-        this.app.workspace.openLinkText(item.url, '');
+        void this.app.workspace.openLinkText(item.url, '');
       });
     }
   }

@@ -85,7 +85,7 @@ export class FolderLinksBlock extends BaseBlock {
             }
             btn.createSpan({ text: file.basename });
             btn.addEventListener('click', () => {
-              this.app.workspace.openLinkText(file.path, '');
+              void this.app.workspace.openLinkText(file.path, '');
             });
           }
 
@@ -105,7 +105,7 @@ export class FolderLinksBlock extends BaseBlock {
       }
       btn.createSpan({ text: link.label });
       btn.addEventListener('click', () => {
-        this.app.workspace.openLinkText(link.path, '');
+        void this.app.workspace.openLinkText(link.path, '');
       });
     }
 

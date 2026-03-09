@@ -39,7 +39,7 @@ export class ButtonGridBlock extends BaseBlock {
       btn.createSpan({ text: item.label });
       if (item.link) {
         btn.addEventListener('click', () => {
-          this.app.workspace.openLinkText(item.link!, '');
+          void this.app.workspace.openLinkText(item.link!, '');
         });
       } else {
         btn.addClass('hp-cursor-default');

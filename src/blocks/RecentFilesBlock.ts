@@ -60,7 +60,7 @@ export class RecentFilesBlock extends BaseBlock {
         btn.createSpan({ cls: 'recent-file-time', text: moment(file.stat.mtime).fromNow() });
       }
       btn.addEventListener('click', () => {
-        this.app.workspace.openLinkText(file.path, '');
+        void this.app.workspace.openLinkText(file.path, '');
       });
     }
   }

@@ -6153,7 +6153,7 @@ var GridLayout = class {
       text: this.editMode ? "Click the button below to add your first block." : "Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started."
     });
     if (this.editMode && this.onRequestAddBlock) {
-      const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add Your First Block" });
+      const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add your first block" });
       cta.addEventListener("click", () => {
         this.onRequestAddBlock?.();
       });
@@ -7897,7 +7897,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
     const links = cfg.links ?? [];
     const linkAlign = VALID_ALIGNS.has(cfg.linkAlign ?? "") ? cfg.linkAlign : "left";
     const folderEmoji = cfg.folderEmoji ?? "";
-    this.renderHeader(el, "Folder Links");
+    this.renderHeader(el, "Folder links");
     const list = el.createDiv({ cls: "folder-links-list" });
     list.addClass(`folder-links-align-${linkAlign}`);
     if (folder) {
@@ -8055,7 +8055,7 @@ var FolderLinksSettingsModal = class extends import_obsidian8.Modal {
       });
     };
     renderLinks();
-    new import_obsidian8.Setting(contentEl).addButton((btn) => btn.setButtonText("Add Link").onClick(() => {
+    new import_obsidian8.Setting(contentEl).addButton((btn) => btn.setButtonText("Add link").onClick(() => {
       links.push({ label: "", path: "" });
       renderLinks();
     })).addButton((btn) => btn.setButtonText("Save").setCta().onClick(() => {
@@ -9482,7 +9482,7 @@ var VideoEmbedSettingsModal = class extends import_obsidian16.Modal {
     contentEl.empty();
     contentEl.createEl("h2", { text: "Video embed settings" });
     const draft = structuredClone(this.config);
-    new import_obsidian16.Setting(contentEl).setName("Video / Playlist URL").setDesc("YouTube, Vimeo, or Dailymotion URL. Playlist links are supported.").addText(
+    new import_obsidian16.Setting(contentEl).setName("Video / playlist URL").setDesc("YouTube, Vimeo, or Dailymotion URL. Playlist links are supported.").addText(
       (t) => t.setValue(draft.url ?? "").setPlaceholder("https://www.youtube.com/playlist?list=...").onChange((v) => {
         draft.url = v;
       })
@@ -9651,7 +9651,7 @@ var RecentFilesBlock = class extends BaseBlock {
       showTimestamp = true,
       excludeFolders = ""
     } = this.instance.config;
-    this.renderHeader(el, "Recent Files");
+    this.renderHeader(el, "Recent files");
     const excluded = excludeFolders.split(",").map((f) => f.trim()).filter(Boolean);
     const files = this.app.vault.getMarkdownFiles().filter((file) => !excluded.some((folder) => file.path.startsWith(folder + "/"))).sort((a, b) => b.stat.mtime - a.stat.mtime).slice(0, maxItems);
     const list = el.createDiv({ cls: "recent-files-list" });
@@ -9997,7 +9997,7 @@ var DEFAULT_LAYOUT_DATA = {
       y: 0,
       w: 1,
       h: 3,
-      config: { title: "", content: "" }
+      config: { content: "" }
     },
     {
       id: "default-clock",
@@ -10015,7 +10015,7 @@ var DEFAULT_LAYOUT_DATA = {
       y: 0,
       w: 1,
       h: 3,
-      config: { title: "Quick Links", links: [] }
+      config: { _titleLabel: "Quick links", links: [] }
     },
     // Row 1 (y: 3–5)
     {
@@ -10025,7 +10025,7 @@ var DEFAULT_LAYOUT_DATA = {
       y: 3,
       w: 2,
       h: 3,
-      config: { tag: "", title: "Daily Insight", dailySeed: true }
+      config: { tag: "", _titleLabel: "Daily insight", dailySeed: true }
     },
     {
       id: "default-button-grid",
@@ -10035,10 +10035,10 @@ var DEFAULT_LAYOUT_DATA = {
       w: 1,
       h: 5,
       config: {
-        title: "Quick Actions",
+        _titleLabel: "Quick actions",
         columns: 2,
         items: [
-          { emoji: "\u{1F4DD}", label: "New Note" },
+          { emoji: "\u{1F4DD}", label: "New note" },
           { emoji: "\u{1F4C5}", label: "Today" },
           { emoji: "\u2B50", label: "Favorites" },
           { emoji: "\u{1F50D}", label: "Search" },
@@ -10055,7 +10055,7 @@ var DEFAULT_LAYOUT_DATA = {
       y: 6,
       w: 2,
       h: 3,
-      config: { tag: "", title: "Quotes", columns: 2, maxItems: 20 }
+      config: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20 }
     },
     // Row 3 (y: 9–11)
     {
@@ -10065,7 +10065,7 @@ var DEFAULT_LAYOUT_DATA = {
       y: 9,
       w: 3,
       h: 3,
-      config: { folder: "", title: "Gallery", columns: 3, maxItems: 20 }
+      config: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 20 }
     }
   ]
 };
@@ -10163,35 +10163,35 @@ function registerBlocks() {
   BlockRegistry.register({
     type: "folder-links",
     displayName: "Quick links",
-    defaultConfig: { title: "Quick Links", folder: "", links: [] },
+    defaultConfig: { _titleLabel: "Quick links", folder: "", links: [] },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "insight",
     displayName: "Daily insight",
-    defaultConfig: { tag: "", title: "Daily Insight", dailySeed: true },
+    defaultConfig: { tag: "", _titleLabel: "Daily insight", dailySeed: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new InsightBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "button-grid",
     displayName: "Button grid",
-    defaultConfig: { title: "Button Grid", columns: 2, items: [] },
+    defaultConfig: { _titleLabel: "Button grid", columns: 2, items: [] },
     defaultSize: { w: 1, h: 5 },
     create: (app, instance, plugin) => new ButtonGridBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "quotes-list",
     displayName: "Quotes list",
-    defaultConfig: { tag: "", title: "Quotes", columns: 2, maxItems: 20 },
+    defaultConfig: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20 },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "image-gallery",
     displayName: "Image gallery",
-    defaultConfig: { folder: "", title: "Gallery", columns: 3, maxItems: 20 },
+    defaultConfig: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 20 },
     defaultSize: { w: 3, h: 3 },
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin)
   });
@@ -10205,42 +10205,42 @@ function registerBlocks() {
   BlockRegistry.register({
     type: "static-text",
     displayName: "Static text",
-    defaultConfig: { title: "", content: "" },
+    defaultConfig: { content: "" },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new StaticTextBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "html",
     displayName: "HTML block",
-    defaultConfig: { title: "", html: "" },
+    defaultConfig: { html: "" },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new HtmlBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "video-embed",
     displayName: "Video embed",
-    defaultConfig: { title: "", url: "" },
+    defaultConfig: { url: "" },
     defaultSize: { w: 2, h: 4 },
     create: (app, instance, plugin) => new VideoEmbedBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "bookmarks",
     displayName: "Bookmarks",
-    defaultConfig: { title: "Bookmarks", items: [], columns: 2, showDescriptions: true },
+    defaultConfig: { _titleLabel: "Bookmarks", items: [], columns: 2, showDescriptions: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new BookmarkBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "recent-files",
     displayName: "Recent files",
-    defaultConfig: { title: "Recent Files", maxItems: 10, showTimestamp: true, excludeFolders: "" },
+    defaultConfig: { _titleLabel: "Recent files", maxItems: 10, showTimestamp: true, excludeFolders: "" },
     defaultSize: { w: 1, h: 4 },
     create: (app, instance, plugin) => new RecentFilesBlock(app, instance, plugin)
   });
   BlockRegistry.register({
     type: "pomodoro",
     displayName: "Pomodoro timer",
-    defaultConfig: { title: "Pomodoro", workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLong: 4 },
+    defaultConfig: { _titleLabel: "Pomodoro", workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLong: 4 },
     defaultSize: { w: 1, h: 4 },
     create: (app, instance, plugin) => new PomodoroBlock(app, instance, plugin)
   });
@@ -10291,7 +10291,7 @@ var HomepagePlugin = class extends import_obsidian20.Plugin {
         }
       }
     });
-    this.addRibbonIcon("home", "Open Homepage", () => {
+    this.addRibbonIcon("home", "Open homepage", () => {
       void this.openHomepage(this.layout.manualOpenMode);
     });
     this.addSettingTab(new HomepageSettingTab(this.app, this));
@@ -10364,7 +10364,6 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian20.Setting(containerEl).setName("General").setHeading();
     const openModeOptions = {
       "retain": "Keep existing tabs (new tab)",
       "replace-last": "Replace active tab",
@@ -10491,7 +10490,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
           blocks: [
             { id: "p1", type: "greeting", x: 0, y: 0, w: 2, h: 2, config: { name: "", showTime: true } },
             { id: "p2", type: "clock", x: 0, y: 2, w: 1, h: 3, config: { showSeconds: false, showDate: true } },
-            { id: "p3", type: "static-text", x: 1, y: 2, w: 1, h: 3, config: { title: "Notes", content: "" } }
+            { id: "p3", type: "static-text", x: 1, y: 2, w: 1, h: 3, config: { _titleLabel: "Notes", content: "" } }
           ]
         }
       },
@@ -10505,9 +10504,9 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
           blocks: [
             { id: "p1", type: "greeting", x: 0, y: 0, w: 2, h: 2, config: { name: "", showTime: true } },
             { id: "p2", type: "clock", x: 2, y: 0, w: 1, h: 2, config: { showSeconds: false, showDate: true } },
-            { id: "p3", type: "folder-links", x: 0, y: 2, w: 1, h: 3, config: { title: "Quick Links", links: [] } },
-            { id: "p4", type: "insight", x: 1, y: 2, w: 2, h: 3, config: { tag: "", title: "Daily Insight", dailySeed: true } },
-            { id: "p5", type: "quotes-list", x: 0, y: 5, w: 3, h: 3, config: { tag: "", title: "Quotes", columns: 2, maxItems: 20 } }
+            { id: "p3", type: "folder-links", x: 0, y: 2, w: 1, h: 3, config: { _titleLabel: "Quick links", links: [] } },
+            { id: "p4", type: "insight", x: 1, y: 2, w: 2, h: 3, config: { tag: "", _titleLabel: "Daily insight", dailySeed: true } },
+            { id: "p5", type: "quotes-list", x: 0, y: 5, w: 3, h: 3, config: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20 } }
           ]
         }
       },
@@ -10521,7 +10520,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
           blocks: [
             { id: "p1", type: "greeting", x: 0, y: 0, w: 2, h: 2, config: { name: "", showTime: true } },
             { id: "p2", type: "embedded-note", x: 0, y: 2, w: 1, h: 5, config: { filePath: "", showTitle: true } },
-            { id: "p3", type: "recent-files", x: 1, y: 2, w: 1, h: 5, config: { title: "Recent Files", maxItems: 10, showTimestamp: true, excludeFolders: "" } }
+            { id: "p3", type: "recent-files", x: 1, y: 2, w: 1, h: 5, config: { _titleLabel: "Recent files", maxItems: 10, showTimestamp: true, excludeFolders: "" } }
           ]
         }
       }

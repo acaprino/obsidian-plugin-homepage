@@ -57,7 +57,7 @@ export class FolderLinksBlock extends BaseBlock {
     const linkAlign = VALID_ALIGNS.has(cfg.linkAlign ?? '') ? cfg.linkAlign! : 'left';
     const folderEmoji = cfg.folderEmoji ?? '';
 
-    this.renderHeader(el, 'Folder Links');
+    this.renderHeader(el, 'Folder links');
 
     const list = el.createDiv({ cls: 'folder-links-list' });
     list.addClass(`folder-links-align-${linkAlign}`);
@@ -244,7 +244,7 @@ class FolderLinksSettingsModal extends Modal {
     renderLinks();
 
     new Setting(contentEl)
-      .addButton(btn => btn.setButtonText('Add Link').onClick(() => {
+      .addButton(btn => btn.setButtonText('Add link').onClick(() => {
         links.push({ label: '', path: '' });
         renderLinks();
       }))

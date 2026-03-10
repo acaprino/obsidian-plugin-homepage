@@ -34,7 +34,7 @@ export class RecentFilesBlock extends BaseBlock {
       excludeFolders = '',
     } = this.instance.config as RecentFilesConfig;
 
-    this.renderHeader(el, 'Recent Files');
+    this.renderHeader(el, 'Recent files');
 
     const excluded = excludeFolders.split(',').map(f => f.trim()).filter(Boolean);
 

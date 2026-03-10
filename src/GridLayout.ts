@@ -88,7 +88,7 @@ export class GridLayout {
         : 'Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started.',
     });
     if (this.editMode && this.onRequestAddBlock) {
-      const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add Your First Block' });
+      const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add your first block' });
       cta.addEventListener('click', () => { this.onRequestAddBlock?.(); });
     }
   }

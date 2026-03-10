@@ -445,7 +445,7 @@ class VideoEmbedSettingsModal extends Modal {
     const draft = structuredClone(this.config);
 
     new Setting(contentEl)
-      .setName('Video / Playlist URL')
+      .setName('Video / playlist URL')
       .setDesc('YouTube, Vimeo, or Dailymotion URL. Playlist links are supported.')
       .addText(t =>
         t.setValue(draft.url as string ?? '')

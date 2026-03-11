@@ -231,7 +231,7 @@ class QuotesSettingsModal extends Modal {
     textSection.toggleClass('hp-hidden', draft.source !== 'text');
     const textSetting = new Setting(textSection)
       .setName('Quotes')
-      .setDesc('Separate quotes with --- on its own line. Add a source line starting with — (e.g. — Author).');
+      .setDesc('Separate quotes with --- on its own line, then add a source with \u2014 (e.g. \u2014 author).');
     textSetting.settingEl.addClass('hp-setting-column');
     const textarea = textSetting.settingEl.createEl('textarea');
     textarea.rows = 8;

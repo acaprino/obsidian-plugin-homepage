@@ -446,7 +446,7 @@ class VideoEmbedSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Video / playlist URL')
-      .setDesc('YouTube, Vimeo, or Dailymotion URL. Playlist links are supported.')
+      .setDesc('YouTube, Vimeo, or Dailymotion URL \u2014 playlist links are supported.')
       .addText(t =>
         t.setValue(draft.url as string ?? '')
          .setPlaceholder('https://www.youtube.com/playlist?list=...')
@@ -455,7 +455,7 @@ class VideoEmbedSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Shuffle on load')
-      .setDesc('Start with a random video from the playlist each time the homepage opens. Only applies to playlist URLs.')
+      .setDesc('Start with a random video from the playlist each time the homepage opens \u2014 only applies to playlist URLs.')
       .addToggle(t =>
         t.setValue(Boolean(draft.shuffleOnLoad))
          .onChange(v => { draft.shuffleOnLoad = v; }),

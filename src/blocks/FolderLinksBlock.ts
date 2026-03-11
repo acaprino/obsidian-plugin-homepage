@@ -178,7 +178,7 @@ class FolderLinksSettingsModal extends Modal {
       .addText(t => {
         folderText = t;
         t.setValue(draft.folder ?? '')
-         .setPlaceholder('e.g. Projects')
+         .setPlaceholder('e.g. projects')
          .onChange(v => { draft.folder = v; });
       })
       .addButton(btn =>

@@ -152,7 +152,7 @@ class FolderLinksSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Quick links settings' });
+    new Setting(contentEl).setName('Quick links settings').setHeading();
 
     const draft: FolderLinksConfig = structuredClone(this.config);
     draft.links ??= [];
@@ -178,7 +178,7 @@ class FolderLinksSettingsModal extends Modal {
       .addText(t => {
         folderText = t;
         t.setValue(draft.folder ?? '')
-         .setPlaceholder('e.g. projects')
+         .setPlaceholder('Projects')
          .onChange(v => { draft.folder = v; });
       })
       .addButton(btn =>
@@ -205,7 +205,7 @@ class FolderLinksSettingsModal extends Modal {
     });
     pickers.push(folderPicker);
 
-    contentEl.createEl('h3', { text: 'Manual links' });
+    new Setting(contentEl).setName('Manual links').setHeading();
 
     const linksContainer = contentEl.createDiv();
 

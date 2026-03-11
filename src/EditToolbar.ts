@@ -1,4 +1,4 @@
-import { App, Modal } from 'obsidian';
+import { App, Modal, Setting } from 'obsidian';
 import { BlockInstance, BlockType, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { GridLayout } from './GridLayout';
@@ -207,7 +207,7 @@ class AddBlockModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Add block', cls: 'add-block-modal-title' });
+    new Setting(contentEl).setName('Add block').setHeading().settingEl.addClass('add-block-modal-title');
 
     const grid = contentEl.createDiv({ cls: 'add-block-grid' });
 

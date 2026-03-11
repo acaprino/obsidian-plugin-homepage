@@ -6723,7 +6723,7 @@ var BlockSettingsModal = class extends import_obsidian.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Block settings" });
+    new import_obsidian.Setting(contentEl).setName("Block settings").setHeading();
     const draft = structuredClone(this.instance.config);
     const factory = BlockRegistry.get(this.instance.type);
     const defaultTitle = factory?.displayName ?? this.instance.type;
@@ -6979,7 +6979,7 @@ var RemoveBlockConfirmModal = class extends import_obsidian.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Remove block?" });
+    new import_obsidian.Setting(contentEl).setName("Remove block?").setHeading();
     contentEl.createEl("p", { text: "This block will be removed from the homepage." });
     new import_obsidian.Setting(contentEl).addButton(
       (btn) => btn.setButtonText("Remove").setWarning().onClick(() => {
@@ -7169,7 +7169,7 @@ var AddBlockModal = class extends import_obsidian2.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Add block", cls: "add-block-modal-title" });
+    new import_obsidian2.Setting(contentEl).setName("Add block").setHeading().settingEl.addClass("add-block-modal-title");
     const grid = contentEl.createDiv({ cls: "add-block-grid" });
     for (const factory of BlockRegistry.getAll()) {
       const meta = BLOCK_META[factory.type];
@@ -7545,7 +7545,7 @@ var GreetingSettingsModal = class extends import_obsidian5.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Greeting settings" });
+    new import_obsidian5.Setting(contentEl).setName("Greeting settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian5.Setting(contentEl).setName("Name").addText(
       (t) => t.setValue(draft.name ?? "bentornato").onChange((v) => {
@@ -7557,7 +7557,7 @@ var GreetingSettingsModal = class extends import_obsidian5.Modal {
         draft.showTime = v;
       })
     );
-    contentEl.createEl("h3", { text: "Salutation" });
+    new import_obsidian5.Setting(contentEl).setName("Salutation").setHeading();
     const salutSection = contentEl.createDiv();
     const buildSalutSettings = () => {
       salutSection.empty();
@@ -7598,7 +7598,7 @@ var GreetingSettingsModal = class extends import_obsidian5.Modal {
       }
     };
     buildSalutSettings();
-    contentEl.createEl("h3", { text: "Emoji" });
+    new import_obsidian5.Setting(contentEl).setName("Emoji").setHeading();
     new import_obsidian5.Setting(contentEl).setName("Show emoji").addToggle(
       (t) => t.setValue(draft.showEmoji ?? true).onChange((v) => {
         draft.showEmoji = v;
@@ -7759,7 +7759,7 @@ var ClockSettingsModal = class extends import_obsidian6.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Clock settings" });
+    new import_obsidian6.Setting(contentEl).setName("Clock settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian6.Setting(contentEl).setName("Style").setDesc("Visual style of the clock.").addDropdown(
       (d) => d.addOptions(CLOCK_STYLES).setValue(draft.clockStyle ?? "minimal").onChange((v) => {
@@ -7776,7 +7776,7 @@ var ClockSettingsModal = class extends import_obsidian6.Modal {
         draft.showDate = v;
       })
     );
-    new import_obsidian6.Setting(contentEl).setName("Custom format").setDesc('Optional moment.js format string, e.g. "HH:mm" \u2014 leave empty for default.').addText(
+    new import_obsidian6.Setting(contentEl).setName("Custom format").setDesc("Optional moment.js format string (leave empty for default).").addText(
       (t) => t.setValue(draft.format ?? "").onChange((v) => {
         draft.format = v;
       })
@@ -7975,7 +7975,7 @@ var FolderLinksSettingsModal = class extends import_obsidian8.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Quick links settings" });
+    new import_obsidian8.Setting(contentEl).setName("Quick links settings").setHeading();
     const draft = structuredClone(this.config);
     draft.links ??= [];
     const links = draft.links;
@@ -7991,7 +7991,7 @@ var FolderLinksSettingsModal = class extends import_obsidian8.Modal {
     let folderText;
     new import_obsidian8.Setting(contentEl).setName("Auto-list folder").setDesc("List all notes from this vault folder as links.").addText((t) => {
       folderText = t;
-      t.setValue(draft.folder ?? "").setPlaceholder("e.g. projects").onChange((v) => {
+      t.setValue(draft.folder ?? "").setPlaceholder("Projects").onChange((v) => {
         draft.folder = v;
       });
     }).addButton(
@@ -8019,7 +8019,7 @@ var FolderLinksSettingsModal = class extends import_obsidian8.Modal {
       onBeforeOpen: closeAllPickers
     });
     pickers.push(folderPicker);
-    contentEl.createEl("h3", { text: "Manual links" });
+    new import_obsidian8.Setting(contentEl).setName("Manual links").setHeading();
     const linksContainer = contentEl.createDiv();
     const dragState = { dragIdx: -1 };
     const renderLinks = () => {
@@ -8168,7 +8168,7 @@ var InsightSettingsModal = class extends import_obsidian9.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Insight settings" });
+    new import_obsidian9.Setting(contentEl).setName("Insight settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian9.Setting(contentEl).setName("Tag").setDesc("Without # prefix").addText(
       (t) => t.setValue(draft.tag ?? "").onChange((v) => {
@@ -8243,7 +8243,7 @@ var ButtonGridSettingsModal = class extends import_obsidian10.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Button grid settings" });
+    new import_obsidian10.Setting(contentEl).setName("Button grid settings").setHeading();
     const draft = structuredClone(this.config);
     if (!Array.isArray(draft.items)) draft.items = [];
     new import_obsidian10.Setting(contentEl).setName("Columns").addDropdown(
@@ -8448,7 +8448,7 @@ var QuotesSettingsModal = class extends import_obsidian11.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Quotes list settings" });
+    new import_obsidian11.Setting(contentEl).setName("Quotes list settings").setHeading();
     const draft = structuredClone(this.config);
     draft.source ??= "tag";
     let tagSection;
@@ -8807,12 +8807,12 @@ var ImageGallerySettingsModal = class extends import_obsidian12.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Image gallery settings" });
+    new import_obsidian12.Setting(contentEl).setName("Image gallery settings").setHeading();
     const draft = structuredClone(this.config);
     let folderText;
     new import_obsidian12.Setting(contentEl).setName("Folder").setDesc("Pick a vault folder.").addText((t) => {
       folderText = t;
-      t.setValue(draft.folder ?? "").setPlaceholder("Attachments/Photos").onChange((v) => {
+      t.setValue(draft.folder ?? "").setPlaceholder("Attachments/photos").onChange((v) => {
         draft.folder = v;
       });
     }).addButton(
@@ -8954,7 +8954,7 @@ var EmbeddedNoteSettingsModal = class extends import_obsidian13.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Embedded note settings" });
+    new import_obsidian13.Setting(contentEl).setName("Embedded note settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian13.Setting(contentEl).setName("File path").setDesc("Vault path to the note (e.g. Notes/MyNote.md)").addText((t) => {
       t.setValue(draft.filePath ?? "").setPlaceholder("Start typing to search\u2026").onChange((v) => {
@@ -9080,7 +9080,7 @@ var StaticTextSettingsModal = class extends import_obsidian14.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Static text settings" });
+    new import_obsidian14.Setting(contentEl).setName("Static text settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian14.Setting(contentEl).setName("Height").setDesc("Auto: expands to fit all content \u2014 fixed: uses grid cell height with scrollbar.").addDropdown(
       (d) => d.addOption("auto", "Auto (fit content)").addOption("fixed", "Fixed (scroll)").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "auto").onChange((v) => {
@@ -9136,7 +9136,7 @@ var HtmlBlockSettingsModal = class extends import_obsidian15.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "HTML block settings" });
+    new import_obsidian15.Setting(contentEl).setName("HTML block settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian15.Setting(contentEl).setName("HTML").setDesc("HTML is sanitized before rendering.");
     const textarea = contentEl.createEl("textarea", { cls: "html-settings-textarea" });
@@ -9160,6 +9160,15 @@ var HtmlBlockSettingsModal = class extends import_obsidian15.Modal {
 
 // src/blocks/VideoEmbedBlock.ts
 var import_obsidian16 = require("obsidian");
+function isYtPostMessage(value) {
+  return typeof value === "object" && value !== null;
+}
+function getPlaylistIds(data) {
+  const info = data.info;
+  if (typeof info !== "object" || info === null) return null;
+  const rec = info;
+  return Array.isArray(rec.playlist) ? rec.playlist : null;
+}
 var PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;
 var YT_VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 var YT_ORIGIN = "https://www.youtube.com";
@@ -9343,16 +9352,19 @@ var VideoEmbedBlock = class _VideoEmbedBlock extends BaseBlock {
       if (e.origin !== YT_ORIGIN) return;
       if (!this.iframeEl?.contentWindow || e.source !== this.iframeEl.contentWindow) return;
       try {
-        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (data?.event === "infoDelivery" && Array.isArray(data?.info?.playlist)) {
-          const ids = data.info.playlist;
-          this.playlistLength = ids.length;
-          this.playlistVideoIds = ids;
-          if (!indexLabel.getText().includes("\u{1F500}")) {
-            indexLabel.setText(fmtLabel(this.currentIndex));
+        const raw = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (!isYtPostMessage(raw)) return;
+        if (raw.event === "infoDelivery") {
+          const ids = getPlaylistIds(raw);
+          if (ids) {
+            this.playlistLength = ids.length;
+            this.playlistVideoIds = ids;
+            if (!indexLabel.getText().includes("\u{1F500}")) {
+              indexLabel.setText(fmtLabel(this.currentIndex));
+            }
           }
         }
-        if (data?.event === "onError" && YT_EMBED_BLOCKED_ERRORS.has(data?.info)) {
+        if (raw.event === "onError" && typeof raw.info === "number" && YT_EMBED_BLOCKED_ERRORS.has(raw.info)) {
           const vidId = this.playlistVideoIds[this.currentIndex];
           if (typeof vidId === "string" && YT_VIDEO_ID_RE.test(vidId)) {
             this.showPlaylistThumbnail(container, controlBar, vidId);
@@ -9386,8 +9398,9 @@ var VideoEmbedBlock = class _VideoEmbedBlock extends BaseBlock {
       if (e.origin !== YT_ORIGIN) return;
       if (!iframe.contentWindow || e.source !== iframe.contentWindow) return;
       try {
-        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
-        if (data?.event === "onError" && YT_EMBED_BLOCKED_ERRORS.has(data?.info)) {
+        const raw = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (!isYtPostMessage(raw)) return;
+        if (raw.event === "onError" && typeof raw.info === "number" && YT_EMBED_BLOCKED_ERRORS.has(raw.info)) {
           this.renderThumbnail(container, videoId);
           window.removeEventListener("message", handler);
         }
@@ -9480,14 +9493,14 @@ var VideoEmbedSettingsModal = class extends import_obsidian16.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Video embed settings" });
+    new import_obsidian16.Setting(contentEl).setName("Video embed settings").setHeading();
     const draft = structuredClone(this.config);
-    new import_obsidian16.Setting(contentEl).setName("Video / playlist URL").setDesc("YouTube, Vimeo, or Dailymotion URL \u2014 playlist links are supported.").addText(
+    new import_obsidian16.Setting(contentEl).setName("Video / playlist URL").setDesc("YouTube, vimeo, or dailymotion URL \u2014 playlist links are supported.").addText(
       (t) => t.setValue(draft.url ?? "").setPlaceholder("https://www.youtube.com/playlist?list=...").onChange((v) => {
         draft.url = v;
       })
     );
-    new import_obsidian16.Setting(contentEl).setName("Shuffle on load").setDesc("Start with a random video from the playlist each time the homepage opens \u2014 only applies to playlist URLs.").addToggle(
+    new import_obsidian16.Setting(contentEl).setName("Shuffle on load").setDesc("Start with a random video from the playlist each time the homepage opens \u2014 only applies to playlist urls.").addToggle(
       (t) => t.setValue(Boolean(draft.shuffleOnLoad)).onChange((v) => {
         draft.shuffleOnLoad = v;
       })
@@ -9555,7 +9568,7 @@ var BookmarkSettingsModal = class extends import_obsidian17.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Bookmark settings" });
+    new import_obsidian17.Setting(contentEl).setName("Bookmark settings").setHeading();
     const draft = structuredClone(this.config);
     if (!Array.isArray(draft.items)) draft.items = [];
     new import_obsidian17.Setting(contentEl).setName("Columns").addDropdown(
@@ -9686,7 +9699,7 @@ var RecentFilesSettingsModal = class extends import_obsidian18.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Recent files settings" });
+    new import_obsidian18.Setting(contentEl).setName("Recent files settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian18.Setting(contentEl).setName("Max items").setDesc("Number of recent files to show (5\u201320).").addSlider(
       (s) => s.setLimits(5, 20, 1).setValue(draft.maxItems ?? 10).setDynamicTooltip().onChange((v) => {
@@ -9932,7 +9945,7 @@ var PomodoroSettingsModal = class extends import_obsidian19.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Pomodoro settings" });
+    new import_obsidian19.Setting(contentEl).setName("Pomodoro settings").setHeading();
     const draft = structuredClone(this.config);
     new import_obsidian19.Setting(contentEl).setName("Work duration").setDesc("Minutes per work session.").addSlider(
       (s) => s.setLimits(1, 60, 1).setValue(draft.workMinutes ?? 25).setDynamicTooltip().onChange((v) => {
@@ -10554,7 +10567,7 @@ var ConfirmPresetModal = class extends import_obsidian20.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "Load preset?" });
+    new import_obsidian20.Setting(contentEl).setName("Load preset?").setHeading();
     contentEl.createEl("p", { text: `This will replace your current layout with the "${this.presetName}" preset. This cannot be undone.` });
     new import_obsidian20.Setting(contentEl).addButton(
       (btn) => btn.setButtonText("Load preset").setWarning().onClick(() => {

@@ -43,7 +43,7 @@ class HtmlBlockSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'HTML block settings' });
+    new Setting(contentEl).setName('HTML block settings').setHeading();
 
     const draft = structuredClone(this.config);
 

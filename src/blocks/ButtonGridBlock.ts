@@ -64,7 +64,7 @@ class ButtonGridSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Button grid settings' });
+    new Setting(contentEl).setName('Button grid settings').setHeading();
 
     const draft = structuredClone(this.config) as {
       title?: string;

@@ -131,7 +131,7 @@ class EmbeddedNoteSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Embedded note settings' });
+    new Setting(contentEl).setName('Embedded note settings').setHeading();
 
     const draft = structuredClone(this.config);
 

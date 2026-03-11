@@ -84,7 +84,7 @@ class RecentFilesSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Recent files settings' });
+    new Setting(contentEl).setName('Recent files settings').setHeading();
 
     const draft: RecentFilesConfig = structuredClone(this.config);
 

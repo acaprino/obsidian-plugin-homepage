@@ -710,7 +710,7 @@ class ConfirmPresetModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Load preset?' });
+    new Setting(contentEl).setName('Load preset?').setHeading();
     contentEl.createEl('p', { text: `This will replace your current layout with the "${this.presetName}" preset. This cannot be undone.` });
     new Setting(contentEl)
       .addButton(btn =>

@@ -329,7 +329,7 @@ class ImageGallerySettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Image gallery settings' });
+    new Setting(contentEl).setName('Image gallery settings').setHeading();
 
     const draft = structuredClone(this.config);
 
@@ -340,7 +340,7 @@ class ImageGallerySettingsModal extends Modal {
       .addText(t => {
         folderText = t;
         t.setValue(draft.folder as string ?? '')
-         .setPlaceholder('Attachments/Photos')
+         .setPlaceholder('Attachments/photos')
          .onChange(v => { draft.folder = v; });
       })
       .addButton(btn =>

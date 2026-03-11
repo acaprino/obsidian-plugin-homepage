@@ -7,11 +7,17 @@
     "dev": "node esbuild.config.mjs --watch"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^22.0.0",
+    "@typescript-eslint/parser": "^8.57.0",
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.24.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.1.9",
+    "globals": "^17.4.0",
     "obsidian": "^1.7.2",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.57.0"
   },
   "dependencies": {
     "gridstack": "^12.4.2"

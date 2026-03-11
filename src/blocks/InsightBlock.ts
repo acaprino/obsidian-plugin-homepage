@@ -120,7 +120,7 @@ class InsightSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Insight settings' });
+    new Setting(contentEl).setName('Insight settings').setHeading();
 
     const draft = structuredClone(this.config);
 

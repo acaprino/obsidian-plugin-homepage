@@ -251,7 +251,7 @@ class GreetingSettingsModal extends Modal {
 
       new Setting(salutSection)
         .setName('Salutation mode')
-        .setDesc('Auto: pick a language preset. Custom: write your own for each time slot.')
+        .setDesc('Auto: pick a language preset \u2014 custom: write your own for each time slot.')
         .addDropdown(d =>
           d.addOption('auto', 'Language preset')
            .addOption('custom', 'Custom text')
@@ -314,7 +314,7 @@ class GreetingSettingsModal extends Modal {
 
       new Setting(emojiSection)
         .setName('Emoji mode')
-        .setDesc('Auto: time-of-day. Custom: pick one per time slot. Random: pick from a pool.')
+        .setDesc('Auto: time-of-day \u2014 custom: pick one per time slot \u2014 random: pick from a pool.')
         .addDropdown(d =>
           d.addOption('auto', 'Auto (time of day)')
            .addOption('custom', 'Custom per slot')

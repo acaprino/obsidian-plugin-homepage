@@ -129,7 +129,7 @@ class StaticTextSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Height')
-      .setDesc('Auto: expands to fit all content. Fixed: uses grid cell height with scrollbar.')
+      .setDesc('Auto: expands to fit all content \u2014 fixed: uses grid cell height with scrollbar.')
       .addDropdown(d =>
         d.addOption('auto', 'Auto (fit content)')
          .addOption('fixed', 'Fixed (scroll)')

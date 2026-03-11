@@ -246,7 +246,7 @@ class QuotesSettingsModal extends Modal {
     );
     new Setting(contentEl)
       .setName('Height mode')
-      .setDesc('Scroll keeps the block compact. Grow to fit all works best at full width.')
+      .setDesc('Scroll keeps the block compact \u2014 grow to fit all works best at full width.')
       .addDropdown(d =>
         d.addOption('wrap', 'Scroll (fixed height)')
          .addOption('extend', 'Grow to fit all')

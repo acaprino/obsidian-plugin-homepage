@@ -195,7 +195,7 @@ class QuotesSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Quotes list settings' });
+    new Setting(contentEl).setName('Quotes list settings').setHeading();
 
     const draft = structuredClone(this.config) as QuotesConfig;
     draft.source ??= 'tag';

@@ -75,7 +75,7 @@ class BookmarkSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Bookmark settings' });
+    new Setting(contentEl).setName('Bookmark settings').setHeading();
 
     const draft = structuredClone(this.config) as BookmarkConfig;
     if (!Array.isArray(draft.items)) draft.items = [];

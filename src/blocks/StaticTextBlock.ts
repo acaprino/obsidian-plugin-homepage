@@ -123,7 +123,7 @@ class StaticTextSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Static text settings' });
+    new Setting(contentEl).setName('Static text settings').setHeading();
 
     const draft = structuredClone(this.config);
 

@@ -227,7 +227,7 @@ class GreetingSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Greeting settings' });
+    new Setting(contentEl).setName('Greeting settings').setHeading();
 
     const draft = structuredClone(this.config) as GreetingConfig & Record<string, unknown>;
 
@@ -242,7 +242,7 @@ class GreetingSettingsModal extends Modal {
     );
 
     // ── Salutation ─────────────────────────────
-    contentEl.createEl('h3', { text: 'Salutation' });
+    new Setting(contentEl).setName('Salutation').setHeading();
 
     const salutSection = contentEl.createDiv();
     const buildSalutSettings = () => {
@@ -297,7 +297,7 @@ class GreetingSettingsModal extends Modal {
     buildSalutSettings();
 
     // ── Emoji ──────────────────────────────────
-    contentEl.createEl('h3', { text: 'Emoji' });
+    new Setting(contentEl).setName('Emoji').setHeading();
 
     new Setting(contentEl).setName('Show emoji').addToggle(t =>
       t.setValue(draft.showEmoji ?? true)

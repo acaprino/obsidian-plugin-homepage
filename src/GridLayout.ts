@@ -785,7 +785,7 @@ class BlockSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Block settings' });
+    new Setting(contentEl).setName('Block settings').setHeading();
 
     const draft = structuredClone(this.instance.config);
     const factory = BlockRegistry.get(this.instance.type);
@@ -1117,7 +1117,7 @@ class RemoveBlockConfirmModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Remove block?' });
+    new Setting(contentEl).setName('Remove block?').setHeading();
     contentEl.createEl('p', { text: 'This block will be removed from the homepage.' });
     new Setting(contentEl)
       .addButton(btn =>

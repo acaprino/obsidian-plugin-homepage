@@ -9,7 +9,7 @@ export function cacheHasTag(cache: CachedMetadata | null, tag: string): boolean 
 
   if (cache.tags?.some(t => t.tag === tag)) return true;
 
-  const rawFmTags = cache.frontmatter?.tags;
+  const rawFmTags: unknown = cache.frontmatter?.tags;
   const fmTagArray: string[] =
     Array.isArray(rawFmTags) ? rawFmTags.filter((t): t is string => typeof t === 'string') :
     typeof rawFmTags === 'string' ? [rawFmTags] :

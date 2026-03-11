@@ -1,6 +1,25 @@
 import { App, Modal, Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
+/** Shape of YouTube iframe API postMessage payloads. */
+interface YtPostMessage {
+  event?: string;
+  info?: unknown;
+  [key: string]: unknown;
+}
+
+function isYtPostMessage(value: unknown): value is YtPostMessage {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Extract the playlist array from a YtPostMessage info field, if present. */
+function getPlaylistIds(data: YtPostMessage): string[] | null {
+  const info = data.info;
+  if (typeof info !== 'object' || info === null) return null;
+  const rec = info as Record<string, unknown>;
+  return Array.isArray(rec.playlist) ? rec.playlist as string[] : null;
+}
+
 interface EmbedInfo {
   type: 'video' | 'playlist';
   /** For single videos: full embed URL. For playlists: playlist ID. */
@@ -264,20 +283,23 @@ export class VideoEmbedBlock extends BaseBlock {
       // Use this.iframeEl dynamically so it tracks across iframe recreations
       if (!this.iframeEl?.contentWindow || e.source !== this.iframeEl.contentWindow) return;
       try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        const raw: unknown = typeof e.data === 'string' ? JSON.parse(e.data) as unknown : e.data as unknown;
+        if (!isYtPostMessage(raw)) return;
 
         // Playlist size detection — also store video IDs for error fallback
-        if (data?.event === 'infoDelivery' && Array.isArray(data?.info?.playlist)) {
-          const ids: string[] = data.info.playlist;
-          this.playlistLength = ids.length;
-          this.playlistVideoIds = ids;
-          if (!indexLabel.getText().includes('\u{1F500}')) {
-            indexLabel.setText(fmtLabel(this.currentIndex));
+        if (raw.event === 'infoDelivery') {
+          const ids = getPlaylistIds(raw);
+          if (ids) {
+            this.playlistLength = ids.length;
+            this.playlistVideoIds = ids;
+            if (!indexLabel.getText().includes('\u{1F500}')) {
+              indexLabel.setText(fmtLabel(this.currentIndex));
+            }
           }
         }
 
         // Embed error → show thumbnail using stored playlist video IDs
-        if (data?.event === 'onError' && YT_EMBED_BLOCKED_ERRORS.has(data?.info)) {
+        if (raw.event === 'onError' && typeof raw.info === 'number' && YT_EMBED_BLOCKED_ERRORS.has(raw.info)) {
           const vidId = this.playlistVideoIds[this.currentIndex];
           if (typeof vidId === 'string' && YT_VIDEO_ID_RE.test(vidId)) {
             this.showPlaylistThumbnail(container, controlBar, vidId);
@@ -320,8 +342,9 @@ export class VideoEmbedBlock extends BaseBlock {
       if (e.origin !== YT_ORIGIN) return;
       if (!iframe.contentWindow || e.source !== iframe.contentWindow) return;
       try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (data?.event === 'onError' && YT_EMBED_BLOCKED_ERRORS.has(data?.info)) {
+        const raw: unknown = typeof e.data === 'string' ? JSON.parse(e.data) as unknown : e.data as unknown;
+        if (!isYtPostMessage(raw)) return;
+        if (raw.event === 'onError' && typeof raw.info === 'number' && YT_EMBED_BLOCKED_ERRORS.has(raw.info)) {
           this.renderThumbnail(container, videoId);
           window.removeEventListener('message', handler);
         }
@@ -440,13 +463,13 @@ class VideoEmbedSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Video embed settings' });
+    new Setting(contentEl).setName('Video embed settings').setHeading();
 
     const draft = structuredClone(this.config);
 
     new Setting(contentEl)
       .setName('Video / playlist URL')
-      .setDesc('YouTube, Vimeo, or Dailymotion URL \u2014 playlist links are supported.')
+      .setDesc('YouTube, vimeo, or dailymotion URL \u2014 playlist links are supported.')
       .addText(t =>
         t.setValue(draft.url as string ?? '')
          .setPlaceholder('https://www.youtube.com/playlist?list=...')
@@ -455,7 +478,7 @@ class VideoEmbedSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Shuffle on load')
-      .setDesc('Start with a random video from the playlist each time the homepage opens \u2014 only applies to playlist URLs.')
+      .setDesc('Start with a random video from the playlist each time the homepage opens \u2014 only applies to playlist urls.')
       .addToggle(t =>
         t.setValue(Boolean(draft.shuffleOnLoad))
          .onChange(v => { draft.shuffleOnLoad = v; }),

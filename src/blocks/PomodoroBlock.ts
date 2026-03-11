@@ -292,7 +292,7 @@ class PomodoroSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl('h2', { text: 'Pomodoro settings' });
+    new Setting(contentEl).setName('Pomodoro settings').setHeading();
 
     const draft = structuredClone(this.config);
 

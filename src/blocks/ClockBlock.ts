@@ -94,7 +94,7 @@ class ClockSettingsModal extends Modal {
     );
     new Setting(contentEl)
       .setName('Custom format')
-      .setDesc('Optional moment.js format string, e.g. "HH:mm". Leave empty for default.')
+      .setDesc('Optional moment.js format string, e.g. "HH:mm" \u2014 leave empty for default.')
       .addText(t =>
         t.setValue(draft.format as string ?? '')
          .onChange(v => { draft.format = v; }),

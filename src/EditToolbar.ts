@@ -127,11 +127,11 @@ export class EditToolbar {
     addBtn.addEventListener('click', () => { this.openAddBlockModal(); });
 
     // Discard button — exits edit mode and reverts all changes
-    const discardBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-discard-btn', text: '✕ Discard' });
+    const discardBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-discard-btn', text: '✕ discard' });
     discardBtn.addEventListener('click', () => this.discardChanges());
 
     // Done button — exits edit mode
-    const doneBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-edit-btn toolbar-btn-active', text: '✓ Done' });
+    const doneBtn = this.toolbarEl.createEl('button', { cls: 'toolbar-edit-btn toolbar-btn-active', text: '✓ done' });
     doneBtn.addEventListener('click', () => this.toggleEditMode());
 
     // Wire up the grid's empty state CTA to open the add block modal

@@ -130,7 +130,7 @@ class BookmarkSettingsModal extends Modal {
     renderList();
 
     new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('+ Add item').onClick(() => {
+      btn.setButtonText('+ add item').onClick(() => {
         draft.items!.push({ label: '', url: '' });
         renderList();
       }),

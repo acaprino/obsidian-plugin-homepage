@@ -7104,9 +7104,9 @@ var EditToolbar = class {
     addBtn.addEventListener("click", () => {
       this.openAddBlockModal();
     });
-    const discardBtn = this.toolbarEl.createEl("button", { cls: "toolbar-discard-btn", text: "\u2715 Discard" });
+    const discardBtn = this.toolbarEl.createEl("button", { cls: "toolbar-discard-btn", text: "\u2715 discard" });
     discardBtn.addEventListener("click", () => this.discardChanges());
-    const doneBtn = this.toolbarEl.createEl("button", { cls: "toolbar-edit-btn toolbar-btn-active", text: "\u2713 Done" });
+    const doneBtn = this.toolbarEl.createEl("button", { cls: "toolbar-edit-btn toolbar-btn-active", text: "\u2713 done" });
     doneBtn.addEventListener("click", () => this.toggleEditMode());
     this.grid.onRequestAddBlock = () => {
       this.openAddBlockModal();
@@ -7776,7 +7776,7 @@ var ClockSettingsModal = class extends import_obsidian6.Modal {
         draft.showDate = v;
       })
     );
-    new import_obsidian6.Setting(contentEl).setName("Custom format").setDesc('Optional moment.js format string, e.g. "HH:mm". Leave empty for default.').addText(
+    new import_obsidian6.Setting(contentEl).setName("Custom format").setDesc('Optional moment.js format string, e.g. "HH:mm" \u2014 leave empty for default.').addText(
       (t) => t.setValue(draft.format ?? "").onChange((v) => {
         draft.format = v;
       })
@@ -7991,7 +7991,7 @@ var FolderLinksSettingsModal = class extends import_obsidian8.Modal {
     let folderText;
     new import_obsidian8.Setting(contentEl).setName("Auto-list folder").setDesc("List all notes from this vault folder as links.").addText((t) => {
       folderText = t;
-      t.setValue(draft.folder ?? "").setPlaceholder("e.g. Projects").onChange((v) => {
+      t.setValue(draft.folder ?? "").setPlaceholder("e.g. projects").onChange((v) => {
         draft.folder = v;
       });
     }).addButton(
@@ -8286,7 +8286,7 @@ var ButtonGridSettingsModal = class extends import_obsidian10.Modal {
     };
     renderList();
     new import_obsidian10.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("+ Add item").onClick(() => {
+      (btn) => btn.setButtonText("+ add item").onClick(() => {
         draft.items.push({ emoji: "", label: "" });
         renderList();
       })
@@ -8469,7 +8469,7 @@ var QuotesSettingsModal = class extends import_obsidian11.Modal {
     );
     textSection = contentEl.createDiv();
     textSection.toggleClass("hp-hidden", draft.source !== "text");
-    const textSetting = new import_obsidian11.Setting(textSection).setName("Quotes").setDesc("Separate quotes with --- on its own line. Add a source line starting with \u2014 (e.g. \u2014 Author).");
+    const textSetting = new import_obsidian11.Setting(textSection).setName("Quotes").setDesc("Separate quotes with --- on its own line, then add a source with \u2014 (e.g. \u2014 author).");
     textSetting.settingEl.addClass("hp-setting-column");
     const textarea = textSetting.settingEl.createEl("textarea");
     textarea.rows = 8;
@@ -9482,12 +9482,12 @@ var VideoEmbedSettingsModal = class extends import_obsidian16.Modal {
     contentEl.empty();
     contentEl.createEl("h2", { text: "Video embed settings" });
     const draft = structuredClone(this.config);
-    new import_obsidian16.Setting(contentEl).setName("Video / playlist URL").setDesc("YouTube, Vimeo, or Dailymotion URL. Playlist links are supported.").addText(
+    new import_obsidian16.Setting(contentEl).setName("Video / playlist URL").setDesc("YouTube, Vimeo, or Dailymotion URL \u2014 playlist links are supported.").addText(
       (t) => t.setValue(draft.url ?? "").setPlaceholder("https://www.youtube.com/playlist?list=...").onChange((v) => {
         draft.url = v;
       })
     );
-    new import_obsidian16.Setting(contentEl).setName("Shuffle on load").setDesc("Start with a random video from the playlist each time the homepage opens. Only applies to playlist URLs.").addToggle(
+    new import_obsidian16.Setting(contentEl).setName("Shuffle on load").setDesc("Start with a random video from the playlist each time the homepage opens \u2014 only applies to playlist URLs.").addToggle(
       (t) => t.setValue(Boolean(draft.shuffleOnLoad)).onChange((v) => {
         draft.shuffleOnLoad = v;
       })
@@ -9609,7 +9609,7 @@ var BookmarkSettingsModal = class extends import_obsidian17.Modal {
     };
     renderList();
     new import_obsidian17.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("+ Add item").onClick(() => {
+      (btn) => btn.setButtonText("+ add item").onClick(() => {
         draft.items.push({ label: "", url: "" });
         renderList();
       })

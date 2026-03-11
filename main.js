@@ -7562,7 +7562,7 @@ var GreetingSettingsModal = class extends import_obsidian5.Modal {
     const buildSalutSettings = () => {
       salutSection.empty();
       const mode = draft.salutationMode ?? "auto";
-      new import_obsidian5.Setting(salutSection).setName("Salutation mode").setDesc("Auto: pick a language preset. Custom: write your own for each time slot.").addDropdown(
+      new import_obsidian5.Setting(salutSection).setName("Salutation mode").setDesc("Auto: pick a language preset \u2014 custom: write your own for each time slot.").addDropdown(
         (d) => d.addOption("auto", "Language preset").addOption("custom", "Custom text").setValue(mode).onChange((v) => {
           draft.salutationMode = v === "custom" ? "custom" : "auto";
           buildSalutSettings();
@@ -7612,7 +7612,7 @@ var GreetingSettingsModal = class extends import_obsidian5.Modal {
       slotPickers = [];
       emojiSection.empty();
       if (draft.showEmoji === false) return;
-      new import_obsidian5.Setting(emojiSection).setName("Emoji mode").setDesc("Auto: time-of-day. Custom: pick one per time slot. Random: pick from a pool.").addDropdown(
+      new import_obsidian5.Setting(emojiSection).setName("Emoji mode").setDesc("Auto: time-of-day \u2014 custom: pick one per time slot \u2014 random: pick from a pool.").addDropdown(
         (d) => d.addOption("auto", "Auto (time of day)").addOption("custom", "Custom per slot").addOption("random", "Random pool").setValue(draft.emojiMode ?? "auto").onChange((v) => {
           draft.emojiMode = v === "custom" || v === "random" ? v : "auto";
           buildEmojiSettings();
@@ -8483,7 +8483,7 @@ var QuotesSettingsModal = class extends import_obsidian11.Modal {
         draft.columns = Number(v);
       })
     );
-    new import_obsidian11.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit all works best at full width.").addDropdown(
+    new import_obsidian11.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact \u2014 grow to fit all works best at full width.").addDropdown(
       (d) => d.addOption("wrap", "Scroll (fixed height)").addOption("extend", "Grow to fit all").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "extend").onChange((v) => {
         draft.heightMode = v === "wrap" ? "wrap" : "extend";
       })
@@ -8824,7 +8824,7 @@ var ImageGallerySettingsModal = class extends import_obsidian12.Modal {
         }).open();
       })
     );
-    new import_obsidian12.Setting(contentEl).setName("Height").setDesc("Auto: expands to show all images. Fixed: uses the block's row height and scrolls.").addDropdown(
+    new import_obsidian12.Setting(contentEl).setName("Height").setDesc("Auto: expands to show all images \u2014 fixed: uses the block's row height and scrolls.").addDropdown(
       (d) => d.addOption("auto", "Auto (fit all images)").addOption("fixed", "Fixed (scroll)").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "auto").onChange((v) => {
         draft.heightMode = v === "fixed" ? "fixed" : "auto";
       })
@@ -8967,7 +8967,7 @@ var EmbeddedNoteSettingsModal = class extends import_obsidian13.Modal {
         draft.showTitle = v;
       })
     );
-    new import_obsidian13.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit all expands the card to show the full note.").addDropdown(
+    new import_obsidian13.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact \u2014 grow to fit all expands the card to show the full note.").addDropdown(
       (d) => d.addOption("scroll", "Scroll (fixed height)").addOption("grow", "Grow to fit all").setValue(draft.heightMode ?? "scroll").onChange((v) => {
         draft.heightMode = v;
       })
@@ -9082,7 +9082,7 @@ var StaticTextSettingsModal = class extends import_obsidian14.Modal {
     contentEl.empty();
     contentEl.createEl("h2", { text: "Static text settings" });
     const draft = structuredClone(this.config);
-    new import_obsidian14.Setting(contentEl).setName("Height").setDesc("Auto: expands to fit all content. Fixed: uses grid cell height with scrollbar.").addDropdown(
+    new import_obsidian14.Setting(contentEl).setName("Height").setDesc("Auto: expands to fit all content \u2014 fixed: uses grid cell height with scrollbar.").addDropdown(
       (d) => d.addOption("auto", "Auto (fit content)").addOption("fixed", "Fixed (scroll)").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "auto").onChange((v) => {
         draft.heightMode = v;
       })
@@ -10412,7 +10412,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage. Content is still scrollable.").addToggle(
+    new import_obsidian20.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage \u2014 content is still scrollable.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.hideScrollbar).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -10420,7 +10420,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the original default layout. Cannot be undone.").addButton(
+    new import_obsidian20.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the original default layout \u2014 cannot be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
         await this.plugin.saveLayout(getDefaultLayout());
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {

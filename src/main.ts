@@ -551,7 +551,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Hide scrollbar')
-      .setDesc('Hide the scrollbar on the homepage. Content is still scrollable.')
+      .setDesc('Hide the scrollbar on the homepage \u2014 content is still scrollable.')
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.hideScrollbar)
@@ -565,7 +565,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Reset to default layout')
-      .setDesc('Restore all blocks to the original default layout. Cannot be undone.')
+      .setDesc('Restore all blocks to the original default layout \u2014 cannot be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
           await this.plugin.saveLayout(getDefaultLayout());

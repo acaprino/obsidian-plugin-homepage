@@ -147,7 +147,7 @@ class EmbeddedNoteSettingsModal extends Modal {
     );
     new Setting(contentEl)
       .setName('Height mode')
-      .setDesc('Scroll keeps the block compact. Grow to fit all expands the card to show the full note.')
+      .setDesc('Scroll keeps the block compact \u2014 grow to fit all expands the card to show the full note.')
       .addDropdown(d =>
         d.addOption('scroll', 'Scroll (fixed height)')
          .addOption('grow', 'Grow to fit all')

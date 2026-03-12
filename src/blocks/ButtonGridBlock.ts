@@ -1,7 +1,6 @@
 import { App, Modal, Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
-import { responsiveGridColumns } from '../utils/responsiveGrid';
 
 interface ButtonItem {
   emoji: string;
@@ -21,8 +20,8 @@ export class ButtonGridBlock extends BaseBlock {
     this.renderHeader(el, 'Buttons');
 
     const grid = el.createDiv({ cls: 'button-grid' });
-    const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 2)));
-    grid.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols));
+    const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
+    grid.style.gridTemplateColumns = `repeat(${safeCols}, 1fr)`;
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });
@@ -67,7 +66,6 @@ class ButtonGridSettingsModal extends Modal {
     new Setting(contentEl).setName('Button grid settings').setHeading();
 
     const draft = structuredClone(this.config) as {
-      title?: string;
       columns?: number;
       items?: ButtonItem[];
     };

@@ -23,7 +23,7 @@ __export(main_exports, {
   default: () => HomepagePlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian20 = require("obsidian");
+var import_obsidian21 = require("obsidian");
 
 // src/HomepageView.ts
 var import_obsidian3 = require("obsidian");
@@ -6018,6 +6018,16 @@ function createEmojiPicker(opts) {
 
 // src/utils/blockStyling.ts
 var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+function hexChannelToLinear(c) {
+  const s = c / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+function getRelativeLuminance(hex) {
+  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
+  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
+  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
 var VALID_BORDER_STYLES = ["solid", "dashed", "dotted"];
 function applyBlockStyling(el, config) {
   const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
@@ -6031,9 +6041,13 @@ function applyBlockStyling(el, config) {
     } else {
       el.style.removeProperty("--block-accent-pct");
     }
+    const effectiveIntensity = intensity || 15;
+    const needsDarkText = getRelativeLuminance(accentColor) * (effectiveIntensity / 100) >= 0.15;
+    el.toggleClass("block-bright-accent", needsDarkText);
   } else {
     el.style.removeProperty("--block-accent");
     el.style.removeProperty("--block-accent-pct");
+    el.toggleClass("block-bright-accent", false);
   }
   el.toggleClass("block-no-border", config._hideBorder === true);
   el.toggleClass("block-no-background", config._hideBackground === true);
@@ -7159,7 +7173,8 @@ var BLOCK_META = {
   "bookmarks": { icon: "\u{1F516}", desc: "Web links and vault bookmarks grid" },
   "recent-files": { icon: "\u{1F4C2}", desc: "Recently modified notes in your vault" },
   "pomodoro": { icon: "\u{1F345}", desc: "Pomodoro timer with work/break cycles" },
-  "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" }
+  "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" },
+  "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" }
 };
 var AddBlockModal = class extends import_obsidian2.Modal {
   constructor(app, onSelect) {
@@ -7270,7 +7285,8 @@ var BLOCK_TYPES = [
   "bookmarks",
   "recent-files",
   "pomodoro",
-  "spacer"
+  "spacer",
+  "random-note"
 ];
 
 // src/blocks/GreetingBlock.ts
@@ -8194,21 +8210,14 @@ var InsightSettingsModal = class extends import_obsidian9.Modal {
 
 // src/blocks/ButtonGridBlock.ts
 var import_obsidian10 = require("obsidian");
-
-// src/utils/responsiveGrid.ts
-function responsiveGridColumns(safeCols, minPx = 120) {
-  return `repeat(auto-fill, minmax(max(${minPx}px, calc(100% / ${safeCols})), 1fr))`;
-}
-
-// src/blocks/ButtonGridBlock.ts
 var ButtonGridBlock = class extends BaseBlock {
   render(el) {
     el.addClass("button-grid-block");
     const { columns = 2, items = [] } = this.instance.config;
     this.renderHeader(el, "Buttons");
     const grid = el.createDiv({ cls: "button-grid" });
-    const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 2)));
-    grid.style.setProperty("--hp-grid-cols", responsiveGridColumns(safeCols));
+    const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
+    grid.style.gridTemplateColumns = `repeat(${safeCols}, 1fr)`;
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F532}" });
@@ -8507,6 +8516,13 @@ var QuotesSettingsModal = class extends import_obsidian11.Modal {
 
 // src/blocks/ImageGalleryBlock.ts
 var import_obsidian12 = require("obsidian");
+
+// src/utils/responsiveGrid.ts
+function responsiveGridColumns(safeCols, minPx = 120) {
+  return `repeat(auto-fill, minmax(max(${minPx}px, calc(100% / ${safeCols})), 1fr))`;
+}
+
+// src/blocks/ImageGalleryBlock.ts
 var IMAGE_EXTS = /* @__PURE__ */ new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
 var VIDEO_EXTS = /* @__PURE__ */ new Set([".mp4", ".webm", ".mov", ".mkv"]);
 var SWIPE_THRESHOLD_PX = 50;
@@ -9988,6 +10004,200 @@ var SpacerBlock = class extends BaseBlock {
   }
 };
 
+// src/blocks/RandomNoteBlock.ts
+var import_obsidian20 = require("obsidian");
+var MS_PER_DAY2 = 864e5;
+var DEBOUNCE_MS6 = 500;
+function stripWikiLink(raw) {
+  const m = raw.match(/^\[\[(.+?)(?:\|.*)?\]\]$/);
+  return m ? m[1] : raw;
+}
+var RandomNoteBlock = class extends BaseBlock {
+  render(el) {
+    this.containerEl = el;
+    el.addClass("random-note-block");
+    const trigger = () => this.scheduleRender(DEBOUNCE_MS6, (e) => {
+      e.empty();
+      return this.loadAndRender(e);
+    });
+    this.registerEvent(this.app.metadataCache.on("changed", (_file, _data, cache) => {
+      const { tag = "" } = this.instance.config;
+      if (!tag) return;
+      const tagSearch = tag.startsWith("#") ? tag : `#${tag}`;
+      if (cacheHasTag(cache, tagSearch)) trigger();
+    }));
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      const { tag = "" } = this.instance.config;
+      if (!tag || !file.path.endsWith(".md")) return;
+      trigger();
+    }));
+    this.registerEvent(this.app.vault.on("rename", (file) => {
+      const { tag = "" } = this.instance.config;
+      if (!tag || !file.path.endsWith(".md")) return;
+      trigger();
+    }));
+    this.loadAndRender(el).catch((e) => {
+      console.error("[Homepage Blocks] RandomNoteBlock failed to render:", e);
+      el.setText("Error loading random note. Check console for details.");
+    });
+  }
+  async loadAndRender(el) {
+    const gen = this.nextGeneration();
+    const {
+      tag = "",
+      dailySeed = false,
+      imageProperty = "cover",
+      titleProperty = "title",
+      showImage = true,
+      showPreview = true
+    } = this.instance.config;
+    this.renderHeader(el, "Random note");
+    if (!tag) {
+      const hint = el.createDiv({ cls: "block-empty-hint" });
+      hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F3B2}" });
+      hint.createDiv({ cls: "block-empty-hint-text", text: "No tag configured. Add a tag in settings to show random notes." });
+      return;
+    }
+    const tagSearch = tag.startsWith("#") ? tag : `#${tag}`;
+    const files = getFilesWithTag(this.app, tagSearch).sort((a, b) => a.path.localeCompare(b.path));
+    if (files.length === 0) {
+      el.createDiv({ cls: "block-empty-hint" }).createDiv({
+        cls: "block-empty-hint-text",
+        text: `No files found with tag ${tagSearch}`
+      });
+      return;
+    }
+    const dayIndex = Math.floor((0, import_obsidian20.moment)().startOf("day").valueOf() / MS_PER_DAY2);
+    const idx = dailySeed ? dayIndex % files.length : Math.floor(Math.random() * files.length);
+    const file = files[idx];
+    const cache = this.app.metadataCache.getFileCache(file);
+    const fm = cache?.frontmatter ?? {};
+    let preview = "";
+    if (showPreview) {
+      const desc = typeof fm["description"] === "string" ? fm["description"] : typeof fm["excerpt"] === "string" ? fm["excerpt"] : "";
+      if (desc) {
+        preview = desc;
+      } else {
+        try {
+          const content = await this.app.vault.read(file);
+          if (this.isStale(gen)) return;
+          preview = this.extractPreview(content, cache?.frontmatterPosition?.end.offset ?? 0);
+        } catch (e) {
+          console.error("[Homepage Blocks] RandomNoteBlock failed to read file:", e);
+        }
+      }
+    }
+    if (this.isStale(gen)) return;
+    if (showImage) {
+      const rawProp = fm[imageProperty];
+      const rawImage = typeof rawProp === "string" ? rawProp : Array.isArray(rawProp) && typeof rawProp[0] === "string" ? rawProp[0] : "";
+      if (rawImage) {
+        const trimmed = rawImage.trim();
+        let imgSrc = "";
+        if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) {
+          imgSrc = trimmed;
+        } else {
+          const imagePath = stripWikiLink(trimmed);
+          const imageFile = this.app.vault.getAbstractFileByPath(imagePath) ?? this.app.vault.getFiles().find((f) => f.name === imagePath || f.path === imagePath) ?? null;
+          if (imageFile instanceof import_obsidian20.TFile) {
+            imgSrc = this.app.vault.getResourcePath(imageFile);
+          }
+        }
+        if (imgSrc) {
+          const img = el.createEl("img", { cls: "random-note-cover" });
+          img.src = imgSrc;
+          img.alt = file.basename;
+          img.referrerPolicy = "no-referrer";
+        }
+      }
+    }
+    const title = typeof fm[titleProperty] === "string" && fm[titleProperty] ? fm[titleProperty] : file.basename;
+    const titleEl = el.createEl("button", { cls: "random-note-title" });
+    titleEl.setText(title);
+    titleEl.addEventListener("click", () => {
+      void this.app.workspace.openLinkText(file.path, "");
+    });
+    if (preview) {
+      el.createDiv({ cls: "random-note-preview", text: preview });
+    }
+    const footer = el.createDiv({ cls: "random-note-footer" });
+    footer.createSpan({ cls: "random-note-filename", text: file.basename });
+    const openBtn = footer.createEl("button", { cls: "random-note-open-btn", text: "Open" });
+    openBtn.addEventListener("click", () => {
+      void this.app.workspace.openLinkText(file.path, "");
+    });
+    this.requestAutoHeight();
+  }
+  extractPreview(content, fmEnd) {
+    const afterFm = content.slice(fmEnd);
+    for (const line of afterFm.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("!") && !trimmed.startsWith("```") && !trimmed.startsWith("---")) {
+        const capped = trimmed.slice(0, 500);
+        return capped.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1").slice(0, 200);
+      }
+    }
+    return "";
+  }
+  openSettings(onSave) {
+    new RandomNoteSettingsModal(this.app, this.instance.config, onSave).open();
+  }
+};
+var RandomNoteSettingsModal = class extends import_obsidian20.Modal {
+  constructor(app, config, onSave) {
+    super(app);
+    this.config = config;
+    this.onSave = onSave;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian20.Setting(contentEl).setName("Random note settings").setHeading();
+    const draft = structuredClone(this.config);
+    new import_obsidian20.Setting(contentEl).setName("Tag filter").setDesc("Required. Only notes with this tag are candidates.").addText(
+      (t) => t.setPlaceholder("#tag or tag").setValue(draft.tag ?? "").onChange((v) => {
+        draft.tag = v.trim();
+      })
+    );
+    new import_obsidian20.Setting(contentEl).setName("Daily seed").setDesc("Show the same note all day; changes at midnight.").addToggle(
+      (t) => t.setValue(draft.dailySeed ?? false).onChange((v) => {
+        draft.dailySeed = v;
+      })
+    );
+    new import_obsidian20.Setting(contentEl).setName("Show cover image").addToggle(
+      (t) => t.setValue(draft.showImage ?? true).onChange((v) => {
+        draft.showImage = v;
+      })
+    );
+    new import_obsidian20.Setting(contentEl).setName("Cover image property").setDesc("Frontmatter property name that holds the image path.").addText(
+      (t) => t.setPlaceholder("Cover").setValue(draft.imageProperty ?? "").onChange((v) => {
+        draft.imageProperty = v.trim() || "cover";
+      })
+    );
+    new import_obsidian20.Setting(contentEl).setName("Title property").setDesc("Frontmatter property for the note title. Falls back to filename.").addText(
+      (t) => t.setPlaceholder("Title").setValue(draft.titleProperty ?? "title").onChange((v) => {
+        draft.titleProperty = v.trim() || "title";
+      })
+    );
+    new import_obsidian20.Setting(contentEl).setName("Show content preview").setDesc("Show first paragraph or frontmatter description/excerpt.").addToggle(
+      (t) => t.setValue(draft.showPreview ?? true).onChange((v) => {
+        draft.showPreview = v;
+      })
+    );
+    new import_obsidian20.Setting(contentEl).addButton(
+      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
+        this.onSave(draft);
+        this.close();
+      })
+    ).addButton(
+      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
+    );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
 // src/main.ts
 var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
 function isOpenMode(v) {
@@ -10115,6 +10325,9 @@ function migrateBlockInstance(b) {
     cfg._hideBorder = true;
     cfg._hideBackground = true;
     delete cfg._transparent;
+  }
+  if (m.type === "button-grid" && cfg && typeof cfg.columns === "number" && cfg.columns > 3) {
+    cfg.columns = 3;
   }
   if (cfg && typeof cfg.title === "string") {
     if (cfg.title && !cfg._titleLabel) {
@@ -10264,8 +10477,15 @@ function registerBlocks() {
     defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin)
   });
+  BlockRegistry.register({
+    type: "random-note",
+    displayName: "Random note",
+    defaultConfig: { _titleLabel: "Random note", tag: "", dailySeed: false, imageProperty: "cover", titleProperty: "title", showImage: true, showPreview: true },
+    defaultSize: { w: 1, h: 4 },
+    create: (app, instance, plugin) => new RandomNoteBlock(app, instance, plugin)
+  });
 }
-var HomepagePlugin = class extends import_obsidian20.Plugin {
+var HomepagePlugin = class extends import_obsidian21.Plugin {
   layout = getDefaultLayout();
   async onload() {
     registerBlocks();
@@ -10369,7 +10589,7 @@ var HomepagePlugin = class extends import_obsidian20.Plugin {
     if (this.layout.pin) leaf.setPinned(true);
   }
 };
-var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
+var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -10382,13 +10602,13 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
       "replace-last": "Replace active tab",
       "replace-all": "Close all tabs"
     };
-    new import_obsidian20.Setting(containerEl).setName("Open on startup").setDesc("Automatically open the homepage when Obsidian starts.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Open on startup").setDesc("Automatically open the homepage when Obsidian starts.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.openOnStartup).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
       })
     );
     if (this.plugin.layout.openOnStartup) {
-      new import_obsidian20.Setting(containerEl).setName("Startup open mode").setDesc("How to handle existing tabs when opening homepage on startup.").addDropdown((drop) => {
+      new import_obsidian21.Setting(containerEl).setName("Startup open mode").setDesc("How to handle existing tabs when opening homepage on startup.").addDropdown((drop) => {
         for (const [value, label] of Object.entries(openModeOptions)) {
           drop.addOption(value, label);
         }
@@ -10398,12 +10618,12 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         });
       });
     }
-    new import_obsidian20.Setting(containerEl).setName("Open when empty").setDesc("Automatically open the homepage when all tabs are closed.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Open when empty").setDesc("Automatically open the homepage when all tabs are closed.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.openWhenEmpty).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Manual open mode").setDesc("How to handle existing tabs when opening homepage via command or ribbon.").addDropdown((drop) => {
+    new import_obsidian21.Setting(containerEl).setName("Manual open mode").setDesc("How to handle existing tabs when opening homepage via command or ribbon.").addDropdown((drop) => {
       for (const [value, label] of Object.entries(openModeOptions)) {
         drop.addOption(value, label);
       }
@@ -10412,7 +10632,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
       });
     });
-    new import_obsidian20.Setting(containerEl).setName("Pin homepage tab").setDesc("Pin the homepage tab so it cannot be accidentally closed.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Pin homepage tab").setDesc("Pin the homepage tab so it cannot be accidentally closed.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.pin).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -10420,12 +10640,12 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Default columns").setDesc("Number of columns in the grid layout.").addDropdown(
+    new import_obsidian21.Setting(containerEl).setName("Default columns").setDesc("Number of columns in the grid layout.").addDropdown(
       (drop) => drop.addOption("2", "2 columns").addOption("3", "3 columns").addOption("4", "4 columns").addOption("5", "5 columns").setValue(String(this.plugin.layout.columns)).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage \u2014 content is still scrollable.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage \u2014 content is still scrollable.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.hideScrollbar).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -10433,7 +10653,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the original default layout \u2014 cannot be undone.").addButton(
+    new import_obsidian21.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the original default layout \u2014 cannot be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
         await this.plugin.saveLayout(getDefaultLayout());
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -10443,8 +10663,8 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })())
     );
-    new import_obsidian20.Setting(containerEl).setName("Export / import").setHeading();
-    new import_obsidian20.Setting(containerEl).setName("Export layout").setDesc("Copy the current layout to clipboard as JSON.").addButton(
+    new import_obsidian21.Setting(containerEl).setName("Export / import").setHeading();
+    new import_obsidian21.Setting(containerEl).setName("Export layout").setDesc("Copy the current layout to clipboard as JSON.").addButton(
       (btn) => btn.setButtonText("Copy to clipboard").onClick(() => void (async () => {
         try {
           const json = JSON.stringify(this.plugin.layout, null, 2);
@@ -10458,7 +10678,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }, 2e3);
       })())
     );
-    new import_obsidian20.Setting(containerEl).setName("Import layout").setDesc("Paste a previously exported layout JSON to restore it.").addButton(
+    new import_obsidian21.Setting(containerEl).setName("Import layout").setDesc("Paste a previously exported layout JSON to restore it.").addButton(
       (btn) => btn.setButtonText("Import from clipboard").onClick(() => void (async () => {
         try {
           const text = await navigator.clipboard.readText();
@@ -10486,7 +10706,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })())
     );
-    new import_obsidian20.Setting(containerEl).setName("Layout presets").setHeading();
+    new import_obsidian21.Setting(containerEl).setName("Layout presets").setHeading();
     containerEl.createEl("p", {
       text: "Load a preset layout. This will replace your current layout.",
       cls: "setting-item-description"
@@ -10558,7 +10778,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
     }
   }
 };
-var ConfirmPresetModal = class extends import_obsidian20.Modal {
+var ConfirmPresetModal = class extends import_obsidian21.Modal {
   constructor(app, presetName, onConfirm) {
     super(app);
     this.presetName = presetName;
@@ -10567,9 +10787,9 @@ var ConfirmPresetModal = class extends import_obsidian20.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian20.Setting(contentEl).setName("Load preset?").setHeading();
+    new import_obsidian21.Setting(contentEl).setName("Load preset?").setHeading();
     contentEl.createEl("p", { text: `This will replace your current layout with the "${this.presetName}" preset. This cannot be undone.` });
-    new import_obsidian20.Setting(contentEl).addButton(
+    new import_obsidian21.Setting(contentEl).addButton(
       (btn) => btn.setButtonText("Load preset").setWarning().onClick(() => {
         void Promise.resolve(this.onConfirm()).catch((e) => console.error("[Homepage Blocks] Preset apply failed:", e));
         this.close();

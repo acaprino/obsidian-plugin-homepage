@@ -231,8 +231,40 @@
   --_accent-header-text: var(--_bright-text);
 }
 
-.theme-dark .block-accented.block-bright-accent .block-content {
+/* Re-assert overrides on .block-content and .markdown-rendered so Obsidian theme
+   rules (e.g. .theme-dark .markdown-rendered { --text-normal: #dcddde }) that
+   re-declare variables on an intermediate element cannot shadow our overrides. */
+.theme-dark .block-accented.block-bright-accent .block-content,
+.theme-dark .block-accented.block-bright-accent .markdown-rendered {
+  --text-normal: var(--_bright-text);
+  --text-muted: rgba(0, 0, 0, 0.6);
+  --text-faint: rgba(0, 0, 0, 0.5);
+  --text-accent: var(--_bright-interactive);
+  --text-accent-hover: var(--_bright-interactive-hover);
+  --color-accent: var(--_bright-interactive);
+  --interactive-accent: var(--_bright-interactive);
+  --interactive-accent-hover: var(--_bright-interactive-hover);
+  --checkbox-color: var(--_bright-interactive);
+  --checkbox-color-hover: var(--_bright-interactive-hover);
+  --link-color: var(--_bright-interactive);
+  --link-color-hover: var(--_bright-interactive-hover);
+  --hr-color: rgba(0, 0, 0, 0.2);
   color: var(--_bright-text);
+}
+
+/* Force direct color on task items and links inside bright-accent MarkdownRenderer
+   in case theme applies color via a more specific selector. */
+.theme-dark .block-accented.block-bright-accent .task-list-item {
+  color: var(--_bright-text);
+}
+.theme-dark .block-accented.block-bright-accent .task-list-item.is-checked {
+  color: rgba(0, 0, 0, 0.5);
+}
+.theme-dark .block-accented.block-bright-accent a {
+  color: var(--_bright-interactive);
+}
+.theme-dark .block-accented.block-bright-accent hr {
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 /* Hide header accent — keep card border/bg tint but neutralize header zone */

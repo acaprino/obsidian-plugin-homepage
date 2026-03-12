@@ -228,6 +228,7 @@ export const EMOJI_PICKER_SET: [string, string][] = [
   ['⚖','balance scale justice fair equal weigh measure law court judge decide compare evaluate values ethics morals principles equity rights harmony'],
   ['♾','infinity forever endless eternal unlimited boundless perpetual continuous loop beyond limitless timeless always everlasting immeasurable vast cosmic absolute ultimate constant'],
   ['🪄','magic wand spell enchant wizard cast transform miracle power trick illusion sorcery fantasy mystical supernatural charm conjure abracadabra fairy dream'],
+  ['🧙','wizard mage sorcerer witch warlock fantasy spell magic enchant mystical conjure potion robes hat staff supernatural arcane occult mythical legendary person'],
   ['🛠','tools hammer wrench fix repair build maintain service kit utility workshop garage mechanic engineer construct assemble hardware equipment DIY craft'],
   ['🪶','feather light write quill bird soft gentle pen airy delicate float breeze wispy plume calligraphy wing nature elegant weightless drift'],
   ['🫧','bubbles soap float pop clean shiny transparent foam light airy sparkle iridescent wash rinse lather playful delicate fragile sphere drift'],

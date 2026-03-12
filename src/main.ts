@@ -5,7 +5,6 @@ import { BlockRegistry } from './BlockRegistry';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
 import { FolderLinksBlock } from './blocks/FolderLinksBlock';
-import { InsightBlock } from './blocks/InsightBlock';
 import { ButtonGridBlock } from './blocks/ButtonGridBlock';
 import { QuotesListBlock } from './blocks/QuotesListBlock';
 import { ImageGalleryBlock } from './blocks/ImageGalleryBlock';
@@ -119,8 +118,17 @@ function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknow
   delete m.colSpan;
   delete m.rowSpan;
   delete m.newRow;
-  // Migrate legacy type rename: tag-grid → button-grid
+  // Migrate legacy type renames
   if (m.type === 'tag-grid') { m.type = 'button-grid'; }
+  if (m.type === 'insight') {
+    m.type = 'quotes-list';
+    const cfg = m.config as Record<string, unknown> | undefined;
+    if (cfg) {
+      cfg.mode = 'single';
+      cfg.source = 'tag';
+      cfg.dailySeed ??= true;
+    }
+  }
   // Migrate legacy _transparent flag to granular flags.
   const cfg = m.config as Record<string, unknown> | undefined;
   if (cfg && cfg._transparent === true) {
@@ -238,13 +246,6 @@ function registerBlocks(): void {
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),
   });
 
-  BlockRegistry.register({
-    type: 'insight',
-    displayName: 'Daily insight',
-    defaultConfig: { tag: '', _titleLabel: 'Daily insight', dailySeed: true },
-    defaultSize: { w: 2, h: 3 },
-    create: (app, instance, plugin) => new InsightBlock(app, instance, plugin),
-  });
 
   BlockRegistry.register({
     type: 'button-grid',
@@ -257,7 +258,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'quotes-list',
     displayName: 'Quotes list',
-    defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20 },
+    defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20, quoteStyle: 'classic', fontStyle: 'default', customFont: '', mode: 'list', dailySeed: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
   });

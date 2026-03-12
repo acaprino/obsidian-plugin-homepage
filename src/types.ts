@@ -2,7 +2,7 @@ import { App } from 'obsidian';
 import type { BaseBlock } from './blocks/BaseBlock';
 
 export const BLOCK_TYPES = [
-  'greeting', 'folder-links', 'insight', 'button-grid',
+  'greeting', 'folder-links', 'button-grid',
   'quotes-list', 'image-gallery', 'clock', 'embedded-note',
   'static-text', 'html', 'video-embed',
   'bookmarks', 'recent-files', 'pomodoro', 'spacer', 'random-note',

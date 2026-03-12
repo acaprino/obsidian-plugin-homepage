@@ -109,7 +109,7 @@
   height: 100%;
   min-width: 0;
   box-sizing: border-box;
-  container-type: inline-size;
+  container-type: size;
   backdrop-filter: var(--hp-backdrop-blur, none);
   -webkit-backdrop-filter: var(--hp-backdrop-blur, none);
   transition:
@@ -602,7 +602,7 @@
 }
 
 /* Very short block: keep row layout and shrink gaps so it fits *even* if narrow */
-@container (max-height: 110px) {
+@container (max-height: 160px) {
   .homepage-block-wrapper .block-content.greeting-block {
     flex-direction: row !important;
     justify-content: center !important;
@@ -2842,36 +2842,34 @@
 }
 
 /* Very small/flat card: controls left (stacked), timer right */
-@container (max-height: 140px) {
+@container (max-height: 180px) {
   .pomodoro-container {
-    flex-direction: row;
+    flex-direction: row-reverse;
     gap: 16px;
     justify-content: center;
+    padding: 0; /* Remove vertical padding to maximize space */
   }
   .pomodoro-ring {
-    /* If the height is very small, we use cqh but allow it to be larger than standard */
     --ring-size: min(85cqh, 80cqw, 100px);
   }
   .pomodoro-time {
-    font-size: clamp(1rem, 25cqh, 1.5rem);
+    font-size: clamp(1rem, 25cqh, 1.4rem);
   }
   .pomodoro-controls {
     flex-direction: column;
-    gap: 6px;
-    align-items: flex-start;
+    gap: 4px;
+    align-items: flex-end; /* Align buttons to right edge facing the ring, or center? user wants colonna a sinistra */
   }
   .pomodoro-btn {
-    padding: 3px 10px;
+    padding: 2px 8px;
     font-size: 0.7rem;
     width: 65px;
+    min-height: 22px;
+    flex-shrink: 0;
+    line-height: 1; /* Prevent internal text from causing flex-squish */
   }
   .pomodoro-phase,
   .pomodoro-dots { display: none; }
-}
-
-/* Small card (moderate height): just hide phase label to save space */
-@container (max-height: 180px) and (min-height: 141px) {
-  .pomodoro-phase { display: none; }
 }
 
 /* ── Layout Preset Cards ───────────────────────────────── */

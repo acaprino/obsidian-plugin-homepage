@@ -4,6 +4,19 @@
  */
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+function hexChannelToLinear(c: number): number {
+  const s = c / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+
+function getRelativeLuminance(hex: string): number {
+  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
+  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
+  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 const VALID_BORDER_STYLES = ['solid', 'dashed', 'dotted'];
 
 export function applyBlockStyling(el: HTMLElement, config: Record<string, unknown>): void {
@@ -23,9 +36,18 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
     } else {
       el.style.removeProperty('--block-accent-pct');
     }
+    // Detect bright accent backgrounds that need dark text.
+    // Uses accent luminance × effective intensity to approximate background
+    // brightness — avoids reading computed CSS vars at runtime.
+    const effectiveIntensity = intensity || 15; // match CSS default (15%)
+    // Threshold 0.15 catches near-white accents at the CSS default 15% intensity
+    // (e.g. #ffffff × 0.15 = 0.15 ≥ 0.15) and yellow at ≥17% intensity.
+    const needsDarkText = getRelativeLuminance(accentColor) * (effectiveIntensity / 100) >= 0.15;
+    el.toggleClass('block-bright-accent', needsDarkText);
   } else {
     el.style.removeProperty('--block-accent');
     el.style.removeProperty('--block-accent-pct');
+    el.toggleClass('block-bright-accent', false);
   }
 
   // ── Visibility flags ───────────────────────────────────────────────

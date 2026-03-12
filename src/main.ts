@@ -17,6 +17,7 @@ import { BookmarkBlock } from './blocks/BookmarkBlock';
 import { RecentFilesBlock } from './blocks/RecentFilesBlock';
 import { PomodoroBlock } from './blocks/PomodoroBlock';
 import { SpacerBlock } from './blocks/SpacerBlock';
+import { RandomNoteBlock } from './blocks/RandomNoteBlock';
 
 // ── Default layout ──────────────────────────────────────────────────────────
 
@@ -126,6 +127,10 @@ function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknow
     cfg._hideBorder = true;
     cfg._hideBackground = true;
     delete cfg._transparent;
+  }
+  // Clamp button-grid columns to the supported range [1, 3].
+  if (m.type === 'button-grid' && cfg && typeof cfg.columns === 'number' && cfg.columns > 3) {
+    cfg.columns = 3;
   }
   // Migrate per-block title to shared _titleLabel system.
   if (cfg && typeof cfg.title === 'string') {
@@ -327,6 +332,14 @@ function registerBlocks(): void {
     defaultConfig: { _hideTitle: true, _hideBorder: true, _hideBackground: true, _hideHeaderAccent: true },
     defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin),
+  });
+
+  BlockRegistry.register({
+    type: 'random-note',
+    displayName: 'Random note',
+    defaultConfig: { _titleLabel: 'Random note', tag: '', dailySeed: false, imageProperty: 'cover', titleProperty: 'title', showImage: true, showPreview: true },
+    defaultSize: { w: 1, h: 4 },
+    create: (app, instance, plugin) => new RandomNoteBlock(app, instance, plugin),
   });
 }
 

@@ -204,6 +204,19 @@
   background: var(--_accent-divider);
 }
 
+/* Bright accent: force dark text so content stays readable on light/bright backgrounds.
+   Scoped to .theme-dark only — on light themes --text-normal is already dark and
+   the card background (dark bg + bright accent) is already light enough. */
+.theme-dark .block-accented.block-bright-accent {
+  --text-normal: #1a1a1a;
+  --text-muted: rgba(0, 0, 0, 0.6);
+  --text-faint: rgba(0, 0, 0, 0.35);
+}
+
+.theme-dark .block-accented.block-bright-accent .block-content {
+  color: #1a1a1a;
+}
+
 /* Hide header accent — keep card border/bg tint but neutralize header zone */
 .block-accented.block-no-header-accent .block-header-zone {
   background: transparent;
@@ -805,6 +818,85 @@
   line-height: 1.6;
 }
 
+/* ── Random Note Block ──────────────────────────────────── */
+.random-note-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 80px;
+}
+
+.random-note-cover {
+  width: 100%;
+  max-height: 200px;
+  flex: 0 1 auto;
+  object-fit: contain;
+  object-position: center;
+  border-radius: var(--radius-s, 4px);
+  display: block;
+}
+
+.random-note-title {
+  appearance: none;
+  background: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  font-weight: 600;
+  font-size: 1em;
+  color: var(--text-accent, var(--color-accent));
+  cursor: pointer;
+  line-height: 1.35;
+  font-family: inherit;
+}
+
+.random-note-title:hover {
+  text-decoration: underline;
+}
+
+.random-note-preview {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.random-note-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.random-note-filename {
+  font-size: 0.8em;
+  color: var(--text-faint, var(--text-muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.random-note-open-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent, #fff);
+  border: none;
+  border-radius: var(--radius-s, 4px);
+  padding: 3px 10px;
+  font-size: 0.82em;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease-out;
+}
+
+.random-note-open-btn:hover {
+  background: var(--interactive-accent-hover, var(--interactive-accent));
+}
+
 /* ── Button Grid Block ──────────────────────────────────── */
 .button-grid-block {
   container-type: inline-size;
@@ -842,18 +934,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* ── Button Grid responsive ───────────────────────────── */
-@container (max-width: 300px) {
-  .button-grid {
-    grid-template-columns: 1fr !important;
-    gap: 6px;
-  }
-  .grid-btn {
-    padding: 6px 10px;
-    font-size: 0.9em;
-  }
 }
 
 .grid-btn:hover {

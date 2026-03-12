@@ -6041,8 +6041,12 @@ function applyBlockStyling(el, config) {
     } else {
       el.style.removeProperty("--block-accent-pct");
     }
+    const DARK_BASE_LUM = 0.05;
+    const BRIGHT_ACCENT_THRESHOLD = 0.18;
     const effectiveIntensity = intensity || 15;
-    const needsDarkText = getRelativeLuminance(accentColor) * (effectiveIntensity / 100) >= 0.15;
+    const ratio = effectiveIntensity / 100;
+    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
+    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
     el.toggleClass("block-bright-accent", needsDarkText);
   } else {
     el.style.removeProperty("--block-accent");
@@ -6079,7 +6083,7 @@ function applyBlockStyling(el, config) {
   if (gradStart && gradEnd && config._hideBackground !== true) {
     el.style.setProperty("--hp-bg-gradient", `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
     el.toggleClass("block-has-gradient", true);
-  } else if (config._hideBackground !== true) {
+  } else {
     el.style.removeProperty("--hp-bg-gradient");
     el.toggleClass("block-has-gradient", false);
   }
@@ -6385,6 +6389,7 @@ var GridLayout = class {
     if (instance.type === "quotes-list") return heightMode === "extend";
     if (instance.type === "embedded-note" && heightMode === "grow") return true;
     if (instance.type === "static-text") return heightMode !== "fixed";
+    if (instance.type === "random-note") return true;
     return false;
   }
   setupCollapseToggle(gsEl, instance, headerZone) {
@@ -8217,7 +8222,7 @@ var ButtonGridBlock = class extends BaseBlock {
     this.renderHeader(el, "Buttons");
     const grid = el.createDiv({ cls: "button-grid" });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
-    grid.style.gridTemplateColumns = `repeat(${safeCols}, 1fr)`;
+    grid.style.setProperty("--hp-grid-cols", `repeat(${safeCols}, 1fr)`);
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F532}" });
@@ -10008,11 +10013,18 @@ var SpacerBlock = class extends BaseBlock {
 var import_obsidian20 = require("obsidian");
 var MS_PER_DAY2 = 864e5;
 var DEBOUNCE_MS6 = 500;
+var DELETE_RENAME_DEBOUNCE_MS = 2e3;
 function stripWikiLink(raw) {
   const m = raw.match(/^\[\[(.+?)(?:\|.*)?\]\]$/);
   return m ? m[1] : raw;
 }
 var RandomNoteBlock = class extends BaseBlock {
+  /** Cached daily-seed file path so the selection is stable across file-count changes. */
+  dailyCache = null;
+  getTag() {
+    const { tag = "" } = this.instance.config;
+    return tag;
+  }
   render(el) {
     this.containerEl = el;
     el.addClass("random-note-block");
@@ -10020,21 +10032,23 @@ var RandomNoteBlock = class extends BaseBlock {
       e.empty();
       return this.loadAndRender(e);
     });
+    const slowTrigger = () => this.scheduleRender(DELETE_RENAME_DEBOUNCE_MS, (e) => {
+      e.empty();
+      return this.loadAndRender(e);
+    });
     this.registerEvent(this.app.metadataCache.on("changed", (_file, _data, cache) => {
-      const { tag = "" } = this.instance.config;
+      const tag = this.getTag();
       if (!tag) return;
       const tagSearch = tag.startsWith("#") ? tag : `#${tag}`;
       if (cacheHasTag(cache, tagSearch)) trigger();
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
-      const { tag = "" } = this.instance.config;
-      if (!tag || !file.path.endsWith(".md")) return;
-      trigger();
+      if (!this.getTag() || !file.path.endsWith(".md")) return;
+      slowTrigger();
     }));
     this.registerEvent(this.app.vault.on("rename", (file) => {
-      const { tag = "" } = this.instance.config;
-      if (!tag || !file.path.endsWith(".md")) return;
-      trigger();
+      if (!this.getTag() || !file.path.endsWith(".md")) return;
+      slowTrigger();
     }));
     this.loadAndRender(el).catch((e) => {
       console.error("[Homepage Blocks] RandomNoteBlock failed to render:", e);
@@ -10067,9 +10081,7 @@ var RandomNoteBlock = class extends BaseBlock {
       });
       return;
     }
-    const dayIndex = Math.floor((0, import_obsidian20.moment)().startOf("day").valueOf() / MS_PER_DAY2);
-    const idx = dailySeed ? dayIndex % files.length : Math.floor(Math.random() * files.length);
-    const file = files[idx];
+    const file = this.pickFile(files, dailySeed);
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter ?? {};
     let preview = "";
@@ -10088,17 +10100,20 @@ var RandomNoteBlock = class extends BaseBlock {
       }
     }
     if (this.isStale(gen)) return;
+    el.setAttribute("data-auto-height-content", "");
+    this.observeWidthForAutoHeight(el);
     if (showImage) {
       const rawProp = fm[imageProperty];
       const rawImage = typeof rawProp === "string" ? rawProp : Array.isArray(rawProp) && typeof rawProp[0] === "string" ? rawProp[0] : "";
       if (rawImage) {
         const trimmed = rawImage.trim();
         let imgSrc = "";
-        if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) {
+        if (trimmed.startsWith("https://")) {
           imgSrc = trimmed;
         } else {
           const imagePath = stripWikiLink(trimmed);
-          const imageFile = this.app.vault.getAbstractFileByPath(imagePath) ?? this.app.vault.getFiles().find((f) => f.name === imagePath || f.path === imagePath) ?? null;
+          const resolved = this.app.metadataCache.getFirstLinkpathDest(imagePath, file.path);
+          const imageFile = resolved ?? this.app.vault.getAbstractFileByPath(imagePath) ?? null;
           if (imageFile instanceof import_obsidian20.TFile) {
             imgSrc = this.app.vault.getResourcePath(imageFile);
           }
@@ -10127,6 +10142,20 @@ var RandomNoteBlock = class extends BaseBlock {
       void this.app.workspace.openLinkText(file.path, "");
     });
     this.requestAutoHeight();
+  }
+  /** Pick the file to display. Daily seed caches the path so the selection
+   *  is stable even when the tagged-file count changes mid-day. */
+  pickFile(files, dailySeed) {
+    if (!dailySeed) return files[Math.floor(Math.random() * files.length)];
+    const dayIndex = Math.floor((0, import_obsidian20.moment)().startOf("day").valueOf() / MS_PER_DAY2);
+    if (this.dailyCache?.dayIndex === dayIndex) {
+      const cached = files.find((f) => f.path === this.dailyCache.path);
+      if (cached) return cached;
+    }
+    const idx = dayIndex % files.length;
+    const picked = files[idx];
+    this.dailyCache = { dayIndex, path: picked.path };
+    return picked;
   }
   extractPreview(content, fmEnd) {
     const afterFm = content.slice(fmEnd);

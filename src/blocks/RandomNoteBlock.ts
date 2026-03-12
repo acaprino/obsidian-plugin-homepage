@@ -4,6 +4,7 @@ import { BaseBlock } from './BaseBlock';
 
 const MS_PER_DAY = 86_400_000;
 const DEBOUNCE_MS = 500;
+const DELETE_RENAME_DEBOUNCE_MS = 2000;
 
 /** Strip [[...]] wiki-link syntax to get the raw path */
 function stripWikiLink(raw: string): string {
@@ -12,29 +13,36 @@ function stripWikiLink(raw: string): string {
 }
 
 export class RandomNoteBlock extends BaseBlock {
+  /** Cached daily-seed file path so the selection is stable across file-count changes. */
+  private dailyCache: { dayIndex: number; path: string } | null = null;
+
+  private getTag(): string {
+    const { tag = '' } = this.instance.config as { tag?: string };
+    return tag;
+  }
+
   render(el: HTMLElement): void {
     this.containerEl = el;
     el.addClass('random-note-block');
 
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
+    const slowTrigger = () => this.scheduleRender(DELETE_RENAME_DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
 
     this.registerEvent(this.app.metadataCache.on('changed', (_file, _data, cache) => {
-      const { tag = '' } = this.instance.config as { tag?: string };
+      const tag = this.getTag();
       if (!tag) return;
       const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
       if (cacheHasTag(cache, tagSearch)) trigger();
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
-      const { tag = '' } = this.instance.config as { tag?: string };
-      if (!tag || !file.path.endsWith('.md')) return;
-      trigger();
+      if (!this.getTag() || !file.path.endsWith('.md')) return;
+      slowTrigger();
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file) => {
-      const { tag = '' } = this.instance.config as { tag?: string };
-      if (!tag || !file.path.endsWith('.md')) return;
-      trigger();
+      if (!this.getTag() || !file.path.endsWith('.md')) return;
+      slowTrigger();
     }));
 
     this.loadAndRender(el).catch(e => {
@@ -82,11 +90,7 @@ export class RandomNoteBlock extends BaseBlock {
       return;
     }
 
-    const dayIndex = Math.floor(moment().startOf('day').valueOf() / MS_PER_DAY);
-    const idx = dailySeed
-      ? dayIndex % files.length
-      : Math.floor(Math.random() * files.length);
-    const file = files[idx];
+    const file = this.pickFile(files, dailySeed);
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter ?? {};
 
@@ -113,24 +117,29 @@ export class RandomNoteBlock extends BaseBlock {
 
     // ── Render all content atomically after async work completes ────────────
 
+    // Mark for auto-height measurement
+    el.setAttribute('data-auto-height-content', '');
+    this.observeWidthForAutoHeight(el);
+
     // Cover image — supports vault paths, [[wiki-links]], https:// URLs,
     // and Obsidian Properties arrays (takes first element).
     if (showImage) {
-      const rawProp = fm[imageProperty];
+      const rawProp: unknown = fm[imageProperty];
       // Obsidian Properties UI can store links as arrays — take first element
       const rawImage = typeof rawProp === 'string' ? rawProp
-        : Array.isArray(rawProp) && typeof rawProp[0] === 'string' ? rawProp[0] as string
+        : Array.isArray(rawProp) && typeof rawProp[0] === 'string' ? rawProp[0]
         : '';
       if (rawImage) {
         const trimmed = rawImage.trim();
         let imgSrc = '';
-        if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+        if (trimmed.startsWith('https://')) {
           imgSrc = trimmed;
         } else {
           const imagePath = stripWikiLink(trimmed);
-          // Try exact path first, then search all files by basename
-          const imageFile = this.app.vault.getAbstractFileByPath(imagePath)
-            ?? this.app.vault.getFiles().find(f => f.name === imagePath || f.path === imagePath)
+          // Use Obsidian's link resolution (O(1) via metadata cache index)
+          const resolved = this.app.metadataCache.getFirstLinkpathDest(imagePath, file.path);
+          const imageFile = resolved
+            ?? this.app.vault.getAbstractFileByPath(imagePath)
             ?? null;
           if (imageFile instanceof TFile) {
             imgSrc = this.app.vault.getResourcePath(imageFile);
@@ -170,6 +179,23 @@ export class RandomNoteBlock extends BaseBlock {
     });
 
     this.requestAutoHeight();
+  }
+
+  /** Pick the file to display. Daily seed caches the path so the selection
+   *  is stable even when the tagged-file count changes mid-day. */
+  private pickFile(files: TFile[], dailySeed: boolean): TFile {
+    if (!dailySeed) return files[Math.floor(Math.random() * files.length)];
+
+    const dayIndex = Math.floor(moment().startOf('day').valueOf() / MS_PER_DAY);
+    // Return cached pick if it's still valid for today
+    if (this.dailyCache?.dayIndex === dayIndex) {
+      const cached = files.find(f => f.path === this.dailyCache!.path);
+      if (cached) return cached;
+    }
+    const idx = dayIndex % files.length;
+    const picked = files[idx];
+    this.dailyCache = { dayIndex, path: picked.path };
+    return picked;
   }
 
   private extractPreview(content: string, fmEnd: number): string {

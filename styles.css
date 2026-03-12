@@ -208,28 +208,31 @@
    Scoped to .theme-dark only — on light themes --text-normal is already dark and
    the card background (dark bg + bright accent) is already light enough. */
 .theme-dark .block-accented.block-bright-accent {
-  --text-normal: #1a1a1a;
+  --_bright-text: #1a1a1a;
+  --_bright-interactive: #0b4f8a;
+  --_bright-interactive-hover: #083d6b;
+  --text-normal: var(--_bright-text);
   --text-muted: rgba(0, 0, 0, 0.6);
   --text-faint: rgba(0, 0, 0, 0.5);
   /* Override accent-derived control colors so links, checkboxes, and interactive
-     elements stay readable against the bright card background. */
-  --_ctrl: #1a1a1a;
-  --_ctrl-hover: #333333;
-  --interactive-accent: #1a1a1a;
-  --interactive-accent-hover: #333333;
-  --color-accent: #1a1a1a;
-  --color-accent-1: #333333;
-  --color-accent-2: #1a1a1a;
-  --text-accent: #1a1a1a;
-  --text-accent-hover: #333333;
-  --checkbox-color: #1a1a1a;
-  --checkbox-color-hover: #333333;
+     elements stay distinguishable from body text on the bright card background. */
+  --_ctrl: var(--_bright-interactive);
+  --_ctrl-hover: var(--_bright-interactive-hover);
+  --interactive-accent: var(--_bright-interactive);
+  --interactive-accent-hover: var(--_bright-interactive-hover);
+  --color-accent: var(--_bright-interactive);
+  --color-accent-1: var(--_bright-interactive-hover);
+  --color-accent-2: var(--_bright-interactive);
+  --text-accent: var(--_bright-interactive);
+  --text-accent-hover: var(--_bright-interactive-hover);
+  --checkbox-color: var(--_bright-interactive);
+  --checkbox-color-hover: var(--_bright-interactive-hover);
   /* Header text: override the accent-derived mix so it stays dark on the tinted bg */
-  --_accent-header-text: #1a1a1a;
+  --_accent-header-text: var(--_bright-text);
 }
 
 .theme-dark .block-accented.block-bright-accent .block-content {
-  color: #1a1a1a;
+  color: var(--_bright-text);
 }
 
 /* Hide header accent — keep card border/bg tint but neutralize header zone */
@@ -965,6 +968,18 @@
 
 .grid-btn-emoji {
   font-size: 1rem;
+}
+
+/* ── Button Grid responsive ───────────────────────────── */
+@container (max-width: 250px) {
+  .button-grid {
+    --hp-grid-cols: 1fr;
+    gap: 6px;
+  }
+  .grid-btn {
+    padding: 6px 10px;
+    font-size: 0.9em;
+  }
 }
 
 /* ── Quotes List Block ──────────────────────────────────── */

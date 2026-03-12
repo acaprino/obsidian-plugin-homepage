@@ -369,6 +369,7 @@ export class GridLayout {
     if (instance.type === 'quotes-list') return heightMode === 'extend';
     if (instance.type === 'embedded-note' && heightMode === 'grow') return true;
     if (instance.type === 'static-text') return heightMode !== 'fixed';
+    if (instance.type === 'random-note') return true;
     return false;
   }
 

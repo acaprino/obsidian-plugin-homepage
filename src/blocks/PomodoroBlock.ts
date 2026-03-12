@@ -22,6 +22,7 @@ interface TimerState {
   running: boolean;
 }
 const timerStore = new Map<string, TimerState>();
+let sharedAudioCtx: AudioContext | null = null;
 
 export class PomodoroBlock extends BaseBlock {
   private phase: PomodoroPhase = 'idle';
@@ -162,22 +163,104 @@ export class PomodoroBlock extends BaseBlock {
       longBreakMinutes = 15,
       sessionsBeforeLong = 4,
       workMinutes = 25,
-    } = this.instance.config as PomodoroConfig;
+      soundType = 'crystal',
+      autoStartCycle = false,
+    } = this.instance.config as PomodoroConfig & { soundType?: string, autoStartCycle?: boolean };
+
+    if (soundType !== 'none') {
+      PomodoroBlock.playNotificationSound(soundType as 'crystal' | 'chime' | 'bowl');
+    }
+
+    const previousPhase = this.phase;
 
     if (this.phase === 'work') {
       this.completedSessions++;
       if (this.completedSessions % sessionsBeforeLong === 0) {
         this.startPhase('longBreak', longBreakMinutes);
+        if (!autoStartCycle) this.running = false;
       } else {
         this.startPhase('break', breakMinutes);
+        if (!autoStartCycle) this.running = false;
       }
     } else {
-      // After break or long break, set up next work but pause
+      // After break or long break, set up next work
       this.phase = 'work';
       this.secondsLeft = workMinutes * 60;
       this.totalSeconds = this.secondsLeft;
-      this.running = false;
+      
+      // Auto-start next work phase if enabled, UNLESS we just finished a long break (cycle complete).
+      if (previousPhase === 'longBreak') {
+        this.running = false;
+        this.completedSessions = 0; // reset cycle
+      } else {
+        this.running = !!autoStartCycle;
+      }
       this.updateDisplay();
+      this.saveState();
+    }
+  }
+
+  public static playNotificationSound(type: 'crystal' | 'chime' | 'bowl'): void {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      
+      if (!sharedAudioCtx) {
+        sharedAudioCtx = new AudioContextClass();
+      }
+      const ctx = sharedAudioCtx;
+      // Many browsers suspend the audio context if it was created before user interaction.
+      if (ctx.state === 'suspended') {
+        // We aren't awaiting this since the sound schedule doesn't rely on it executing synchronously,
+        // but it will immediately process queued audio commands.
+        void ctx.resume();
+      }
+      
+      const t = ctx.currentTime;
+      
+      if (type === 'crystal') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.5, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 1);
+        osc.start(t);
+        osc.stop(t + 1.1);
+      } 
+      else if (type === 'chime') {
+        [800, 1000].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, t + i * 0.2);
+          gain.gain.setValueAtTime(0, t + i * 0.2);
+          gain.gain.linearRampToValueAtTime(0.3, t + i * 0.2 + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + i * 0.2 + 1);
+          osc.start(t + i * 0.2);
+          osc.stop(t + i * 0.2 + 1.1);
+        });
+      } 
+      else if (type === 'bowl') {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.6, t + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 4);
+        osc.start(t);
+        osc.stop(t + 4.1);
+      }
+    } catch (e) {
+      console.error('[Homepage] Audio playback failed', e);
     }
   }
 
@@ -334,6 +417,31 @@ class PomodoroSettingsModal extends Modal {
          .setValue(draft.sessionsBeforeLong as number ?? 4)
          .setDynamicTooltip()
          .onChange(v => { draft.sessionsBeforeLong = v; }),
+      );
+
+    new Setting(contentEl)
+      .setName('Notification sound')
+      .setDesc('Play a sound when a phase completes.')
+      .addDropdown(d => {
+        d.addOption('none', 'None')
+         .addOption('crystal', 'Crystal')
+         .addOption('chime', 'Chime')
+         .addOption('bowl', 'Singing Bowl')
+         .setValue((draft as any).soundType ?? 'crystal')
+         .onChange(v => {
+           (draft as any).soundType = v;
+           if (v !== 'none') {
+             PomodoroBlock.playNotificationSound(v as 'crystal' | 'chime' | 'bowl');
+           }
+         });
+      });
+
+    new Setting(contentEl)
+      .setName('Auto-start next session')
+      .setDesc('Automatically start the next phase of the cycle.')
+      .addToggle(t =>
+        t.setValue((draft as any).autoStartCycle ?? false)
+         .onChange(v => { (draft as any).autoStartCycle = v; }),
       );
 
     new Setting(contentEl)

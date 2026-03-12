@@ -6185,7 +6185,7 @@ var GridLayout = class _GridLayout {
       x: instance.x,
       y: instance.y,
       w: Math.min(instance.w, columns),
-      h: this.editMode ? COMPACT_EDIT_H : instance.h
+      h: this.editMode && this.shouldAutoHeight(instance) ? COMPACT_EDIT_H : instance.h
       // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
       // load() before we've added any DOM content, causing "firstElementChild is null".
       // We call resizeToContent() manually after building each block's DOM below.
@@ -6210,6 +6210,11 @@ var GridLayout = class _GridLayout {
       const gsEl = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
       if (!(gsEl instanceof HTMLElement)) continue;
       gsEl.setAttribute("role", "listitem");
+      if (this.shouldAutoHeight(instance)) {
+        gsEl.classList.add("is-auto-height");
+      } else {
+        gsEl.classList.remove("is-auto-height");
+      }
       const gsContent = gsEl.querySelector(".grid-stack-item-content");
       if (!(gsContent instanceof HTMLElement)) continue;
       const animDelayMs = isInitial ? [0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240 : void 0;
@@ -6250,18 +6255,10 @@ var GridLayout = class _GridLayout {
         this.attachEditHandles(wrapper, instance);
       }
     }
-    this.gridStack.on("dragstart", () => {
-      this.gridStack?.float(false);
-    });
     this.gridStack.on("dragstop", () => {
-      this.gridStack?.float(true);
       this.syncLayoutFromGrid();
     });
-    this.gridStack.on("resizestart", () => {
-      this.gridStack?.float(false);
-    });
     this.gridStack.on("resizestop", () => {
-      this.gridStack?.float(true);
       this.syncLayoutFromGrid();
     });
     const viewEl = this.gridEl.closest(".homepage-view");
@@ -6368,9 +6365,13 @@ var GridLayout = class _GridLayout {
    *  Returns true if the height was changed. */
   resizeBlockToContent(gsEl, instance) {
     if (!this.gridStack || !gsEl.isConnected) return false;
+    console.log(`%c[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`, "color: #ff00ff; font-size: 14px; font-weight: bold");
     const contentEl = gsEl.querySelector("[data-auto-height-content]");
     const headerZone = gsEl.querySelector(".block-header-zone");
-    if (!contentEl || !headerZone) return false;
+    if (!contentEl || !headerZone) {
+      console.log(`%c[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`, "color: #ffaa00");
+      return false;
+    }
     const blockContent = gsEl.querySelector(".block-content");
     if (blockContent) {
       blockContent.addClass("hp-no-transition");
@@ -6413,6 +6414,7 @@ var GridLayout = class _GridLayout {
     const heightMode = typeof hm === "string" ? hm : "";
     if (instance.type === "image-gallery") return heightMode !== "fixed";
     if (instance.type === "quotes-list") return heightMode === "extend";
+    if (instance.type === "button-grid") return true;
     if (instance.type === "embedded-note" && heightMode === "grow") return true;
     if (instance.type === "static-text") return heightMode !== "fixed";
     if (instance.type === "random-note") return true;
@@ -6611,14 +6613,16 @@ var GridLayout = class _GridLayout {
     const changed = this.plugin.layout.blocks.some((b) => {
       const pos = posMap.get(b.id);
       if (!pos) return false;
-      if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
+      const isAuto = this.shouldAutoHeight(b);
+      if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || !isAuto && b.h !== pos.h;
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
     if (!changed) return;
     const newBlocks = this.plugin.layout.blocks.map((b) => {
       const pos = posMap.get(b.id);
       if (!pos) return b;
-      const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+      const isAuto = this.shouldAutoHeight(b);
+      const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w, ...isAuto ? {} : { h: pos.h } } : pos;
       return { ...b, ...update };
     });
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
@@ -8195,6 +8199,8 @@ var ButtonGridBlock = class extends BaseBlock {
     const grid = el.createDiv({ cls: "button-grid" });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
     grid.style.setProperty("--hp-grid-cols", `repeat(${safeCols}, 1fr)`);
+    grid.setAttribute("data-auto-height-content", "");
+    this.observeWidthForAutoHeight(grid);
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F532}" });
@@ -8371,8 +8377,12 @@ var QuotesListBlock = class extends BaseBlock {
       fontStyle = "default",
       customFont = "",
       mode = "list",
-      dailySeed = true
+      dailySeed = true,
+      textAlign = "left",
+      verticalAlign = "top"
     } = this.instance.config;
+    el.style.setProperty("--hp-quote-valign", verticalAlign === "middle" ? "center" : verticalAlign === "bottom" ? "flex-end" : "flex-start");
+    el.style.setProperty("--hp-quote-align", textAlign === "center" ? "center" : textAlign === "right" ? "right" : "start");
     this.renderHeader(el, "Quotes");
     const safeMode = mode === "single" ? "single" : "list";
     const safeFontStyle = fontStyle === "serif" || fontStyle === "handwriting" ? fontStyle : "default";
@@ -8409,12 +8419,22 @@ var QuotesListBlock = class extends BaseBlock {
         if (this.isStale(gen)) return;
         const cache = this.app.metadataCache.getFileCache(file);
         const { heading, body } = parseNoteInsight(content, cache);
-        const card = el.createDiv({ cls: "insight-card" });
-        card.createDiv({ cls: "insight-title", text: heading || file.basename });
-        card.createDiv({ cls: "insight-body", text: body });
+        const card2 = el.createDiv({ cls: "insight-card" });
+        card2.createDiv({ cls: "insight-title", text: heading || file.basename });
+        card2.createDiv({ cls: "insight-body", text: body });
       } catch (e) {
         console.error("[Homepage Blocks] QuotesListBlock single mode failed to read file:", e);
         el.createDiv({ cls: "insight-card" }).setText("Error reading file.");
+      }
+      const card = el.querySelector(".insight-card");
+      if (card && heightMode === "extend") {
+        el.toggleClass("quotes-list-block--extend", true);
+        card.setAttribute("data-auto-height-content", "");
+        setTimeout(() => {
+          if (this.app.workspace.layoutReady) {
+            window.dispatchEvent(new CustomEvent("hp-block-height-changed", { detail: { blockId: this.instance.id } }));
+          }
+        }, 50);
       }
       return;
     }
@@ -8624,6 +8644,16 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
     new import_obsidian10.Setting(listSection).setName("Quote style").setDesc("Classic shows a left accent bar. Centered stacks quotes in one column. Card wraps each quote in its own box.").addDropdown(
       (d) => d.addOption("classic", "Classic").addOption("centered", "Centered").addOption("card", "Card").setValue(typeof draft.quoteStyle === "string" ? draft.quoteStyle : "classic").onChange((v) => {
         draft.quoteStyle = v === "centered" || v === "card" ? v : "classic";
+      })
+    );
+    new import_obsidian10.Setting(contentEl).setName("Text alignment").setDesc("Align text to the left, center, or right.").addDropdown(
+      (d) => d.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(typeof draft.textAlign === "string" ? draft.textAlign : "left").onChange((v) => {
+        draft.textAlign = v;
+      })
+    );
+    new import_obsidian10.Setting(contentEl).setName("Vertical alignment").setDesc("Align the quotes list or card vertically within the block.").addDropdown(
+      (d) => d.addOption("top", "Top").addOption("middle", "Middle").addOption("bottom", "Bottom").setValue(typeof draft.verticalAlign === "string" ? draft.verticalAlign : "top").onChange((v) => {
+        draft.verticalAlign = v;
       })
     );
     new import_obsidian10.Setting(contentEl).setName("Font style").setDesc("Preset font family. Overridden by a custom font below (line-height preset still applies).").addDropdown(
@@ -8842,7 +8872,7 @@ var ImageGalleryBlock = class extends BaseBlock {
       this.register(() => ro.disconnect());
     } else {
       const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
-      gallery.style.setProperty("--hp-grid-cols", responsiveGridColumns(safeCols, 150));
+      gallery.style.setProperty("--hp-grid-cols", responsiveGridColumns(safeCols, 100));
     }
     if (!folder) {
       const hint = gallery.createDiv({ cls: "block-empty-hint" });
@@ -8985,7 +9015,7 @@ var ImageGallerySettingsModal = class extends import_obsidian11.Modal {
       })
     );
     new import_obsidian11.Setting(contentEl).setName("Columns").addDropdown(
-      (d) => d.addOption("2", "2").addOption("3", "3").addOption("4", "4").setValue(String(typeof draft.columns === "number" ? draft.columns : 3)).onChange((v) => {
+      (d) => d.addOption("2", "2").addOption("3", "3").addOption("4", "4").addOption("5", "5").addOption("6", "6").setValue(String(typeof draft.columns === "number" ? draft.columns : 3)).onChange((v) => {
         draft.columns = Number(v);
       })
     );
@@ -9884,7 +9914,8 @@ var RecentFilesSettingsModal = class extends import_obsidian17.Modal {
 var import_obsidian18 = require("obsidian");
 var CIRCUMFERENCE = 2 * Math.PI * 52;
 var timerStore = /* @__PURE__ */ new Map();
-var PomodoroBlock = class extends BaseBlock {
+var sharedAudioCtx = null;
+var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
   phase = "idle";
   secondsLeft = 0;
   completedSessions = 0;
@@ -9989,21 +10020,90 @@ var PomodoroBlock = class extends BaseBlock {
       breakMinutes = 5,
       longBreakMinutes = 15,
       sessionsBeforeLong = 4,
-      workMinutes = 25
+      workMinutes = 25,
+      soundType = "crystal",
+      autoStartCycle = false
     } = this.instance.config;
+    if (soundType !== "none") {
+      _PomodoroBlock.playNotificationSound(soundType);
+    }
+    const previousPhase = this.phase;
     if (this.phase === "work") {
       this.completedSessions++;
       if (this.completedSessions % sessionsBeforeLong === 0) {
         this.startPhase("longBreak", longBreakMinutes);
+        if (!autoStartCycle) this.running = false;
       } else {
         this.startPhase("break", breakMinutes);
+        if (!autoStartCycle) this.running = false;
       }
     } else {
       this.phase = "work";
       this.secondsLeft = workMinutes * 60;
       this.totalSeconds = this.secondsLeft;
-      this.running = false;
+      if (previousPhase === "longBreak") {
+        this.running = false;
+        this.completedSessions = 0;
+      } else {
+        this.running = !!autoStartCycle;
+      }
       this.updateDisplay();
+      this.saveState();
+    }
+  }
+  static playNotificationSound(type) {
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return;
+      if (!sharedAudioCtx) {
+        sharedAudioCtx = new AudioContextClass();
+      }
+      const ctx = sharedAudioCtx;
+      if (ctx.state === "suspended") {
+        void ctx.resume();
+      }
+      const t = ctx.currentTime;
+      if (type === "crystal") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(1200, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.5, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 1);
+        osc.start(t);
+        osc.stop(t + 1.1);
+      } else if (type === "chime") {
+        [800, 1e3].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(freq, t + i * 0.2);
+          gain.gain.setValueAtTime(0, t + i * 0.2);
+          gain.gain.linearRampToValueAtTime(0.3, t + i * 0.2 + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.01, t + i * 0.2 + 1);
+          osc.start(t + i * 0.2);
+          osc.stop(t + i * 0.2 + 1.1);
+        });
+      } else if (type === "bowl") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(300, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.6, t + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 4);
+        osc.start(t);
+        osc.stop(t + 4.1);
+      }
+    } catch (e) {
+      console.error("[Homepage] Audio playback failed", e);
     }
   }
   startPhase(phase, minutes) {
@@ -10115,6 +10215,19 @@ var PomodoroSettingsModal = class extends import_obsidian18.Modal {
     new import_obsidian18.Setting(contentEl).setName("Sessions before long break").setDesc("Number of work sessions before a long break.").addSlider(
       (s) => s.setLimits(2, 8, 1).setValue(draft.sessionsBeforeLong ?? 4).setDynamicTooltip().onChange((v) => {
         draft.sessionsBeforeLong = v;
+      })
+    );
+    new import_obsidian18.Setting(contentEl).setName("Notification sound").setDesc("Play a sound when a phase completes.").addDropdown((d) => {
+      d.addOption("none", "None").addOption("crystal", "Crystal").addOption("chime", "Chime").addOption("bowl", "Singing Bowl").setValue(draft.soundType ?? "crystal").onChange((v) => {
+        draft.soundType = v;
+        if (v !== "none") {
+          PomodoroBlock.playNotificationSound(v);
+        }
+      });
+    });
+    new import_obsidian18.Setting(contentEl).setName("Auto-start next session").setDesc("Automatically start the next phase of the cycle.").addToggle(
+      (t) => t.setValue(draft.autoStartCycle ?? false).onChange((v) => {
+        draft.autoStartCycle = v;
       })
     );
     new import_obsidian18.Setting(contentEl).addButton(

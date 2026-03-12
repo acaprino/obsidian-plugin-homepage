@@ -104,7 +104,7 @@ export class GridLayout {
       x: instance.x,
       y: instance.y,
       w: Math.min(instance.w, columns),
-      h: this.editMode ? COMPACT_EDIT_H : instance.h,
+      h: (this.editMode && this.shouldAutoHeight(instance)) ? COMPACT_EDIT_H : instance.h,
       // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
       // load() before we've added any DOM content, causing "firstElementChild is null".
       // We call resizeToContent() manually after building each block's DOM below.
@@ -140,6 +140,11 @@ export class GridLayout {
 
       // ARIA: mark grid items as listitems to match parent role="list"
       gsEl.setAttribute('role', 'listitem');
+      if (this.shouldAutoHeight(instance)) {
+        gsEl.classList.add('is-auto-height');
+      } else {
+        gsEl.classList.remove('is-auto-height');
+      }
 
       // Find the GridStack item content container and populate it via Obsidian DOM API
       const gsContent = gsEl.querySelector('.grid-stack-item-content');
@@ -195,18 +200,13 @@ export class GridLayout {
       }
     }
 
-    // Temporarily disable float during drag/resize so items push/swap.
     // GridStack already compensates for CSS transform via getValuesFromTransformedElement
     // (dragTransform.xScale/yScale), so we do NOT need to clear the viewport-fit scale.
-    this.gridStack.on('dragstart', () => { this.gridStack?.float(false); });
     this.gridStack.on('dragstop', () => {
-      this.gridStack?.float(true);
       this.syncLayoutFromGrid();
     });
 
-    this.gridStack.on('resizestart', () => { this.gridStack?.float(false); });
     this.gridStack.on('resizestop', () => {
-      this.gridStack?.float(true);
       this.syncLayoutFromGrid();
     });
 
@@ -342,9 +342,14 @@ export class GridLayout {
   private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): boolean {
     if (!this.gridStack || !gsEl.isConnected) return false;
 
+    console.log(`%c[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`, 'color: #ff00ff; font-size: 14px; font-weight: bold');
+
     const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
     const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
-    if (!contentEl || !headerZone) return false;
+    if (!contentEl || !headerZone) {
+      console.log(`%c[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`, 'color: #ffaa00');
+      return false;
+    }
 
     // grid-template-rows: 1fr constrains the gallery to the available flex space.
     // Temporarily switch to max-content so the gallery reports its natural height.
@@ -406,6 +411,7 @@ export class GridLayout {
     const heightMode = typeof hm === 'string' ? hm : '';
     if (instance.type === 'image-gallery') return heightMode !== 'fixed';
     if (instance.type === 'quotes-list') return heightMode === 'extend';
+    if (instance.type === 'button-grid') return true;
     if (instance.type === 'embedded-note' && heightMode === 'grow') return true;
     if (instance.type === 'static-text') return heightMode !== 'fixed';
     if (instance.type === 'random-note') return true;
@@ -640,11 +646,13 @@ export class GridLayout {
     }
 
     // Skip save if nothing actually changed.
-    // In edit mode, only compare x/y/w — compact h values must not be saved.
+    // In edit mode, auto-height blocks only compare x/y/w — compact h values must not be saved.
+    // Fixed height blocks CAN be resized manually in edit mode, so we DO save their h.
     const changed = this.plugin.layout.blocks.some(b => {
       const pos = posMap.get(b.id);
       if (!pos) return false;
-      if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
+      const isAuto = this.shouldAutoHeight(b);
+      if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || (!isAuto && b.h !== pos.h);
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
     if (!changed) return;
@@ -652,7 +660,10 @@ export class GridLayout {
     const newBlocks = this.plugin.layout.blocks.map(b => {
       const pos = posMap.get(b.id);
       if (!pos) return b;
-      const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+      const isAuto = this.shouldAutoHeight(b);
+      const update = this.editMode 
+        ? { x: pos.x, y: pos.y, w: pos.w, ...(isAuto ? {} : { h: pos.h }) } 
+        : pos;
       return { ...b, ...update };
     });
 

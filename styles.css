@@ -582,7 +582,7 @@
 /* ── Greeting responsive ──────────────────────────────── */
 /* Narrow block: stack vertically, center content, large emoji */
 @container (max-width: 300px) {
-  .homepage-block-wrapper .block-content.greeting-block {
+  .block-content.greeting-block {
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -603,7 +603,7 @@
 
 /* Very short block: keep row layout and shrink gaps so it fits *even* if narrow */
 @container (max-height: 160px) {
-  .homepage-block-wrapper .block-content.greeting-block {
+  .block-content.greeting-block {
     flex-direction: row !important;
     justify-content: center !important;
     flex-wrap: nowrap;

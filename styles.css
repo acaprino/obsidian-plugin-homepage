@@ -210,7 +210,22 @@
 .theme-dark .block-accented.block-bright-accent {
   --text-normal: #1a1a1a;
   --text-muted: rgba(0, 0, 0, 0.6);
-  --text-faint: rgba(0, 0, 0, 0.35);
+  --text-faint: rgba(0, 0, 0, 0.5);
+  /* Override accent-derived control colors so links, checkboxes, and interactive
+     elements stay readable against the bright card background. */
+  --_ctrl: #1a1a1a;
+  --_ctrl-hover: #333333;
+  --interactive-accent: #1a1a1a;
+  --interactive-accent-hover: #333333;
+  --color-accent: #1a1a1a;
+  --color-accent-1: #333333;
+  --color-accent-2: #1a1a1a;
+  --text-accent: #1a1a1a;
+  --text-accent-hover: #333333;
+  --checkbox-color: #1a1a1a;
+  --checkbox-color-hover: #333333;
+  /* Header text: override the accent-derived mix so it stays dark on the tinted bg */
+  --_accent-header-text: #1a1a1a;
 }
 
 .theme-dark .block-accented.block-bright-accent .block-content {

@@ -580,20 +580,46 @@
 }
 
 /* ── Greeting responsive ──────────────────────────────── */
-/* Narrow block: stack vertically, center content */
+/* Narrow block: stack vertically, center content, large emoji */
 @container (max-width: 300px) {
   .homepage-block-wrapper .block-content.greeting-block {
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     text-align: center;
-    gap: 6px;
+    gap: 12px;
     min-height: auto;
   }
   .greeting-name {
-    font-size: clamp(1.25rem, 6cqi, 1.75rem);
+    font-size: clamp(1.1rem, 6cqi, 1.4rem);
+    line-height: 1.25;
+    white-space: normal;
   }
   .greeting-emoji {
-    font-size: clamp(1.5rem, 6cqi, 2rem);
+    font-size: clamp(2.5rem, 15cqi, 3.5rem);
+    margin-bottom: -4px;
+  }
+}
+
+/* Very short block: keep row layout and shrink gaps so it fits *even* if narrow */
+@container (max-height: 110px) {
+  .homepage-block-wrapper .block-content.greeting-block {
+    flex-direction: row !important;
+    justify-content: center !important;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 12px !important;
+  }
+  .greeting-name {
+    font-size: clamp(1rem, 5cqi, 1.3rem) !important;
+    text-align: left !important;
+  }
+  .greeting-emoji {
+    font-size: clamp(1.8rem, 8cqi, 2.5rem) !important;
+    margin-bottom: 0 !important;
+  }
+  .greeting-time {
+    display: none; /* Hide the time when extremely short */
   }
 }
 
@@ -2815,15 +2841,36 @@
   opacity: 0.9;
 }
 
-/* Very small card: hide dots and phase label, compact controls */
+/* Very small/flat card: controls left (stacked), timer right */
 @container (max-height: 140px) {
+  .pomodoro-container {
+    flex-direction: row;
+    gap: 16px;
+    justify-content: center;
+  }
+  .pomodoro-ring {
+    /* If the height is very small, we use cqh but allow it to be larger than standard */
+    --ring-size: min(85cqh, 80cqw, 100px);
+  }
+  .pomodoro-time {
+    font-size: clamp(1rem, 25cqh, 1.5rem);
+  }
+  .pomodoro-controls {
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .pomodoro-btn {
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    width: 65px;
+  }
   .pomodoro-phase,
   .pomodoro-dots { display: none; }
-  .pomodoro-container { gap: 2px; }
 }
 
-/* Small card: hide phase label */
-@container (max-height: 180px) {
+/* Small card (moderate height): just hide phase label to save space */
+@container (max-height: 180px) and (min-height: 141px) {
   .pomodoro-phase { display: none; }
 }
 

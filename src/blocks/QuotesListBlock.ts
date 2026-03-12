@@ -28,6 +28,8 @@ type QuotesConfig = {
   customFont?: string;
   mode?: 'list' | 'single';
   dailySeed?: boolean;
+  textAlign?: 'left' | 'center' | 'right';
+  verticalAlign?: 'top' | 'middle' | 'bottom';
 };
 
 export class QuotesListBlock extends BaseBlock {
@@ -64,7 +66,11 @@ export class QuotesListBlock extends BaseBlock {
       source = 'tag', tag = '', quotes = '', columns = 2, maxItems = 20,
       heightMode = 'extend', quoteStyle = 'classic', fontStyle = 'default',
       customFont = '', mode = 'list', dailySeed = true,
+      textAlign = 'left', verticalAlign = 'top',
     } = this.instance.config as QuotesConfig;
+
+    el.style.setProperty('--hp-quote-valign', verticalAlign === 'middle' ? 'center' : verticalAlign === 'bottom' ? 'flex-end' : 'flex-start');
+    el.style.setProperty('--hp-quote-align', textAlign === 'center' ? 'center' : textAlign === 'right' ? 'right' : 'start');
 
     this.renderHeader(el, 'Quotes');
 
@@ -129,6 +135,17 @@ export class QuotesListBlock extends BaseBlock {
       } catch (e) {
         console.error('[Homepage Blocks] QuotesListBlock single mode failed to read file:', e);
         el.createDiv({ cls: 'insight-card' }).setText('Error reading file.');
+      }
+      
+      const card = el.querySelector('.insight-card') as HTMLElement;
+      if (card && heightMode === 'extend') {
+        el.toggleClass('quotes-list-block--extend', true);
+        card.setAttribute('data-auto-height-content', '');
+        setTimeout(() => {
+          if (this.app.workspace.layoutReady) {
+            window.dispatchEvent(new CustomEvent('hp-block-height-changed', { detail: { blockId: this.instance.id } }));
+          }
+        }, 50);
       }
       return;
     }
@@ -418,6 +435,28 @@ class QuotesSettingsModal extends Modal {
          .addOption('card', 'Card')
          .setValue(typeof draft.quoteStyle === 'string' ? draft.quoteStyle : 'classic')
          .onChange(v => { draft.quoteStyle = v === 'centered' || v === 'card' ? v : 'classic'; }),
+      );
+
+    new Setting(contentEl)
+      .setName('Text alignment')
+      .setDesc('Align text to the left, center, or right.')
+      .addDropdown(d =>
+        d.addOption('left', 'Left')
+         .addOption('center', 'Center')
+         .addOption('right', 'Right')
+         .setValue(typeof draft.textAlign === 'string' ? draft.textAlign : 'left')
+         .onChange(v => { draft.textAlign = v as 'left' | 'center' | 'right'; }),
+      );
+
+    new Setting(contentEl)
+      .setName('Vertical alignment')
+      .setDesc('Align the quotes list or card vertically within the block.')
+      .addDropdown(d =>
+        d.addOption('top', 'Top')
+         .addOption('middle', 'Middle')
+         .addOption('bottom', 'Bottom')
+         .setValue(typeof draft.verticalAlign === 'string' ? draft.verticalAlign : 'top')
+         .onChange(v => { draft.verticalAlign = v as 'top' | 'middle' | 'bottom'; }),
       );
 
     // Font settings apply in both modes

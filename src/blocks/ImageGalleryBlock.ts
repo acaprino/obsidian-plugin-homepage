@@ -207,7 +207,7 @@ export class ImageGalleryBlock extends BaseBlock {
       this.register(() => ro.disconnect());
     } else {
       const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
-      gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols, 150));
+      gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols, 100));
     }
 
     if (!folder) {
@@ -368,6 +368,7 @@ class ImageGallerySettingsModal extends Modal {
     );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
+       .addOption('5', '5').addOption('6', '6')
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 3))
        .onChange(v => { draft.columns = Number(v); }),
     );

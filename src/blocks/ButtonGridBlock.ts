@@ -23,6 +23,8 @@ export class ButtonGridBlock extends BaseBlock {
     const grid = el.createDiv({ cls: 'button-grid' });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
     grid.style.setProperty('--hp-grid-cols', `repeat(${safeCols}, 1fr)`);
+    grid.setAttribute('data-auto-height-content', '');
+    this.observeWidthForAutoHeight(grid);
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });

@@ -581,14 +581,14 @@
 }
 
 /* ── Greeting responsive ──────────────────────────────── */
-/* Narrow block: stack vertically, center content, large emoji */
+/* Narrow block: stack vertically, center content */
 @container (max-width: 300px) {
   .block-content.greeting-block {
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
-    gap: 12px;
+    gap: 6px;
     min-height: auto;
   }
   .greeting-name {
@@ -597,13 +597,13 @@
     white-space: normal;
   }
   .greeting-emoji {
-    font-size: clamp(2.5rem, 15cqi, 3.5rem);
-    margin-bottom: -4px;
+    font-size: clamp(1.5rem, 10cqi, 2.5rem);
+    margin-bottom: 0;
   }
 }
 
-/* Very short block: row layout, scale to fill available height */
-@container (max-height: 160px) {
+/* Short block: row layout, scale to fill available height */
+@container (max-height: 200px) {
   .block-content.greeting-block {
     flex-direction: row !important;
     justify-content: flex-start !important;

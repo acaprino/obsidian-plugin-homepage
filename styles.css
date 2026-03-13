@@ -5,7 +5,7 @@
 /* Override in snippets/homepage.css via .homepage-view { ... } */
 .homepage-view {
   --hp-padding: clamp(8px, 1.5cqi, 16px);
-  --hp-card-padding: clamp(12px, 2cqi, 20px);
+  --hp-card-padding: clamp(6px, 1.5cqi, 12px);
   --hp-content-max-width: 1400px;
   display: flex;
   flex-direction: column;
@@ -602,7 +602,7 @@
   }
 }
 
-/* Very short block: keep row layout but stack the text so it can be larger */
+/* Very short block: row layout, scale to fill available height */
 @container (max-height: 160px) {
   .block-content.greeting-block {
     flex-direction: row !important;
@@ -622,24 +622,24 @@
     text-overflow: ellipsis;
   }
   .greeting-salut {
-    font-size: clamp(0.8rem, 4cqi, 1rem);
+    font-size: clamp(0.9rem, max(5cqi, 20cqh), 1.5rem);
     font-weight: 500;
     color: var(--text-muted);
     line-height: 1.1;
   }
   .greeting-user {
-    font-size: clamp(1.4rem, 8cqi, 2.2rem);
+    font-size: clamp(1.4rem, max(8cqi, 30cqh), 2.8rem);
     font-weight: 700;
     line-height: 1.1;
     margin-top: -2px;
   }
   .greeting-emoji {
-    font-size: clamp(2.5rem, 12cqi, 3.5rem) !important;
+    font-size: clamp(2.5rem, max(12cqi, 55cqh), 4.5rem) !important;
     margin-bottom: 0 !important;
     line-height: 1 !important;
   }
   .greeting-time {
-    display: none; /* Hide the time when extremely short */
+    display: none;
   }
 }
 
@@ -684,7 +684,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 90px;
+  container-type: size;
 }
 
 .clock-time {
@@ -745,6 +745,21 @@
   letter-spacing: 0.04em;
 }
 
+/* Clock: short card — scale time to fill height */
+@container (max-height: 160px) {
+  .clock-block .clock-time {
+    font-size: clamp(1.4rem, 45cqh, 3rem) !important;
+    line-height: 1;
+  }
+  .clock-block .clock-date {
+    font-size: clamp(0.6rem, 14cqh, 0.8rem);
+    margin-top: 2px;
+  }
+  .clock-block.clock-style-large .clock-time {
+    font-size: clamp(1.6rem, 55cqh, 4rem) !important;
+  }
+}
+
 /* ── Folder Links Block ─────────────────────────────────── */
 .folder-links-list {
   display: flex;
@@ -781,7 +796,7 @@
 .folder-link-btn {
   background: none;
   border: none;
-  padding: 5px 10px;
+  padding: 4px 8px;
   cursor: pointer;
   color: var(--text-normal);
   font-size: var(--font-text-size, 0.875rem);
@@ -876,8 +891,8 @@
 .random-note-block {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  min-height: 80px;
+  gap: 8px;
+  container-type: size;
 }
 
 .random-note-cover {
@@ -951,6 +966,16 @@
   background: var(--interactive-accent-hover, var(--interactive-accent));
 }
 
+/* Random note: short card — hide cover, compact layout */
+@container (max-height: 160px) {
+  .random-note-cover { display: none; }
+  .random-note-block { gap: 4px; }
+  .random-note-title { font-size: clamp(0.9rem, 25cqh, 1.3rem); }
+  .random-note-preview { display: none; }
+  .random-note-footer { gap: 4px; }
+  .random-note-open-btn { padding: 2px 8px; font-size: 0.75em; }
+}
+
 /* ── Button Grid Block ──────────────────────────────────── */
 .button-grid-block {
   container-type: inline-size;
@@ -1020,7 +1045,7 @@
 
 /* ── Quotes List Block ──────────────────────────────────── */
 .quotes-columns {
-  column-gap: 20px;
+  column-gap: 14px;
   max-height: 500px;
   overflow-y: auto;
 }
@@ -1048,7 +1073,7 @@
 }
 
 .quote-item {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   break-inside: avoid;
 }
 
@@ -1073,8 +1098,8 @@
 }
 .quotes-list-block.quote-style-centered .quote-item {
   text-align: center;
-  margin-bottom: 28px;
-  padding: 0 12px;
+  margin-bottom: 16px;
+  padding: 0 8px;
 }
 .quotes-list-block.quote-style-centered .quote-content {
   border-left: none;
@@ -2643,13 +2668,13 @@
 /* ── Bookmark Block ────────────────────────────────────── */
 .bookmark-grid {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 .bookmark-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 3px;
+  padding: 6px 10px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s, 4px);
@@ -2739,7 +2764,7 @@
   width: 100%;
   background: none;
   border: none;
-  padding: 6px 8px;
+  padding: 4px 6px;
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-normal);
   cursor: pointer;
@@ -2837,6 +2862,10 @@
 }
 
 .pomodoro-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s, 4px);
@@ -2847,15 +2876,18 @@
   transition: background 0.12s ease-out, border-color 0.12s ease-out;
 }
 
+.pomodoro-btn-icon { display: none; }
+.pomodoro-btn-icon svg { width: 1em; height: 1em; }
+
 .pomodoro-btn:hover {
   background: var(--background-modifier-hover);
   border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
 
 .pomodoro-btn.is-primary {
-  background: var(--color-accent);
+  background: var(--block-accent, var(--color-accent));
   color: var(--text-on-accent, #fff);
-  border-color: var(--color-accent);
+  border-color: var(--block-accent, var(--color-accent));
 }
 
 .pomodoro-btn.is-primary:hover {
@@ -2885,51 +2917,57 @@
     overflow: hidden;
   }
   .pomodoro-btn {
-    padding: 2px 8px;
-    font-size: 0.7rem;
-    width: auto;
-    min-width: 65px;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    min-width: 0;
     min-height: 0;
-    line-height: 1;
+    font-size: 0.75rem;
+    border-radius: var(--radius-s, 4px);
   }
+  .pomodoro-btn-icon { display: flex; }
+  .pomodoro-btn-icon svg { width: 14px; height: 14px; }
+  .pomodoro-btn-label { display: none; }
   .pomodoro-phase,
   .pomodoro-dots { display: none; }
 }
 
-/* Very flat card (1 unit tall): controls row */
+/* Very flat card (1 unit tall): ring + timer + buttons in a row */
 @container (max-height: 120px) {
   .pomodoro-container {
     flex-direction: row;
     justify-content: center;
-    padding: 0 4px;
-    gap: 12px;
+    align-items: center;
+    padding: 4px 8px;
+    gap: 16px;
   }
   .pomodoro-ring {
-    --ring-size: clamp(48px, 90cqh, 80px);
+    --ring-size: clamp(52px, 95cqh, 90px);
   }
   .pomodoro-time {
-    font-size: clamp(0.85rem, 22cqh, 1.3rem);
+    font-size: clamp(1rem, 28cqh, 1.5rem);
     font-weight: 400;
   }
   .pomodoro-controls {
-    flex-direction: column;
+    flex-direction: row;
     flex-wrap: nowrap;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 6px;
     min-height: 0;
-    overflow: hidden;
   }
   .pomodoro-btn {
-    width: auto;
-    min-width: 45px;
-    max-width: 80px;
-    padding: 2px 6px;
+    padding: 0;
+    width: clamp(28px, 40cqh, 36px);
+    height: clamp(28px, 40cqh, 36px);
+    min-width: 0;
+    max-width: none;
     min-height: 0;
-    font-size: 0.6rem;
-    line-height: 1;
-    text-align: center;
+    border-radius: var(--radius-s, 4px);
   }
+  .pomodoro-btn-icon { display: flex; }
+  .pomodoro-btn-icon svg { width: 16px; height: 16px; }
+  .pomodoro-btn-label { display: none; }
 }
 
 /* ── Layout Preset Cards ───────────────────────────────── */

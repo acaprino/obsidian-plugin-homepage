@@ -173,10 +173,10 @@ export class PomodoroBlock extends BaseBlock {
       workMinutes = 25,
       soundType = 'crystal',
       autoStartCycle = false,
-    } = this.instance.config as PomodoroConfig & { soundType?: string, autoStartCycle?: boolean };
+    } = this.instance.config as PomodoroConfig;
 
     if (soundType !== 'none') {
-      PomodoroBlock.playNotificationSound(soundType as 'crystal' | 'chime' | 'bowl');
+      PomodoroBlock.playNotificationSound(soundType);
     }
 
     const previousPhase = this.phase;

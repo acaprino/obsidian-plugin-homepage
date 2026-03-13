@@ -8640,7 +8640,7 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
     listSection = contentEl.createDiv();
     listSection.toggleClass("hp-hidden", draft.mode !== "list");
     new import_obsidian10.Setting(listSection).setName("Columns").addDropdown(
-      (d) => d.addOption("2", "2").addOption("3", "3").setValue(String(typeof draft.columns === "number" ? draft.columns : 2)).onChange((v) => {
+      (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(typeof draft.columns === "number" ? draft.columns : 2)).onChange((v) => {
         draft.columns = Number(v);
       })
     );
@@ -10616,15 +10616,6 @@ function migrateBlockInstance(b) {
   delete m.newRow;
   if (m.type === "tag-grid") {
     m.type = "button-grid";
-  }
-  if (m.type === "insight") {
-    m.type = "quotes-list";
-    const cfg2 = m.config;
-    if (cfg2) {
-      cfg2.mode = "single";
-      cfg2.source = "tag";
-      cfg2.dailySeed ??= true;
-    }
   }
   const cfg = m.config;
   if (cfg && cfg._transparent === true) {

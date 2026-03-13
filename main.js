@@ -9952,7 +9952,7 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
     progressCircle.setAttribute("cx", "60");
     progressCircle.setAttribute("cy", "60");
     progressCircle.setAttribute("r", "52");
-    progressCircle.setAttribute("stroke", "var(--color-accent)");
+    progressCircle.setAttribute("stroke", "var(--block-accent, var(--color-accent))");
     progressCircle.setAttribute("stroke-width", "8");
     progressCircle.setAttribute("fill", "transparent");
     progressCircle.setAttribute("stroke-linecap", "round");
@@ -9967,20 +9967,26 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
     this.sessionDotsEl = container.createDiv({ cls: "pomodoro-dots" });
     const controls = container.createDiv({ cls: "pomodoro-controls" });
     const startPauseBtn = controls.createEl("button", {
-      cls: "pomodoro-btn is-primary",
-      text: "Start"
+      cls: "pomodoro-btn is-primary"
     });
+    const startPauseIcon = startPauseBtn.createSpan({ cls: "pomodoro-btn-icon" });
+    (0, import_obsidian18.setIcon)(startPauseIcon, "play");
+    startPauseBtn.createSpan({ cls: "pomodoro-btn-label", text: "Start" });
     this.registerDomEvent(startPauseBtn, "click", () => this.toggleStartPause());
     this.startPauseBtn = startPauseBtn;
     const resetBtn = controls.createEl("button", {
-      cls: "pomodoro-btn pomodoro-btn-reset",
-      text: "Reset"
+      cls: "pomodoro-btn pomodoro-btn-reset"
     });
+    const resetIcon = resetBtn.createSpan({ cls: "pomodoro-btn-icon" });
+    (0, import_obsidian18.setIcon)(resetIcon, "rotate-ccw");
+    resetBtn.createSpan({ cls: "pomodoro-btn-label", text: "Reset" });
     this.registerDomEvent(resetBtn, "click", () => this.resetTimer());
     const skipBtn = controls.createEl("button", {
-      cls: "pomodoro-btn pomodoro-btn-skip",
-      text: "Skip"
+      cls: "pomodoro-btn pomodoro-btn-skip"
     });
+    const skipIcon = skipBtn.createSpan({ cls: "pomodoro-btn-icon" });
+    (0, import_obsidian18.setIcon)(skipIcon, "skip-forward");
+    skipBtn.createSpan({ cls: "pomodoro-btn-label", text: "Skip" });
     this.registerDomEvent(skipBtn, "click", () => this.skipPhase());
     const saved = timerStore.get(this.instance.id);
     if (saved) {
@@ -10176,10 +10182,17 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
       }
     }
     if (this.startPauseBtn) {
+      const label = this.startPauseBtn.querySelector(".pomodoro-btn-label");
+      const icon = this.startPauseBtn.querySelector(".pomodoro-btn-icon");
       if (this.phase === "idle") {
-        this.startPauseBtn.setText("Start");
+        label?.setText("Start");
+        if (icon instanceof HTMLElement) (0, import_obsidian18.setIcon)(icon, "play");
+      } else if (this.running) {
+        label?.setText("Pause");
+        if (icon instanceof HTMLElement) (0, import_obsidian18.setIcon)(icon, "pause");
       } else {
-        this.startPauseBtn.setText(this.running ? "Pause" : "Resume");
+        label?.setText("Resume");
+        if (icon instanceof HTMLElement) (0, import_obsidian18.setIcon)(icon, "play");
       }
     }
   }

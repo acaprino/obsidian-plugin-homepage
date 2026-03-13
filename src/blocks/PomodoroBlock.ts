@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from 'obsidian';
+import { App, Modal, Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 type PomodoroPhase = 'idle' | 'work' | 'break' | 'longBreak';
@@ -69,7 +69,7 @@ export class PomodoroBlock extends BaseBlock {
     progressCircle.setAttribute('cx', '60');
     progressCircle.setAttribute('cy', '60');
     progressCircle.setAttribute('r', '52');
-    progressCircle.setAttribute('stroke', 'var(--color-accent)');
+    progressCircle.setAttribute('stroke', 'var(--block-accent, var(--color-accent))');
     progressCircle.setAttribute('stroke-width', '8');
     progressCircle.setAttribute('fill', 'transparent');
     progressCircle.setAttribute('stroke-linecap', 'round');
@@ -95,21 +95,27 @@ export class PomodoroBlock extends BaseBlock {
 
     const startPauseBtn = controls.createEl('button', {
       cls: 'pomodoro-btn is-primary',
-      text: 'Start',
     });
+    const startPauseIcon = startPauseBtn.createSpan({ cls: 'pomodoro-btn-icon' });
+    setIcon(startPauseIcon, 'play');
+    startPauseBtn.createSpan({ cls: 'pomodoro-btn-label', text: 'Start' });
     this.registerDomEvent(startPauseBtn, 'click', () => this.toggleStartPause());
     this.startPauseBtn = startPauseBtn;
 
     const resetBtn = controls.createEl('button', {
       cls: 'pomodoro-btn pomodoro-btn-reset',
-      text: 'Reset',
     });
+    const resetIcon = resetBtn.createSpan({ cls: 'pomodoro-btn-icon' });
+    setIcon(resetIcon, 'rotate-ccw');
+    resetBtn.createSpan({ cls: 'pomodoro-btn-label', text: 'Reset' });
     this.registerDomEvent(resetBtn, 'click', () => this.resetTimer());
 
     const skipBtn = controls.createEl('button', {
       cls: 'pomodoro-btn pomodoro-btn-skip',
-      text: 'Skip',
     });
+    const skipIcon = skipBtn.createSpan({ cls: 'pomodoro-btn-icon' });
+    setIcon(skipIcon, 'skip-forward');
+    skipBtn.createSpan({ cls: 'pomodoro-btn-label', text: 'Skip' });
     this.registerDomEvent(skipBtn, 'click', () => this.skipPhase());
 
     // ── Restore state from module-level store (survives re-renders) ────
@@ -346,12 +352,19 @@ export class PomodoroBlock extends BaseBlock {
       }
     }
 
-    // Start/Pause button text
+    // Start/Pause button text + icon
     if (this.startPauseBtn) {
+      const label = this.startPauseBtn.querySelector('.pomodoro-btn-label');
+      const icon = this.startPauseBtn.querySelector('.pomodoro-btn-icon');
       if (this.phase === 'idle') {
-        this.startPauseBtn.setText('Start');
+        label?.setText('Start');
+        if (icon instanceof HTMLElement) setIcon(icon, 'play');
+      } else if (this.running) {
+        label?.setText('Pause');
+        if (icon instanceof HTMLElement) setIcon(icon, 'pause');
       } else {
-        this.startPauseBtn.setText(this.running ? 'Pause' : 'Resume');
+        label?.setText('Resume');
+        if (icon instanceof HTMLElement) setIcon(icon, 'play');
       }
     }
   }

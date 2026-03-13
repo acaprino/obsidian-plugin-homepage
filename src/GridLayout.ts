@@ -1110,9 +1110,9 @@ class BlockSettingsModal extends Modal {
 
     new Setting(cardBody)
       .setName('Card padding')
-      .setDesc('Custom inner padding in pixels (0 = default).')
+      .setDesc('Custom inner padding in pixels (0 = default). Supports negative values.')
       .addSlider(s =>
-        s.setLimits(0, 48, 4)
+        s.setLimits(-48, 48, 4)
          .setValue(typeof draft._cardPadding === 'number' ? draft._cardPadding : 0)
          .setDynamicTooltip()
          .onChange(v => { draft._cardPadding = v; refreshPreview(); }),

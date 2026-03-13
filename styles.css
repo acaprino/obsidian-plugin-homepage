@@ -109,7 +109,7 @@
   height: 100%;
   min-width: 0;
   box-sizing: border-box;
-  container-type: size;
+  container-type: inline-size;
   backdrop-filter: var(--hp-backdrop-blur, none);
   -webkit-backdrop-filter: var(--hp-backdrop-blur, none);
   transition:
@@ -544,16 +544,17 @@
   100% { background-position: -200% 0; }
 }
 
-/* ── Greeting Block ─────────────────────────────────────── */
 .homepage-block-wrapper .block-content.greeting-block {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  min-height: 90px;
+  min-height: auto;
   gap: 10px;
   flex-wrap: wrap;
-  overflow: visible;
+  overflow: hidden;
+  container-type: size;
+  height: 100%;
 }
 
 .greeting-emoji {
@@ -601,22 +602,41 @@
   }
 }
 
-/* Very short block: keep row layout and shrink gaps so it fits *even* if narrow */
+/* Very short block: keep row layout but stack the text so it can be larger */
 @container (max-height: 160px) {
   .block-content.greeting-block {
     flex-direction: row !important;
-    justify-content: center !important;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: 12px !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    overflow-x: hidden;
+    gap: 16px !important;
   }
   .greeting-name {
-    font-size: clamp(1rem, 5cqi, 1.3rem) !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .greeting-salut {
+    font-size: clamp(0.8rem, 4cqi, 1rem);
+    font-weight: 500;
+    color: var(--text-muted);
+    line-height: 1.1;
+  }
+  .greeting-user {
+    font-size: clamp(1.4rem, 8cqi, 2.2rem);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-top: -2px;
   }
   .greeting-emoji {
-    font-size: clamp(1.8rem, 8cqi, 2.5rem) !important;
+    font-size: clamp(2.5rem, 12cqi, 3.5rem) !important;
     margin-bottom: 0 !important;
+    line-height: 1 !important;
   }
   .greeting-time {
     display: none; /* Hide the time when extremely short */
@@ -2841,8 +2861,8 @@
   opacity: 0.9;
 }
 
-/* Very small/flat card: controls left (stacked), timer right */
-@container (max-height: 180px) {
+/* Small card: controls left (stacked), timer right */
+@container (max-height: 220px) {
   .pomodoro-container {
     flex-direction: row-reverse;
     gap: 16px;
@@ -2850,26 +2870,61 @@
     padding: 0; /* Remove vertical padding to maximize space */
   }
   .pomodoro-ring {
-    --ring-size: min(85cqh, 80cqw, 100px);
+    --ring-size: min(90cqh, 90cqw, 120px);
   }
   .pomodoro-time {
-    font-size: clamp(1rem, 25cqh, 1.4rem);
+    font-size: clamp(1.3rem, 30cqh, 2rem);
+    font-weight: 400;
   }
   .pomodoro-controls {
     flex-direction: column;
     gap: 4px;
-    align-items: flex-end; /* Align buttons to right edge facing the ring, or center? user wants colonna a sinistra */
+    align-items: center; /* Center buttons */
   }
   .pomodoro-btn {
     padding: 2px 8px;
     font-size: 0.7rem;
-    width: 65px;
-    min-height: 22px;
+    width: auto;
+    min-width: 65px;
+    min-height: 24px;
     flex-shrink: 0;
     line-height: 1; /* Prevent internal text from causing flex-squish */
   }
   .pomodoro-phase,
   .pomodoro-dots { display: none; }
+}
+
+/* Very flat card (1 unit tall): controls row */
+@container (max-height: 120px) {
+  .pomodoro-container {
+    flex-direction: row;
+    justify-content: flex-start;
+    padding: 0 4px;
+    gap: 12px;
+  }
+  .pomodoro-ring {
+    --ring-size: min(100cqh, 80cqw, 80px);
+  }
+  .pomodoro-time {
+    font-size: clamp(1.2rem, 35cqh, 1.6rem);
+    font-weight: 400;
+  }
+  .pomodoro-controls {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: center;
+    gap: 2px;
+  }
+  .pomodoro-btn {
+    width: auto;
+    min-width: 45px;
+    padding: 2px 6px;
+    min-height: 18px;
+    font-size: 0.6rem;
+    line-height: 1;
+    text-align: center;
+  }
 }
 
 /* ── Layout Preset Cards ───────────────────────────────── */

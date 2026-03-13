@@ -60,7 +60,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
 
   // ── Padding ────────────────────────────────────────────────────────
   const pad = typeof config._cardPadding === 'number'
-    ? Math.max(0, Math.min(48, config._cardPadding)) : 0;
+    ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
   if (pad) el.style.setProperty('--hp-card-padding', `${pad}px`);
   else el.style.removeProperty('--hp-card-padding');
 

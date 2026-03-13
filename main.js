@@ -6056,7 +6056,7 @@ function applyBlockStyling(el, config) {
   }
   el.toggleClass("block-no-border", config._hideBorder === true);
   el.toggleClass("block-no-background", config._hideBackground === true);
-  const pad = typeof config._cardPadding === "number" ? Math.max(0, Math.min(48, config._cardPadding)) : 0;
+  const pad = typeof config._cardPadding === "number" ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
   if (pad) el.style.setProperty("--hp-card-padding", `${pad}px`);
   else el.style.removeProperty("--hp-card-padding");
   const gap = typeof config._titleGap === "number" ? Math.max(0, Math.min(48, config._titleGap)) : 0;
@@ -6990,8 +6990,8 @@ var BlockSettingsModal = class extends import_obsidian.Modal {
         refreshPreview();
       })
     );
-    new import_obsidian.Setting(cardBody).setName("Card padding").setDesc("Custom inner padding in pixels (0 = default).").addSlider(
-      (s) => s.setLimits(0, 48, 4).setValue(typeof draft._cardPadding === "number" ? draft._cardPadding : 0).setDynamicTooltip().onChange((v) => {
+    new import_obsidian.Setting(cardBody).setName("Card padding").setDesc("Custom inner padding in pixels (0 = default). Supports negative values.").addSlider(
+      (s) => s.setLimits(-48, 48, 4).setValue(typeof draft._cardPadding === "number" ? draft._cardPadding : 0).setDynamicTooltip().onChange((v) => {
         draft._cardPadding = v;
         refreshPreview();
       })
@@ -7647,7 +7647,9 @@ var GreetingBlock = class extends BaseBlock {
       this.emojiEl.setText(pickEmoji(cfg, hour));
     }
     if (this.nameEl) {
-      this.nameEl.setText(`${getSalutation(cfg, hour)}, ${name}`);
+      this.nameEl.empty();
+      this.nameEl.createSpan({ cls: "greeting-salut", text: `${getSalutation(cfg, hour)}, ` });
+      this.nameEl.createSpan({ cls: "greeting-user", text: name });
     }
     if (this.timeEl && showTime) {
       this.timeEl.setText(now.format("HH:mm"));

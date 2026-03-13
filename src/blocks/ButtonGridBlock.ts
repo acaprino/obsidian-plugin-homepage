@@ -1,7 +1,7 @@
 import { App, Modal, Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
-import { responsiveGridColumns } from '../utils/responsiveGrid';
+import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 
 interface ButtonItem {
   emoji: string;
@@ -21,8 +21,10 @@ export class ButtonGridBlock extends BaseBlock {
     this.renderHeader(el, 'Buttons');
 
     const grid = el.createDiv({ cls: 'button-grid' });
-    const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 2)));
-    grid.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols));
+    const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
+    grid.style.setProperty('--hp-grid-cols', `repeat(${safeCols}, 1fr)`);
+    grid.setAttribute('data-auto-height-content', '');
+    this.observeWidthForAutoHeight(grid);
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });
@@ -67,7 +69,6 @@ class ButtonGridSettingsModal extends Modal {
     new Setting(contentEl).setName('Button grid settings').setHeading();
 
     const draft = structuredClone(this.config) as {
-      title?: string;
       columns?: number;
       items?: ButtonItem[];
     };
@@ -83,16 +84,26 @@ class ButtonGridSettingsModal extends Modal {
 
     const listEl = contentEl.createDiv({ cls: 'btn-grid-item-list' });
     const dragState = { dragIdx: -1 };
+    let pickers: EmojiPickerInstance[] = [];
     const renderList = () => {
+      pickers.forEach(p => p.destroy());
+      pickers = [];
       listEl.empty();
       draft.items!.forEach((item, i) => {
         const row = listEl.createDiv({ cls: 'btn-grid-item-row' });
         enableDragReorder(row, i, draft.items!, dragState, renderList);
 
-        const emojiInput = row.createEl('input', { type: 'text', cls: 'btn-grid-item-emoji' });
-        emojiInput.value = item.emoji;
-        emojiInput.placeholder = '😀';
-        emojiInput.addEventListener('input', () => { item.emoji = emojiInput.value; });
+        const picker = createEmojiPicker({
+          container: row,
+          panelContainer: listEl,
+          value: item.emoji,
+          placeholder: '😀',
+          rowClass: 'btn-grid-emoji-picker-row',
+          onBeforeOpen: () => pickers.forEach(p => p !== picker && p.close()),
+          onSelect: (emoji) => { item.emoji = emoji; },
+          onClear: () => { item.emoji = ''; },
+        });
+        pickers.push(picker);
 
         const labelInput = row.createEl('input', { type: 'text', cls: 'btn-grid-item-label' });
         labelInput.value = item.label;

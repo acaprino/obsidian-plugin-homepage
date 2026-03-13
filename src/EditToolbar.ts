@@ -71,7 +71,7 @@ export class EditToolbar {
     }
     this.editMode = false;
     this.zoomScale = 1;
-    this.grid.setEditMode(false); // triggers rerender() which reads plugin.layout (now restored)
+    this.grid.setEditMode(false, true); // skipRepack — snapshot is already at correct positions
     this.syncVisibility();
     this.renderToolbar();
   }
@@ -182,7 +182,6 @@ const BLOCK_META: Record<BlockType, { icon: string; desc: string }> = {
   'greeting':      { icon: '\u{1F44B}', desc: 'Personalized greeting with time of day' },
   'clock':         { icon: '\u{1F550}', desc: 'Live clock with date display' },
   'folder-links':  { icon: '\u{1F517}', desc: 'Quick links to notes and folders' },
-  'insight':       { icon: '\u{1F4A1}', desc: 'Daily rotating note from a tag' },
   'button-grid':   { icon: '\u{1F532}', desc: 'Grid of emoji-labeled buttons' },
   'quotes-list':   { icon: '\u{1F4AC}', desc: 'Collection of quotes from notes' },
   'image-gallery': { icon: '\u{1F5BC}\uFE0F', desc: 'Photo grid from a vault folder' },
@@ -194,6 +193,7 @@ const BLOCK_META: Record<BlockType, { icon: string; desc: string }> = {
   'recent-files':  { icon: '\u{1F4C2}', desc: 'Recently modified notes in your vault' },
   'pomodoro':      { icon: '\u{1F345}', desc: 'Pomodoro timer with work/break cycles' },
   'spacer':        { icon: '\u2B1C', desc: 'Empty space for layout spacing' },
+  'random-note':   { icon: '\u{1F3B2}', desc: 'Random note card with cover image and preview' },
 };
 
 class AddBlockModal extends Modal {

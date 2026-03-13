@@ -201,7 +201,9 @@ export class GreetingBlock extends BaseBlock {
       this.emojiEl.setText(pickEmoji(cfg, hour));
     }
     if (this.nameEl) {
-      this.nameEl.setText(`${getSalutation(cfg, hour)}, ${name}`);
+      this.nameEl.empty();
+      this.nameEl.createSpan({ cls: 'greeting-salut', text: `${getSalutation(cfg, hour)}, ` });
+      this.nameEl.createSpan({ cls: 'greeting-user', text: name });
     }
     if (this.timeEl && showTime) {
       this.timeEl.setText(now.format('HH:mm'));

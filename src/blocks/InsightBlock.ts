@@ -1,5 +1,6 @@
-import { App, CachedMetadata, Modal, Setting, moment } from 'obsidian';
+import { App, Modal, Setting, moment } from 'obsidian';
 import { cacheHasTag, getFilesWithTag } from '../utils/tags';
+import { parseNoteInsight } from '../utils/noteContent';
 import { BaseBlock } from './BaseBlock';
 
 const MS_PER_DAY = 86_400_000;
@@ -72,7 +73,7 @@ export class InsightBlock extends BaseBlock {
     try {
       const content = await this.app.vault.read(file);
       if (this.isStale(gen)) return;
-      const { heading, body } = this.parseContent(content, cache);
+      const { heading, body } = parseNoteInsight(content, cache);
 
       card.createDiv({ cls: 'insight-title', text: heading || file.basename });
       card.createDiv({ cls: 'insight-body', text: body });
@@ -80,27 +81,6 @@ export class InsightBlock extends BaseBlock {
       console.error('[Homepage Blocks] InsightBlock failed to read file:', e);
       card.setText('Error reading file.');
     }
-  }
-
-  /**
-   * Extract the first heading and first paragraph using metadataCache offsets.
-   * Falls back to manual parsing only if cache is unavailable.
-   */
-  private parseContent(content: string, cache: CachedMetadata | null): { heading: string; body: string } {
-    // Use cached heading if available (avoids manual parsing)
-    const heading = cache?.headings?.[0]?.heading ?? '';
-
-    // Skip frontmatter using the cached offset
-    const fmEnd = cache?.frontmatterPosition?.end.offset ?? 0;
-    const afterFm = content.slice(fmEnd);
-
-    // First non-empty, non-heading line is the body
-    const body = afterFm
-      .split('\n')
-      .map(l => l.trim())
-      .find(l => l && !l.startsWith('#')) ?? '';
-
-    return { heading, body };
   }
 
   openSettings(onSave: (config: Record<string, unknown>) => void): void {

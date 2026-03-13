@@ -9,6 +9,9 @@ import { applyBlockStyling } from './utils/blockStyling';
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
+/** Compact grid-row height for edit-mode placeholders (cellHeight = 80px). */
+const COMPACT_EDIT_H = 2;
+
 const ACCENT_PRESETS = [
   '#c0392b', '#e67e22', '#f1c40f', '#ffef3a', '#27ae60', '#16a085',
   '#2980b9', '#8e44ad', '#e84393', '#6c5ce7', '#636e72',
@@ -101,11 +104,16 @@ export class GridLayout {
       x: instance.x,
       y: instance.y,
       w: Math.min(instance.w, columns),
-      h: instance.h,
+      h: (this.editMode && this.shouldAutoHeight(instance)) ? COMPACT_EDIT_H : instance.h,
       // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
       // load() before we've added any DOM content, causing "firstElementChild is null".
       // We call resizeToContent() manually after building each block's DOM below.
     }));
+
+    // Repack y values so items are tightly stacked from the start.
+    // Edit mode: view-mode y positions leave large gaps between compact-h items.
+    // View mode: saved y positions may have gaps — pack to eliminate them.
+    GridLayout.packRows(items, columns);
 
     this.columns = columns;
 
@@ -132,6 +140,11 @@ export class GridLayout {
 
       // ARIA: mark grid items as listitems to match parent role="list"
       gsEl.setAttribute('role', 'listitem');
+      if (this.shouldAutoHeight(instance)) {
+        gsEl.classList.add('is-auto-height');
+      } else {
+        gsEl.classList.remove('is-auto-height');
+      }
 
       // Find the GridStack item content container and populate it via Obsidian DOM API
       const gsContent = gsEl.querySelector('.grid-stack-item-content');
@@ -151,8 +164,6 @@ export class GridLayout {
         // Symbolic compact card — no content rendering for easy drag & drop
         this.renderCompactPlaceholder(headerZone, contentEl, factory, instance);
         this.blocks.set(instance.id, { block: null, wrapper });
-        // Mark auto-height blocks so CSS can hide vertical resize handles
-        if (this.shouldAutoHeight(instance)) gsEl.addClass('gs-auto-height');
       } else {
         const block = factory.create(this.app, instance, this.plugin);
         block.setHeaderContainer(headerZone);
@@ -189,19 +200,15 @@ export class GridLayout {
       }
     }
 
-    // Temporarily disable float during drag/resize so items push/swap.
     // GridStack already compensates for CSS transform via getValuesFromTransformedElement
     // (dragTransform.xScale/yScale), so we do NOT need to clear the viewport-fit scale.
-    this.gridStack.on('dragstart', () => { this.gridStack?.float(false); });
     this.gridStack.on('dragstop', () => {
-      this.gridStack?.float(true);
       this.syncLayoutFromGrid();
     });
 
-    this.gridStack.on('resizestart', () => { this.gridStack?.float(false); });
     this.gridStack.on('resizestop', () => {
-      this.gridStack?.float(true);
       this.syncLayoutFromGrid();
+      this.updateCompactSizeLabels();
     });
 
     const viewEl = this.gridEl.closest('.homepage-view');
@@ -271,6 +278,18 @@ export class GridLayout {
     info.createSpan({ cls: 'block-compact-size', text: `${instance.w}\u00D7${instance.h}` });
   }
 
+  /** Update all compact size labels to reflect current GridStack node dimensions. */
+  private updateCompactSizeLabels(): void {
+    if (!this.gridStack) return;
+    for (const el of this.gridStack.getGridItems()) {
+      const node = (el as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+      const label = (el as HTMLElement).querySelector('.block-compact-size');
+      if (node && label) {
+        label.textContent = `${node.w ?? 1}\u00D7${node.h ?? 1}`;
+      }
+    }
+  }
+
   /**
    * Resize a block's grid row to fit its natural content height.
    *
@@ -295,19 +314,55 @@ export class GridLayout {
       this.batchRafId = null;
       const batch = Array.from(this.pendingResizes.values());
       this.pendingResizes.clear();
+      if (!this.gridStack) return;
+
+      // Lift static grid for the entire batch so updates + compaction work.
+      const isStatic = !!this.gridStack.opts.staticGrid;
+      if (isStatic) this.gridStack.setStatic(false);
+
+      let anyResized = false;
       for (const { gsEl: el, instance: inst } of batch) {
-        this.resizeBlockToContent(el, inst);
+        if (this.resizeBlockToContent(el, inst)) anyResized = true;
       }
+
+      // After auto-height changes, repack ALL blocks so those below shift up
+      // to fill gaps left by blocks that shrank.  GridStack's compact() and
+      // float toggle are unreliable, so we compute positions ourselves.
+      console.log(`[HP repack] anyResized=${anyResized}`);
+      if (anyResized) {
+        const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
+        for (const gsEl2 of this.gridStack.getGridItems()) {
+          const node = (gsEl2 as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+          if (!node) continue;
+          nodeItems.push({ el: gsEl2 as HTMLElement, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+        }
+        GridLayout.packRows(nodeItems, this.effectiveColumns);
+        this.gridStack.batchUpdate();
+        for (const item of nodeItems) {
+          this.gridStack.update(item.el, { y: item.y });
+        }
+        this.gridStack.batchUpdate(false);
+        this.syncLayoutFromGrid();
+      }
+
+      if (isStatic) this.gridStack.setStatic(true);
     });
     this.pendingRafs.add(this.batchRafId);
   }
 
-  private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): void {
-    if (!this.gridStack || !gsEl.isConnected) return;
+  /** Measure a block's natural content height and update its GridStack row count.
+   *  Returns true if the height was changed. */
+  private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): boolean {
+    if (!this.gridStack || !gsEl.isConnected) return false;
+
+    console.log(`%c[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`, 'color: #ff00ff; font-size: 14px; font-weight: bold');
 
     const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
     const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
-    if (!contentEl || !headerZone) return;
+    if (!contentEl || !headerZone) {
+      console.log(`%c[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`, 'color: #ffaa00');
+      return false;
+    }
 
     // grid-template-rows: 1fr constrains the gallery to the available flex space.
     // Temporarily switch to max-content so the gallery reports its natural height.
@@ -321,6 +376,12 @@ export class GridLayout {
     }
 
     const contentH = contentEl.offsetHeight; // forces reflow at natural height
+    // Debug: compare offsetHeight vs actual rendered bounds for masonry diagnosis
+    const contentRect = contentEl.getBoundingClientRect();
+    const contentStyle = window.getComputedStyle(contentEl);
+    const lastChild = contentEl.lastElementChild as HTMLElement | null;
+    const lastChildBottom = lastChild ? lastChild.getBoundingClientRect().bottom - contentEl.getBoundingClientRect().top : 0;
+    console.log(`[HP measure-debug] ${instance.type} offsetH=${contentH} rectH=${contentRect.height.toFixed(0)} scrollH=${contentEl.scrollHeight} cols=${contentStyle.getPropertyValue('columns')} lastChildBot=${lastChildBottom.toFixed(0)} children=${contentEl.children.length}`);
 
     if (blockContent) {
       blockContent.removeClass('hp-auto-rows');
@@ -329,7 +390,7 @@ export class GridLayout {
       blockContent.removeClass('hp-no-transition');
     }
 
-    if (contentH <= 0) return;
+    if (contentH <= 0) return false;
 
     const wrapper = gsEl.querySelector<HTMLElement>('.homepage-block-wrapper');
     const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
@@ -345,20 +406,16 @@ export class GridLayout {
     const cell = this.gridStack.getCellHeight();
     const rows = Math.max(1, Math.ceil(totalH / cell));
 
+
     const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
     const currentH = node?.h ?? instance.h;
+    console.log(`[HP auto-height] ${instance.type} contentH=${contentH} headerH=${headerZone.offsetHeight} pad=${pad} gap=${gap} totalH=${totalH} cell=${cell} → rows=${rows} (current=${currentH})`);
     if (rows !== currentH) {
-      // Temporarily lift staticGrid so programmatic update() is not silently ignored.
-      const isStatic = !!this.gridStack.opts.staticGrid;
-      if (isStatic) this.gridStack.setStatic(false);
+      // Static grid is already lifted by the caller (scheduleResize batch).
       this.gridStack.update(gsEl, { h: rows });
-      if (isStatic) this.gridStack.setStatic(true);
-      // Persist so re-renders (edit mode toggle, settings change) start at the correct height
-      const newBlocks = this.plugin.layout.blocks.map(b =>
-        b.id === instance.id ? { ...b, h: rows } : b,
-      );
-      void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+      return true;
     }
+    return false;
   }
 
   /** Determine if a block should auto-expand beyond its grid cell height. */
@@ -367,8 +424,10 @@ export class GridLayout {
     const heightMode = typeof hm === 'string' ? hm : '';
     if (instance.type === 'image-gallery') return heightMode !== 'fixed';
     if (instance.type === 'quotes-list') return heightMode === 'extend';
+    if (instance.type === 'button-grid') return true;
     if (instance.type === 'embedded-note' && heightMode === 'grow') return true;
     if (instance.type === 'static-text') return heightMode !== 'fixed';
+    if (instance.type === 'random-note') return true;
     return false;
   }
 
@@ -530,7 +589,10 @@ export class GridLayout {
         }
         const newBlocks = remaining.map(b => {
           const pos = posMap.get(b.id);
-          return pos ? { ...b, ...pos } : b;
+          if (!pos) return b;
+          // In edit mode, only persist x/y/w — compact h must not overwrite real heights.
+          const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+          return { ...b, ...update };
         });
         this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
       }).open();
@@ -597,21 +659,40 @@ export class GridLayout {
     }
 
     // Skip save if nothing actually changed.
+    // In edit mode, auto-height blocks only compare x/y/w — compact h values must not be saved.
+    // Fixed height blocks CAN be resized manually in edit mode, so we DO save their h.
     const changed = this.plugin.layout.blocks.some(b => {
       const pos = posMap.get(b.id);
-      return pos && (b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h);
+      if (!pos) return false;
+      const isAuto = this.shouldAutoHeight(b);
+      if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || (!isAuto && b.h !== pos.h);
+      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
     if (!changed) return;
 
     const newBlocks = this.plugin.layout.blocks.map(b => {
       const pos = posMap.get(b.id);
-      return pos ? { ...b, ...pos } : b;
+      if (!pos) return b;
+      const isAuto = this.shouldAutoHeight(b);
+      const update = this.editMode 
+        ? { x: pos.x, y: pos.y, w: pos.w, ...(isAuto ? {} : { h: pos.h }) } 
+        : pos;
+      return { ...b, ...update };
     });
 
     this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
   }
 
-  setEditMode(enabled: boolean): void {
+  setEditMode(enabled: boolean, skipRepack = false): void {
+    if (!enabled && this.editMode && !skipRepack) {
+      // Repack y-positions: compact edit heights create y offsets that
+      // would overlap blocks at full view-mode heights.
+      const repacked = GridLayout.repackEditLayout(
+        this.plugin.layout.blocks,
+        this.effectiveColumns,
+      );
+      this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
+    }
     this.editMode = enabled;
     if (this.gridStack) {
       this.gridStack.setStatic(!enabled);
@@ -621,6 +702,45 @@ export class GridLayout {
       // Exiting edit mode — clear any zoom transform
       this.setZoom(1);
     }
+  }
+
+  /**
+   * Greedy column-height packing: sort items by position, then assign each
+   * the lowest available y in its target columns. Mutates items in place.
+   * Works on any object with { x, y, w, h } (GridStackWidget or BlockInstance).
+   */
+  private static packRows<T extends { x?: number; y?: number; w?: number; h?: number }>(
+    items: T[], columns: number,
+  ): void {
+    const safeCols = Math.max(1, columns);
+    items.sort((a, b) =>
+      (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0),
+    );
+    const colHeights = new Array<number>(safeCols).fill(0);
+    for (const item of items) {
+      const w = Math.min(item.w ?? 1, safeCols);
+      const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      let maxH = 0;
+      for (let c = x; c < x + w; c++) {
+        maxH = Math.max(maxH, colHeights[c] ?? 0);
+      }
+      item.x = x;
+      item.y = maxH;
+      for (let c = x; c < x + w; c++) {
+        colHeights[c] = maxH + (item.h ?? 1);
+      }
+    }
+  }
+
+  /**
+   * After exiting compact edit mode, y-positions saved during editing
+   * reflect compact heights and may overlap at full view-mode heights.
+   * Re-pack into a collision-free layout using real h values.
+   */
+  private static repackEditLayout(blocks: BlockInstance[], columns: number): BlockInstance[] {
+    const packed = blocks.map(b => ({ ...b }));
+    GridLayout.packRows(packed, columns);
+    return packed;
   }
 
   /** Compute zoom scale that fits all grid content in the viewport. */
@@ -678,6 +798,39 @@ export class GridLayout {
   }
 
   /**
+   * Apply a column count change: clamp block widths (keep original proportions,
+   * don't scale down), then repack so blocks stack vertically at narrower widths
+   * instead of sitting side-by-side with huge height mismatches.
+   */
+  private applyColumnChange(next: number): void {
+    if (!this.gridStack) return;
+    const prev = this.effectiveColumns;
+    this.effectiveColumns = next;
+
+    // Use 'none' so GridStack doesn't auto-scale widths, then manually
+    // clamp each block's w to the new column count and repack.
+    this.gridStack.column(next, 'none');
+
+    // Collect current nodes, clamp widths, and pack rows ourselves
+    // (GridStack's compact() is unreliable with float:true / static grids).
+    const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
+    for (const gsEl of this.gridStack.getGridItems()) {
+      const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+      if (!node) continue;
+      const w = Math.min(node.w ?? 1, next);
+      const x = Math.min(node.x ?? 0, Math.max(0, next - w));
+      nodeItems.push({ el: gsEl as HTMLElement, x, y: node.y ?? 0, w, h: node.h ?? 1 });
+    }
+    GridLayout.packRows(nodeItems, next);
+
+    this.gridStack.batchUpdate();
+    for (const item of nodeItems) {
+      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y });
+    }
+    this.gridStack.batchUpdate(false);
+  }
+
+  /**
    * Observe container width and dynamically adjust GridStack column count.
    * The user's saved column count (`this.userColumns`) acts as the desired maximum.
    * The observer persists across rerenders — only created once, disconnected in destroy().
@@ -696,8 +849,7 @@ export class GridLayout {
         const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
         const next = this.computeEffective(width);
         if (next !== this.effectiveColumns) {
-          this.effectiveColumns = next;
-          this.gridStack.column(next, 'moveScale');
+          this.applyColumnChange(next);
         }
       });
       this.resizeObserver.observe(viewEl);
@@ -706,7 +858,7 @@ export class GridLayout {
     // Set initial value synchronously (also handles userCols changes)
     this.effectiveColumns = this.computeEffective(viewEl.clientWidth);
     if (this.effectiveColumns !== userCols && this.gridStack) {
-      this.gridStack.column(this.effectiveColumns, 'moveScale');
+      this.applyColumnChange(this.effectiveColumns);
     }
   }
 
@@ -971,9 +1123,9 @@ class BlockSettingsModal extends Modal {
 
     new Setting(cardBody)
       .setName('Card padding')
-      .setDesc('Custom inner padding in pixels (0 = default).')
+      .setDesc('Custom inner padding in pixels (0 = default). Supports negative values.')
       .addSlider(s =>
-        s.setLimits(0, 48, 4)
+        s.setLimits(-48, 48, 4)
          .setValue(typeof draft._cardPadding === 'number' ? draft._cardPadding : 0)
          .setDynamicTooltip()
          .onChange(v => { draft._cardPadding = v; refreshPreview(); }),

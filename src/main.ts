@@ -5,7 +5,6 @@ import { BlockRegistry } from './BlockRegistry';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
 import { FolderLinksBlock } from './blocks/FolderLinksBlock';
-import { InsightBlock } from './blocks/InsightBlock';
 import { ButtonGridBlock } from './blocks/ButtonGridBlock';
 import { QuotesListBlock } from './blocks/QuotesListBlock';
 import { ImageGalleryBlock } from './blocks/ImageGalleryBlock';
@@ -17,6 +16,7 @@ import { BookmarkBlock } from './blocks/BookmarkBlock';
 import { RecentFilesBlock } from './blocks/RecentFilesBlock';
 import { PomodoroBlock } from './blocks/PomodoroBlock';
 import { SpacerBlock } from './blocks/SpacerBlock';
+import { RandomNoteBlock } from './blocks/RandomNoteBlock';
 
 // ── Default layout ──────────────────────────────────────────────────────────
 
@@ -59,7 +59,7 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
     // Row 1 (y: 3–5)
     {
       id: 'default-insight',
-      type: 'insight',
+      type: 'quotes-list',
       x: 0, y: 3, w: 2, h: 3,
       config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true },
     },
@@ -118,14 +118,27 @@ function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknow
   delete m.colSpan;
   delete m.rowSpan;
   delete m.newRow;
-  // Migrate legacy type rename: tag-grid → button-grid
+  // Migrate legacy type renames
   if (m.type === 'tag-grid') { m.type = 'button-grid'; }
+  if (m.type === 'insight') {
+    m.type = 'quotes-list';
+    const cfg = m.config as Record<string, unknown> | undefined;
+    if (cfg) {
+      cfg.mode = 'single';
+      cfg.source = 'tag';
+      cfg.dailySeed ??= true;
+    }
+  }
   // Migrate legacy _transparent flag to granular flags.
   const cfg = m.config as Record<string, unknown> | undefined;
   if (cfg && cfg._transparent === true) {
     cfg._hideBorder = true;
     cfg._hideBackground = true;
     delete cfg._transparent;
+  }
+  // Clamp button-grid columns to the supported range [1, 3].
+  if (m.type === 'button-grid' && cfg && typeof cfg.columns === 'number' && cfg.columns > 3) {
+    cfg.columns = 3;
   }
   // Migrate per-block title to shared _titleLabel system.
   if (cfg && typeof cfg.title === 'string') {
@@ -233,13 +246,6 @@ function registerBlocks(): void {
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),
   });
 
-  BlockRegistry.register({
-    type: 'insight',
-    displayName: 'Daily insight',
-    defaultConfig: { tag: '', _titleLabel: 'Daily insight', dailySeed: true },
-    defaultSize: { w: 2, h: 3 },
-    create: (app, instance, plugin) => new InsightBlock(app, instance, plugin),
-  });
 
   BlockRegistry.register({
     type: 'button-grid',
@@ -252,7 +258,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'quotes-list',
     displayName: 'Quotes list',
-    defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20 },
+    defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20, quoteStyle: 'classic', fontStyle: 'default', customFont: '', mode: 'list', dailySeed: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
   });
@@ -327,6 +333,14 @@ function registerBlocks(): void {
     defaultConfig: { _hideTitle: true, _hideBorder: true, _hideBackground: true, _hideHeaderAccent: true },
     defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin),
+  });
+
+  BlockRegistry.register({
+    type: 'random-note',
+    displayName: 'Random note',
+    defaultConfig: { _titleLabel: 'Random note', tag: '', dailySeed: false, imageProperty: 'cover', titleProperty: 'title', showImage: true, showPreview: true },
+    defaultSize: { w: 1, h: 4 },
+    create: (app, instance, plugin) => new RandomNoteBlock(app, instance, plugin),
   });
 }
 
@@ -659,7 +673,7 @@ class HomepageSettingTab extends PluginSettingTab {
             { id: 'p1', type: 'greeting', x: 0, y: 0, w: 2, h: 2, config: { name: '', showTime: true } },
             { id: 'p2', type: 'clock', x: 2, y: 0, w: 1, h: 2, config: { showSeconds: false, showDate: true } },
             { id: 'p3', type: 'folder-links', x: 0, y: 2, w: 1, h: 3, config: { _titleLabel: 'Quick links', links: [] } },
-            { id: 'p4', type: 'insight', x: 1, y: 2, w: 2, h: 3, config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true } },
+            { id: 'p4', type: 'quotes-list', x: 1, y: 2, w: 2, h: 3, config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true } },
             { id: 'p5', type: 'quotes-list', x: 0, y: 5, w: 3, h: 3, config: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20 } },
           ],
         },

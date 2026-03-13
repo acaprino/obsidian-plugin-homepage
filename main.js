@@ -6353,7 +6353,7 @@ var GridLayout = class _GridLayout {
       for (const { gsEl: el, instance: inst } of batch) {
         if (this.resizeBlockToContent(el, inst)) anyResized = true;
       }
-      console.log(`[HP repack] anyResized=${anyResized}`);
+      console.debug(`[HP repack] anyResized=${anyResized}`);
       if (anyResized) {
         const nodeItems = [];
         for (const gsEl2 of this.gridStack.getGridItems()) {
@@ -6377,11 +6377,11 @@ var GridLayout = class _GridLayout {
    *  Returns true if the height was changed. */
   resizeBlockToContent(gsEl, instance) {
     if (!this.gridStack || !gsEl.isConnected) return false;
-    console.log(`%c[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`, "color: #ff00ff; font-size: 14px; font-weight: bold");
+    console.debug(`[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`);
     const contentEl = gsEl.querySelector("[data-auto-height-content]");
     const headerZone = gsEl.querySelector(".block-header-zone");
     if (!contentEl || !headerZone) {
-      console.log(`%c[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`, "color: #ffaa00");
+      console.debug(`[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`);
       return false;
     }
     const blockContent = gsEl.querySelector(".block-content");
@@ -6394,7 +6394,7 @@ var GridLayout = class _GridLayout {
     const contentStyle = window.getComputedStyle(contentEl);
     const lastChild = contentEl.lastElementChild;
     const lastChildBottom = lastChild ? lastChild.getBoundingClientRect().bottom - contentEl.getBoundingClientRect().top : 0;
-    console.log(`[HP measure-debug] ${instance.type} offsetH=${contentH} rectH=${contentRect.height.toFixed(0)} scrollH=${contentEl.scrollHeight} cols=${contentStyle.getPropertyValue("columns")} lastChildBot=${lastChildBottom.toFixed(0)} children=${contentEl.children.length}`);
+    console.debug(`[HP measure-debug] ${instance.type} offsetH=${contentH} rectH=${contentRect.height.toFixed(0)} scrollH=${contentEl.scrollHeight} cols=${contentStyle.getPropertyValue("columns")} lastChildBot=${lastChildBottom.toFixed(0)} children=${contentEl.children.length}`);
     if (blockContent) {
       blockContent.removeClass("hp-auto-rows");
       void blockContent.offsetHeight;
@@ -6413,7 +6413,7 @@ var GridLayout = class _GridLayout {
     const rows = Math.max(1, Math.ceil(totalH / cell));
     const node = gsEl.gridstackNode;
     const currentH = node?.h ?? instance.h;
-    console.log(`[HP auto-height] ${instance.type} contentH=${contentH} headerH=${headerZone.offsetHeight} pad=${pad} gap=${gap} totalH=${totalH} cell=${cell} \u2192 rows=${rows} (current=${currentH})`);
+    console.debug(`[HP auto-height] ${instance.type} contentH=${contentH} headerH=${headerZone.offsetHeight} pad=${pad} gap=${gap} totalH=${totalH} cell=${cell} \u2192 rows=${rows} (current=${currentH})`);
     if (rows !== currentH) {
       this.gridStack.update(gsEl, { h: rows });
       return true;
@@ -6746,7 +6746,6 @@ var GridLayout = class _GridLayout {
    */
   applyColumnChange(next) {
     if (!this.gridStack) return;
-    const prev = this.effectiveColumns;
     this.effectiveColumns = next;
     this.gridStack.column(next, "none");
     const nodeItems = [];
@@ -10245,7 +10244,7 @@ var PomodoroSettingsModal = class extends import_obsidian18.Modal {
       })
     );
     new import_obsidian18.Setting(contentEl).setName("Notification sound").setDesc("Play a sound when a phase completes.").addDropdown((d) => {
-      d.addOption("none", "None").addOption("crystal", "Crystal").addOption("chime", "Chime").addOption("bowl", "Singing Bowl").setValue(draft.soundType ?? "crystal").onChange((v) => {
+      d.addOption("none", "None").addOption("crystal", "Crystal").addOption("chime", "Chime").addOption("bowl", "Singing bowl").setValue(draft.soundType ?? "crystal").onChange((v) => {
         draft.soundType = v;
         if (v !== "none") {
           PomodoroBlock.playNotificationSound(v);

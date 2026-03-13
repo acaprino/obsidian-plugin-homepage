@@ -9,6 +9,8 @@ interface PomodoroConfig {
   breakMinutes?: number;
   longBreakMinutes?: number;
   sessionsBeforeLong?: number;
+  soundType?: 'none' | 'crystal' | 'chime' | 'bowl';
+  autoStartCycle?: boolean;
 }
 
 const CIRCUMFERENCE = 2 * Math.PI * 52; // ≈ 326.73
@@ -208,7 +210,7 @@ export class PomodoroBlock extends BaseBlock {
 
   public static playNotificationSound(type: 'crystal' | 'chime' | 'bowl'): void {
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass = window.AudioContext || (window as unknown as Record<string, typeof AudioContext>).webkitAudioContext;
       if (!AudioContextClass) return;
       
       if (!sharedAudioCtx) {
@@ -439,10 +441,10 @@ class PomodoroSettingsModal extends Modal {
         d.addOption('none', 'None')
          .addOption('crystal', 'Crystal')
          .addOption('chime', 'Chime')
-         .addOption('bowl', 'Singing Bowl')
-         .setValue((draft as any).soundType ?? 'crystal')
+         .addOption('bowl', 'Singing bowl')
+         .setValue((draft as PomodoroConfig).soundType ?? 'crystal')
          .onChange(v => {
-           (draft as any).soundType = v;
+           (draft as PomodoroConfig).soundType = v as PomodoroConfig['soundType'];
            if (v !== 'none') {
              PomodoroBlock.playNotificationSound(v as 'crystal' | 'chime' | 'bowl');
            }
@@ -453,8 +455,8 @@ class PomodoroSettingsModal extends Modal {
       .setName('Auto-start next session')
       .setDesc('Automatically start the next phase of the cycle.')
       .addToggle(t =>
-        t.setValue((draft as any).autoStartCycle ?? false)
-         .onChange(v => { (draft as any).autoStartCycle = v; }),
+        t.setValue((draft as PomodoroConfig).autoStartCycle ?? false)
+         .onChange(v => { (draft as PomodoroConfig).autoStartCycle = v; }),
       );
 
     new Setting(contentEl)

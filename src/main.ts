@@ -59,7 +59,7 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
     // Row 1 (y: 3–5)
     {
       id: 'default-insight',
-      type: 'insight',
+      type: 'quotes-list',
       x: 0, y: 3, w: 2, h: 3,
       config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true },
     },
@@ -673,7 +673,7 @@ class HomepageSettingTab extends PluginSettingTab {
             { id: 'p1', type: 'greeting', x: 0, y: 0, w: 2, h: 2, config: { name: '', showTime: true } },
             { id: 'p2', type: 'clock', x: 2, y: 0, w: 1, h: 2, config: { showSeconds: false, showDate: true } },
             { id: 'p3', type: 'folder-links', x: 0, y: 2, w: 1, h: 3, config: { _titleLabel: 'Quick links', links: [] } },
-            { id: 'p4', type: 'insight', x: 1, y: 2, w: 2, h: 3, config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true } },
+            { id: 'p4', type: 'quotes-list', x: 1, y: 2, w: 2, h: 3, config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true } },
             { id: 'p5', type: 'quotes-list', x: 0, y: 5, w: 3, h: 3, config: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20 } },
           ],
         },

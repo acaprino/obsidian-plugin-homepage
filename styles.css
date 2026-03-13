@@ -320,8 +320,9 @@
 
 .homepage-block-wrapper.block-no-background.block-accented .block-header-zone {
   background: transparent;
-  margin: 0;
-  padding: 0;
+  /* Keep same margin/padding as accented state — removing them would change
+     header zone height, shifting block-content dimensions and flipping
+     container query breakpoints (layout jump on background toggle). */
 }
 
 .homepage-view.homepage-no-scrollbar,
@@ -544,65 +545,120 @@
   100% { background-position: -200% 0; }
 }
 
+/* ── Greeting base (wide row) ──────────────────────────── */
+/* Wide card: emoji left, "Salut, Name" inline, time right.
+   Like the "1x4 Panoramic" reference — everything on one line. */
 .homepage-block-wrapper .block-content.greeting-block {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
   min-height: auto;
-  gap: 10px;
+  gap: clamp(8px, 2cqi, 16px);
   flex-wrap: wrap;
-  overflow: hidden;
   container-type: size;
   height: 100%;
 }
 
 .greeting-emoji {
-  font-size: clamp(1.75rem, 4cqi, 2.5rem);
+  font-size: clamp(1.75rem, 5cqi, 3rem);
   line-height: 1;
   flex-shrink: 0;
+  transition: font-size 0.25s ease-out;
 }
 
 .greeting-name {
-  font-size: clamp(1.75rem, 4cqi, 2.5rem);
+  font-size: clamp(1.5rem, 4cqi, 2.5rem);
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.2;
   margin: 0;
   color: var(--text-normal);
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
+  transition: font-size 0.25s ease-out, gap 0.2s ease-out;
+}
+
+.greeting-salut {
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  transition: font-size 0.25s ease-out, color 0.2s ease-out;
+}
+
+.greeting-user {
+  font-weight: 700;
+  color: var(--text-normal);
+  letter-spacing: -0.01em;
+  transition: font-size 0.25s ease-out;
 }
 
 .greeting-time {
-  font-size: var(--font-interface-size, 0.8125rem);
-  color: var(--text-muted);
+  font-size: 0.8125rem;
+  color: var(--text-faint);
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  opacity: 0.7;
+  margin-left: auto;
+  transition: font-size 0.25s ease-out, opacity 0.2s ease-out;
 }
 
 /* ── Greeting responsive ──────────────────────────────── */
-/* Narrow block: stack vertically, center content */
-@container (max-width: 300px) {
+
+/* Vertical stack: emoji hero on top, salutation + bold name below.
+   Like "2x2 Block" and "1x2 Half-Width" references.
+   Triggers when card is narrow (< 350px).
+   Uses max(cqi, cqb) to scale with the LARGER dimension. */
+@container (max-width: 350px) {
   .block-content.greeting-block {
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
-    gap: 6px;
+    gap: clamp(2px, 2cqb, 16px);
     min-height: auto;
-  }
-  .greeting-name {
-    font-size: clamp(1.1rem, 6cqi, 1.4rem);
-    line-height: 1.25;
-    white-space: normal;
+    flex-wrap: nowrap;
   }
   .greeting-emoji {
-    font-size: clamp(1.5rem, 10cqi, 2.5rem);
-    margin-bottom: 0;
+    font-size: clamp(2.5rem, max(25cqi, 18cqb), 5rem);
+    line-height: 1;
+  }
+  .greeting-name {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(0px, 0.5cqb, 3px);
+    font-size: inherit;
+    white-space: normal;
+  }
+  .greeting-salut {
+    font-size: clamp(0.95rem, max(9cqi, 5.5cqb), 1.5rem);
+    font-weight: 400;
+    color: var(--text-muted);
+    letter-spacing: 0.03em;
+    text-transform: none;
+    line-height: 1.2;
+  }
+  .greeting-user {
+    font-size: clamp(1.5rem, max(14cqi, 8cqb), 2.8rem);
+    font-weight: 700;
+    color: var(--text-normal);
+    letter-spacing: -0.015em;
+    line-height: 1.05;
+  }
+  .greeting-time {
+    font-size: clamp(0.65rem, max(4cqi, 2cqb), 0.85rem);
+    color: var(--text-faint);
+    opacity: 0.7;
+    letter-spacing: 0.06em;
   }
 }
 
-/* Short block: row layout, scale to fill available height */
+/* Compact horizontal: forced row when card is short (< 200px tall).
+   Like "1x4 Panoramic" reference — emoji left, stacked salut/name right.
+   !important overrides the narrow query when both match (small square card). */
 @container (max-height: 200px) {
   .block-content.greeting-block {
     flex-direction: row !important;
@@ -610,33 +666,37 @@
     align-items: center !important;
     flex-wrap: nowrap !important;
     overflow-x: hidden;
-    gap: 16px !important;
+    gap: clamp(6px, 3cqi, 16px) !important;
   }
   .greeting-name {
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: column !important;
     justify-content: center;
+    align-items: flex-start !important;
     text-align: left !important;
     white-space: nowrap !important;
     overflow: hidden;
     text-overflow: ellipsis;
+    gap: 0 !important;
   }
   .greeting-salut {
-    font-size: clamp(0.9rem, max(5cqi, 20cqh), 1.5rem);
-    font-weight: 500;
+    font-size: clamp(0.85rem, max(5cqi, 20cqh), 1.4rem);
+    font-weight: 400;
     color: var(--text-muted);
-    line-height: 1.1;
+    line-height: 1.15;
+    letter-spacing: 0.03em;
   }
   .greeting-user {
-    font-size: clamp(1.4rem, max(8cqi, 30cqh), 2.8rem);
+    font-size: clamp(1.3rem, max(7cqi, 28cqh), 2.8rem);
     font-weight: 700;
-    line-height: 1.1;
-    margin-top: -2px;
+    color: var(--text-normal);
+    letter-spacing: -0.015em;
+    line-height: 1.05;
   }
   .greeting-emoji {
-    font-size: clamp(2.5rem, max(12cqi, 55cqh), 4.5rem) !important;
-    margin-bottom: 0 !important;
+    font-size: clamp(2rem, max(10cqi, 50cqh), 4.5rem) !important;
     line-height: 1 !important;
+    flex-shrink: 0 !important;
   }
   .greeting-time {
     display: none;

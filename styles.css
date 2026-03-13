@@ -924,10 +924,6 @@
 }
 
 /* ── Insight Block ──────────────────────────────────────── */
-.insight-block {
-  min-height: 100px;
-}
-
 .insight-card {
   margin-top: 4px;
 }

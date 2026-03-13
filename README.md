@@ -6,7 +6,7 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md). Build 
 
 ## Features
 
-- **15 block types** — greeting, clock, daily insight, quotes, quick links, button grid, image gallery, video embed, embedded note, static text, HTML, bookmarks, recent files, pomodoro timer, spacer
+- **15 block types** — greeting, clock, quotes, quick links, button grid, image gallery, video embed, embedded note, static text, HTML, bookmarks, recent files, pomodoro timer, spacer, random note
 - **Drag & drop layout** with 2D resize (column span + row height)
 - **Accent colors** with adjustable intensity (5–100%) — tints the entire card including interactive controls
 - **Per-block styling** — title, emoji, divider, padding, elevation, border, opacity, backdrop blur, gradients
@@ -44,7 +44,6 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md). Build 
 |-------|-------------|
 | **Greeting** | Time-aware salutation with 50 language presets, custom emoji per time slot or random pool |
 | **Clock** | Live clock with optional seconds and date |
-| **Daily Insight** | Rotating excerpt from tagged notes (daily seed or random) |
 | **Quotes** | Multi-column quotes from tagged notes or manual text |
 | **Quick Links** | Auto-list from a folder + manual links |
 | **Button Grid** | Emoji-labeled buttons linking to notes |
@@ -57,6 +56,7 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md). Build 
 | **Recent Files** | Most recently modified notes |
 | **Pomodoro** | Configurable work/break timer |
 | **Spacer** | Empty space for layout gaps |
+| **Random Note** | Surface a random note from a tag filter with excerpt preview |
 
 ![Masonry gallery with video thumbnails](screenshots/gallery-masonry.png)
 
@@ -78,8 +78,16 @@ Open **Settings > Homepage Blocks**:
 | Setting | Description |
 |---------|-------------|
 | Open on startup | Automatically open the homepage when Obsidian launches |
-| Default columns | Grid column count (2, 3, or 4) |
+| Startup open mode | How the homepage opens on startup (replace active tab, new tab, or sidebar) |
+| Open when empty | Open the homepage when no other tabs are open |
+| Manual open mode | How the homepage opens from ribbon/command (replace, new tab, or sidebar) |
+| Pin homepage tab | Prevent the homepage tab from being closed |
+| Default columns | Grid column count (2, 3, 4, or 5) |
+| Hide scrollbar | Hide the homepage scroll bar |
 | Reset to default layout | Restores demo blocks (**cannot be undone**) |
+| Export layout | Export layout as JSON |
+| Import layout | Import layout from JSON |
+| Layout presets | Apply a preset layout (Minimal, Dashboard, Focus) |
 
 ### Commands
 
@@ -87,6 +95,7 @@ Open **Settings > Homepage Blocks**:
 |---------|--------|
 | `Open Homepage` | Open or focus the homepage tab |
 | `Toggle edit mode` | Switch between edit and view mode |
+| `Add block` | Open the add-block modal |
 
 ## CSS customization
 

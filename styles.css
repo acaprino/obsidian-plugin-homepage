@@ -2006,9 +2006,10 @@
   overflow: visible;
 }
 
-/* Hide vertical resize handles — height is auto-managed in edit mode */
-.homepage-grid.edit-mode .ui-resizable-s,
-.homepage-grid.edit-mode .ui-resizable-se {
+
+/* Hide vertical resize handles for auto-height blocks — their height is auto-managed */
+.homepage-grid.edit-mode .is-auto-height > .ui-resizable-s,
+.homepage-grid.edit-mode .is-auto-height > .ui-resizable-se {
   display: none !important;
 }
 
@@ -2870,25 +2871,26 @@
     padding: 0; /* Remove vertical padding to maximize space */
   }
   .pomodoro-ring {
-    --ring-size: min(90cqh, 90cqw, 120px);
+    --ring-size: clamp(64px, 85cqh, 120px);
   }
   .pomodoro-time {
-    font-size: clamp(1.3rem, 30cqh, 2rem);
+    font-size: clamp(1rem, 18cqh, 1.6rem);
     font-weight: 400;
   }
   .pomodoro-controls {
     flex-direction: column;
     gap: 4px;
-    align-items: center; /* Center buttons */
+    align-items: center;
+    min-height: 0;
+    overflow: hidden;
   }
   .pomodoro-btn {
     padding: 2px 8px;
     font-size: 0.7rem;
     width: auto;
     min-width: 65px;
-    min-height: 24px;
-    flex-shrink: 0;
-    line-height: 1; /* Prevent internal text from causing flex-squish */
+    min-height: 0;
+    line-height: 1;
   }
   .pomodoro-phase,
   .pomodoro-dots { display: none; }
@@ -2898,15 +2900,15 @@
 @container (max-height: 120px) {
   .pomodoro-container {
     flex-direction: row;
-    justify-content: flex-start;
+    justify-content: center;
     padding: 0 4px;
     gap: 12px;
   }
   .pomodoro-ring {
-    --ring-size: min(100cqh, 80cqw, 80px);
+    --ring-size: clamp(48px, 90cqh, 80px);
   }
   .pomodoro-time {
-    font-size: clamp(1.2rem, 35cqh, 1.6rem);
+    font-size: clamp(0.85rem, 22cqh, 1.3rem);
     font-weight: 400;
   }
   .pomodoro-controls {
@@ -2915,13 +2917,15 @@
     align-items: center;
     justify-content: center;
     gap: 2px;
+    min-height: 0;
+    overflow: hidden;
   }
   .pomodoro-btn {
     width: auto;
     min-width: 45px;
     max-width: 80px;
     padding: 2px 6px;
-    min-height: 18px;
+    min-height: 0;
     font-size: 0.6rem;
     line-height: 1;
     text-align: center;

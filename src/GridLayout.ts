@@ -208,6 +208,7 @@ export class GridLayout {
 
     this.gridStack.on('resizestop', () => {
       this.syncLayoutFromGrid();
+      this.updateCompactSizeLabels();
     });
 
     const viewEl = this.gridEl.closest('.homepage-view');
@@ -275,6 +276,18 @@ export class GridLayout {
     const info = contentEl.createDiv({ cls: 'block-compact-info' });
     info.createSpan({ cls: 'block-compact-type', text: instance.type });
     info.createSpan({ cls: 'block-compact-size', text: `${instance.w}\u00D7${instance.h}` });
+  }
+
+  /** Update all compact size labels to reflect current GridStack node dimensions. */
+  private updateCompactSizeLabels(): void {
+    if (!this.gridStack) return;
+    for (const el of this.gridStack.getGridItems()) {
+      const node = (el as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+      const label = (el as HTMLElement).querySelector('.block-compact-size');
+      if (node && label) {
+        label.textContent = `${node.w ?? 1}\u00D7${node.h ?? 1}`;
+      }
+    }
   }
 
   /**

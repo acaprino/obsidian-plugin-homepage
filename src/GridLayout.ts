@@ -328,7 +328,7 @@ export class GridLayout {
       // After auto-height changes, repack ALL blocks so those below shift up
       // to fill gaps left by blocks that shrank.  GridStack's compact() and
       // float toggle are unreliable, so we compute positions ourselves.
-      console.log(`[HP repack] anyResized=${anyResized}`);
+      console.debug(`[HP repack] anyResized=${anyResized}`);
       if (anyResized) {
         const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
         for (const gsEl2 of this.gridStack.getGridItems()) {
@@ -355,12 +355,12 @@ export class GridLayout {
   private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): boolean {
     if (!this.gridStack || !gsEl.isConnected) return false;
 
-    console.log(`%c[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`, 'color: #ff00ff; font-size: 14px; font-weight: bold');
+    console.debug(`[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`);
 
     const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
     const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
     if (!contentEl || !headerZone) {
-      console.log(`%c[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`, 'color: #ffaa00');
+      console.debug(`[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`);
       return false;
     }
 
@@ -381,7 +381,7 @@ export class GridLayout {
     const contentStyle = window.getComputedStyle(contentEl);
     const lastChild = contentEl.lastElementChild as HTMLElement | null;
     const lastChildBottom = lastChild ? lastChild.getBoundingClientRect().bottom - contentEl.getBoundingClientRect().top : 0;
-    console.log(`[HP measure-debug] ${instance.type} offsetH=${contentH} rectH=${contentRect.height.toFixed(0)} scrollH=${contentEl.scrollHeight} cols=${contentStyle.getPropertyValue('columns')} lastChildBot=${lastChildBottom.toFixed(0)} children=${contentEl.children.length}`);
+    console.debug(`[HP measure-debug] ${instance.type} offsetH=${contentH} rectH=${contentRect.height.toFixed(0)} scrollH=${contentEl.scrollHeight} cols=${contentStyle.getPropertyValue('columns')} lastChildBot=${lastChildBottom.toFixed(0)} children=${contentEl.children.length}`);
 
     if (blockContent) {
       blockContent.removeClass('hp-auto-rows');
@@ -409,7 +409,7 @@ export class GridLayout {
 
     const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
     const currentH = node?.h ?? instance.h;
-    console.log(`[HP auto-height] ${instance.type} contentH=${contentH} headerH=${headerZone.offsetHeight} pad=${pad} gap=${gap} totalH=${totalH} cell=${cell} → rows=${rows} (current=${currentH})`);
+    console.debug(`[HP auto-height] ${instance.type} contentH=${contentH} headerH=${headerZone.offsetHeight} pad=${pad} gap=${gap} totalH=${totalH} cell=${cell} → rows=${rows} (current=${currentH})`);
     if (rows !== currentH) {
       // Static grid is already lifted by the caller (scheduleResize batch).
       this.gridStack.update(gsEl, { h: rows });
@@ -804,7 +804,6 @@ export class GridLayout {
    */
   private applyColumnChange(next: number): void {
     if (!this.gridStack) return;
-    const prev = this.effectiveColumns;
     this.effectiveColumns = next;
 
     // Use 'none' so GridStack doesn't auto-scale widths, then manually

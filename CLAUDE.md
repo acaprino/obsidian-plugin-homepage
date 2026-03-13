@@ -12,13 +12,13 @@ TypeScript + Obsidian DOM API. GridStack for layout. No Dataview.
 - `src/types.ts` -- `BlockType`, `BlockInstance`, `LayoutConfig`, `BlockFactory`, `IHomepagePlugin`
 - `src/BlockRegistry.ts` -- singleton `BlockRegistryClass` wrapping `Map<BlockType, BlockFactory>`
 - `src/blocks/BaseBlock.ts` -- abstract base extending `Component`
-- `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag), `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts`, `dragReorder.ts`, `emojis.ts`, `FolderSuggestModal.ts`
+- `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag), `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts`, `dragReorder.ts`, `emojis.ts`, `FolderSuggestModal.ts`, `noteContent.ts`
 - `src/blocks/` -- one file per block type (15 total)
 - `styles.css` -- all styles at repo root
 
 ## Block Types (15)
 
-`greeting`, `clock`, `folder-links`, `insight`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`, `spacer`
+`greeting`, `clock`, `folder-links`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`, `spacer`, `random-note`
 
 Each defined in `BLOCK_TYPES` array in `src/types.ts` and registered in `registerBlocks()` in `src/main.ts`.
 
@@ -35,7 +35,7 @@ npx tsc --noEmit       # type-check (run after every .ts change)
 ## Dependencies
 
 - **Runtime:** `gridstack` (grid layout engine) -- the only runtime dependency
-- **Dev:** `obsidian`, `typescript`, `esbuild`, `@types/node`, `builtin-modules`
+- **Dev:** `obsidian`, `typescript`, `esbuild`, `@types/node`, `builtin-modules`, `eslint`, `eslint-plugin-obsidianmd`, `typescript-eslint`
 - esbuild bundles to CJS (`main.js`), externalizes `obsidian` and `electron`
 
 ## Architecture
@@ -74,7 +74,7 @@ Blocks that expand beyond their grid cell set `data-auto-height-content` attribu
 Data-driven blocks watch vault events via `this.registerEvent()` and re-render through `scheduleRender()`:
 - `vault.on('create' | 'delete' | 'rename')` -- FolderLinks, ImageGallery, RecentFiles
 - `vault.on('modify')` -- EmbeddedNote, RecentFiles
-- `metadataCache.on('changed')` -- Insight, QuotesList (only when cache matches configured tag)
+- `metadataCache.on('changed')` -- RandomNote, QuotesList (only when cache matches configured tag)
 
 ### Edit Mode
 In edit mode, GridLayout renders compact symbolic placeholders (block type + size) instead of full block content. Settings and removal are handled via `block-handle-bar` controls. GridStack's `staticGrid` is toggled for drag/resize.

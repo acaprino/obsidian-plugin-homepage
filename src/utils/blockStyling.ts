@@ -4,6 +4,19 @@
  */
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+function hexChannelToLinear(c: number): number {
+  const s = c / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+
+function getRelativeLuminance(hex: string): number {
+  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
+  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
+  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 const VALID_BORDER_STYLES = ['solid', 'dashed', 'dotted'];
 
 export function applyBlockStyling(el: HTMLElement, config: Record<string, unknown>): void {
@@ -23,9 +36,22 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
     } else {
       el.style.removeProperty('--block-accent-pct');
     }
+    // Detect bright accent backgrounds that need dark text.
+    // Approximates the color-mix() blended background by interpolating between
+    // the dark-theme base luminance (~0.05) and the accent luminance at the
+    // configured intensity. Threshold 0.18 triggers for yellow at ~25% and
+    // white at ~15%, avoiding false positives on mid-range intensities.
+    const DARK_BASE_LUM = 0.05;
+    const BRIGHT_ACCENT_THRESHOLD = 0.18;
+    const effectiveIntensity = intensity || 15; // match CSS default (15%)
+    const ratio = effectiveIntensity / 100;
+    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
+    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
+    el.toggleClass('block-bright-accent', needsDarkText);
   } else {
     el.style.removeProperty('--block-accent');
     el.style.removeProperty('--block-accent-pct');
+    el.toggleClass('block-bright-accent', false);
   }
 
   // ── Visibility flags ───────────────────────────────────────────────
@@ -34,7 +60,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
 
   // ── Padding ────────────────────────────────────────────────────────
   const pad = typeof config._cardPadding === 'number'
-    ? Math.max(0, Math.min(48, config._cardPadding)) : 0;
+    ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
   if (pad) el.style.setProperty('--hp-card-padding', `${pad}px`);
   else el.style.removeProperty('--hp-card-padding');
 
@@ -82,7 +108,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   if (gradStart && gradEnd && config._hideBackground !== true) {
     el.style.setProperty('--hp-bg-gradient', `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
     el.toggleClass('block-has-gradient', true);
-  } else if (config._hideBackground !== true) {
+  } else {
     el.style.removeProperty('--hp-bg-gradient');
     el.toggleClass('block-has-gradient', false);
   }

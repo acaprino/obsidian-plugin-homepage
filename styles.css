@@ -2912,13 +2912,14 @@
   .pomodoro-controls {
     flex-direction: column;
     flex-wrap: nowrap;
-    align-items: stretch;
+    align-items: center;
     justify-content: center;
     gap: 2px;
   }
   .pomodoro-btn {
     width: auto;
     min-width: 45px;
+    max-width: 80px;
     padding: 2px 6px;
     min-height: 18px;
     font-size: 0.6rem;

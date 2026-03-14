@@ -464,6 +464,7 @@
   border: none;
   border-radius: var(--radius-m, 8px);
   padding: 8px 20px;
+  min-height: 44px;
   font-size: var(--font-interface-size, 0.8125rem);
   font-weight: 500;
   cursor: pointer;
@@ -1097,6 +1098,10 @@
     padding: 6px 10px;
     font-size: 0.9em;
   }
+  .bookmark-grid {
+    --hp-grid-cols: 1fr;
+    gap: 4px;
+  }
 }
 
 /* ── Quotes List Block ──────────────────────────────────── */
@@ -1403,8 +1408,8 @@
   }
   .gallery-lightbox-prev,
   .gallery-lightbox-next {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
   }
   .gallery-lightbox-prev { left: 6px; }
   .gallery-lightbox-next { right: 6px; }
@@ -1506,6 +1511,11 @@
 
 .static-text-block:hover .static-text-edit-btn {
   opacity: 1;
+}
+
+/* On mobile, always show the edit button (no hover state) */
+.is-mobile .static-text-edit-btn {
+  opacity: 0.6;
 }
 
 .static-text-edit-btn:hover {
@@ -1619,6 +1629,12 @@
 }
 
 .video-embed-container:hover .video-embed-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* On touch devices, always show playlist controls (no hover state) */
+.is-mobile .video-embed-controls {
   opacity: 1;
   pointer-events: auto;
 }
@@ -2700,7 +2716,6 @@
     margin: 0;
   }
   .folder-link-btn {
-    min-height: 44px;
     padding: 8px 14px;
     background: var(--background-modifier-hover);
     border-radius: var(--radius-m, 8px);
@@ -2719,7 +2734,10 @@
   /* ── Touch targets for all interactive block elements ── */
   .folder-link-btn,
   .grid-btn,
-  .bookmark-card {
+  .bookmark-card,
+  .recent-file-btn,
+  .random-note-open-btn,
+  .random-note-title {
     min-height: 44px;
   }
 
@@ -3191,7 +3209,10 @@
 
 /* ── Obsidian Mobile (.is-mobile) ──────────────────────── */
 /* .is-mobile is set on <body> by Obsidian on iOS / Android.
-   These rules target the mobile *app* specifically, not just narrow panes. */
+   These rules target the mobile *app* specifically, not just narrow panes.
+   Some rules intentionally duplicate the @container (max-width: 540px) block
+   above because .is-mobile catches the app even on wide viewports (e.g.
+   iPad landscape) while container queries only fire on narrow containers. */
 .is-mobile .homepage-view {
   --hp-padding: 6px;
   --hp-card-padding: 10px;
@@ -3201,7 +3222,10 @@
 .is-mobile .folder-link-btn,
 .is-mobile .grid-btn,
 .is-mobile .bookmark-card,
-.is-mobile .recent-file-row {
+.is-mobile .recent-file-btn,
+.is-mobile .random-note-open-btn,
+.is-mobile .random-note-title,
+.is-mobile .pomodoro-btn {
   min-height: 44px;
 }
 

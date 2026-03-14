@@ -409,7 +409,7 @@ class QuotesSettingsModal extends Modal {
     listSection = contentEl.createDiv();
     listSection.toggleClass('hp-hidden', draft.mode !== 'list');
     new Setting(listSection).setName('Columns').addDropdown(d =>
-      d.addOption('2', '2').addOption('3', '3')
+      d.addOption('1', '1').addOption('2', '2').addOption('3', '3')
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 2))
        .onChange(v => { draft.columns = Number(v); }),
     );

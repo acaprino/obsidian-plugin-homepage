@@ -120,15 +120,6 @@ function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknow
   delete m.newRow;
   // Migrate legacy type renames
   if (m.type === 'tag-grid') { m.type = 'button-grid'; }
-  if (m.type === 'insight') {
-    m.type = 'quotes-list';
-    const cfg = m.config as Record<string, unknown> | undefined;
-    if (cfg) {
-      cfg.mode = 'single';
-      cfg.source = 'tag';
-      cfg.dailySeed ??= true;
-    }
-  }
   // Migrate legacy _transparent flag to granular flags.
   const cfg = m.config as Record<string, unknown> | undefined;
   if (cfg && cfg._transparent === true) {

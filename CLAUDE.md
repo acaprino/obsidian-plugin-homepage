@@ -12,7 +12,7 @@ TypeScript + Obsidian DOM API. GridStack for layout. No Dataview.
 - `src/types.ts` -- `BlockType`, `BlockInstance`, `LayoutConfig`, `BlockFactory`, `IHomepagePlugin`
 - `src/BlockRegistry.ts` -- singleton `BlockRegistryClass` wrapping `Map<BlockType, BlockFactory>`
 - `src/blocks/BaseBlock.ts` -- abstract base extending `Component`
-- `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag), `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts`, `dragReorder.ts`, `emojis.ts`, `FolderSuggestModal.ts`, `noteContent.ts`
+- `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag), `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts`, `dragReorder.ts`, `emojis.ts`, `FolderSuggestModal.ts`, `noteContent.ts` (parseNoteInsight, used by QuotesList)
 - `src/blocks/` -- one file per block type (15 total)
 - `styles.css` -- all styles at repo root
 
@@ -43,6 +43,17 @@ npx tsc --noEmit       # type-check (run after every .ts change)
 ### IHomepagePlugin Interface
 `types.ts` defines `IHomepagePlugin` to break circular deps. Blocks and views depend on the interface, never the concrete `HomepagePlugin` class.
 
+### LayoutConfig
+`LayoutConfig` in `types.ts` holds global layout state:
+- `columns` -- grid column count (2–5)
+- `openOnStartup` -- auto-open homepage on Obsidian launch
+- `openMode` -- how homepage opens on startup (`'replace-all'`, `'replace-last'`, `'retain'`)
+- `manualOpenMode` -- how homepage opens from ribbon/command (same `OpenMode` values)
+- `openWhenEmpty` -- open homepage when no other tabs are open
+- `pin` -- prevent the homepage tab from being closed
+- `hideScrollbar` -- hide the homepage scroll bar
+- `blocks` -- array of `BlockInstance`
+
 ### Layout Model (GridStack coordinates)
 `BlockInstance` uses `{ x, y, w, h }` -- 0-indexed column/row position and span. Old `col/row/colSpan/rowSpan` fields are auto-migrated in `migrateBlockInstance()`.
 
@@ -68,11 +79,13 @@ void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
 - `observeWidthForAutoHeight(el)` -- ResizeObserver that dispatches `requestAutoHeight()` when element width changes, rAF-throttled. Used by blocks whose content reflows on resize (ImageGallery, QuotesList). Cleanup auto-registered via `this.register()`.
 
 ### Auto-Height
-Blocks that expand beyond their grid cell set `data-auto-height-content` attribute on the measurement element. `GridLayout.resizeBlockToContent()` reads its `offsetHeight` and calls `gridStack.update()`. Controlled per block by `shouldAutoHeight()` which checks `heightMode` config. Currently used by: `image-gallery`, `quotes-list` (extend mode), `embedded-note` (grow mode), `static-text`.
+Blocks that expand beyond their grid cell set `data-auto-height-content` attribute on the measurement element. `GridLayout.resizeBlockToContent()` reads its `offsetHeight` and calls `gridStack.update()`. Controlled per block by `shouldAutoHeight()` which checks `heightMode` config. Currently used by: `image-gallery`, `quotes-list` (extend mode), `embedded-note` (grow mode), `static-text`, `button-grid`, `random-note`.
 
 ### Live Reactivity
 Data-driven blocks watch vault events via `this.registerEvent()` and re-render through `scheduleRender()`:
-- `vault.on('create' | 'delete' | 'rename')` -- FolderLinks, ImageGallery, RecentFiles
+- `vault.on('create')` -- FolderLinks, ImageGallery, RecentFiles
+- `vault.on('delete')` -- FolderLinks, ImageGallery, RecentFiles, EmbeddedNote, RandomNote, QuotesList
+- `vault.on('rename')` -- FolderLinks, ImageGallery, RecentFiles, EmbeddedNote, RandomNote
 - `vault.on('modify')` -- EmbeddedNote, RecentFiles
 - `metadataCache.on('changed')` -- RandomNote, QuotesList (only when cache matches configured tag)
 
@@ -124,17 +137,16 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 
 | API | Used in |
 |-----|---------|
-| `app.vault.getMarkdownFiles()` | tags.ts, EmbeddedNote |
-| `app.vault.getFiles()` | RecentFiles |
-| `app.vault.read(file)` | Insight, QuotesList, EmbeddedNote |
-| `app.vault.getAbstractFileByPath(path)` | FolderLinks, ImageGallery, EmbeddedNote |
-| `app.vault.getResourcePath(file)` | ImageGallery (images/videos) |
+| `app.vault.getMarkdownFiles()` | tags.ts, EmbeddedNote, RecentFiles |
+| `app.vault.read(file)` | QuotesList, EmbeddedNote, RandomNote |
+| `app.vault.getAbstractFileByPath(path)` | FolderLinks, ImageGallery, EmbeddedNote, RandomNote |
+| `app.vault.getResourcePath(file)` | ImageGallery (images/videos), RandomNote |
 | `app.vault.getRoot()` | FolderSuggestModal |
-| `app.metadataCache.getFileCache(file)` | Insight, QuotesList, tags.ts |
-| `app.workspace.openLinkText(path, '')` | FolderLinks, ButtonGrid, Bookmarks, RecentFiles -- always `''` as source path |
+| `app.metadataCache.getFileCache(file)` | QuotesList, RandomNote, tags.ts |
+| `app.workspace.openLinkText(path, '')` | FolderLinks, ButtonGrid, Bookmarks, RecentFiles, RandomNote -- always `''` as source path |
 | `MarkdownRenderer.render(app, md, el, path, component)` | EmbeddedNote, StaticText |
 | `sanitizeHTMLToDom(html)` | HtmlBlock |
-| `moment` (from `'obsidian'`) | Greeting, Clock, Insight |
+| `moment` (from `'obsidian'`) | Greeting, Clock, QuotesList, RecentFiles, RandomNote |
 | `SuggestModal<T>` | FolderSuggestModal (FolderLinks, ImageGallery) |
 | `AbstractInputSuggest<T>` | FileSuggest (EmbeddedNote) |
 

@@ -116,6 +116,7 @@ export class GridLayout {
     GridLayout.packRows(items, columns);
 
     this.columns = columns;
+    this.gridEl.classList.toggle('hp-single-column', columns === 1);
 
     this.gridStack = GridStack.init({
       column: columns,
@@ -805,6 +806,10 @@ export class GridLayout {
   private applyColumnChange(next: number): void {
     if (!this.gridStack) return;
     this.effectiveColumns = next;
+
+    // Single-column mode: switch to CSS flex layout so blocks shrink-wrap
+    // their content instead of using GridStack's fixed row heights.
+    this.gridEl.classList.toggle('hp-single-column', next === 1);
 
     // Use 'none' so GridStack doesn't auto-scale widths, then manually
     // clamp each block's w to the new column count and repack.

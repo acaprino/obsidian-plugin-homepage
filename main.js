@@ -6192,6 +6192,7 @@ var GridLayout = class _GridLayout {
     }));
     _GridLayout.packRows(items, columns);
     this.columns = columns;
+    this.gridEl.classList.toggle("hp-single-column", columns === 1);
     this.gridStack = GridStack.init({
       column: columns,
       cellHeight: 80,
@@ -6747,6 +6748,7 @@ var GridLayout = class _GridLayout {
   applyColumnChange(next) {
     if (!this.gridStack) return;
     this.effectiveColumns = next;
+    this.gridEl.classList.toggle("hp-single-column", next === 1);
     this.gridStack.column(next, "none");
     const nodeItems = [];
     for (const gsEl of this.gridStack.getGridItems()) {

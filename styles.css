@@ -2537,6 +2537,78 @@
   padding: 4px 0;
 }
 
+/* ── Single-Column Mode (mobile / narrow panes) ────────── */
+/* When GridLayout collapses to 1 column, override GridStack's absolute
+   positioning with a simple flex column so blocks shrink-wrap their content
+   instead of occupying fixed grid rows.  The class is toggled by
+   GridLayout.applyColumnChange() and initGridStack(). */
+.homepage-grid.grid-stack.hp-single-column {
+  display: flex !important;
+  flex-direction: column;
+  gap: 12px;
+}
+.homepage-grid.grid-stack.hp-single-column > .grid-stack-item {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  width: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+}
+/* Let block wrapper and content fill naturally */
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper {
+  height: auto;
+}
+/* grid-stack-item-content is position:absolute in GridStack's base CSS.
+   Override to relative so the parent auto-heights correctly. */
+.homepage-grid.grid-stack.hp-single-column .grid-stack-item-content {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  height: auto !important;
+}
+.homepage-grid.grid-stack.hp-single-column .block-content {
+  height: auto;
+  min-height: 60px;
+}
+.homepage-grid.grid-stack.hp-single-column .block-content.spacer-block {
+  min-height: 0;
+}
+/* Pomodoro uses container-type:size which needs an explicit height.
+   In single-column mode, switch to inline-size so it auto-heights,
+   and lay out ring + controls horizontally. */
+.homepage-grid.grid-stack.hp-single-column .pomodoro-block {
+  container-type: inline-size;
+  height: auto;
+}
+.homepage-grid.grid-stack.hp-single-column .pomodoro-container {
+  flex-direction: row;
+  gap: 20px;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 8px;
+  height: auto;
+}
+.homepage-grid.grid-stack.hp-single-column .pomodoro-ring {
+  --ring-size: 100px;
+}
+.homepage-grid.grid-stack.hp-single-column .pomodoro-time {
+  font-size: 1.4rem;
+  font-weight: 400;
+}
+.homepage-grid.grid-stack.hp-single-column .pomodoro-controls {
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+.homepage-grid.grid-stack.hp-single-column .pomodoro-btn {
+  min-height: 44px;
+  padding: 6px 16px;
+  font-size: 0.8125rem;
+}
+
 /* ── Container Query Responsive Breakpoints ────────────── */
 /* CSS breakpoints: 380 / 540 / 768 (UI adaptation).
    See also GridLayout.ts computeEffective(): 480 / 768 / 1024 (column reduction). */
@@ -2594,6 +2666,17 @@
     padding: 40px 16px;
   }
 
+  /* Tighter grid spacing on narrow screens */
+  .homepage-grid.grid-stack.hp-single-column {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  /* Slightly smaller card padding */
+  .homepage-block-wrapper {
+    padding: var(--hp-card-padding, 10px);
+  }
+
   /* Disable staggered block entry animation */
   .homepage-grid--animating .homepage-block-wrapper {
     animation: none;
@@ -2607,6 +2690,42 @@
   }
   .bookmark-card:hover {
     transform: none;
+  }
+
+  /* ── Folder links: flow as horizontal chips on narrow screens ── */
+  .folder-links-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+  }
+  .folder-link-btn {
+    min-height: 44px;
+    padding: 8px 14px;
+    background: var(--background-modifier-hover);
+    border-radius: var(--radius-m, 8px);
+    font-size: var(--font-text-size, 0.875rem);
+    width: auto;
+  }
+  .folder-link-btn:hover {
+    transform: none;
+  }
+  /* Centre and right alignment: let chips wrap naturally */
+  .folder-links-align-center .folder-link-item,
+  .folder-links-align-right .folder-link-item {
+    justify-content: flex-start;
+  }
+
+  /* ── Touch targets for all interactive block elements ── */
+  .folder-link-btn,
+  .grid-btn,
+  .bookmark-card {
+    min-height: 44px;
+  }
+
+  /* ── Quote items: tighter on narrow ── */
+  .quote-content {
+    font-size: 0.9375rem;
   }
 }
 
@@ -3068,6 +3187,51 @@
   font-size: 0.6875rem;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+/* ── Obsidian Mobile (.is-mobile) ──────────────────────── */
+/* .is-mobile is set on <body> by Obsidian on iOS / Android.
+   These rules target the mobile *app* specifically, not just narrow panes. */
+.is-mobile .homepage-view {
+  --hp-padding: 6px;
+  --hp-card-padding: 10px;
+}
+
+/* Bigger tap targets across all interactive elements on mobile */
+.is-mobile .folder-link-btn,
+.is-mobile .grid-btn,
+.is-mobile .bookmark-card,
+.is-mobile .recent-file-row {
+  min-height: 44px;
+}
+
+/* Folder links as chips on mobile */
+.is-mobile .folder-links-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+.is-mobile .folder-link-btn {
+  padding: 8px 14px;
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-m, 8px);
+  width: auto;
+}
+.is-mobile .folder-link-btn:hover {
+  transform: none;
+}
+
+/* Disable all hover transforms on mobile (no hover state) */
+.is-mobile .grid-btn:hover,
+.is-mobile .bookmark-card:hover,
+.is-mobile .folder-link-btn:hover .link-emoji {
+  transform: none;
+}
+
+/* Single-column: tighter gap */
+.is-mobile .homepage-grid.grid-stack.hp-single-column {
+  gap: 6px;
 }
 
 /* ── Reduced Motion ─────────────────────────────────────── */

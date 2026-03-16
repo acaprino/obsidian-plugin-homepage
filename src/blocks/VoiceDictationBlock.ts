@@ -289,12 +289,105 @@ export class VoiceDictationBlock extends BaseBlock {
     await this.stopWhisperRecording(el);
   }
 
-  private async startWhisperRecording(_el: HTMLElement): Promise<void> {
-    // Implemented in Chunk 4
+  private async startWhisperRecording(el: HTMLElement): Promise<void> {
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      new Notice('Microphone access denied');
+      return;
+    }
+
+    this.audioChunks = [];
+    this.mediaRecorder = new MediaRecorder(stream);
+
+    this.mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) this.audioChunks.push(e.data);
+    };
+
+    this.mediaRecorder.onstop = () => {
+      void this.handleWhisperStop(el);
+    };
+
+    this.mediaRecorder.start();
+    this.setState(el, 'recording');
   }
 
-  private async stopWhisperRecording(_el: HTMLElement): Promise<void> {
-    // Implemented in Chunk 4
+  private async stopWhisperRecording(el: HTMLElement): Promise<void> {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.setState(el, 'transcribing');
+      this.mediaRecorder.stop();
+      // onstop fires asynchronously → handleWhisperStop
+    }
+  }
+
+  private async handleWhisperStop(el: HTMLElement): Promise<void> {
+    const cfg = this.instance.config as VoiceDictationConfig;
+
+    // Collect blob
+    const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+    this.audioChunks = [];
+
+    // Stop stream tracks
+    this.mediaRecorder?.stream.getTracks().forEach(t => t.stop());
+
+    if (blob.size === 0) {
+      new Notice('No audio captured');
+      this.setState(el, 'idle');
+      return;
+    }
+
+    // Build form data
+    const form = new FormData();
+    form.append('file', blob, 'audio.webm');
+    form.append('model', 'whisper-1');
+    if (cfg.whisperLanguage) form.append('language', cfg.whisperLanguage);
+
+    this.fetchAbortCtrl = new AbortController();
+
+    let transcript = '';
+    try {
+      // requestUrl does not support multipart/form-data (binary audio blob);
+      // fetch is the only viable option for the Whisper API binary upload.
+      // eslint-disable-next-line no-restricted-globals
+      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ''}` },
+        body: form,
+        signal: this.fetchAbortCtrl.signal,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => String(res.status));
+        new Notice('Transcription failed: ' + errText);
+        this.setState(el, 'idle');
+        return;
+      }
+
+      const json = await res.json() as { text?: string };
+      transcript = (json.text ?? '').trim();
+    } catch (err: unknown) {
+      // Aborted during cleanup — block is unloading, ignore silently
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.error('[VoiceDictation] Whisper fetch error', err);
+      new Notice('Transcription failed');
+      this.setState(el, 'idle');
+      return;
+    }
+
+    if (!transcript) {
+      this.setState(el, 'idle');
+      return;
+    }
+
+    try {
+      await this.saveNote(transcript, cfg);
+      this.showSavedFlash(el);
+    } catch (e: unknown) {
+      console.error('[VoiceDictation] save failed', e);
+      new Notice('Failed to save note');
+      this.setState(el, 'idle');
+    }
   }
 
   // ── Settings modal ─────────────────────────────────────────────────────────

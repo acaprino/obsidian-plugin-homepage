@@ -97,7 +97,7 @@ export class VoiceDictationBlock extends BaseBlock {
     if (cfg.triggerMode === 'push') {
       this.micBtn.setAttribute('aria-label', 'Hold to record voice note');
       this.micBtn.addEventListener('pointerdown', () => { void this.startRecording(); });
-      const stop = () => { if (this.getState(el) === 'recording') void this.stopRecording(el, cfg); };
+      const stop = () => { if (this.getState(el) === 'recording') this.stopRecording(el, cfg); };
       this.micBtn.addEventListener('pointerup', stop);
       this.micBtn.addEventListener('pointercancel', stop);
     } else {
@@ -105,7 +105,7 @@ export class VoiceDictationBlock extends BaseBlock {
         if (this.getState(el) === 'idle') {
           void this.startRecording();
         } else if (this.getState(el) === 'recording') {
-          void this.stopRecording(el, cfg);
+          this.stopRecording(el, cfg);
         }
       });
     }
@@ -278,7 +278,7 @@ export class VoiceDictationBlock extends BaseBlock {
     this.setState(el, 'recording');
   }
 
-  private async stopRecording(el: HTMLElement, _cfg: VoiceDictationConfig): Promise<void> {
+  private stopRecording(el: HTMLElement, _cfg: VoiceDictationConfig): void {
     // Web Speech path: stopping the recognizer triggers onend
     if (this.recognition) {
       this.recognition.stop();
@@ -286,7 +286,7 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
     // Whisper path: handled in stopWhisperRecording
-    await this.stopWhisperRecording(el);
+    this.stopWhisperRecording(el);
   }
 
   private async startWhisperRecording(el: HTMLElement): Promise<void> {
@@ -313,7 +313,7 @@ export class VoiceDictationBlock extends BaseBlock {
     this.setState(el, 'recording');
   }
 
-  private async stopWhisperRecording(el: HTMLElement): Promise<void> {
+  private stopWhisperRecording(el: HTMLElement): void {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.setState(el, 'transcribing');
       this.mediaRecorder.stop();

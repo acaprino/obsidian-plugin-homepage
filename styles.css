@@ -3216,6 +3216,7 @@
 .is-mobile .homepage-view {
   --hp-padding: 6px;
   --hp-card-padding: 10px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Bigger tap targets across all interactive elements on mobile */

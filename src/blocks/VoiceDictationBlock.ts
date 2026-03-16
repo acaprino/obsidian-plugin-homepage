@@ -212,12 +212,89 @@ export class VoiceDictationBlock extends BaseBlock {
   // ── Web Speech path ────────────────────────────────────────────────────────
 
   private async startRecording(): Promise<void> {
-    // Implemented in Task 7
+    const el = this.containerEl;
+    if (!el) return;
+    const cfg = this.instance.config as VoiceDictationConfig;
+
+    // Use Whisper path if API key present
+    if (cfg.whisperApiKey) {
+      await this.startWhisperRecording(el);
+      return;
+    }
+
+    // Web Speech path
+    const SR = (window as unknown as {
+      SpeechRecognition?: SpeechRecognitionCtor;
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+    }).SpeechRecognition
+      ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
+
+    if (!SR) {
+      new Notice('Speech recognition not supported on this platform');
+      return;
+    }
+
+    this.recognition = new SR();
+    this.recognition.interimResults = false;
+    this.recognition.continuous = false;
+    this.pendingTranscript = '';
+    this.speechErrored = false;
+
+    this.recognition.onresult = (event) => {
+      this.pendingTranscript = Array.from(event.results)
+        .map(r => r[0].transcript)
+        .join(' ')
+        .trim();
+    };
+
+    this.recognition.onerror = (event) => {
+      this.speechErrored = true;
+      this.setState(el, 'idle');
+      if (event.error === 'not-allowed') {
+        new Notice('Microphone access denied');
+      } else {
+        new Notice('Speech recognition error: ' + event.error);
+      }
+    };
+
+    this.recognition.onend = () => {
+      // onerror sets speechErrored so we skip the save
+      if (this.speechErrored) return;
+      if (this.pendingTranscript) {
+        const saveCfg = this.instance.config as VoiceDictationConfig;
+        this.saveNote(this.pendingTranscript, saveCfg)
+          .then(() => { this.showSavedFlash(el); })
+          .catch((e: unknown) => {
+            console.error('[VoiceDictation] save failed', e);
+            new Notice('Failed to save note');
+            this.setState(el, 'idle');
+          });
+      } else {
+        this.setState(el, 'idle');
+      }
+    };
+
+    this.recognition.start();
+    this.setState(el, 'recording');
   }
 
-  private async stopRecording(el: HTMLElement, cfg: VoiceDictationConfig): Promise<void> {
-    // Implemented in Task 8
-    void el; void cfg;
+  private async stopRecording(el: HTMLElement, _cfg: VoiceDictationConfig): Promise<void> {
+    // Web Speech path: stopping the recognizer triggers onend
+    if (this.recognition) {
+      this.recognition.stop();
+      // State transitions happen in onend / onerror
+      return;
+    }
+    // Whisper path: handled in stopWhisperRecording
+    await this.stopWhisperRecording(el);
+  }
+
+  private async startWhisperRecording(_el: HTMLElement): Promise<void> {
+    // Implemented in Chunk 4
+  }
+
+  private async stopWhisperRecording(_el: HTMLElement): Promise<void> {
+    // Implemented in Chunk 4
   }
 
   // ── Settings modal ─────────────────────────────────────────────────────────

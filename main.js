@@ -6644,7 +6644,7 @@ var GridLayout = class _GridLayout {
     if (!enabled && this.editMode && !skipRepack) {
       const repacked = _GridLayout.repackEditLayout(
         this.plugin.layout.blocks,
-        this.effectiveColumns
+        this.userColumns
       );
       this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
     }
@@ -6724,10 +6724,6 @@ var GridLayout = class _GridLayout {
     this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
     this.rerender();
   }
-  /** Get the current effective column count (may differ from user's saved value on narrow screens). */
-  getEffectiveColumns() {
-    return this.effectiveColumns;
-  }
   /**
    * Compute effective columns from container width and user's desired max.
    * Breakpoints: 480 / 768 / 1024 (column reduction).
@@ -6776,6 +6772,7 @@ var GridLayout = class _GridLayout {
     if (!this.resizeObserver) {
       this.resizeObserver = new ResizeObserver((entries) => {
         if (this.isDestroyed || !this.gridStack) return;
+        if (this.editMode) return;
         const entry = entries[0];
         if (!entry) return;
         const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
@@ -6787,7 +6784,7 @@ var GridLayout = class _GridLayout {
       this.resizeObserver.observe(viewEl);
     }
     this.effectiveColumns = this.computeEffective(viewEl.clientWidth);
-    if (this.effectiveColumns !== userCols && this.gridStack) {
+    if (this.effectiveColumns !== userCols && this.gridStack && !this.editMode) {
       this.applyColumnChange(this.effectiveColumns);
     }
   }
@@ -7208,7 +7205,6 @@ var EditToolbar = class {
     const colGroup = this.toolbarEl.createDiv({ cls: "toolbar-col-group" });
     const colSelect = colGroup.createEl("select", { cls: "toolbar-col-select" });
     colSelect.setAttribute("aria-label", "Number of columns");
-    const effective = this.grid.getEffectiveColumns();
     [2, 3, 4, 5].forEach((n) => {
       const opt = colSelect.createEl("option", { value: String(n), text: `${n} col` });
       if (n === this.plugin.layout.columns) opt.selected = true;
@@ -7216,9 +7212,6 @@ var EditToolbar = class {
     colSelect.addEventListener("change", () => {
       this.onColumnsChange(Number(colSelect.value));
     });
-    if (effective !== this.plugin.layout.columns) {
-      colGroup.createSpan({ cls: "toolbar-col-auto-hint", text: `(auto: ${effective})` });
-    }
     const zoomGroup = this.toolbarEl.createDiv({ cls: "toolbar-zoom-group" });
     zoomGroup.createSpan({ cls: "toolbar-zoom-label", text: "Zoom" });
     const zoomSlider = zoomGroup.createEl("input", {
@@ -10551,7 +10544,7 @@ var VoiceDictationBlock = class extends BaseBlock {
         void this.startRecording();
       });
       const stop = () => {
-        if (this.getState(el) === "recording") void this.stopRecording(el, cfg);
+        if (this.getState(el) === "recording") this.stopRecording(el, cfg);
       };
       this.micBtn.addEventListener("pointerup", stop);
       this.micBtn.addEventListener("pointercancel", stop);
@@ -10560,7 +10553,7 @@ var VoiceDictationBlock = class extends BaseBlock {
         if (this.getState(el) === "idle") {
           void this.startRecording();
         } else if (this.getState(el) === "recording") {
-          void this.stopRecording(el, cfg);
+          this.stopRecording(el, cfg);
         }
       });
     }
@@ -10693,12 +10686,12 @@ var VoiceDictationBlock = class extends BaseBlock {
     this.recognition.start();
     this.setState(el, "recording");
   }
-  async stopRecording(el, _cfg) {
+  stopRecording(el, _cfg) {
     if (this.recognition) {
       this.recognition.stop();
       return;
     }
-    await this.stopWhisperRecording(el);
+    this.stopWhisperRecording(el);
   }
   async startWhisperRecording(el) {
     let stream;
@@ -10719,7 +10712,7 @@ var VoiceDictationBlock = class extends BaseBlock {
     this.mediaRecorder.start();
     this.setState(el, "recording");
   }
-  async stopWhisperRecording(el) {
+  stopWhisperRecording(el) {
     if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       this.setState(el, "transcribing");
       this.mediaRecorder.stop();

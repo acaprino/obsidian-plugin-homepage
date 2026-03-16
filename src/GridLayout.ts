@@ -690,10 +690,12 @@ export class GridLayout {
       // would overlap blocks at full view-mode heights.
       const repacked = GridLayout.repackEditLayout(
         this.plugin.layout.blocks,
-        this.effectiveColumns,
+        this.userColumns,
       );
       this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
     }
+    // Set editMode before rerender so setupResponsiveColumns skips
+    // responsive remapping while in edit mode (canonical layout preserved).
     this.editMode = enabled;
     if (this.gridStack) {
       this.gridStack.setStatic(!enabled);
@@ -780,11 +782,6 @@ export class GridLayout {
     this.rerender();
   }
 
-  /** Get the current effective column count (may differ from user's saved value on narrow screens). */
-  getEffectiveColumns(): number {
-    return this.effectiveColumns;
-  }
-
   /**
    * Compute effective columns from container width and user's desired max.
    * Breakpoints: 480 / 768 / 1024 (column reduction).
@@ -848,6 +845,7 @@ export class GridLayout {
     if (!this.resizeObserver) {
       this.resizeObserver = new ResizeObserver((entries) => {
         if (this.isDestroyed || !this.gridStack) return;
+        if (this.editMode) return; // Don't remap while editing — preserve canonical layout
         const entry = entries[0];
         if (!entry) return;
         const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
@@ -859,9 +857,10 @@ export class GridLayout {
       this.resizeObserver.observe(viewEl);
     }
 
-    // Set initial value synchronously (also handles userCols changes)
+    // Set initial value synchronously (also handles userCols changes).
+    // Skip remapping while in edit mode — canonical layout must be preserved.
     this.effectiveColumns = this.computeEffective(viewEl.clientWidth);
-    if (this.effectiveColumns !== userCols && this.gridStack) {
+    if (this.effectiveColumns !== userCols && this.gridStack && !this.editMode) {
       this.applyColumnChange(this.effectiveColumns);
     }
   }

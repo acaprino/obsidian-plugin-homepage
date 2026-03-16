@@ -23,7 +23,7 @@ __export(main_exports, {
   default: () => HomepagePlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian20 = require("obsidian");
+var import_obsidian21 = require("obsidian");
 
 // src/HomepageView.ts
 var import_obsidian3 = require("obsidian");
@@ -6644,7 +6644,7 @@ var GridLayout = class _GridLayout {
     if (!enabled && this.editMode && !skipRepack) {
       const repacked = _GridLayout.repackEditLayout(
         this.plugin.layout.blocks,
-        this.effectiveColumns
+        this.userColumns
       );
       this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
     }
@@ -6724,10 +6724,6 @@ var GridLayout = class _GridLayout {
     this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
     this.rerender();
   }
-  /** Get the current effective column count (may differ from user's saved value on narrow screens). */
-  getEffectiveColumns() {
-    return this.effectiveColumns;
-  }
   /**
    * Compute effective columns from container width and user's desired max.
    * Breakpoints: 480 / 768 / 1024 (column reduction).
@@ -6776,6 +6772,7 @@ var GridLayout = class _GridLayout {
     if (!this.resizeObserver) {
       this.resizeObserver = new ResizeObserver((entries) => {
         if (this.isDestroyed || !this.gridStack) return;
+        if (this.editMode) return;
         const entry = entries[0];
         if (!entry) return;
         const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
@@ -6787,7 +6784,7 @@ var GridLayout = class _GridLayout {
       this.resizeObserver.observe(viewEl);
     }
     this.effectiveColumns = this.computeEffective(viewEl.clientWidth);
-    if (this.effectiveColumns !== userCols && this.gridStack) {
+    if (this.effectiveColumns !== userCols && this.gridStack && !this.editMode) {
       this.applyColumnChange(this.effectiveColumns);
     }
   }
@@ -7208,7 +7205,6 @@ var EditToolbar = class {
     const colGroup = this.toolbarEl.createDiv({ cls: "toolbar-col-group" });
     const colSelect = colGroup.createEl("select", { cls: "toolbar-col-select" });
     colSelect.setAttribute("aria-label", "Number of columns");
-    const effective = this.grid.getEffectiveColumns();
     [2, 3, 4, 5].forEach((n) => {
       const opt = colSelect.createEl("option", { value: String(n), text: `${n} col` });
       if (n === this.plugin.layout.columns) opt.selected = true;
@@ -7216,9 +7212,6 @@ var EditToolbar = class {
     colSelect.addEventListener("change", () => {
       this.onColumnsChange(Number(colSelect.value));
     });
-    if (effective !== this.plugin.layout.columns) {
-      colGroup.createSpan({ cls: "toolbar-col-auto-hint", text: `(auto: ${effective})` });
-    }
     const zoomGroup = this.toolbarEl.createDiv({ cls: "toolbar-zoom-group" });
     zoomGroup.createSpan({ cls: "toolbar-zoom-label", text: "Zoom" });
     const zoomSlider = zoomGroup.createEl("input", {
@@ -7293,7 +7286,8 @@ var BLOCK_META = {
   "recent-files": { icon: "\u{1F4C2}", desc: "Recently modified notes in your vault" },
   "pomodoro": { icon: "\u{1F345}", desc: "Pomodoro timer with work/break cycles" },
   "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" },
-  "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" }
+  "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" },
+  "voice-dictation": { icon: "\u{1F399}\uFE0F", desc: "Record voice notes saved automatically to a folder" }
 };
 var AddBlockModal = class extends import_obsidian2.Modal {
   constructor(app, onSelect) {
@@ -7404,7 +7398,8 @@ var BLOCK_TYPES = [
   "recent-files",
   "pomodoro",
   "spacer",
-  "random-note"
+  "random-note",
+  "voice-dictation"
 ];
 
 // src/blocks/GreetingBlock.ts
@@ -8346,7 +8341,7 @@ function parseNoteInsight(content, cache) {
   const heading = cache?.headings?.[0]?.heading ?? "";
   const fmEnd = cache?.frontmatterPosition?.end.offset ?? 0;
   const afterFm = content.slice(fmEnd);
-  const body = afterFm.split("\n").map((l) => l.trim()).find((l) => l && !l.startsWith("#")) ?? "";
+  const body = afterFm.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).join(" ");
   return { heading, body };
 }
 
@@ -10497,6 +10492,345 @@ var RandomNoteSettingsModal = class extends import_obsidian19.Modal {
   }
 };
 
+// src/blocks/VoiceDictationBlock.ts
+var import_obsidian20 = require("obsidian");
+var VoiceDictationBlock = class extends BaseBlock {
+  statusEl = null;
+  micBtn = null;
+  micIconEl = null;
+  timerEl = null;
+  // Web Speech
+  recognition = null;
+  pendingTranscript = "";
+  speechErrored = false;
+  // Whisper
+  mediaRecorder = null;
+  audioChunks = [];
+  fetchAbortCtrl = null;
+  // Elapsed timer handle
+  elapsedSeconds = 0;
+  elapsedIntervalRef = null;
+  constructor(app, instance, plugin) {
+    super(app, instance, plugin);
+  }
+  render(el) {
+    const cfg = this.instance.config;
+    el.addClass("voice-block");
+    this.containerEl = el;
+    this.setState(el, "idle");
+    this.renderHeader(el, "Voice notes");
+    const body = el.createDiv({ cls: "voice-body" });
+    this.statusEl = body.createDiv({ cls: "voice-status", text: "Tap to record" });
+    const micZone = body.createDiv({ cls: "voice-mic-zone" });
+    this.micBtn = micZone.createEl("button", { cls: "voice-mic" });
+    this.micBtn.setAttribute("aria-label", "Start recording voice note");
+    this.micIconEl = this.micBtn.createSpan({ cls: "voice-mic-icon" });
+    (0, import_obsidian20.setIcon)(this.micIconEl, "microphone");
+    this.timerEl = micZone.createDiv({ cls: "voice-timer", text: "0:00" });
+    const flash = body.createDiv({ cls: "voice-saved-flash" });
+    const checkIconEl = flash.createSpan();
+    (0, import_obsidian20.setIcon)(checkIconEl, "check");
+    flash.createSpan({ cls: "voice-saved-label", text: "Saved" });
+    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!SR && !cfg.whisperApiKey) {
+      new import_obsidian20.Notice("Speech recognition not supported on this platform");
+      this.micBtn.disabled = true;
+      this.micBtn.addClass("voice-mic--unavailable");
+      return;
+    }
+    if (cfg.triggerMode === "push") {
+      this.micBtn.setAttribute("aria-label", "Hold to record voice note");
+      this.micBtn.addEventListener("pointerdown", () => {
+        void this.startRecording();
+      });
+      const stop = () => {
+        if (this.getState(el) === "recording") this.stopRecording(el, cfg);
+      };
+      this.micBtn.addEventListener("pointerup", stop);
+      this.micBtn.addEventListener("pointercancel", stop);
+    } else {
+      this.micBtn.addEventListener("click", () => {
+        if (this.getState(el) === "idle") {
+          void this.startRecording();
+        } else if (this.getState(el) === "recording") {
+          this.stopRecording(el, cfg);
+        }
+      });
+    }
+    this.register(() => {
+      this.fetchAbortCtrl?.abort();
+      if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+        this.mediaRecorder.ondataavailable = null;
+        this.mediaRecorder.onstop = null;
+        this.mediaRecorder.stop();
+      }
+      this.mediaRecorder?.stream.getTracks().forEach((t) => t.stop());
+      this.recognition?.abort();
+      if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
+    });
+  }
+  getState(el) {
+    return el.dataset.voiceState ?? "idle";
+  }
+  setState(el, state) {
+    el.dataset.voiceState = state;
+    if (!this.statusEl || !this.micBtn || !this.micIconEl) return;
+    const labels = {
+      idle: "Tap to record",
+      recording: "Recording\u2026",
+      transcribing: "Transcribing\u2026",
+      saved: ""
+    };
+    this.statusEl.setText(labels[state]);
+    if (state === "recording") {
+      this.micBtn.setAttribute("aria-label", "Stop recording");
+      (0, import_obsidian20.setIcon)(this.micIconEl, "square");
+      this.startElapsedTimer();
+    } else {
+      const cfg = this.instance.config;
+      const ariaLabel = cfg.triggerMode === "push" ? "Hold to record voice note" : "Start recording voice note";
+      this.micBtn.setAttribute("aria-label", ariaLabel);
+      (0, import_obsidian20.setIcon)(this.micIconEl, "microphone");
+      this.stopElapsedTimer();
+    }
+  }
+  startElapsedTimer() {
+    this.elapsedSeconds = 0;
+    if (this.timerEl) this.timerEl.setText("0:00");
+    this.elapsedIntervalRef = this.registerInterval(window.setInterval(() => {
+      this.elapsedSeconds++;
+      const m = Math.floor(this.elapsedSeconds / 60);
+      const s = String(this.elapsedSeconds % 60).padStart(2, "0");
+      if (this.timerEl) this.timerEl.setText(`${m}:${s}`);
+    }, 1e3));
+  }
+  stopElapsedTimer() {
+    if (this.elapsedIntervalRef !== null) {
+      window.clearInterval(this.elapsedIntervalRef);
+      this.elapsedIntervalRef = null;
+    }
+    if (this.timerEl) this.timerEl.setText("0:00");
+  }
+  showSavedFlash(el) {
+    this.setState(el, "saved");
+    const id = window.setTimeout(() => {
+      this.setState(el, "idle");
+    }, 1500);
+    this.register(() => window.clearTimeout(id));
+  }
+  // ── Note creation ──────────────────────────────────────────────────────────
+  async saveNote(transcript, cfg) {
+    if (!transcript.trim()) return;
+    const folder = (cfg.folder ?? "").trim();
+    const timestamp = (0, import_obsidian20.moment)().format("YYYY-MM-DD HH-mm-ss");
+    const notePath = folder ? `${folder}/${timestamp}.md` : `${timestamp}.md`;
+    if (folder) {
+      const segments = folder.split("/").filter(Boolean);
+      let accumulated = "";
+      for (const seg of segments) {
+        accumulated = accumulated ? `${accumulated}/${seg}` : seg;
+        if (!this.app.vault.getAbstractFileByPath(accumulated)) {
+          await this.app.vault.createFolder(accumulated);
+        }
+      }
+    }
+    const content = cfg.noteTemplate ?? "" ? (cfg.noteTemplate ?? "").replaceAll("{{transcript}}", transcript) : transcript;
+    await this.app.vault.create(notePath, content);
+  }
+  // ── Web Speech path ────────────────────────────────────────────────────────
+  async startRecording() {
+    const el = this.containerEl;
+    if (!el) return;
+    const cfg = this.instance.config;
+    if (cfg.whisperApiKey) {
+      await this.startWhisperRecording(el);
+      return;
+    }
+    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!SR) {
+      new import_obsidian20.Notice("Speech recognition not supported on this platform");
+      return;
+    }
+    this.recognition = new SR();
+    this.recognition.interimResults = false;
+    this.recognition.continuous = false;
+    this.pendingTranscript = "";
+    this.speechErrored = false;
+    this.recognition.onresult = (event) => {
+      this.pendingTranscript = Array.from(event.results).map((r) => r[0].transcript).join(" ").trim();
+    };
+    this.recognition.onerror = (event) => {
+      this.speechErrored = true;
+      this.setState(el, "idle");
+      if (event.error === "not-allowed") {
+        new import_obsidian20.Notice("Microphone access denied");
+      } else {
+        new import_obsidian20.Notice("Speech recognition error: " + event.error);
+      }
+    };
+    this.recognition.onend = () => {
+      if (this.speechErrored) return;
+      if (this.pendingTranscript) {
+        const saveCfg = this.instance.config;
+        this.saveNote(this.pendingTranscript, saveCfg).then(() => {
+          this.showSavedFlash(el);
+        }).catch((e) => {
+          console.error("[VoiceDictation] save failed", e);
+          new import_obsidian20.Notice("Failed to save note");
+          this.setState(el, "idle");
+        });
+      } else {
+        this.setState(el, "idle");
+      }
+    };
+    this.recognition.start();
+    this.setState(el, "recording");
+  }
+  stopRecording(el, _cfg) {
+    if (this.recognition) {
+      this.recognition.stop();
+      return;
+    }
+    this.stopWhisperRecording(el);
+  }
+  async startWhisperRecording(el) {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      new import_obsidian20.Notice("Microphone access denied");
+      return;
+    }
+    this.audioChunks = [];
+    this.mediaRecorder = new MediaRecorder(stream);
+    this.mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) this.audioChunks.push(e.data);
+    };
+    this.mediaRecorder.onstop = () => {
+      void this.handleWhisperStop(el);
+    };
+    this.mediaRecorder.start();
+    this.setState(el, "recording");
+  }
+  stopWhisperRecording(el) {
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+      this.setState(el, "transcribing");
+      this.mediaRecorder.stop();
+    }
+  }
+  async handleWhisperStop(el) {
+    const cfg = this.instance.config;
+    const blob = new Blob(this.audioChunks, { type: "audio/webm" });
+    this.audioChunks = [];
+    this.mediaRecorder?.stream.getTracks().forEach((t) => t.stop());
+    if (blob.size === 0) {
+      new import_obsidian20.Notice("No audio captured");
+      this.setState(el, "idle");
+      return;
+    }
+    const form = new FormData();
+    form.append("file", blob, "audio.webm");
+    form.append("model", "whisper-1");
+    if (cfg.whisperLanguage) form.append("language", cfg.whisperLanguage);
+    this.fetchAbortCtrl = new AbortController();
+    let transcript = "";
+    try {
+      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ""}` },
+        body: form,
+        signal: this.fetchAbortCtrl.signal
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => String(res.status));
+        new import_obsidian20.Notice("Transcription failed: " + errText);
+        this.setState(el, "idle");
+        return;
+      }
+      const json = await res.json();
+      transcript = (json.text ?? "").trim();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      console.error("[VoiceDictation] Whisper fetch error", err);
+      new import_obsidian20.Notice("Transcription failed");
+      this.setState(el, "idle");
+      return;
+    }
+    if (!transcript) {
+      this.setState(el, "idle");
+      return;
+    }
+    try {
+      await this.saveNote(transcript, cfg);
+      this.showSavedFlash(el);
+    } catch (e) {
+      console.error("[VoiceDictation] save failed", e);
+      new import_obsidian20.Notice("Failed to save note");
+      this.setState(el, "idle");
+    }
+  }
+  // ── Settings modal ─────────────────────────────────────────────────────────
+  openSettings(onSave) {
+    new VoiceDictationSettingsModal(this.app, this.instance.config, onSave).open();
+  }
+};
+var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
+  constructor(app, config, onSave) {
+    super(app);
+    this.config = config;
+    this.onSave = onSave;
+    this.draft = { ...config };
+  }
+  draft;
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian20.Setting(contentEl).setName("Voice notes settings").setHeading();
+    new import_obsidian20.Setting(contentEl).setName("Destination folder").setDesc("New voice notes will be created here. Leave empty for vault root.").addText((t) => {
+      t.setPlaceholder("Voice notes").setValue(this.draft.folder ?? "").onChange((v) => {
+        this.draft.folder = v.trim();
+      });
+      t.inputEl.addEventListener("click", () => {
+        new FolderSuggestModal(this.app, (folder) => {
+          this.draft.folder = folder.path;
+          t.setValue(folder.path);
+        }).open();
+      });
+    });
+    new import_obsidian20.Setting(contentEl).setName("Trigger mode").setDesc("How the mic button activates recording.").addDropdown((d) => {
+      d.addOption("tap", "Tap to record").addOption("push", "Push to talk").setValue(this.draft.triggerMode ?? "tap").onChange((v) => {
+        this.draft.triggerMode = v;
+      });
+    });
+    new import_obsidian20.Setting(contentEl).setName("Whisper API key").setDesc("Leave empty to use built-in speech recognition. Enter your API key for higher quality transcription.").addText((t) => {
+      t.inputEl.type = "password";
+      t.setPlaceholder("Your API key").setValue(this.draft.whisperApiKey ?? "").onChange((v) => {
+        this.draft.whisperApiKey = v.trim();
+      });
+    });
+    new import_obsidian20.Setting(contentEl).setName("Whisper language").setDesc("Language code for transcription (en, it, fr). Leave empty for auto-detect.").addText((t) => {
+      t.setPlaceholder("Auto").setValue(this.draft.whisperLanguage ?? "").onChange((v) => {
+        this.draft.whisperLanguage = v.trim();
+      });
+    });
+    new import_obsidian20.Setting(contentEl).setName("Note template").setDesc("Optional. Use {{transcript}} where the text should appear. All occurrences are replaced.").addTextArea((t) => {
+      t.setPlaceholder("{{transcript}}").setValue(this.draft.noteTemplate ?? "").onChange((v) => {
+        this.draft.noteTemplate = v;
+      });
+      t.inputEl.rows = 4;
+    });
+    new import_obsidian20.Setting(contentEl).addButton((b) => {
+      b.setButtonText("Save").setCta().onClick(() => {
+        this.onSave(this.draft);
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
 // src/main.ts
 var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
 function isOpenMode(v) {
@@ -10776,8 +11110,21 @@ function registerBlocks() {
     defaultSize: { w: 1, h: 4 },
     create: (app, instance, plugin) => new RandomNoteBlock(app, instance, plugin)
   });
+  BlockRegistry.register({
+    type: "voice-dictation",
+    displayName: "Voice notes",
+    defaultConfig: {
+      folder: "",
+      triggerMode: "tap",
+      whisperApiKey: "",
+      whisperLanguage: "",
+      noteTemplate: ""
+    },
+    defaultSize: { w: 2, h: 3 },
+    create: (app, instance, plugin) => new VoiceDictationBlock(app, instance, plugin)
+  });
 }
-var HomepagePlugin = class extends import_obsidian20.Plugin {
+var HomepagePlugin = class extends import_obsidian21.Plugin {
   layout = getDefaultLayout();
   async onload() {
     registerBlocks();
@@ -10881,7 +11228,7 @@ var HomepagePlugin = class extends import_obsidian20.Plugin {
     if (this.layout.pin) leaf.setPinned(true);
   }
 };
-var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
+var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -10894,13 +11241,13 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
       "replace-last": "Replace active tab",
       "replace-all": "Close all tabs"
     };
-    new import_obsidian20.Setting(containerEl).setName("Open on startup").setDesc("Automatically open the homepage when Obsidian starts.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Open on startup").setDesc("Automatically open the homepage when Obsidian starts.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.openOnStartup).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
       })
     );
     if (this.plugin.layout.openOnStartup) {
-      new import_obsidian20.Setting(containerEl).setName("Startup open mode").setDesc("How to handle existing tabs when opening homepage on startup.").addDropdown((drop) => {
+      new import_obsidian21.Setting(containerEl).setName("Startup open mode").setDesc("How to handle existing tabs when opening homepage on startup.").addDropdown((drop) => {
         for (const [value, label] of Object.entries(openModeOptions)) {
           drop.addOption(value, label);
         }
@@ -10910,12 +11257,12 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         });
       });
     }
-    new import_obsidian20.Setting(containerEl).setName("Open when empty").setDesc("Automatically open the homepage when all tabs are closed.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Open when empty").setDesc("Automatically open the homepage when all tabs are closed.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.openWhenEmpty).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Manual open mode").setDesc("How to handle existing tabs when opening homepage via command or ribbon.").addDropdown((drop) => {
+    new import_obsidian21.Setting(containerEl).setName("Manual open mode").setDesc("How to handle existing tabs when opening homepage via command or ribbon.").addDropdown((drop) => {
       for (const [value, label] of Object.entries(openModeOptions)) {
         drop.addOption(value, label);
       }
@@ -10924,7 +11271,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
       });
     });
-    new import_obsidian20.Setting(containerEl).setName("Pin homepage tab").setDesc("Pin the homepage tab so it cannot be accidentally closed.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Pin homepage tab").setDesc("Pin the homepage tab so it cannot be accidentally closed.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.pin).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -10932,12 +11279,12 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Default columns").setDesc("Number of columns in the grid layout.").addDropdown(
+    new import_obsidian21.Setting(containerEl).setName("Default columns").setDesc("Number of columns in the grid layout.").addDropdown(
       (drop) => drop.addOption("2", "2 columns").addOption("3", "3 columns").addOption("4", "4 columns").addOption("5", "5 columns").setValue(String(this.plugin.layout.columns)).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage \u2014 content is still scrollable.").addToggle(
+    new import_obsidian21.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage \u2014 content is still scrollable.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.hideScrollbar).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -10945,7 +11292,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })
     );
-    new import_obsidian20.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the original default layout \u2014 cannot be undone.").addButton(
+    new import_obsidian21.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the original default layout \u2014 cannot be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
         await this.plugin.saveLayout(getDefaultLayout());
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -10955,8 +11302,8 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })())
     );
-    new import_obsidian20.Setting(containerEl).setName("Export / import").setHeading();
-    new import_obsidian20.Setting(containerEl).setName("Export layout").setDesc("Copy the current layout to clipboard as JSON.").addButton(
+    new import_obsidian21.Setting(containerEl).setName("Export / import").setHeading();
+    new import_obsidian21.Setting(containerEl).setName("Export layout").setDesc("Copy the current layout to clipboard as JSON.").addButton(
       (btn) => btn.setButtonText("Copy to clipboard").onClick(() => void (async () => {
         try {
           const json = JSON.stringify(this.plugin.layout, null, 2);
@@ -10970,7 +11317,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }, 2e3);
       })())
     );
-    new import_obsidian20.Setting(containerEl).setName("Import layout").setDesc("Paste a previously exported layout JSON to restore it.").addButton(
+    new import_obsidian21.Setting(containerEl).setName("Import layout").setDesc("Paste a previously exported layout JSON to restore it.").addButton(
       (btn) => btn.setButtonText("Import from clipboard").onClick(() => void (async () => {
         try {
           const text = await navigator.clipboard.readText();
@@ -10998,7 +11345,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
         }
       })())
     );
-    new import_obsidian20.Setting(containerEl).setName("Layout presets").setHeading();
+    new import_obsidian21.Setting(containerEl).setName("Layout presets").setHeading();
     containerEl.createEl("p", {
       text: "Load a preset layout. This will replace your current layout.",
       cls: "setting-item-description"
@@ -11070,7 +11417,7 @@ var HomepageSettingTab = class extends import_obsidian20.PluginSettingTab {
     }
   }
 };
-var ConfirmPresetModal = class extends import_obsidian20.Modal {
+var ConfirmPresetModal = class extends import_obsidian21.Modal {
   constructor(app, presetName, onConfirm) {
     super(app);
     this.presetName = presetName;
@@ -11079,9 +11426,9 @@ var ConfirmPresetModal = class extends import_obsidian20.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian20.Setting(contentEl).setName("Load preset?").setHeading();
+    new import_obsidian21.Setting(contentEl).setName("Load preset?").setHeading();
     contentEl.createEl("p", { text: `This will replace your current layout with the "${this.presetName}" preset. This cannot be undone.` });
-    new import_obsidian20.Setting(contentEl).addButton(
+    new import_obsidian21.Setting(contentEl).addButton(
       (btn) => btn.setButtonText("Load preset").setWarning().onClick(() => {
         void Promise.resolve(this.onConfirm()).catch((e) => console.error("[Homepage Blocks] Preset apply failed:", e));
         this.close();

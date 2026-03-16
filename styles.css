@@ -944,6 +944,212 @@
   line-height: 1.6;
 }
 
+/* ── Voice Dictation Block ──────────────────────────────── */
+.voice-block {
+  container-type: size;
+  height: 100%;
+  --voice-recording-color: hsl(0, 72%, 56%);
+}
+
+.voice-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(8px, 3cqh, 16px);
+  height: 100%;
+  padding: clamp(4px, 2cqh, 8px) 0;
+}
+
+/* Status label */
+.voice-status {
+  font-size: clamp(0.7rem, 3.5cqw, 0.8125rem);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  min-height: 1.2em;
+}
+
+[data-voice-state="recording"] .voice-status {
+  color: var(--voice-recording-color);
+}
+
+/* Mic zone */
+.voice-mic-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+[data-voice-state="saved"] .voice-mic-zone,
+[data-voice-state="transcribing"] .voice-mic-zone {
+  display: none;
+}
+
+/* Mic button */
+.voice-mic {
+  --voice-mic-size: 64px;
+  position: relative;
+  width: var(--voice-mic-size);
+  height: var(--voice-mic-size);
+  border-radius: 50%;
+  border: none;
+  background: var(--block-accent, var(--color-accent));
+  color: var(--text-on-accent, #fff);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease-out, transform 0.1s ease-out;
+  flex-shrink: 0;
+}
+
+.voice-mic:active {
+  transform: scale(0.95);
+}
+
+.voice-mic--unavailable {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.voice-mic-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Pulse ring (recording state) */
+.voice-mic::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--voice-recording-color);
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-voice-state="recording"] .voice-mic {
+  background: var(--voice-recording-color);
+}
+
+[data-voice-state="recording"] .voice-mic::after {
+  animation: voice-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes voice-pulse {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Transcribing state: dim mic, add spinner */
+[data-voice-state="transcribing"] .voice-mic {
+  background: var(--background-modifier-hover);
+  pointer-events: none;
+}
+
+[data-voice-state="transcribing"] .voice-mic-icon {
+  animation: voice-spin 1s linear infinite;
+}
+
+@keyframes voice-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Elapsed timer */
+.voice-timer {
+  font-size: clamp(0.75rem, 4cqw, 0.875rem);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 1.2em;
+  display: none;
+}
+
+[data-voice-state="recording"] .voice-timer {
+  display: block;
+}
+
+/* Saved flash */
+.voice-saved-flash {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--block-accent, var(--color-accent));
+}
+
+[data-voice-state="saved"] .voice-saved-flash {
+  display: flex;
+  animation: voice-flash-in 0.3s ease-out;
+}
+
+[data-voice-state="saved"] .voice-status {
+  display: none;
+}
+
+.voice-saved-flash svg {
+  width: 32px;
+  height: 32px;
+}
+
+.voice-saved-label {
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@keyframes voice-flash-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Narrow block (< 200px wide) */
+@container (max-width: 200px) {
+  .voice-mic {
+    --voice-mic-size: 48px;
+  }
+  .voice-mic-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Short block (< 180px tall) */
+@container (max-height: 180px) {
+  .voice-body {
+    gap: 4px;
+    padding: 2px 0;
+  }
+  .voice-mic-zone {
+    padding: 4px 0;
+  }
+  .voice-mic {
+    --voice-mic-size: 48px;
+  }
+  .voice-status {
+    font-size: 0.65rem;
+  }
+}
+
+/* Mobile */
+.is-mobile .voice-mic {
+  --voice-mic-size: 64px;
+}
+
+.is-mobile .voice-mic:hover,
+.is-mobile .voice-mic:active {
+  transform: none;
+}
+
+/* Single-column grid */
+.homepage-grid.grid-stack.hp-single-column .voice-mic {
+  --voice-mic-size: 56px;
+}
+
 /* ── Random Note Block ──────────────────────────────────── */
 .random-note-block {
   display: flex;

@@ -93,7 +93,6 @@ export class EditToolbar {
     const colGroup = this.toolbarEl.createDiv({ cls: 'toolbar-col-group' });
     const colSelect = colGroup.createEl('select', { cls: 'toolbar-col-select' });
     colSelect.setAttribute('aria-label', 'Number of columns');
-    const effective = this.grid.getEffectiveColumns();
     [2, 3, 4, 5].forEach(n => {
       const opt = colSelect.createEl('option', { value: String(n), text: `${n} col` });
       if (n === this.plugin.layout.columns) opt.selected = true;
@@ -101,9 +100,6 @@ export class EditToolbar {
     colSelect.addEventListener('change', () => {
       this.onColumnsChange(Number(colSelect.value));
     });
-    if (effective !== this.plugin.layout.columns) {
-      colGroup.createSpan({ cls: 'toolbar-col-auto-hint', text: `(auto: ${effective})` });
-    }
 
     // Zoom slider
     const zoomGroup = this.toolbarEl.createDiv({ cls: 'toolbar-zoom-group' });
@@ -194,6 +190,7 @@ const BLOCK_META: Record<BlockType, { icon: string; desc: string }> = {
   'pomodoro':      { icon: '\u{1F345}', desc: 'Pomodoro timer with work/break cycles' },
   'spacer':        { icon: '\u2B1C', desc: 'Empty space for layout spacing' },
   'random-note':   { icon: '\u{1F3B2}', desc: 'Random note card with cover image and preview' },
+  'voice-dictation': { icon: '🎙️', desc: 'Record voice notes saved automatically to a folder' },
 };
 
 class AddBlockModal extends Modal {

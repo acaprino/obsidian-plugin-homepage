@@ -17,6 +17,7 @@ import { RecentFilesBlock } from './blocks/RecentFilesBlock';
 import { PomodoroBlock } from './blocks/PomodoroBlock';
 import { SpacerBlock } from './blocks/SpacerBlock';
 import { RandomNoteBlock } from './blocks/RandomNoteBlock';
+import { VoiceDictationBlock } from './blocks/VoiceDictationBlock';
 
 // ── Default layout ──────────────────────────────────────────────────────────
 
@@ -332,6 +333,19 @@ function registerBlocks(): void {
     defaultConfig: { _titleLabel: 'Random note', tag: '', dailySeed: false, imageProperty: 'cover', titleProperty: 'title', showImage: true, showPreview: true },
     defaultSize: { w: 1, h: 4 },
     create: (app, instance, plugin) => new RandomNoteBlock(app, instance, plugin),
+  });
+  BlockRegistry.register({
+    type: 'voice-dictation',
+    displayName: 'Voice notes',
+    defaultConfig: {
+      folder: '',
+      triggerMode: 'tap',
+      whisperApiKey: '',
+      whisperLanguage: '',
+      noteTemplate: '',
+    },
+    defaultSize: { w: 2, h: 3 },
+    create: (app, instance, plugin) => new VoiceDictationBlock(app, instance, plugin),
   });
 }
 

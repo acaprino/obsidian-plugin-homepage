@@ -6185,6 +6185,7 @@ var GridLayout = class _GridLayout {
       x: instance.x,
       y: instance.y,
       w: Math.min(instance.w, columns),
+      maxW: columns,
       h: this.editMode && this.shouldAutoHeight(instance) ? COMPACT_EDIT_H : instance.h
       // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
       // load() before we've added any DOM content, causing "firstElementChild is null".
@@ -6757,7 +6758,7 @@ var GridLayout = class _GridLayout {
     _GridLayout.packRows(nodeItems, next);
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
-      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y });
+      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
     }
     this.gridStack.batchUpdate(false);
   }
@@ -10503,7 +10504,7 @@ var VoiceDictationBlock = class extends BaseBlock {
   recognition = null;
   pendingTranscript = "";
   speechErrored = false;
-  // Whisper
+  // Cloud transcription (Whisper / Gemini)
   mediaRecorder = null;
   audioChunks = [];
   fetchAbortCtrl = null;
@@ -10532,7 +10533,7 @@ var VoiceDictationBlock = class extends BaseBlock {
     (0, import_obsidian20.setIcon)(checkIconEl, "check");
     flash.createSpan({ cls: "voice-saved-label", text: "Saved" });
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!SR && !cfg.whisperApiKey) {
+    if (!SR && !cfg.whisperApiKey && !cfg.geminiApiKey) {
       new import_obsidian20.Notice("Speech recognition not supported on this platform");
       this.micBtn.disabled = true;
       this.micBtn.addClass("voice-mic--unavailable");
@@ -10544,7 +10545,7 @@ var VoiceDictationBlock = class extends BaseBlock {
         void this.startRecording();
       });
       const stop = () => {
-        if (this.getState(el) === "recording") this.stopRecording(el, cfg);
+        if (this.getState(el) === "recording") this.stopRecording(el);
       };
       this.micBtn.addEventListener("pointerup", stop);
       this.micBtn.addEventListener("pointercancel", stop);
@@ -10553,7 +10554,7 @@ var VoiceDictationBlock = class extends BaseBlock {
         if (this.getState(el) === "idle") {
           void this.startRecording();
         } else if (this.getState(el) === "recording") {
-          this.stopRecording(el, cfg);
+          this.stopRecording(el);
         }
       });
     }
@@ -10642,8 +10643,17 @@ var VoiceDictationBlock = class extends BaseBlock {
     const el = this.containerEl;
     if (!el) return;
     const cfg = this.instance.config;
+    const provider = cfg.transcriptionProvider ?? "whisper";
+    if (provider === "gemini") {
+      if (!cfg.geminiApiKey) {
+        new import_obsidian20.Notice("Gemini API key required \u2014 configure it in block settings");
+        return;
+      }
+      await this.startCloudRecording(el);
+      return;
+    }
     if (cfg.whisperApiKey) {
-      await this.startWhisperRecording(el);
+      await this.startCloudRecording(el);
       return;
     }
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
@@ -10664,6 +10674,8 @@ var VoiceDictationBlock = class extends BaseBlock {
       this.setState(el, "idle");
       if (event.error === "not-allowed") {
         new import_obsidian20.Notice("Microphone access denied");
+      } else if (event.error === "network" || event.error === "service-not-allowed") {
+        new import_obsidian20.Notice("Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.");
       } else {
         new import_obsidian20.Notice("Speech recognition error: " + event.error);
       }
@@ -10683,17 +10695,24 @@ var VoiceDictationBlock = class extends BaseBlock {
         this.setState(el, "idle");
       }
     };
-    this.recognition.start();
+    try {
+      this.recognition.start();
+    } catch {
+      new import_obsidian20.Notice("Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.");
+      this.setState(el, "idle");
+      return;
+    }
     this.setState(el, "recording");
   }
-  stopRecording(el, _cfg) {
+  stopRecording(el) {
     if (this.recognition) {
       this.recognition.stop();
       return;
     }
-    this.stopWhisperRecording(el);
+    this.stopCloudRecording(el);
   }
-  async startWhisperRecording(el) {
+  // ── Cloud recording (shared MediaRecorder for Whisper & Gemini) ─────────
+  async startCloudRecording(el) {
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -10707,18 +10726,18 @@ var VoiceDictationBlock = class extends BaseBlock {
       if (e.data.size > 0) this.audioChunks.push(e.data);
     };
     this.mediaRecorder.onstop = () => {
-      void this.handleWhisperStop(el);
+      void this.handleCloudStop(el);
     };
     this.mediaRecorder.start();
     this.setState(el, "recording");
   }
-  stopWhisperRecording(el) {
+  stopCloudRecording(el) {
     if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       this.setState(el, "transcribing");
       this.mediaRecorder.stop();
     }
   }
-  async handleWhisperStop(el) {
+  async handleCloudStop(el) {
     const cfg = this.instance.config;
     const blob = new Blob(this.audioChunks, { type: "audio/webm" });
     this.audioChunks = [];
@@ -10728,33 +10747,19 @@ var VoiceDictationBlock = class extends BaseBlock {
       this.setState(el, "idle");
       return;
     }
-    const form = new FormData();
-    form.append("file", blob, "audio.webm");
-    form.append("model", "whisper-1");
-    if (cfg.whisperLanguage) form.append("language", cfg.whisperLanguage);
     this.fetchAbortCtrl = new AbortController();
+    const timeoutId = window.setTimeout(() => this.fetchAbortCtrl?.abort(), 3e4);
     let transcript = "";
     try {
-      const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ""}` },
-        body: form,
-        signal: this.fetchAbortCtrl.signal
-      });
-      if (!res.ok) {
-        const errText = await res.text().catch(() => String(res.status));
-        new import_obsidian20.Notice("Transcription failed: " + errText);
-        this.setState(el, "idle");
-        return;
-      }
-      const json = await res.json();
-      transcript = (json.text ?? "").trim();
+      transcript = cfg.transcriptionProvider === "gemini" && cfg.geminiApiKey ? await this.transcribeWithGemini(blob, cfg) : await this.transcribeWithWhisper(blob, cfg);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
-      console.error("[VoiceDictation] Whisper fetch error", err);
+      console.error("[VoiceDictation] transcription error", err);
       new import_obsidian20.Notice("Transcription failed");
       this.setState(el, "idle");
       return;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
     if (!transcript) {
       this.setState(el, "idle");
@@ -10768,6 +10773,66 @@ var VoiceDictationBlock = class extends BaseBlock {
       new import_obsidian20.Notice("Failed to save note");
       this.setState(el, "idle");
     }
+  }
+  // ── Whisper transcription ───────────────────────────────────────────────
+  async transcribeWithWhisper(blob, cfg) {
+    const form = new FormData();
+    form.append("file", blob, "audio.webm");
+    form.append("model", "whisper-1");
+    if (cfg.whisperLanguage) form.append("language", cfg.whisperLanguage);
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ""}` },
+      body: form,
+      signal: this.fetchAbortCtrl.signal
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status));
+      throw new Error("Whisper API error: " + errText);
+    }
+    const json = await res.json();
+    return (json.text ?? "").trim();
+  }
+  // ── Gemini transcription ────────────────────────────────────────────────
+  async transcribeWithGemini(blob, cfg) {
+    const base64Audio = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result;
+        resolve(dataUrl.split(",")[1]);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+    const rawModel = cfg.geminiModel || "gemini-2.0-flash";
+    if (!/^[a-zA-Z0-9._-]+$/.test(rawModel)) {
+      throw new Error("Invalid Gemini model name");
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModel}:generateContent`;
+    const lang = cfg.whisperLanguage ?? "";
+    const langHint = /^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang) ? ` The audio is in language code "${lang}".` : "";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": cfg.geminiApiKey ?? ""
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: `Transcribe this audio exactly. Output only the transcription, nothing else.${langHint}` },
+            { inlineData: { mimeType: "audio/webm", data: base64Audio } }
+          ]
+        }]
+      }),
+      signal: this.fetchAbortCtrl.signal
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status));
+      throw new Error("Gemini API error: " + errText);
+    }
+    const json = await res.json();
+    return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
   }
   // ── Settings modal ─────────────────────────────────────────────────────────
   openSettings(onSave) {
@@ -10802,13 +10867,29 @@ var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
         this.draft.triggerMode = v;
       });
     });
-    new import_obsidian20.Setting(contentEl).setName("Whisper API key").setDesc("Leave empty to use built-in speech recognition. Enter your API key for higher quality transcription.").addText((t) => {
+    new import_obsidian20.Setting(contentEl).setName("Transcription provider").setDesc("Choose the cloud service for voice transcription.").addDropdown((d) => {
+      d.addOption("whisper", "OpenAI Whisper").addOption("gemini", "Google Gemini").setValue(this.draft.transcriptionProvider ?? "whisper").onChange((v) => {
+        this.draft.transcriptionProvider = v;
+      });
+    });
+    new import_obsidian20.Setting(contentEl).setName("Whisper API key").setDesc("OpenAI API key for Whisper transcription.").addText((t) => {
       t.inputEl.type = "password";
-      t.setPlaceholder("Your API key").setValue(this.draft.whisperApiKey ?? "").onChange((v) => {
+      t.setPlaceholder("sk-...").setValue(this.draft.whisperApiKey ?? "").onChange((v) => {
         this.draft.whisperApiKey = v.trim();
       });
     });
-    new import_obsidian20.Setting(contentEl).setName("Whisper language").setDesc("Language code for transcription (en, it, fr). Leave empty for auto-detect.").addText((t) => {
+    new import_obsidian20.Setting(contentEl).setName("Gemini API key").setDesc("Google AI API key for Gemini transcription.").addText((t) => {
+      t.inputEl.type = "password";
+      t.setPlaceholder("AIza...").setValue(this.draft.geminiApiKey ?? "").onChange((v) => {
+        this.draft.geminiApiKey = v.trim();
+      });
+    });
+    new import_obsidian20.Setting(contentEl).setName("Gemini model").setDesc("Model to use for transcription. Default: gemini-2.0-flash.").addText((t) => {
+      t.setPlaceholder("gemini-2.0-flash").setValue(this.draft.geminiModel ?? "").onChange((v) => {
+        this.draft.geminiModel = v.trim();
+      });
+    });
+    new import_obsidian20.Setting(contentEl).setName("Language").setDesc("Language code for transcription (en, it, fr). Leave empty for auto-detect.").addText((t) => {
       t.setPlaceholder("Auto").setValue(this.draft.whisperLanguage ?? "").onChange((v) => {
         this.draft.whisperLanguage = v.trim();
       });
@@ -10913,12 +10994,22 @@ var DEFAULT_LAYOUT_DATA = {
       h: 3,
       config: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20 }
     },
-    // Row 3 (y: 9–11)
+    // Row 3 (y: 8)
+    {
+      id: "default-voice-dictation",
+      type: "voice-dictation",
+      x: 0,
+      y: 8,
+      w: 2,
+      h: 3,
+      config: { folder: "", triggerMode: "tap", _titleLabel: "Voice notes" }
+    },
+    // Row 4 (y: 11–13)
     {
       id: "default-gallery",
       type: "image-gallery",
       x: 0,
-      y: 9,
+      y: 11,
       w: 3,
       h: 3,
       config: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 20 }

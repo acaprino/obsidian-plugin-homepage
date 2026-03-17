@@ -86,11 +86,18 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
       x: 0, y: 6, w: 2, h: 3,
       config: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20 },
     },
-    // Row 3 (y: 9–11)
+    // Row 3 (y: 8)
+    {
+      id: 'default-voice-dictation',
+      type: 'voice-dictation',
+      x: 0, y: 8, w: 2, h: 3,
+      config: { folder: '', triggerMode: 'tap', _titleLabel: 'Voice notes' },
+    },
+    // Row 4 (y: 11–13)
     {
       id: 'default-gallery',
       type: 'image-gallery',
-      x: 0, y: 9, w: 3, h: 3,
+      x: 0, y: 11, w: 3, h: 3,
       config: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 20 },
     },
   ],

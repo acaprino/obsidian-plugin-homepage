@@ -3,30 +3,28 @@ import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 
-// SpeechRecognition is available in Chromium/Electron but not always typed in lib.dom.d.ts
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList;
-}
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-}
-interface ISpeechRecognition {
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-}
-type SpeechRecognitionCtor = new () => ISpeechRecognition;
+type TranscriptionProvider = 'whisper' | 'gemini';
+
+const WHISPER_MODELS: Record<string, string> = {
+  'whisper-1': 'Whisper 1',
+  'gpt-4o-transcribe': 'GPT-4o Transcribe',
+  'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
+};
+
+const GEMINI_MODELS: Record<string, string> = {
+  'gemini-2.0-flash': 'Gemini 2.0 Flash',
+  'gemini-2.5-flash': 'Gemini 2.5 Flash',
+  'gemini-2.5-pro': 'Gemini 2.5 Pro',
+  'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite',
+};
 
 interface VoiceDictationConfig {
   folder?: string;
   triggerMode?: 'tap' | 'push';
-  whisperApiKey?: string;
-  whisperLanguage?: string;
+  provider?: TranscriptionProvider;
+  apiKey?: string;
+  model?: string;
+  language?: string;
   noteTemplate?: string;
 }
 
@@ -38,14 +36,10 @@ export class VoiceDictationBlock extends BaseBlock {
   private micIconEl: HTMLElement | null = null;
   private timerEl: HTMLElement | null = null;
 
-  // Web Speech
-  private recognition: ISpeechRecognition | null = null;
-  private pendingTranscript = '';
-  private speechErrored = false;
-
-  // Whisper
+  // Cloud transcription (Whisper / Gemini)
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
+  private recordedMimeType = 'audio/webm';
   private fetchAbortCtrl: AbortController | null = null;
 
   // Elapsed timer handle
@@ -83,11 +77,15 @@ export class VoiceDictationBlock extends BaseBlock {
     setIcon(checkIconEl, 'check');
     flash.createSpan({ cls: 'voice-saved-label', text: 'Saved' });
 
-    // Check SpeechRecognition availability
-    const SR = (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
-      ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
-    if (!SR && !cfg.whisperApiKey) {
-      new Notice('Speech recognition not supported on this platform');
+    // Require an API key
+    if (!cfg.apiKey) {
+      new Notice('Voice notes require an API key. Configure it in block settings.');
+      this.micBtn.disabled = true;
+      this.micBtn.addClass('voice-mic--unavailable');
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      new Notice('Audio recording is not supported on this platform');
       this.micBtn.disabled = true;
       this.micBtn.addClass('voice-mic--unavailable');
       return;
@@ -97,7 +95,7 @@ export class VoiceDictationBlock extends BaseBlock {
     if (cfg.triggerMode === 'push') {
       this.micBtn.setAttribute('aria-label', 'Hold to record voice note');
       this.micBtn.addEventListener('pointerdown', () => { void this.startRecording(); });
-      const stop = () => { if (this.getState(el) === 'recording') this.stopRecording(el, cfg); };
+      const stop = () => { if (this.getState(el) === 'recording') this.stopRecording(el); };
       this.micBtn.addEventListener('pointerup', stop);
       this.micBtn.addEventListener('pointercancel', stop);
     } else {
@@ -105,7 +103,7 @@ export class VoiceDictationBlock extends BaseBlock {
         if (this.getState(el) === 'idle') {
           void this.startRecording();
         } else if (this.getState(el) === 'recording') {
-          this.stopRecording(el, cfg);
+          this.stopRecording(el);
         }
       });
     }
@@ -119,7 +117,6 @@ export class VoiceDictationBlock extends BaseBlock {
         this.mediaRecorder.stop();
       }
       this.mediaRecorder?.stream.getTracks().forEach(t => t.stop());
-      this.recognition?.abort();
       if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
     });
   }
@@ -159,7 +156,6 @@ export class VoiceDictationBlock extends BaseBlock {
   private startElapsedTimer(): void {
     this.elapsedSeconds = 0;
     if (this.timerEl) this.timerEl.setText('0:00');
-    // registerInterval takes a pre-created interval id, not a callback+delay
     this.elapsedIntervalRef = this.registerInterval(window.setInterval(() => {
       this.elapsedSeconds++;
       const m = Math.floor(this.elapsedSeconds / 60);
@@ -209,87 +205,18 @@ export class VoiceDictationBlock extends BaseBlock {
     await this.app.vault.create(notePath, content);
   }
 
-  // ── Web Speech path ────────────────────────────────────────────────────────
+  // ── Recording ─────────────────────────────────────────────────────────────
 
   private async startRecording(): Promise<void> {
     const el = this.containerEl;
     if (!el) return;
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    // Use Whisper path if API key present
-    if (cfg.whisperApiKey) {
-      await this.startWhisperRecording(el);
+    if (!cfg.apiKey) {
+      new Notice('API key required — configure it in block settings');
       return;
     }
 
-    // Web Speech path
-    const SR = (window as unknown as {
-      SpeechRecognition?: SpeechRecognitionCtor;
-      webkitSpeechRecognition?: SpeechRecognitionCtor;
-    }).SpeechRecognition
-      ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
-
-    if (!SR) {
-      new Notice('Speech recognition not supported on this platform');
-      return;
-    }
-
-    this.recognition = new SR();
-    this.recognition.interimResults = false;
-    this.recognition.continuous = false;
-    this.pendingTranscript = '';
-    this.speechErrored = false;
-
-    this.recognition.onresult = (event) => {
-      this.pendingTranscript = Array.from(event.results)
-        .map(r => r[0].transcript)
-        .join(' ')
-        .trim();
-    };
-
-    this.recognition.onerror = (event) => {
-      this.speechErrored = true;
-      this.setState(el, 'idle');
-      if (event.error === 'not-allowed') {
-        new Notice('Microphone access denied');
-      } else {
-        new Notice('Speech recognition error: ' + event.error);
-      }
-    };
-
-    this.recognition.onend = () => {
-      // onerror sets speechErrored so we skip the save
-      if (this.speechErrored) return;
-      if (this.pendingTranscript) {
-        const saveCfg = this.instance.config as VoiceDictationConfig;
-        this.saveNote(this.pendingTranscript, saveCfg)
-          .then(() => { this.showSavedFlash(el); })
-          .catch((e: unknown) => {
-            console.error('[VoiceDictation] save failed', e);
-            new Notice('Failed to save note');
-            this.setState(el, 'idle');
-          });
-      } else {
-        this.setState(el, 'idle');
-      }
-    };
-
-    this.recognition.start();
-    this.setState(el, 'recording');
-  }
-
-  private stopRecording(el: HTMLElement, _cfg: VoiceDictationConfig): void {
-    // Web Speech path: stopping the recognizer triggers onend
-    if (this.recognition) {
-      this.recognition.stop();
-      // State transitions happen in onend / onerror
-      return;
-    }
-    // Whisper path: handled in stopWhisperRecording
-    this.stopWhisperRecording(el);
-  }
-
-  private async startWhisperRecording(el: HTMLElement): Promise<void> {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -298,37 +225,48 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
+    // Pick a supported mime type — webm on desktop/Android, mp4 on iOS
+    this.recordedMimeType = 'audio/webm';
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
+    for (const mt of candidates) {
+      if (MediaRecorder.isTypeSupported(mt)) {
+        this.recordedMimeType = mt.split(';')[0];
+        break;
+      }
+    }
+
     this.audioChunks = [];
-    this.mediaRecorder = new MediaRecorder(stream);
+    this.mediaRecorder = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported(this.recordedMimeType)
+        ? this.recordedMimeType
+        : undefined,
+    });
 
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.audioChunks.push(e.data);
     };
 
     this.mediaRecorder.onstop = () => {
-      void this.handleWhisperStop(el);
+      void this.handleCloudStop(el);
     };
 
     this.mediaRecorder.start();
     this.setState(el, 'recording');
   }
 
-  private stopWhisperRecording(el: HTMLElement): void {
+  private stopRecording(el: HTMLElement): void {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.setState(el, 'transcribing');
       this.mediaRecorder.stop();
-      // onstop fires asynchronously → handleWhisperStop
     }
   }
 
-  private async handleWhisperStop(el: HTMLElement): Promise<void> {
+  private async handleCloudStop(el: HTMLElement): Promise<void> {
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    // Collect blob
-    const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+    const blob = new Blob(this.audioChunks, { type: this.recordedMimeType });
     this.audioChunks = [];
 
-    // Stop stream tracks
     this.mediaRecorder?.stream.getTracks().forEach(t => t.stop());
 
     if (blob.size === 0) {
@@ -337,42 +275,22 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
-    // Build form data
-    const form = new FormData();
-    form.append('file', blob, 'audio.webm');
-    form.append('model', 'whisper-1');
-    if (cfg.whisperLanguage) form.append('language', cfg.whisperLanguage);
-
     this.fetchAbortCtrl = new AbortController();
+    const timeoutId = window.setTimeout(() => this.fetchAbortCtrl?.abort(), 30_000);
 
     let transcript = '';
     try {
-      // requestUrl does not support multipart/form-data (binary audio blob);
-      // fetch is the only viable option for the Whisper API binary upload.
-      // eslint-disable-next-line no-restricted-globals
-      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ''}` },
-        body: form,
-        signal: this.fetchAbortCtrl.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => String(res.status));
-        new Notice('Transcription failed: ' + errText);
-        this.setState(el, 'idle');
-        return;
-      }
-
-      const json = await res.json() as { text?: string };
-      transcript = (json.text ?? '').trim();
+      transcript = (cfg.provider ?? 'whisper') === 'gemini'
+        ? await this.transcribeWithGemini(blob, cfg)
+        : await this.transcribeWithWhisper(blob, cfg);
     } catch (err: unknown) {
-      // Aborted during cleanup — block is unloading, ignore silently
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      console.error('[VoiceDictation] Whisper fetch error', err);
+      console.error('[VoiceDictation] transcription error', err);
       new Notice('Transcription failed');
       this.setState(el, 'idle');
       return;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
 
     if (!transcript) {
@@ -390,6 +308,89 @@ export class VoiceDictationBlock extends BaseBlock {
     }
   }
 
+  // ── Whisper transcription ───────────────────────────────────────────────
+
+  private async transcribeWithWhisper(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
+    const form = new FormData();
+    const ext = this.recordedMimeType.includes('mp4') ? 'mp4'
+      : this.recordedMimeType.includes('ogg') ? 'ogg'
+      : this.recordedMimeType.includes('aac') ? 'aac'
+      : 'webm';
+    form.append('file', blob, `audio.${ext}`);
+    form.append('model', cfg.model || 'whisper-1');
+    if (cfg.language) form.append('language', cfg.language);
+
+    // eslint-disable-next-line no-restricted-globals
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
+      body: form,
+      signal: this.fetchAbortCtrl!.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status));
+      throw new Error('Whisper API error: ' + errText);
+    }
+
+    const json = await res.json() as { text?: string };
+    return (json.text ?? '').trim();
+  }
+
+  // ── Gemini transcription ────────────────────────────────────────────────
+
+  private async transcribeWithGemini(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
+    const base64Audio = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        resolve(dataUrl.split(',')[1]);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
+    const rawModel = cfg.model || 'gemini-2.0-flash';
+    if (!/^[a-zA-Z0-9._-]+$/.test(rawModel)) {
+      throw new Error('Invalid Gemini model name');
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModel}:generateContent`;
+
+    const lang = cfg.language ?? '';
+    const langHint = /^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang)
+      ? ` The audio is in language code "${lang}".`
+      : '';
+
+    // eslint-disable-next-line no-restricted-globals
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': cfg.apiKey ?? '',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: `Transcribe this audio exactly. Output only the transcription, nothing else.${langHint}` },
+            { inlineData: { mimeType: this.recordedMimeType, data: base64Audio } },
+          ],
+        }],
+      }),
+      signal: this.fetchAbortCtrl!.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status));
+      throw new Error('Gemini API error: ' + errText);
+    }
+
+    interface GeminiResponse {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    }
+    const json = await res.json() as GeminiResponse;
+    return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+  }
+
   // ── Settings modal ─────────────────────────────────────────────────────────
 
   override openSettings(onSave: (config: Record<string, unknown>) => void): void {
@@ -404,7 +405,7 @@ class VoiceDictationSettingsModal extends Modal {
 
   constructor(
     app: App,
-    private config: VoiceDictationConfig,
+    config: VoiceDictationConfig,
     private onSave: (config: Record<string, unknown>) => void,
   ) {
     super(app);
@@ -444,31 +445,65 @@ class VoiceDictationSettingsModal extends Modal {
          .onChange(v => { this.draft.triggerMode = v as 'tap' | 'push'; });
       });
 
-    // Whisper API key
+    // Provider
     new Setting(contentEl)
-      .setName('Whisper API key')
-      .setDesc('Leave empty to use built-in speech recognition. Enter your API key for higher quality transcription.')
-      .addText(t => {
-        t.inputEl.type = 'password';
-        t.setPlaceholder('Your API key')
-         .setValue(this.draft.whisperApiKey ?? '')
-         .onChange(v => { this.draft.whisperApiKey = v.trim(); });
+      .setName('Transcription provider')
+      .setDesc('Cloud service for voice transcription.')
+      .addDropdown(d => {
+        d.addOption('whisper', 'OpenAI Whisper')
+         .addOption('gemini', 'Google Gemini')
+         .setValue(this.draft.provider ?? 'whisper')
+         .onChange(v => {
+           this.draft.provider = v as TranscriptionProvider;
+           // Reset model to default for new provider
+           this.draft.model = v === 'gemini' ? 'gemini-2.0-flash' : 'whisper-1';
+           // Re-render modal to update model dropdown and API key placeholder
+           this.onOpen();
+         });
       });
 
-    // Whisper language
+    // API key (label + placeholder change based on provider)
+    const isGemini = (this.draft.provider ?? 'whisper') === 'gemini';
     new Setting(contentEl)
-      .setName('Whisper language')
+      .setName('API key')
+      .setDesc(isGemini ? 'Google AI API key for Gemini.' : 'OpenAI API key for Whisper.')
+      .addText(t => {
+        t.inputEl.type = 'password';
+        t.setPlaceholder(isGemini ? 'AIza...' : 'sk-...')
+         .setValue(this.draft.apiKey ?? '')
+         .onChange(v => { this.draft.apiKey = v.trim(); });
+      });
+
+    // Model (options change based on provider)
+    const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
+    const defaultModel = isGemini ? 'gemini-2.0-flash' : 'whisper-1';
+    new Setting(contentEl)
+      .setName('Model')
+      .setDesc('Model to use for transcription.')
+      .addDropdown(d => {
+        for (const [value, label] of Object.entries(models)) {
+          d.addOption(value, label);
+        }
+        d.setValue(this.draft.model && this.draft.model in models
+          ? this.draft.model
+          : defaultModel);
+        d.onChange(v => { this.draft.model = v; });
+      });
+
+    // Language
+    new Setting(contentEl)
+      .setName('Language')
       .setDesc('Language code for transcription (en, it, fr). Leave empty for auto-detect.')
       .addText(t => {
         t.setPlaceholder('Auto')
-         .setValue(this.draft.whisperLanguage ?? '')
-         .onChange(v => { this.draft.whisperLanguage = v.trim(); });
+         .setValue(this.draft.language ?? '')
+         .onChange(v => { this.draft.language = v.trim(); });
       });
 
     // Note template
     new Setting(contentEl)
       .setName('Note template')
-      .setDesc('Optional. Use {{transcript}} where the text should appear. All occurrences are replaced.')
+      .setDesc('Optional. Use {{transcript}} where the text should appear.')
       .addTextArea(t => {
         t.setPlaceholder('{{transcript}}')
          .setValue(this.draft.noteTemplate ?? '')

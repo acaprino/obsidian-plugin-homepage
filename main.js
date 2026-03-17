@@ -6185,6 +6185,7 @@ var GridLayout = class _GridLayout {
       x: instance.x,
       y: instance.y,
       w: Math.min(instance.w, columns),
+      maxW: columns,
       h: this.editMode && this.shouldAutoHeight(instance) ? COMPACT_EDIT_H : instance.h
       // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
       // load() before we've added any DOM content, causing "firstElementChild is null".
@@ -6757,7 +6758,7 @@ var GridLayout = class _GridLayout {
     _GridLayout.packRows(nodeItems, next);
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
-      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y });
+      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
     }
     this.gridStack.batchUpdate(false);
   }

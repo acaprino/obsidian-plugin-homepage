@@ -5,15 +5,26 @@ import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 
 type TranscriptionProvider = 'whisper' | 'gemini';
 
+const WHISPER_MODELS: Record<string, string> = {
+  'whisper-1': 'Whisper 1',
+  'gpt-4o-transcribe': 'GPT-4o Transcribe',
+  'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
+};
+
+const GEMINI_MODELS: Record<string, string> = {
+  'gemini-2.0-flash': 'Gemini 2.0 Flash',
+  'gemini-2.5-flash': 'Gemini 2.5 Flash',
+  'gemini-2.5-pro': 'Gemini 2.5 Pro',
+  'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite',
+};
+
 interface VoiceDictationConfig {
   folder?: string;
   triggerMode?: 'tap' | 'push';
-  transcriptionProvider?: TranscriptionProvider;
-  whisperApiKey?: string;
-  whisperModel?: string;
-  whisperLanguage?: string;
-  geminiApiKey?: string;
-  geminiModel?: string;
+  provider?: TranscriptionProvider;
+  apiKey?: string;
+  model?: string;
+  language?: string;
   noteTemplate?: string;
 }
 
@@ -67,9 +78,8 @@ export class VoiceDictationBlock extends BaseBlock {
     flash.createSpan({ cls: 'voice-saved-label', text: 'Saved' });
 
     // Require an API key
-    const hasCloudKey = !!(cfg.whisperApiKey || cfg.geminiApiKey);
-    if (!hasCloudKey) {
-      new Notice('Voice notes require a Whisper or Gemini API key. Configure it in block settings.');
+    if (!cfg.apiKey) {
+      new Notice('Voice notes require an API key. Configure it in block settings.');
       this.micBtn.disabled = true;
       this.micBtn.addClass('voice-mic--unavailable');
       return;
@@ -146,7 +156,6 @@ export class VoiceDictationBlock extends BaseBlock {
   private startElapsedTimer(): void {
     this.elapsedSeconds = 0;
     if (this.timerEl) this.timerEl.setText('0:00');
-    // registerInterval takes a pre-created interval id, not a callback+delay
     this.elapsedIntervalRef = this.registerInterval(window.setInterval(() => {
       this.elapsedSeconds++;
       const m = Math.floor(this.elapsedSeconds / 60);
@@ -203,12 +212,8 @@ export class VoiceDictationBlock extends BaseBlock {
     if (!el) return;
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    if (cfg.transcriptionProvider === 'gemini' && !cfg.geminiApiKey) {
-      new Notice('Gemini API key required — configure it in block settings');
-      return;
-    }
-    if ((cfg.transcriptionProvider ?? 'whisper') === 'whisper' && !cfg.whisperApiKey) {
-      new Notice('Whisper API key required — configure it in block settings');
+    if (!cfg.apiKey) {
+      new Notice('API key required — configure it in block settings');
       return;
     }
 
@@ -225,7 +230,7 @@ export class VoiceDictationBlock extends BaseBlock {
     const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
     for (const mt of candidates) {
       if (MediaRecorder.isTypeSupported(mt)) {
-        this.recordedMimeType = mt.split(';')[0]; // strip codecs for blob/API usage
+        this.recordedMimeType = mt.split(';')[0];
         break;
       }
     }
@@ -259,11 +264,9 @@ export class VoiceDictationBlock extends BaseBlock {
   private async handleCloudStop(el: HTMLElement): Promise<void> {
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    // Collect blob using the mime type that was actually recorded
     const blob = new Blob(this.audioChunks, { type: this.recordedMimeType });
     this.audioChunks = [];
 
-    // Stop stream tracks
     this.mediaRecorder?.stream.getTracks().forEach(t => t.stop());
 
     if (blob.size === 0) {
@@ -277,7 +280,7 @@ export class VoiceDictationBlock extends BaseBlock {
 
     let transcript = '';
     try {
-      transcript = cfg.transcriptionProvider === 'gemini' && cfg.geminiApiKey
+      transcript = (cfg.provider ?? 'whisper') === 'gemini'
         ? await this.transcribeWithGemini(blob, cfg)
         : await this.transcribeWithWhisper(blob, cfg);
     } catch (err: unknown) {
@@ -314,15 +317,13 @@ export class VoiceDictationBlock extends BaseBlock {
       : this.recordedMimeType.includes('aac') ? 'aac'
       : 'webm';
     form.append('file', blob, `audio.${ext}`);
-    form.append('model', cfg.whisperModel || 'whisper-1');
-    if (cfg.whisperLanguage) form.append('language', cfg.whisperLanguage);
+    form.append('model', cfg.model || 'whisper-1');
+    if (cfg.language) form.append('language', cfg.language);
 
-    // requestUrl does not support multipart/form-data (binary audio blob);
-    // fetch is the only viable option for the Whisper API binary upload.
     // eslint-disable-next-line no-restricted-globals
     const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ''}` },
+      headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
       body: form,
       signal: this.fetchAbortCtrl!.signal,
     });
@@ -339,7 +340,6 @@ export class VoiceDictationBlock extends BaseBlock {
   // ── Gemini transcription ────────────────────────────────────────────────
 
   private async transcribeWithGemini(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
-    // Convert audio blob to base64 via FileReader (avoids O(n^2) string concatenation)
     const base64Audio = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -350,13 +350,13 @@ export class VoiceDictationBlock extends BaseBlock {
       reader.readAsDataURL(blob);
     });
 
-    const rawModel = cfg.geminiModel || 'gemini-2.0-flash';
+    const rawModel = cfg.model || 'gemini-2.0-flash';
     if (!/^[a-zA-Z0-9._-]+$/.test(rawModel)) {
       throw new Error('Invalid Gemini model name');
     }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModel}:generateContent`;
 
-    const lang = cfg.whisperLanguage ?? '';
+    const lang = cfg.language ?? '';
     const langHint = /^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang)
       ? ` The audio is in language code "${lang}".`
       : '';
@@ -366,7 +366,7 @@ export class VoiceDictationBlock extends BaseBlock {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': cfg.geminiApiKey ?? '',
+        'x-goog-api-key': cfg.apiKey ?? '',
       },
       body: JSON.stringify({
         contents: [{
@@ -405,7 +405,7 @@ class VoiceDictationSettingsModal extends Modal {
 
   constructor(
     app: App,
-    private config: VoiceDictationConfig,
+    config: VoiceDictationConfig,
     private onSave: (config: Record<string, unknown>) => void,
   ) {
     super(app);
@@ -445,76 +445,49 @@ class VoiceDictationSettingsModal extends Modal {
          .onChange(v => { this.draft.triggerMode = v as 'tap' | 'push'; });
       });
 
-    // Transcription provider
+    // Provider
     new Setting(contentEl)
       .setName('Transcription provider')
-      .setDesc('Choose the cloud service for voice transcription.')
+      .setDesc('Cloud service for voice transcription.')
       .addDropdown(d => {
         d.addOption('whisper', 'OpenAI Whisper')
          .addOption('gemini', 'Google Gemini')
-         .setValue(this.draft.transcriptionProvider ?? 'whisper')
-         .onChange(v => { this.draft.transcriptionProvider = v as TranscriptionProvider; });
+         .setValue(this.draft.provider ?? 'whisper')
+         .onChange(v => {
+           this.draft.provider = v as TranscriptionProvider;
+           // Reset model to default for new provider
+           this.draft.model = v === 'gemini' ? 'gemini-2.0-flash' : 'whisper-1';
+           // Re-render modal to update model dropdown and API key placeholder
+           this.onOpen();
+         });
       });
 
-    // Whisper API key
+    // API key (label + placeholder change based on provider)
+    const isGemini = (this.draft.provider ?? 'whisper') === 'gemini';
     new Setting(contentEl)
-      .setName('Whisper API key')
-      .setDesc('OpenAI API key for Whisper transcription.')
+      .setName('API key')
+      .setDesc(isGemini ? 'Google AI API key for Gemini.' : 'OpenAI API key for Whisper.')
       .addText(t => {
         t.inputEl.type = 'password';
-        t.setPlaceholder('sk-...')
-         .setValue(this.draft.whisperApiKey ?? '')
-         .onChange(v => { this.draft.whisperApiKey = v.trim(); });
+        t.setPlaceholder(isGemini ? 'AIza...' : 'sk-...')
+         .setValue(this.draft.apiKey ?? '')
+         .onChange(v => { this.draft.apiKey = v.trim(); });
       });
 
-    // Whisper model
-    const whisperModels: Record<string, string> = {
-      'whisper-1': 'Whisper 1',
-      'gpt-4o-transcribe': 'GPT-4o Transcribe',
-      'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
-    };
+    // Model (options change based on provider)
+    const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
+    const defaultModel = isGemini ? 'gemini-2.0-flash' : 'whisper-1';
     new Setting(contentEl)
-      .setName('Whisper model')
-      .setDesc('OpenAI model to use for transcription.')
-      .addDropdown(d => {
-        for (const [value, label] of Object.entries(whisperModels)) {
-          d.addOption(value, label);
-        }
-        d.setValue(this.draft.whisperModel && this.draft.whisperModel in whisperModels
-          ? this.draft.whisperModel
-          : 'whisper-1');
-        d.onChange(v => { this.draft.whisperModel = v; });
-      });
-
-    // Gemini API key
-    new Setting(contentEl)
-      .setName('Gemini API key')
-      .setDesc('Google AI API key for Gemini transcription.')
-      .addText(t => {
-        t.inputEl.type = 'password';
-        t.setPlaceholder('AIza...')
-         .setValue(this.draft.geminiApiKey ?? '')
-         .onChange(v => { this.draft.geminiApiKey = v.trim(); });
-      });
-
-    // Gemini model
-    const geminiModels: Record<string, string> = {
-      'gemini-2.0-flash': 'Gemini 2.0 Flash',
-      'gemini-2.5-flash': 'Gemini 2.5 Flash',
-      'gemini-2.5-pro': 'Gemini 2.5 Pro',
-      'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite',
-    };
-    new Setting(contentEl)
-      .setName('Gemini model')
+      .setName('Model')
       .setDesc('Model to use for transcription.')
       .addDropdown(d => {
-        for (const [value, label] of Object.entries(geminiModels)) {
+        for (const [value, label] of Object.entries(models)) {
           d.addOption(value, label);
         }
-        d.setValue(this.draft.geminiModel && this.draft.geminiModel in geminiModels
-          ? this.draft.geminiModel
-          : 'gemini-2.0-flash');
-        d.onChange(v => { this.draft.geminiModel = v; });
+        d.setValue(this.draft.model && this.draft.model in models
+          ? this.draft.model
+          : defaultModel);
+        d.onChange(v => { this.draft.model = v; });
       });
 
     // Language
@@ -523,14 +496,14 @@ class VoiceDictationSettingsModal extends Modal {
       .setDesc('Language code for transcription (en, it, fr). Leave empty for auto-detect.')
       .addText(t => {
         t.setPlaceholder('Auto')
-         .setValue(this.draft.whisperLanguage ?? '')
-         .onChange(v => { this.draft.whisperLanguage = v.trim(); });
+         .setValue(this.draft.language ?? '')
+         .onChange(v => { this.draft.language = v.trim(); });
       });
 
     // Note template
     new Setting(contentEl)
       .setName('Note template')
-      .setDesc('Optional. Use {{transcript}} where the text should appear. All occurrences are replaced.')
+      .setDesc('Optional. Use {{transcript}} where the text should appear.')
       .addTextArea(t => {
         t.setPlaceholder('{{transcript}}')
          .setValue(this.draft.noteTemplate ?? '')

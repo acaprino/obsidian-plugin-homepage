@@ -3,25 +3,6 @@ import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 
-// SpeechRecognition is available in Chromium/Electron but not always typed in lib.dom.d.ts
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList;
-}
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string;
-}
-interface ISpeechRecognition {
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-}
-type SpeechRecognitionCtor = new () => ISpeechRecognition;
-
 type TranscriptionProvider = 'whisper' | 'gemini';
 
 interface VoiceDictationConfig {
@@ -29,6 +10,7 @@ interface VoiceDictationConfig {
   triggerMode?: 'tap' | 'push';
   transcriptionProvider?: TranscriptionProvider;
   whisperApiKey?: string;
+  whisperModel?: string;
   whisperLanguage?: string;
   geminiApiKey?: string;
   geminiModel?: string;
@@ -43,14 +25,10 @@ export class VoiceDictationBlock extends BaseBlock {
   private micIconEl: HTMLElement | null = null;
   private timerEl: HTMLElement | null = null;
 
-  // Web Speech
-  private recognition: ISpeechRecognition | null = null;
-  private pendingTranscript = '';
-  private speechErrored = false;
-
   // Cloud transcription (Whisper / Gemini)
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
+  private recordedMimeType = 'audio/webm';
   private fetchAbortCtrl: AbortController | null = null;
 
   // Elapsed timer handle
@@ -88,11 +66,16 @@ export class VoiceDictationBlock extends BaseBlock {
     setIcon(checkIconEl, 'check');
     flash.createSpan({ cls: 'voice-saved-label', text: 'Saved' });
 
-    // Check SpeechRecognition availability
-    const SR = (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
-      ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
-    if (!SR && !cfg.whisperApiKey && !cfg.geminiApiKey) {
-      new Notice('Speech recognition not supported on this platform');
+    // Require an API key
+    const hasCloudKey = !!(cfg.whisperApiKey || cfg.geminiApiKey);
+    if (!hasCloudKey) {
+      new Notice('Voice notes require a Whisper or Gemini API key. Configure it in block settings.');
+      this.micBtn.disabled = true;
+      this.micBtn.addClass('voice-mic--unavailable');
+      return;
+    }
+    if (typeof MediaRecorder === 'undefined') {
+      new Notice('Audio recording is not supported on this platform');
       this.micBtn.disabled = true;
       this.micBtn.addClass('voice-mic--unavailable');
       return;
@@ -124,7 +107,6 @@ export class VoiceDictationBlock extends BaseBlock {
         this.mediaRecorder.stop();
       }
       this.mediaRecorder?.stream.getTracks().forEach(t => t.stop());
-      this.recognition?.abort();
       if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
     });
   }
@@ -214,103 +196,22 @@ export class VoiceDictationBlock extends BaseBlock {
     await this.app.vault.create(notePath, content);
   }
 
-  // ── Web Speech path ────────────────────────────────────────────────────────
+  // ── Recording ─────────────────────────────────────────────────────────────
 
   private async startRecording(): Promise<void> {
     const el = this.containerEl;
     if (!el) return;
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    // Use cloud transcription if an API key is configured
-    const provider = cfg.transcriptionProvider ?? 'whisper';
-    if (provider === 'gemini') {
-      if (!cfg.geminiApiKey) { new Notice('Gemini API key required — configure it in block settings'); return; }
-      await this.startCloudRecording(el);
+    if (cfg.transcriptionProvider === 'gemini' && !cfg.geminiApiKey) {
+      new Notice('Gemini API key required — configure it in block settings');
       return;
     }
-    if (cfg.whisperApiKey) {
-      await this.startCloudRecording(el);
+    if ((cfg.transcriptionProvider ?? 'whisper') === 'whisper' && !cfg.whisperApiKey) {
+      new Notice('Whisper API key required — configure it in block settings');
       return;
     }
 
-    // Web Speech path
-    const SR = (window as unknown as {
-      SpeechRecognition?: SpeechRecognitionCtor;
-      webkitSpeechRecognition?: SpeechRecognitionCtor;
-    }).SpeechRecognition
-      ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
-
-    if (!SR) {
-      new Notice('Speech recognition not supported on this platform');
-      return;
-    }
-
-    this.recognition = new SR();
-    this.recognition.interimResults = false;
-    this.recognition.continuous = false;
-    this.pendingTranscript = '';
-    this.speechErrored = false;
-
-    this.recognition.onresult = (event) => {
-      this.pendingTranscript = Array.from(event.results)
-        .map(r => r[0].transcript)
-        .join(' ')
-        .trim();
-    };
-
-    this.recognition.onerror = (event) => {
-      this.speechErrored = true;
-      this.setState(el, 'idle');
-      if (event.error === 'not-allowed') {
-        new Notice('Microphone access denied');
-      } else if (event.error === 'network' || event.error === 'service-not-allowed') {
-        new Notice('Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.');
-      } else {
-        new Notice('Speech recognition error: ' + event.error);
-      }
-    };
-
-    this.recognition.onend = () => {
-      // onerror sets speechErrored so we skip the save
-      if (this.speechErrored) return;
-      if (this.pendingTranscript) {
-        const saveCfg = this.instance.config as VoiceDictationConfig;
-        this.saveNote(this.pendingTranscript, saveCfg)
-          .then(() => { this.showSavedFlash(el); })
-          .catch((e: unknown) => {
-            console.error('[VoiceDictation] save failed', e);
-            new Notice('Failed to save note');
-            this.setState(el, 'idle');
-          });
-      } else {
-        this.setState(el, 'idle');
-      }
-    };
-
-    try {
-      this.recognition.start();
-    } catch {
-      new Notice('Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.');
-      this.setState(el, 'idle');
-      return;
-    }
-    this.setState(el, 'recording');
-  }
-
-  private stopRecording(el: HTMLElement): void {
-    // Web Speech path: stopping the recognizer triggers onend
-    if (this.recognition) {
-      this.recognition.stop();
-      // State transitions happen in onend / onerror
-      return;
-    }
-    // Cloud path (Whisper / Gemini): handled in stopCloudRecording
-    this.stopCloudRecording(el);
-  }
-
-  // ── Cloud recording (shared MediaRecorder for Whisper & Gemini) ─────────
-
-  private async startCloudRecording(el: HTMLElement): Promise<void> {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -319,8 +220,22 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
+    // Pick a supported mime type — webm on desktop/Android, mp4 on iOS
+    this.recordedMimeType = 'audio/webm';
+    const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
+    for (const mt of candidates) {
+      if (MediaRecorder.isTypeSupported(mt)) {
+        this.recordedMimeType = mt.split(';')[0]; // strip codecs for blob/API usage
+        break;
+      }
+    }
+
     this.audioChunks = [];
-    this.mediaRecorder = new MediaRecorder(stream);
+    this.mediaRecorder = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported(this.recordedMimeType)
+        ? this.recordedMimeType
+        : undefined,
+    });
 
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.audioChunks.push(e.data);
@@ -334,19 +249,18 @@ export class VoiceDictationBlock extends BaseBlock {
     this.setState(el, 'recording');
   }
 
-  private stopCloudRecording(el: HTMLElement): void {
+  private stopRecording(el: HTMLElement): void {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.setState(el, 'transcribing');
       this.mediaRecorder.stop();
-      // onstop fires asynchronously → handleCloudStop
     }
   }
 
   private async handleCloudStop(el: HTMLElement): Promise<void> {
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    // Collect blob
-    const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+    // Collect blob using the mime type that was actually recorded
+    const blob = new Blob(this.audioChunks, { type: this.recordedMimeType });
     this.audioChunks = [];
 
     // Stop stream tracks
@@ -395,8 +309,12 @@ export class VoiceDictationBlock extends BaseBlock {
 
   private async transcribeWithWhisper(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
     const form = new FormData();
-    form.append('file', blob, 'audio.webm');
-    form.append('model', 'whisper-1');
+    const ext = this.recordedMimeType.includes('mp4') ? 'mp4'
+      : this.recordedMimeType.includes('ogg') ? 'ogg'
+      : this.recordedMimeType.includes('aac') ? 'aac'
+      : 'webm';
+    form.append('file', blob, `audio.${ext}`);
+    form.append('model', cfg.whisperModel || 'whisper-1');
     if (cfg.whisperLanguage) form.append('language', cfg.whisperLanguage);
 
     // requestUrl does not support multipart/form-data (binary audio blob);
@@ -454,7 +372,7 @@ export class VoiceDictationBlock extends BaseBlock {
         contents: [{
           parts: [
             { text: `Transcribe this audio exactly. Output only the transcription, nothing else.${langHint}` },
-            { inlineData: { mimeType: 'audio/webm', data: base64Audio } },
+            { inlineData: { mimeType: this.recordedMimeType, data: base64Audio } },
           ],
         }],
       }),
@@ -549,6 +467,25 @@ class VoiceDictationSettingsModal extends Modal {
          .onChange(v => { this.draft.whisperApiKey = v.trim(); });
       });
 
+    // Whisper model
+    const whisperModels: Record<string, string> = {
+      'whisper-1': 'Whisper 1',
+      'gpt-4o-transcribe': 'GPT-4o Transcribe',
+      'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
+    };
+    new Setting(contentEl)
+      .setName('Whisper model')
+      .setDesc('OpenAI model to use for transcription.')
+      .addDropdown(d => {
+        for (const [value, label] of Object.entries(whisperModels)) {
+          d.addOption(value, label);
+        }
+        d.setValue(this.draft.whisperModel && this.draft.whisperModel in whisperModels
+          ? this.draft.whisperModel
+          : 'whisper-1');
+        d.onChange(v => { this.draft.whisperModel = v; });
+      });
+
     // Gemini API key
     new Setting(contentEl)
       .setName('Gemini API key')
@@ -561,13 +498,23 @@ class VoiceDictationSettingsModal extends Modal {
       });
 
     // Gemini model
+    const geminiModels: Record<string, string> = {
+      'gemini-2.0-flash': 'Gemini 2.0 Flash',
+      'gemini-2.5-flash': 'Gemini 2.5 Flash',
+      'gemini-2.5-pro': 'Gemini 2.5 Pro',
+      'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite',
+    };
     new Setting(contentEl)
       .setName('Gemini model')
-      .setDesc('Model to use for transcription. Default: gemini-2.0-flash.')
-      .addText(t => {
-        t.setPlaceholder('gemini-2.0-flash')
-         .setValue(this.draft.geminiModel ?? '')
-         .onChange(v => { this.draft.geminiModel = v.trim(); });
+      .setDesc('Model to use for transcription.')
+      .addDropdown(d => {
+        for (const [value, label] of Object.entries(geminiModels)) {
+          d.addOption(value, label);
+        }
+        d.setValue(this.draft.geminiModel && this.draft.geminiModel in geminiModels
+          ? this.draft.geminiModel
+          : 'gemini-2.0-flash');
+        d.onChange(v => { this.draft.geminiModel = v; });
       });
 
     // Language

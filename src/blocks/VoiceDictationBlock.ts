@@ -22,11 +22,16 @@ interface ISpeechRecognition {
 }
 type SpeechRecognitionCtor = new () => ISpeechRecognition;
 
+type TranscriptionProvider = 'whisper' | 'gemini';
+
 interface VoiceDictationConfig {
   folder?: string;
   triggerMode?: 'tap' | 'push';
+  transcriptionProvider?: TranscriptionProvider;
   whisperApiKey?: string;
   whisperLanguage?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
   noteTemplate?: string;
 }
 
@@ -43,7 +48,7 @@ export class VoiceDictationBlock extends BaseBlock {
   private pendingTranscript = '';
   private speechErrored = false;
 
-  // Whisper
+  // Cloud transcription (Whisper / Gemini)
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private fetchAbortCtrl: AbortController | null = null;
@@ -86,7 +91,7 @@ export class VoiceDictationBlock extends BaseBlock {
     // Check SpeechRecognition availability
     const SR = (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
       ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
-    if (!SR && !cfg.whisperApiKey) {
+    if (!SR && !cfg.whisperApiKey && !cfg.geminiApiKey) {
       new Notice('Speech recognition not supported on this platform');
       this.micBtn.disabled = true;
       this.micBtn.addClass('voice-mic--unavailable');
@@ -97,7 +102,7 @@ export class VoiceDictationBlock extends BaseBlock {
     if (cfg.triggerMode === 'push') {
       this.micBtn.setAttribute('aria-label', 'Hold to record voice note');
       this.micBtn.addEventListener('pointerdown', () => { void this.startRecording(); });
-      const stop = () => { if (this.getState(el) === 'recording') this.stopRecording(el, cfg); };
+      const stop = () => { if (this.getState(el) === 'recording') this.stopRecording(el); };
       this.micBtn.addEventListener('pointerup', stop);
       this.micBtn.addEventListener('pointercancel', stop);
     } else {
@@ -105,7 +110,7 @@ export class VoiceDictationBlock extends BaseBlock {
         if (this.getState(el) === 'idle') {
           void this.startRecording();
         } else if (this.getState(el) === 'recording') {
-          this.stopRecording(el, cfg);
+          this.stopRecording(el);
         }
       });
     }
@@ -216,9 +221,15 @@ export class VoiceDictationBlock extends BaseBlock {
     if (!el) return;
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    // Use Whisper path if API key present
+    // Use cloud transcription if an API key is configured
+    const provider = cfg.transcriptionProvider ?? 'whisper';
+    if (provider === 'gemini') {
+      if (!cfg.geminiApiKey) { new Notice('Gemini API key required — configure it in block settings'); return; }
+      await this.startCloudRecording(el);
+      return;
+    }
     if (cfg.whisperApiKey) {
-      await this.startWhisperRecording(el);
+      await this.startCloudRecording(el);
       return;
     }
 
@@ -252,6 +263,8 @@ export class VoiceDictationBlock extends BaseBlock {
       this.setState(el, 'idle');
       if (event.error === 'not-allowed') {
         new Notice('Microphone access denied');
+      } else if (event.error === 'network' || event.error === 'service-not-allowed') {
+        new Notice('Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.');
       } else {
         new Notice('Speech recognition error: ' + event.error);
       }
@@ -274,22 +287,30 @@ export class VoiceDictationBlock extends BaseBlock {
       }
     };
 
-    this.recognition.start();
+    try {
+      this.recognition.start();
+    } catch {
+      new Notice('Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.');
+      this.setState(el, 'idle');
+      return;
+    }
     this.setState(el, 'recording');
   }
 
-  private stopRecording(el: HTMLElement, _cfg: VoiceDictationConfig): void {
+  private stopRecording(el: HTMLElement): void {
     // Web Speech path: stopping the recognizer triggers onend
     if (this.recognition) {
       this.recognition.stop();
       // State transitions happen in onend / onerror
       return;
     }
-    // Whisper path: handled in stopWhisperRecording
-    this.stopWhisperRecording(el);
+    // Cloud path (Whisper / Gemini): handled in stopCloudRecording
+    this.stopCloudRecording(el);
   }
 
-  private async startWhisperRecording(el: HTMLElement): Promise<void> {
+  // ── Cloud recording (shared MediaRecorder for Whisper & Gemini) ─────────
+
+  private async startCloudRecording(el: HTMLElement): Promise<void> {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -306,22 +327,22 @@ export class VoiceDictationBlock extends BaseBlock {
     };
 
     this.mediaRecorder.onstop = () => {
-      void this.handleWhisperStop(el);
+      void this.handleCloudStop(el);
     };
 
     this.mediaRecorder.start();
     this.setState(el, 'recording');
   }
 
-  private stopWhisperRecording(el: HTMLElement): void {
+  private stopCloudRecording(el: HTMLElement): void {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.setState(el, 'transcribing');
       this.mediaRecorder.stop();
-      // onstop fires asynchronously → handleWhisperStop
+      // onstop fires asynchronously → handleCloudStop
     }
   }
 
-  private async handleWhisperStop(el: HTMLElement): Promise<void> {
+  private async handleCloudStop(el: HTMLElement): Promise<void> {
     const cfg = this.instance.config as VoiceDictationConfig;
 
     // Collect blob
@@ -337,42 +358,22 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
-    // Build form data
-    const form = new FormData();
-    form.append('file', blob, 'audio.webm');
-    form.append('model', 'whisper-1');
-    if (cfg.whisperLanguage) form.append('language', cfg.whisperLanguage);
-
     this.fetchAbortCtrl = new AbortController();
+    const timeoutId = window.setTimeout(() => this.fetchAbortCtrl?.abort(), 30_000);
 
     let transcript = '';
     try {
-      // requestUrl does not support multipart/form-data (binary audio blob);
-      // fetch is the only viable option for the Whisper API binary upload.
-      // eslint-disable-next-line no-restricted-globals
-      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ''}` },
-        body: form,
-        signal: this.fetchAbortCtrl.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => String(res.status));
-        new Notice('Transcription failed: ' + errText);
-        this.setState(el, 'idle');
-        return;
-      }
-
-      const json = await res.json() as { text?: string };
-      transcript = (json.text ?? '').trim();
+      transcript = cfg.transcriptionProvider === 'gemini' && cfg.geminiApiKey
+        ? await this.transcribeWithGemini(blob, cfg)
+        : await this.transcribeWithWhisper(blob, cfg);
     } catch (err: unknown) {
-      // Aborted during cleanup — block is unloading, ignore silently
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      console.error('[VoiceDictation] Whisper fetch error', err);
+      console.error('[VoiceDictation] transcription error', err);
       new Notice('Transcription failed');
       this.setState(el, 'idle');
       return;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
 
     if (!transcript) {
@@ -388,6 +389,88 @@ export class VoiceDictationBlock extends BaseBlock {
       new Notice('Failed to save note');
       this.setState(el, 'idle');
     }
+  }
+
+  // ── Whisper transcription ───────────────────────────────────────────────
+
+  private async transcribeWithWhisper(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
+    const form = new FormData();
+    form.append('file', blob, 'audio.webm');
+    form.append('model', 'whisper-1');
+    if (cfg.whisperLanguage) form.append('language', cfg.whisperLanguage);
+
+    // requestUrl does not support multipart/form-data (binary audio blob);
+    // fetch is the only viable option for the Whisper API binary upload.
+    // eslint-disable-next-line no-restricted-globals
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ''}` },
+      body: form,
+      signal: this.fetchAbortCtrl!.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status));
+      throw new Error('Whisper API error: ' + errText);
+    }
+
+    const json = await res.json() as { text?: string };
+    return (json.text ?? '').trim();
+  }
+
+  // ── Gemini transcription ────────────────────────────────────────────────
+
+  private async transcribeWithGemini(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
+    // Convert audio blob to base64 via FileReader (avoids O(n^2) string concatenation)
+    const base64Audio = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        resolve(dataUrl.split(',')[1]);
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
+    const rawModel = cfg.geminiModel || 'gemini-2.0-flash';
+    if (!/^[a-zA-Z0-9._-]+$/.test(rawModel)) {
+      throw new Error('Invalid Gemini model name');
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModel}:generateContent`;
+
+    const lang = cfg.whisperLanguage ?? '';
+    const langHint = /^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang)
+      ? ` The audio is in language code "${lang}".`
+      : '';
+
+    // eslint-disable-next-line no-restricted-globals
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': cfg.geminiApiKey ?? '',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: `Transcribe this audio exactly. Output only the transcription, nothing else.${langHint}` },
+            { inlineData: { mimeType: 'audio/webm', data: base64Audio } },
+          ],
+        }],
+      }),
+      signal: this.fetchAbortCtrl!.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => String(res.status));
+      throw new Error('Gemini API error: ' + errText);
+    }
+
+    interface GeminiResponse {
+      candidates?: { content?: { parts?: { text?: string }[] } }[];
+    }
+    const json = await res.json() as GeminiResponse;
+    return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
   }
 
   // ── Settings modal ─────────────────────────────────────────────────────────
@@ -444,20 +527,52 @@ class VoiceDictationSettingsModal extends Modal {
          .onChange(v => { this.draft.triggerMode = v as 'tap' | 'push'; });
       });
 
+    // Transcription provider
+    new Setting(contentEl)
+      .setName('Transcription provider')
+      .setDesc('Choose the cloud service for voice transcription.')
+      .addDropdown(d => {
+        d.addOption('whisper', 'OpenAI Whisper')
+         .addOption('gemini', 'Google Gemini')
+         .setValue(this.draft.transcriptionProvider ?? 'whisper')
+         .onChange(v => { this.draft.transcriptionProvider = v as TranscriptionProvider; });
+      });
+
     // Whisper API key
     new Setting(contentEl)
       .setName('Whisper API key')
-      .setDesc('Leave empty to use built-in speech recognition. Enter your API key for higher quality transcription.')
+      .setDesc('OpenAI API key for Whisper transcription.')
       .addText(t => {
         t.inputEl.type = 'password';
-        t.setPlaceholder('Your API key')
+        t.setPlaceholder('sk-...')
          .setValue(this.draft.whisperApiKey ?? '')
          .onChange(v => { this.draft.whisperApiKey = v.trim(); });
       });
 
-    // Whisper language
+    // Gemini API key
     new Setting(contentEl)
-      .setName('Whisper language')
+      .setName('Gemini API key')
+      .setDesc('Google AI API key for Gemini transcription.')
+      .addText(t => {
+        t.inputEl.type = 'password';
+        t.setPlaceholder('AIza...')
+         .setValue(this.draft.geminiApiKey ?? '')
+         .onChange(v => { this.draft.geminiApiKey = v.trim(); });
+      });
+
+    // Gemini model
+    new Setting(contentEl)
+      .setName('Gemini model')
+      .setDesc('Model to use for transcription. Default: gemini-2.0-flash.')
+      .addText(t => {
+        t.setPlaceholder('gemini-2.0-flash')
+         .setValue(this.draft.geminiModel ?? '')
+         .onChange(v => { this.draft.geminiModel = v.trim(); });
+      });
+
+    // Language
+    new Setting(contentEl)
+      .setName('Language')
       .setDesc('Language code for transcription (en, it, fr). Leave empty for auto-detect.')
       .addText(t => {
         t.setPlaceholder('Auto')

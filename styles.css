@@ -1118,8 +1118,8 @@
   }
 }
 
-/* Short block (< 180px tall) */
-@container (max-height: 180px) {
+/* Short block (< 180px tall) — still vertical */
+@container (max-height: 180px) and (min-height: 121px) {
   .voice-body {
     gap: 4px;
     padding: 2px 0;
@@ -1132,6 +1132,49 @@
   }
   .voice-status {
     font-size: 0.65rem;
+  }
+}
+
+/* Horizontal layout — wide & short block (e.g. 2×1) */
+@container (max-height: 120px) and (min-width: 200px) {
+  .voice-body {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    padding: 0 12px;
+  }
+  .voice-mic-zone {
+    order: -1;
+    flex-direction: row;
+    padding: 0;
+    gap: 0;
+  }
+  .voice-mic {
+    --voice-mic-size: 36px;
+  }
+  .voice-mic-icon svg {
+    width: 18px;
+    height: 18px;
+  }
+  .voice-status {
+    font-size: 0.75rem;
+  }
+  .voice-timer {
+    display: none;
+  }
+  [data-voice-state="recording"] .voice-timer {
+    display: inline;
+    margin-left: 8px;
+    font-size: 0.7rem;
+  }
+  .voice-saved-flash {
+    flex-direction: row;
+    gap: 6px;
+  }
+  .voice-saved-flash svg {
+    width: 20px;
+    height: 20px;
   }
 }
 

@@ -10495,19 +10495,26 @@ var RandomNoteSettingsModal = class extends import_obsidian19.Modal {
 
 // src/blocks/VoiceDictationBlock.ts
 var import_obsidian20 = require("obsidian");
+var WHISPER_MODELS = {
+  "whisper-1": "Whisper 1",
+  "gpt-4o-transcribe": "GPT-4o Transcribe",
+  "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe"
+};
+var GEMINI_MODELS = {
+  "gemini-2.0-flash": "Gemini 2.0 Flash",
+  "gemini-2.5-flash": "Gemini 2.5 Flash",
+  "gemini-2.5-pro": "Gemini 2.5 Pro",
+  "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite"
+};
 var VoiceDictationBlock = class extends BaseBlock {
   statusEl = null;
   micBtn = null;
   micIconEl = null;
   timerEl = null;
-  // Web Speech
-  recognition = null;
-  pendingTranscript = "";
-  speechErrored = false;
   // Cloud transcription (Whisper / Gemini)
   mediaRecorder = null;
   audioChunks = [];
-  fetchAbortCtrl = null;
+  recordedMimeType = "audio/webm";
   // Elapsed timer handle
   elapsedSeconds = 0;
   elapsedIntervalRef = null;
@@ -10532,9 +10539,14 @@ var VoiceDictationBlock = class extends BaseBlock {
     const checkIconEl = flash.createSpan();
     (0, import_obsidian20.setIcon)(checkIconEl, "check");
     flash.createSpan({ cls: "voice-saved-label", text: "Saved" });
-    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!SR && !cfg.whisperApiKey && !cfg.geminiApiKey) {
-      new import_obsidian20.Notice("Speech recognition not supported on this platform");
+    if (!cfg.apiKey) {
+      new import_obsidian20.Notice("Voice notes require an API key. Configure it in block settings.");
+      this.micBtn.disabled = true;
+      this.micBtn.addClass("voice-mic--unavailable");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      new import_obsidian20.Notice("Audio recording is not supported on this platform");
       this.micBtn.disabled = true;
       this.micBtn.addClass("voice-mic--unavailable");
       return;
@@ -10559,14 +10571,12 @@ var VoiceDictationBlock = class extends BaseBlock {
       });
     }
     this.register(() => {
-      this.fetchAbortCtrl?.abort();
       if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
         this.mediaRecorder.ondataavailable = null;
         this.mediaRecorder.onstop = null;
         this.mediaRecorder.stop();
       }
       this.mediaRecorder?.stream.getTracks().forEach((t) => t.stop());
-      this.recognition?.abort();
       if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
     });
   }
@@ -10638,81 +10648,15 @@ var VoiceDictationBlock = class extends BaseBlock {
     const content = cfg.noteTemplate ?? "" ? (cfg.noteTemplate ?? "").replaceAll("{{transcript}}", transcript) : transcript;
     await this.app.vault.create(notePath, content);
   }
-  // ── Web Speech path ────────────────────────────────────────────────────────
+  // ── Recording ─────────────────────────────────────────────────────────────
   async startRecording() {
     const el = this.containerEl;
     if (!el) return;
     const cfg = this.instance.config;
-    const provider = cfg.transcriptionProvider ?? "whisper";
-    if (provider === "gemini") {
-      if (!cfg.geminiApiKey) {
-        new import_obsidian20.Notice("Gemini API key required \u2014 configure it in block settings");
-        return;
-      }
-      await this.startCloudRecording(el);
+    if (!cfg.apiKey) {
+      new import_obsidian20.Notice("API key required \u2014 configure it in block settings");
       return;
     }
-    if (cfg.whisperApiKey) {
-      await this.startCloudRecording(el);
-      return;
-    }
-    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!SR) {
-      new import_obsidian20.Notice("Speech recognition not supported on this platform");
-      return;
-    }
-    this.recognition = new SR();
-    this.recognition.interimResults = false;
-    this.recognition.continuous = false;
-    this.pendingTranscript = "";
-    this.speechErrored = false;
-    this.recognition.onresult = (event) => {
-      this.pendingTranscript = Array.from(event.results).map((r) => r[0].transcript).join(" ").trim();
-    };
-    this.recognition.onerror = (event) => {
-      this.speechErrored = true;
-      this.setState(el, "idle");
-      if (event.error === "not-allowed") {
-        new import_obsidian20.Notice("Microphone access denied");
-      } else if (event.error === "network" || event.error === "service-not-allowed") {
-        new import_obsidian20.Notice("Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.");
-      } else {
-        new import_obsidian20.Notice("Speech recognition error: " + event.error);
-      }
-    };
-    this.recognition.onend = () => {
-      if (this.speechErrored) return;
-      if (this.pendingTranscript) {
-        const saveCfg = this.instance.config;
-        this.saveNote(this.pendingTranscript, saveCfg).then(() => {
-          this.showSavedFlash(el);
-        }).catch((e) => {
-          console.error("[VoiceDictation] save failed", e);
-          new import_obsidian20.Notice("Failed to save note");
-          this.setState(el, "idle");
-        });
-      } else {
-        this.setState(el, "idle");
-      }
-    };
-    try {
-      this.recognition.start();
-    } catch {
-      new import_obsidian20.Notice("Speech recognition is not available in desktop Obsidian. Add a Whisper or Gemini API key in block settings.");
-      this.setState(el, "idle");
-      return;
-    }
-    this.setState(el, "recording");
-  }
-  stopRecording(el) {
-    if (this.recognition) {
-      this.recognition.stop();
-      return;
-    }
-    this.stopCloudRecording(el);
-  }
-  // ── Cloud recording (shared MediaRecorder for Whisper & Gemini) ─────────
-  async startCloudRecording(el) {
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -10720,8 +10664,18 @@ var VoiceDictationBlock = class extends BaseBlock {
       new import_obsidian20.Notice("Microphone access denied");
       return;
     }
+    this.recordedMimeType = "audio/webm";
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac", "audio/ogg"];
+    for (const mt of candidates) {
+      if (MediaRecorder.isTypeSupported(mt)) {
+        this.recordedMimeType = mt.split(";")[0];
+        break;
+      }
+    }
     this.audioChunks = [];
-    this.mediaRecorder = new MediaRecorder(stream);
+    this.mediaRecorder = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported(this.recordedMimeType) ? this.recordedMimeType : void 0
+    });
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.audioChunks.push(e.data);
     };
@@ -10731,7 +10685,7 @@ var VoiceDictationBlock = class extends BaseBlock {
     this.mediaRecorder.start();
     this.setState(el, "recording");
   }
-  stopCloudRecording(el) {
+  stopRecording(el) {
     if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       this.setState(el, "transcribing");
       this.mediaRecorder.stop();
@@ -10739,7 +10693,7 @@ var VoiceDictationBlock = class extends BaseBlock {
   }
   async handleCloudStop(el) {
     const cfg = this.instance.config;
-    const blob = new Blob(this.audioChunks, { type: "audio/webm" });
+    const blob = new Blob(this.audioChunks, { type: this.recordedMimeType });
     this.audioChunks = [];
     this.mediaRecorder?.stream.getTracks().forEach((t) => t.stop());
     if (blob.size === 0) {
@@ -10747,19 +10701,14 @@ var VoiceDictationBlock = class extends BaseBlock {
       this.setState(el, "idle");
       return;
     }
-    this.fetchAbortCtrl = new AbortController();
-    const timeoutId = window.setTimeout(() => this.fetchAbortCtrl?.abort(), 3e4);
     let transcript = "";
     try {
-      transcript = cfg.transcriptionProvider === "gemini" && cfg.geminiApiKey ? await this.transcribeWithGemini(blob, cfg) : await this.transcribeWithWhisper(blob, cfg);
+      transcript = (cfg.provider ?? "whisper") === "gemini" ? await this.transcribeWithGemini(blob, cfg) : await this.transcribeWithWhisper(blob, cfg);
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
       console.error("[VoiceDictation] transcription error", err);
       new import_obsidian20.Notice("Transcription failed");
       this.setState(el, "idle");
       return;
-    } finally {
-      window.clearTimeout(timeoutId);
     }
     if (!transcript) {
       this.setState(el, "idle");
@@ -10776,21 +10725,47 @@ var VoiceDictationBlock = class extends BaseBlock {
   }
   // ── Whisper transcription ───────────────────────────────────────────────
   async transcribeWithWhisper(blob, cfg) {
-    const form = new FormData();
-    form.append("file", blob, "audio.webm");
-    form.append("model", "whisper-1");
-    if (cfg.whisperLanguage) form.append("language", cfg.whisperLanguage);
-    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${cfg.whisperApiKey ?? ""}` },
-      body: form,
-      signal: this.fetchAbortCtrl.signal
-    });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => String(res.status));
-      throw new Error("Whisper API error: " + errText);
+    const ext = this.recordedMimeType.includes("mp4") ? "mp4" : this.recordedMimeType.includes("ogg") ? "ogg" : this.recordedMimeType.includes("aac") ? "aac" : "webm";
+    const boundary = "----FormBoundary" + Math.random().toString(36).slice(2);
+    const encoder = new TextEncoder();
+    const textFields = { model: cfg.model || "whisper-1" };
+    if (cfg.language) textFields["language"] = cfg.language;
+    let preamble = "";
+    for (const [key, value] of Object.entries(textFields)) {
+      preamble += `--${boundary}\r
+Content-Disposition: form-data; name="${key}"\r
+\r
+${value}\r
+`;
     }
-    const json = await res.json();
+    preamble += `--${boundary}\r
+Content-Disposition: form-data; name="file"; filename="audio.${ext}"\r
+Content-Type: ${this.recordedMimeType}\r
+\r
+`;
+    const prefix = encoder.encode(preamble);
+    const suffix = encoder.encode(`\r
+--${boundary}--\r
+`);
+    const fileBytes = new Uint8Array(await blob.arrayBuffer());
+    const body = new Uint8Array(prefix.length + fileBytes.length + suffix.length);
+    body.set(prefix, 0);
+    body.set(fileBytes, prefix.length);
+    body.set(suffix, prefix.length + fileBytes.length);
+    const res = await (0, import_obsidian20.requestUrl)({
+      url: "https://api.openai.com/v1/audio/transcriptions",
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${cfg.apiKey ?? ""}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`
+      },
+      body: body.buffer,
+      throw: false
+    });
+    if (res.status !== 200) {
+      throw new Error("Whisper API error: " + (res.text || String(res.status)));
+    }
+    const json = res.json;
     return (json.text ?? "").trim();
   }
   // ── Gemini transcription ────────────────────────────────────────────────
@@ -10801,37 +10776,37 @@ var VoiceDictationBlock = class extends BaseBlock {
         const dataUrl = reader.result;
         resolve(dataUrl.split(",")[1]);
       };
-      reader.onerror = () => reject(reader.error);
+      reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
       reader.readAsDataURL(blob);
     });
-    const rawModel = cfg.geminiModel || "gemini-2.0-flash";
+    const rawModel = cfg.model || "gemini-2.0-flash";
     if (!/^[a-zA-Z0-9._-]+$/.test(rawModel)) {
       throw new Error("Invalid Gemini model name");
     }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModel}:generateContent`;
-    const lang = cfg.whisperLanguage ?? "";
+    const lang = cfg.language ?? "";
     const langHint = /^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang) ? ` The audio is in language code "${lang}".` : "";
-    const res = await fetch(url, {
+    const res = await (0, import_obsidian20.requestUrl)({
+      url,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": cfg.geminiApiKey ?? ""
+        "x-goog-api-key": cfg.apiKey ?? ""
       },
       body: JSON.stringify({
         contents: [{
           parts: [
             { text: `Transcribe this audio exactly. Output only the transcription, nothing else.${langHint}` },
-            { inlineData: { mimeType: "audio/webm", data: base64Audio } }
+            { inlineData: { mimeType: this.recordedMimeType, data: base64Audio } }
           ]
         }]
       }),
-      signal: this.fetchAbortCtrl.signal
+      throw: false
     });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => String(res.status));
-      throw new Error("Gemini API error: " + errText);
+    if (res.status !== 200) {
+      throw new Error("Gemini API error: " + (res.text || String(res.status)));
     }
-    const json = await res.json();
+    const json = res.json;
     return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
   }
   // ── Settings modal ─────────────────────────────────────────────────────────
@@ -10842,7 +10817,6 @@ var VoiceDictationBlock = class extends BaseBlock {
 var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
   constructor(app, config, onSave) {
     super(app);
-    this.config = config;
     this.onSave = onSave;
     this.draft = { ...config };
   }
@@ -10867,34 +10841,37 @@ var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
         this.draft.triggerMode = v;
       });
     });
-    new import_obsidian20.Setting(contentEl).setName("Transcription provider").setDesc("Choose the cloud service for voice transcription.").addDropdown((d) => {
-      d.addOption("whisper", "OpenAI Whisper").addOption("gemini", "Google Gemini").setValue(this.draft.transcriptionProvider ?? "whisper").onChange((v) => {
-        this.draft.transcriptionProvider = v;
+    new import_obsidian20.Setting(contentEl).setName("Transcription provider").setDesc("Cloud service for voice transcription.").addDropdown((d) => {
+      d.addOption("whisper", "Whisper").addOption("gemini", "Gemini").setValue(this.draft.provider ?? "whisper").onChange((v) => {
+        this.draft.provider = v;
+        this.draft.model = v === "gemini" ? "gemini-2.0-flash" : "whisper-1";
+        this.onOpen();
       });
     });
-    new import_obsidian20.Setting(contentEl).setName("Whisper API key").setDesc("OpenAI API key for Whisper transcription.").addText((t) => {
+    const isGemini = (this.draft.provider ?? "whisper") === "gemini";
+    new import_obsidian20.Setting(contentEl).setName("API key").setDesc(isGemini ? "Google AI API key for Gemini." : "OpenAI API key for Whisper.").addText((t) => {
       t.inputEl.type = "password";
-      t.setPlaceholder("sk-...").setValue(this.draft.whisperApiKey ?? "").onChange((v) => {
-        this.draft.whisperApiKey = v.trim();
+      t.setPlaceholder(isGemini ? "AIza..." : "sk-...").setValue(this.draft.apiKey ?? "").onChange((v) => {
+        this.draft.apiKey = v.trim();
       });
     });
-    new import_obsidian20.Setting(contentEl).setName("Gemini API key").setDesc("Google AI API key for Gemini transcription.").addText((t) => {
-      t.inputEl.type = "password";
-      t.setPlaceholder("AIza...").setValue(this.draft.geminiApiKey ?? "").onChange((v) => {
-        this.draft.geminiApiKey = v.trim();
-      });
-    });
-    new import_obsidian20.Setting(contentEl).setName("Gemini model").setDesc("Model to use for transcription. Default: gemini-2.0-flash.").addText((t) => {
-      t.setPlaceholder("gemini-2.0-flash").setValue(this.draft.geminiModel ?? "").onChange((v) => {
-        this.draft.geminiModel = v.trim();
+    const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
+    const defaultModel = isGemini ? "gemini-2.0-flash" : "whisper-1";
+    new import_obsidian20.Setting(contentEl).setName("Model").setDesc("Model to use for transcription.").addDropdown((d) => {
+      for (const [value, label] of Object.entries(models)) {
+        d.addOption(value, label);
+      }
+      d.setValue(this.draft.model && this.draft.model in models ? this.draft.model : defaultModel);
+      d.onChange((v) => {
+        this.draft.model = v;
       });
     });
     new import_obsidian20.Setting(contentEl).setName("Language").setDesc("Language code for transcription (en, it, fr). Leave empty for auto-detect.").addText((t) => {
-      t.setPlaceholder("Auto").setValue(this.draft.whisperLanguage ?? "").onChange((v) => {
-        this.draft.whisperLanguage = v.trim();
+      t.setPlaceholder("Auto").setValue(this.draft.language ?? "").onChange((v) => {
+        this.draft.language = v.trim();
       });
     });
-    new import_obsidian20.Setting(contentEl).setName("Note template").setDesc("Optional. Use {{transcript}} where the text should appear. All occurrences are replaced.").addTextArea((t) => {
+    new import_obsidian20.Setting(contentEl).setName("Note template").setDesc("Optional. Use {{transcript}} where the text should appear.").addTextArea((t) => {
       t.setPlaceholder("{{transcript}}").setValue(this.draft.noteTemplate ?? "").onChange((v) => {
         this.draft.noteTemplate = v;
       });

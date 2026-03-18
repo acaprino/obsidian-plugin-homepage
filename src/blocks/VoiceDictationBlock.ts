@@ -1,4 +1,4 @@
-import { App, Modal, Notice, Setting, TFolder, moment, setIcon } from 'obsidian';
+import { App, Modal, Notice, Setting, TFolder, moment, setIcon, requestUrl } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
@@ -40,7 +40,6 @@ export class VoiceDictationBlock extends BaseBlock {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private recordedMimeType = 'audio/webm';
-  private fetchAbortCtrl: AbortController | null = null;
 
   // Elapsed timer handle
   private elapsedSeconds = 0;
@@ -110,7 +109,6 @@ export class VoiceDictationBlock extends BaseBlock {
 
     // Cleanup on unload
     this.register(() => {
-      this.fetchAbortCtrl?.abort();
       if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         this.mediaRecorder.ondataavailable = null;
         this.mediaRecorder.onstop = null;
@@ -275,22 +273,16 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
-    this.fetchAbortCtrl = new AbortController();
-    const timeoutId = window.setTimeout(() => this.fetchAbortCtrl?.abort(), 30_000);
-
     let transcript = '';
     try {
       transcript = (cfg.provider ?? 'whisper') === 'gemini'
         ? await this.transcribeWithGemini(blob, cfg)
         : await this.transcribeWithWhisper(blob, cfg);
     } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
       console.error('[VoiceDictation] transcription error', err);
       new Notice('Transcription failed');
       this.setState(el, 'idle');
       return;
-    } finally {
-      window.clearTimeout(timeoutId);
     }
 
     if (!transcript) {
@@ -311,29 +303,47 @@ export class VoiceDictationBlock extends BaseBlock {
   // ── Whisper transcription ───────────────────────────────────────────────
 
   private async transcribeWithWhisper(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
-    const form = new FormData();
     const ext = this.recordedMimeType.includes('mp4') ? 'mp4'
       : this.recordedMimeType.includes('ogg') ? 'ogg'
       : this.recordedMimeType.includes('aac') ? 'aac'
       : 'webm';
-    form.append('file', blob, `audio.${ext}`);
-    form.append('model', cfg.model || 'whisper-1');
-    if (cfg.language) form.append('language', cfg.language);
 
-    // eslint-disable-next-line no-restricted-globals
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);
+    const encoder = new TextEncoder();
+
+    const textFields: Record<string, string> = { model: cfg.model || 'whisper-1' };
+    if (cfg.language) textFields['language'] = cfg.language;
+
+    let preamble = '';
+    for (const [key, value] of Object.entries(textFields)) {
+      preamble += `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`;
+    }
+    preamble += `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.${ext}"\r\nContent-Type: ${this.recordedMimeType}\r\n\r\n`;
+
+    const prefix = encoder.encode(preamble);
+    const suffix = encoder.encode(`\r\n--${boundary}--\r\n`);
+    const fileBytes = new Uint8Array(await blob.arrayBuffer());
+    const body = new Uint8Array(prefix.length + fileBytes.length + suffix.length);
+    body.set(prefix, 0);
+    body.set(fileBytes, prefix.length);
+    body.set(suffix, prefix.length + fileBytes.length);
+
+    const res = await requestUrl({
+      url: 'https://api.openai.com/v1/audio/transcriptions',
       method: 'POST',
-      headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
-      body: form,
-      signal: this.fetchAbortCtrl!.signal,
+      headers: {
+        'Authorization': `Bearer ${cfg.apiKey ?? ''}`,
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      },
+      body: body.buffer,
+      throw: false,
     });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => String(res.status));
-      throw new Error('Whisper API error: ' + errText);
+    if (res.status !== 200) {
+      throw new Error('Whisper API error: ' + (res.text || String(res.status)));
     }
 
-    const json = await res.json() as { text?: string };
+    const json = res.json as { text?: string };
     return (json.text ?? '').trim();
   }
 
@@ -346,7 +356,7 @@ export class VoiceDictationBlock extends BaseBlock {
         const dataUrl = reader.result as string;
         resolve(dataUrl.split(',')[1]);
       };
-      reader.onerror = () => reject(reader.error);
+      reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
       reader.readAsDataURL(blob);
     });
 
@@ -361,8 +371,8 @@ export class VoiceDictationBlock extends BaseBlock {
       ? ` The audio is in language code "${lang}".`
       : '';
 
-    // eslint-disable-next-line no-restricted-globals
-    const res = await fetch(url, {
+    const res = await requestUrl({
+      url,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -376,18 +386,17 @@ export class VoiceDictationBlock extends BaseBlock {
           ],
         }],
       }),
-      signal: this.fetchAbortCtrl!.signal,
+      throw: false,
     });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => String(res.status));
-      throw new Error('Gemini API error: ' + errText);
+    if (res.status !== 200) {
+      throw new Error('Gemini API error: ' + (res.text || String(res.status)));
     }
 
     interface GeminiResponse {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     }
-    const json = await res.json() as GeminiResponse;
+    const json = res.json as GeminiResponse;
     return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
   }
 
@@ -450,8 +459,8 @@ class VoiceDictationSettingsModal extends Modal {
       .setName('Transcription provider')
       .setDesc('Cloud service for voice transcription.')
       .addDropdown(d => {
-        d.addOption('whisper', 'OpenAI Whisper')
-         .addOption('gemini', 'Google Gemini')
+        d.addOption('whisper', 'Whisper')
+         .addOption('gemini', 'Gemini')
          .setValue(this.draft.provider ?? 'whisper')
          .onChange(v => {
            this.draft.provider = v as TranscriptionProvider;

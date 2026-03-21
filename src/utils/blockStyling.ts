@@ -3,7 +3,7 @@
  * Shared between buildBlockWrapper (live cards) and refreshPreview (settings modal).
  */
 
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 function hexChannelToLinear(c: number): number {
   const s = c / 255;

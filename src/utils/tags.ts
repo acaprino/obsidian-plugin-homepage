@@ -23,8 +23,22 @@ export function cacheHasTag(cache: CachedMetadata | null, tag: string): boolean 
  * Handles both inline tags and YAML frontmatter tags (with or without `#`),
  * and frontmatter tags that are a plain string instead of an array.
  */
+const tagCache = new Map<string, { files: TFile[]; timestamp: number }>();
+const TAG_CACHE_TTL = 5000; // 5 seconds
+
 export function getFilesWithTag(app: App, tag: string): TFile[] {
-  return app.vault.getMarkdownFiles().filter(file =>
+  const cached = tagCache.get(tag);
+  if (cached && Date.now() - cached.timestamp < TAG_CACHE_TTL) {
+    return cached.files;
+  }
+  const files = app.vault.getMarkdownFiles().filter(file =>
     cacheHasTag(app.metadataCache.getFileCache(file), tag),
   );
+  tagCache.set(tag, { files, timestamp: Date.now() });
+  return files;
+}
+
+/** Clear the tag cache. Call when metadata changes to ensure freshness. */
+export function clearTagCache(): void {
+  tagCache.clear();
 }

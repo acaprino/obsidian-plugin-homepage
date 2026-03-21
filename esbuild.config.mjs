@@ -12,6 +12,8 @@ const context = await esbuild.context({
   logLevel: 'info',
   sourcemap: watch ? 'inline' : false,
   treeShaking: true,
+  drop: watch ? [] : ['debugger'],
+  pure: watch ? [] : ['console.debug'],
   outfile: 'main.js',
 });
 

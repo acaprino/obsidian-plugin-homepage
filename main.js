@@ -6598,6 +6598,8 @@ var GridLayout = class _GridLayout {
   /** Read current positions from GridStack nodes and persist to layout. */
   syncLayoutFromGrid() {
     if (!this.gridStack) return;
+    const isResponsive = this.effectiveColumns !== this.userColumns && !this.editMode;
+    if (isResponsive && this.plugin.layout.blocks.every((b) => this.shouldAutoHeight(b))) return;
     const nodes = this.gridStack.getGridItems();
     const posMap = /* @__PURE__ */ new Map();
     for (const el of nodes) {
@@ -6617,6 +6619,7 @@ var GridLayout = class _GridLayout {
       const pos = posMap.get(b.id);
       if (!pos) return false;
       const isAuto = this.shouldAutoHeight(b);
+      if (isResponsive) return !isAuto && b.h !== pos.h;
       if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || !isAuto && b.h !== pos.h;
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
@@ -6625,6 +6628,9 @@ var GridLayout = class _GridLayout {
       const pos = posMap.get(b.id);
       if (!pos) return b;
       const isAuto = this.shouldAutoHeight(b);
+      if (isResponsive) {
+        return isAuto ? b : { ...b, h: pos.h };
+      }
       const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w, ...isAuto ? {} : { h: pos.h } } : pos;
       return { ...b, ...update };
     });

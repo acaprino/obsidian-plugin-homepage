@@ -631,6 +631,19 @@ export class GridLayout {
   /** Read current positions from GridStack nodes and persist to layout. */
   private syncLayoutFromGrid(): void {
     if (!this.gridStack) return;
+
+    // When responsive columns are active (effectiveColumns < userColumns),
+    // GridStack nodes hold transient positions adapted for the narrow viewport.
+    // Persisting x/y/w from the responsive layout would destroy the canonical
+    // (desktop) layout.  Only persist height changes in this case.
+    // Note: dragstop/resizestop callers are gated by staticGrid (only active in
+    // edit mode), so isResponsive is always false for manual user interactions.
+    const isResponsive = this.effectiveColumns !== this.userColumns && !this.editMode;
+
+    // Fast path: when every block is auto-height and we are in responsive mode,
+    // there is nothing to persist — skip the GridStack DOM traversal entirely.
+    if (isResponsive && this.plugin.layout.blocks.every(b => this.shouldAutoHeight(b))) return;
+
     const nodes = this.gridStack.getGridItems();
     const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
 
@@ -651,10 +664,12 @@ export class GridLayout {
     // Skip save if nothing actually changed.
     // In edit mode, auto-height blocks only compare x/y/w — compact h values must not be saved.
     // Fixed height blocks CAN be resized manually in edit mode, so we DO save their h.
+    // In responsive mode, only h changes matter — x/y/w are transient.
     const changed = this.plugin.layout.blocks.some(b => {
       const pos = posMap.get(b.id);
       if (!pos) return false;
       const isAuto = this.shouldAutoHeight(b);
+      if (isResponsive) return !isAuto && b.h !== pos.h;
       if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || (!isAuto && b.h !== pos.h);
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
@@ -664,8 +679,12 @@ export class GridLayout {
       const pos = posMap.get(b.id);
       if (!pos) return b;
       const isAuto = this.shouldAutoHeight(b);
-      const update = this.editMode 
-        ? { x: pos.x, y: pos.y, w: pos.w, ...(isAuto ? {} : { h: pos.h }) } 
+      if (isResponsive) {
+        // Only persist height for non-auto-height blocks; leave x/y/w canonical.
+        return isAuto ? b : { ...b, h: pos.h };
+      }
+      const update = this.editMode
+        ? { x: pos.x, y: pos.y, w: pos.w, ...(isAuto ? {} : { h: pos.h }) }
         : pos;
       return { ...b, ...update };
     });

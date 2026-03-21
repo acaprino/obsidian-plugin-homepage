@@ -13,12 +13,12 @@ TypeScript + Obsidian DOM API. GridStack for layout. No Dataview.
 - `src/BlockRegistry.ts` -- singleton `BlockRegistryClass` wrapping `Map<BlockType, BlockFactory>`
 - `src/blocks/BaseBlock.ts` -- abstract base extending `Component`
 - `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag), `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts`, `dragReorder.ts`, `emojis.ts`, `FolderSuggestModal.ts`, `noteContent.ts` (parseNoteInsight, used by QuotesList)
-- `src/blocks/` -- one file per block type (15 total)
+- `src/blocks/` -- one file per block type (16 total)
 - `styles.css` -- all styles at repo root
 
-## Block Types (15)
+## Block Types (16)
 
-`greeting`, `clock`, `folder-links`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`, `spacer`, `random-note`
+`greeting`, `clock`, `folder-links`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`, `spacer`, `random-note`, `voice-dictation`
 
 Each defined in `BLOCK_TYPES` array in `src/types.ts` and registered in `registerBlocks()` in `src/main.ts`.
 
@@ -149,6 +149,7 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 | `moment` (from `'obsidian'`) | Greeting, Clock, QuotesList, RecentFiles, RandomNote |
 | `SuggestModal<T>` | FolderSuggestModal (FolderLinks, ImageGallery) |
 | `AbstractInputSuggest<T>` | FileSuggest (EmbeddedNote) |
+| `requestUrl` (from `'obsidian'`) | VoiceDictation (Whisper/Gemini API calls) |
 
 ## What NOT to Do
 
@@ -159,3 +160,5 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 - Do not inline block headers -- use `this.renderHeader(el, title)` from BaseBlock
 - Do not use raw `setInterval`/`vault.on` -- use `this.registerInterval()` / `this.registerEvent()`
 - Do not add unnecessary runtime npm dependencies
+- Do not leave `console.debug` statements in production code -- esbuild strips them via `pure` but they add noise and forced reflows if the build config is bypassed
+- Do not store secrets in block config -- API keys in `data.json` are plaintext. Layout export strips `apiKey` fields but the on-disk storage is unencrypted

@@ -6097,7 +6097,6 @@ function applyBlockStyling(el, config) {
 }
 
 // src/GridLayout.ts
-var HEX_COLOR_RE2 = /^#[0-9a-fA-F]{6}$/;
 var COMPACT_EDIT_H = 2;
 var ACCENT_PRESETS = [
   "#c0392b",
@@ -6355,7 +6354,6 @@ var GridLayout = class _GridLayout {
       for (const { gsEl: el, instance: inst } of batch) {
         if (this.resizeBlockToContent(el, inst)) anyResized = true;
       }
-      console.debug(`[HP repack] anyResized=${anyResized}`);
       if (anyResized) {
         const nodeItems = [];
         for (const gsEl2 of this.gridStack.getGridItems()) {
@@ -6379,24 +6377,16 @@ var GridLayout = class _GridLayout {
    *  Returns true if the height was changed. */
   resizeBlockToContent(gsEl, instance) {
     if (!this.gridStack || !gsEl.isConnected) return false;
-    console.debug(`[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`);
     const contentEl = gsEl.querySelector("[data-auto-height-content]");
     const headerZone = gsEl.querySelector(".block-header-zone");
-    if (!contentEl || !headerZone) {
-      console.debug(`[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`);
-      return false;
-    }
+    if (!contentEl || !headerZone) return false;
     const blockContent = gsEl.querySelector(".block-content");
     if (blockContent) {
       blockContent.addClass("hp-no-transition");
       blockContent.addClass("hp-auto-rows");
     }
     const contentH = contentEl.offsetHeight;
-    const contentRect = contentEl.getBoundingClientRect();
-    const contentStyle = window.getComputedStyle(contentEl);
-    const lastChild = contentEl.lastElementChild;
-    const lastChildBottom = lastChild ? lastChild.getBoundingClientRect().bottom - contentEl.getBoundingClientRect().top : 0;
-    console.debug(`[HP measure-debug] ${instance.type} offsetH=${contentH} rectH=${contentRect.height.toFixed(0)} scrollH=${contentEl.scrollHeight} cols=${contentStyle.getPropertyValue("columns")} lastChildBot=${lastChildBottom.toFixed(0)} children=${contentEl.children.length}`);
+    const headerH = headerZone.offsetHeight;
     if (blockContent) {
       blockContent.removeClass("hp-auto-rows");
       void blockContent.offsetHeight;
@@ -6410,12 +6400,11 @@ var GridLayout = class _GridLayout {
     const divider = wrapper?.querySelector(".block-header-divider");
     const gapCount = divider ? 2 : 1;
     const margin = typeof this.gridStack.opts.margin === "number" ? this.gridStack.opts.margin : 8;
-    const totalH = headerZone.offsetHeight + pad + contentH + gap * gapCount + margin * 2;
+    const totalH = headerH + pad + contentH + gap * gapCount + margin * 2;
     const cell = this.gridStack.getCellHeight();
     const rows = Math.max(1, Math.ceil(totalH / cell));
     const node = gsEl.gridstackNode;
     const currentH = node?.h ?? instance.h;
-    console.debug(`[HP auto-height] ${instance.type} contentH=${contentH} headerH=${headerZone.offsetHeight} pad=${pad} gap=${gap} totalH=${totalH} cell=${cell} \u2192 rows=${rows} (current=${currentH})`);
     if (rows !== currentH) {
       this.gridStack.update(gsEl, { h: rows });
       return true;
@@ -6807,8 +6796,13 @@ var GridLayout = class _GridLayout {
       clearTimeout(this.animTimer);
       this.animTimer = null;
     }
+    if (this.batchRafId !== null) {
+      cancelAnimationFrame(this.batchRafId);
+      this.batchRafId = null;
+    }
     for (const id of this.pendingRafs) cancelAnimationFrame(id);
     this.pendingRafs.clear();
+    this.pendingResizes.clear();
     for (const { block } of this.blocks.values()) {
       block?.unload();
     }
@@ -6868,8 +6862,8 @@ var BlockSettingsModal = class extends import_obsidian.Modal {
     const previewBody = previewCard.createDiv({ cls: "settings-preview-body" });
     previewBody.createSpan({ cls: "settings-preview-body-text", text: "Block content area" });
     let accentDirty = !!(typeof draft._accentColor === "string" && draft._accentColor);
-    const hasGradStart = typeof draft._gradientStart === "string" && HEX_COLOR_RE2.test(draft._gradientStart);
-    const hasGradEnd = typeof draft._gradientEnd === "string" && HEX_COLOR_RE2.test(draft._gradientEnd);
+    const hasGradStart = typeof draft._gradientStart === "string" && HEX_COLOR_RE.test(draft._gradientStart);
+    const hasGradEnd = typeof draft._gradientEnd === "string" && HEX_COLOR_RE.test(draft._gradientEnd);
     let gradDirty = hasGradStart && hasGradEnd;
     const refreshPreview = () => {
       const label = typeof draft._titleLabel === "string" && draft._titleLabel || defaultTitle;
@@ -7418,6 +7412,8 @@ var BaseBlock = class extends import_obsidian4.Component {
   _headerContainer = null;
   _scheduleTimer = null;
   _renderGen = 0;
+  _widthObserver = null;
+  _widthRafId = 0;
   /** Set by subclasses in render() to enable scheduleRender(). */
   containerEl = null;
   // Override to open a per-block settings modal.
@@ -7478,21 +7474,20 @@ var BaseBlock = class extends import_obsidian4.Component {
    * Cleanup is registered automatically via `this.register()`.
    */
   observeWidthForAutoHeight(el) {
+    if (this._widthObserver) {
+      this._widthObserver.disconnect();
+      cancelAnimationFrame(this._widthRafId);
+    }
     let prevWidth = 0;
-    let rafId = 0;
-    const ro = new ResizeObserver((entries) => {
+    this._widthObserver = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0;
       if (w > 0 && w !== prevWidth) {
         prevWidth = w;
-        cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(() => this.requestAutoHeight());
+        cancelAnimationFrame(this._widthRafId);
+        this._widthRafId = requestAnimationFrame(() => this.requestAutoHeight());
       }
     });
-    ro.observe(el);
-    this.register(() => {
-      ro.disconnect();
-      cancelAnimationFrame(rafId);
-    });
+    this._widthObserver.observe(el);
   }
   /** Increment and return a new render generation. Call at the start of async renders. */
   nextGeneration() {
@@ -7506,6 +7501,11 @@ var BaseBlock = class extends import_obsidian4.Component {
     if (this._scheduleTimer !== null) {
       window.clearTimeout(this._scheduleTimer);
       this._scheduleTimer = null;
+    }
+    if (this._widthObserver) {
+      this._widthObserver.disconnect();
+      this._widthObserver = null;
+      cancelAnimationFrame(this._widthRafId);
     }
   }
 };
@@ -8331,10 +8331,18 @@ function cacheHasTag(cache, tag) {
   const fmTagArray = Array.isArray(rawFmTags) ? rawFmTags.filter((t) => typeof t === "string") : typeof rawFmTags === "string" ? [rawFmTags] : [];
   return fmTagArray.some((t) => (t.startsWith("#") ? t : `#${t}`) === tag);
 }
+var tagCache = /* @__PURE__ */ new Map();
+var TAG_CACHE_TTL = 5e3;
 function getFilesWithTag(app, tag) {
-  return app.vault.getMarkdownFiles().filter(
+  const cached = tagCache.get(tag);
+  if (cached && Date.now() - cached.timestamp < TAG_CACHE_TTL) {
+    return cached.files;
+  }
+  const files = app.vault.getMarkdownFiles().filter(
     (file) => cacheHasTag(app.metadataCache.getFileCache(file), tag)
   );
+  tagCache.set(tag, { files, timestamp: Date.now() });
+  return files;
 }
 
 // src/utils/noteContent.ts
@@ -8441,11 +8449,6 @@ var QuotesListBlock = class extends BaseBlock {
       if (card && heightMode === "extend") {
         el.toggleClass("quotes-list-block--extend", true);
         card.setAttribute("data-auto-height-content", "");
-        setTimeout(() => {
-          if (this.app.workspace.layoutReady) {
-            window.dispatchEvent(new CustomEvent("hp-block-height-changed", { detail: { blockId: this.instance.id } }));
-          }
-        }, 50);
       }
       return;
     }
@@ -9186,6 +9189,7 @@ var StaticTextBlock = class extends BaseBlock {
     });
   }
   async renderContent(el) {
+    const gen = this.nextGeneration();
     const { content = "", heightMode = "auto" } = this.instance.config;
     el.empty();
     this.renderHeader(el, "Text");
@@ -9208,6 +9212,7 @@ var StaticTextBlock = class extends BaseBlock {
       return;
     }
     await import_obsidian13.MarkdownRenderer.render(this.app, content, contentEl, "", this);
+    if (this.isStale(gen)) return;
   }
   enterInlineEdit(el) {
     const currentContent = this.instance.config.content ?? "";
@@ -9233,7 +9238,8 @@ var StaticTextBlock = class extends BaseBlock {
     });
     (0, import_obsidian13.setIcon)(cancelBtn, "x");
     const save = () => {
-      const newConfig = { ...this.instance.config, content: textarea.value };
+      const currentConfig = this.plugin.layout.blocks.find((b) => b.id === this.instance.id)?.config ?? this.instance.config;
+      const newConfig = { ...currentConfig, content: textarea.value };
       const newBlocks = this.plugin.layout.blocks.map(
         (b) => b.id === this.instance.id ? { ...b, config: newConfig } : b
       );
@@ -9311,7 +9317,7 @@ var HtmlBlock = class extends BaseBlock {
       hint.createDiv({ cls: "block-empty-hint-text", text: "No HTML content yet. Add your markup in settings." });
       return;
     }
-    const DANGEROUS_TAGS_RE = /<\s*(iframe|object|embed|form|meta|link|base)\b[^>]*>/gi;
+    const DANGEROUS_TAGS_RE = /<\/?\s*(iframe|object|embed|form|meta|link|base|script|style|svg)\b[^>]*>/gi;
     contentEl.appendChild((0, import_obsidian14.sanitizeHTMLToDom)(html.replace(DANGEROUS_TAGS_RE, "")));
   }
   openSettings(onSave) {
@@ -9843,7 +9849,15 @@ var RecentFilesBlock = class extends BaseBlock {
       e.empty();
       this.renderContent(e);
     });
-    this.registerEvent(this.app.vault.on("modify", () => trigger()));
+    this.registerEvent(this.app.vault.on("modify", (file) => {
+      const cfg = this.instance.config;
+      const max = cfg.maxItems ?? 10;
+      const sorted = this.app.vault.getMarkdownFiles().sort((a, b) => b.stat.mtime - a.stat.mtime);
+      const topFile = sorted[0];
+      if (topFile && topFile.path === file.path && sorted.indexOf(topFile) === 0) return;
+      const idx = sorted.findIndex((f) => f.path === file.path);
+      if (idx >= 0 && idx < max) trigger();
+    }));
     this.registerEvent(this.app.vault.on("create", () => trigger()));
     this.registerEvent(this.app.vault.on("delete", () => trigger()));
     this.registerEvent(this.app.vault.on("rename", () => trigger()));
@@ -10518,9 +10532,6 @@ var VoiceDictationBlock = class extends BaseBlock {
   // Elapsed timer handle
   elapsedSeconds = 0;
   elapsedIntervalRef = null;
-  constructor(app, instance, plugin) {
-    super(app, instance, plugin);
-  }
   render(el) {
     const cfg = this.instance.config;
     el.addClass("voice-block");
@@ -10664,6 +10675,7 @@ var VoiceDictationBlock = class extends BaseBlock {
       new import_obsidian20.Notice("Microphone access denied");
       return;
     }
+    this.register(() => stream.getTracks().forEach((t) => t.stop()));
     this.recordedMimeType = "audio/webm";
     const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac", "audio/ogg"];
     for (const mt of candidates) {
@@ -10822,6 +10834,9 @@ var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
   }
   draft;
   onOpen() {
+    this.renderSettings();
+  }
+  renderSettings() {
     const { contentEl } = this;
     contentEl.empty();
     new import_obsidian20.Setting(contentEl).setName("Voice notes settings").setHeading();
@@ -10845,11 +10860,11 @@ var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
       d.addOption("whisper", "Whisper").addOption("gemini", "Gemini").setValue(this.draft.provider ?? "whisper").onChange((v) => {
         this.draft.provider = v;
         this.draft.model = v === "gemini" ? "gemini-2.0-flash" : "whisper-1";
-        this.onOpen();
+        this.renderSettings();
       });
     });
     const isGemini = (this.draft.provider ?? "whisper") === "gemini";
-    new import_obsidian20.Setting(contentEl).setName("API key").setDesc(isGemini ? "Google AI API key for Gemini." : "OpenAI API key for Whisper.").addText((t) => {
+    new import_obsidian20.Setting(contentEl).setName("API key").setDesc(isGemini ? "Google AI API key for Gemini. Stored in plaintext in your vault data folder." : "OpenAI API key for Whisper. Stored in plaintext in your vault data folder.").addText((t) => {
       t.inputEl.type = "password";
       t.setPlaceholder(isGemini ? "AIza..." : "sk-...").setValue(this.draft.apiKey ?? "").onChange((v) => {
         this.draft.apiKey = v.trim();
@@ -11027,6 +11042,16 @@ function migrateBlockInstance(b) {
     cfg._hideBackground = true;
     delete cfg._transparent;
   }
+  if (m.type === "voice-dictation" && cfg) {
+    if (typeof cfg.whisperApiKey === "string" && !cfg.apiKey) {
+      cfg.apiKey = cfg.whisperApiKey;
+    }
+    if (typeof cfg.whisperLanguage === "string" && !cfg.language) {
+      cfg.language = cfg.whisperLanguage;
+    }
+    delete cfg.whisperApiKey;
+    delete cfg.whisperLanguage;
+  }
   if (m.type === "button-grid" && cfg && typeof cfg.columns === "number" && cfg.columns > 3) {
     cfg.columns = 3;
   }
@@ -11184,8 +11209,10 @@ function registerBlocks() {
     defaultConfig: {
       folder: "",
       triggerMode: "tap",
-      whisperApiKey: "",
-      whisperLanguage: "",
+      provider: "whisper",
+      apiKey: "",
+      model: "",
+      language: "",
       noteTemplate: ""
     },
     defaultSize: { w: 2, h: 3 },
@@ -11266,9 +11293,12 @@ var HomepagePlugin = class extends import_obsidian21.Plugin {
   }
   onunload() {
   }
+  savePromise = Promise.resolve();
   async saveLayout(layout) {
     this.layout = layout;
-    await this.saveData(layout);
+    this.savePromise = this.savePromise.then(() => this.saveData(layout)).catch(() => {
+    });
+    await this.savePromise;
   }
   async openHomepage(mode = "retain") {
     const { workspace } = this.app;
@@ -11374,7 +11404,11 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
     new import_obsidian21.Setting(containerEl).setName("Export layout").setDesc("Copy the current layout to clipboard as JSON.").addButton(
       (btn) => btn.setButtonText("Copy to clipboard").onClick(() => void (async () => {
         try {
-          const json = JSON.stringify(this.plugin.layout, null, 2);
+          const exportLayout = structuredClone(this.plugin.layout);
+          for (const block of exportLayout.blocks) {
+            delete block.config.apiKey;
+          }
+          const json = JSON.stringify(exportLayout, null, 2);
           await navigator.clipboard.writeText(json);
           btn.setButtonText("Copied!");
         } catch {

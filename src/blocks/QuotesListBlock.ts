@@ -19,7 +19,6 @@ type QuotesConfig = {
   source?: 'tag' | 'text';
   tag?: string;
   quotes?: string;
-  title?: string;
   columns?: number;
   maxItems?: number;
   heightMode?: 'wrap' | 'extend';
@@ -141,11 +140,6 @@ export class QuotesListBlock extends BaseBlock {
       if (card && heightMode === 'extend') {
         el.toggleClass('quotes-list-block--extend', true);
         card.setAttribute('data-auto-height-content', '');
-        setTimeout(() => {
-          if (this.app.workspace.layoutReady) {
-            window.dispatchEvent(new CustomEvent('hp-block-height-changed', { detail: { blockId: this.instance.id } }));
-          }
-        }, 50);
       }
       return;
     }

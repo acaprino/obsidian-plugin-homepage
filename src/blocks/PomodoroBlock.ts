@@ -4,7 +4,6 @@ import { BaseBlock } from './BaseBlock';
 type PomodoroPhase = 'idle' | 'work' | 'break' | 'longBreak';
 
 interface PomodoroConfig {
-  title?: string;
   workMinutes?: number;
   breakMinutes?: number;
   longBreakMinutes?: number;

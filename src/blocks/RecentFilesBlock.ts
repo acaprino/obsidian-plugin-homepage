@@ -4,7 +4,6 @@ import { BaseBlock } from './BaseBlock';
 const DEBOUNCE_MS = 500;
 
 interface RecentFilesConfig {
-  title?: string;
   maxItems?: number;
   showTimestamp?: boolean;
   excludeFolders?: string;
@@ -19,7 +18,18 @@ export class RecentFilesBlock extends BaseBlock {
 
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); this.renderContent(e); });
 
-    this.registerEvent(this.app.vault.on('modify', () => trigger()));
+    this.registerEvent(this.app.vault.on('modify', (file) => {
+      // Only re-render if the modified file could change the displayed list.
+      // Files already at the top won't change rank from a modify event.
+      const cfg = this.instance.config as RecentFilesConfig;
+      const max = cfg.maxItems ?? 10;
+      const sorted = this.app.vault.getMarkdownFiles().sort((a, b) => b.stat.mtime - a.stat.mtime);
+      const topFile = sorted[0];
+      if (topFile && topFile.path === file.path && sorted.indexOf(topFile) === 0) return;
+      // Only trigger if the file would appear in the top N
+      const idx = sorted.findIndex(f => f.path === file.path);
+      if (idx >= 0 && idx < max) trigger();
+    }));
     this.registerEvent(this.app.vault.on('create', () => trigger()));
     this.registerEvent(this.app.vault.on('delete', () => trigger()));
     this.registerEvent(this.app.vault.on('rename', () => trigger()));

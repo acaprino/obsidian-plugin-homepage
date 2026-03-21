@@ -11,7 +11,6 @@ interface LinkItem {
 }
 
 interface FolderLinksConfig {
-  title?: string;
   folder?: string;
   folderEmoji?: string;
   links?: LinkItem[];

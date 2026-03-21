@@ -630,7 +630,7 @@ class HomepageSettingTab extends PluginSettingTab {
           try {
             const exportLayout = structuredClone(this.plugin.layout);
             for (const block of exportLayout.blocks) {
-              delete (block.config as Record<string, unknown>).apiKey;
+              delete block.config.apiKey;
             }
             const json = JSON.stringify(exportLayout, null, 2);
             await navigator.clipboard.writeText(json);

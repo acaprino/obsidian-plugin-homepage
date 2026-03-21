@@ -1,5 +1,4 @@
 import { App, Modal, Notice, Setting, TFolder, moment, setIcon, requestUrl } from 'obsidian';
-import { BlockInstance, IHomepagePlugin } from '../types';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 
@@ -44,10 +43,6 @@ export class VoiceDictationBlock extends BaseBlock {
   // Elapsed timer handle
   private elapsedSeconds = 0;
   private elapsedIntervalRef: number | null = null;
-
-  constructor(app: App, instance: BlockInstance, plugin: IHomepagePlugin) {
-    super(app, instance, plugin);
-  }
 
   render(el: HTMLElement): void {
     const cfg = this.instance.config as VoiceDictationConfig;
@@ -222,6 +217,9 @@ export class VoiceDictationBlock extends BaseBlock {
       new Notice('Microphone access denied');
       return;
     }
+    // Register stream cleanup immediately so the mic is released even if
+    // the block is unloaded before MediaRecorder is assigned.
+    this.register(() => stream.getTracks().forEach(t => t.stop()));
 
     // Pick a supported mime type — webm on desktop/Android, mp4 on iOS
     this.recordedMimeType = 'audio/webm';
@@ -422,6 +420,10 @@ class VoiceDictationSettingsModal extends Modal {
   }
 
   onOpen(): void {
+    this.renderSettings();
+  }
+
+  private renderSettings(): void {
     const { contentEl } = this;
     contentEl.empty();
 
@@ -467,7 +469,7 @@ class VoiceDictationSettingsModal extends Modal {
            // Reset model to default for new provider
            this.draft.model = v === 'gemini' ? 'gemini-2.0-flash' : 'whisper-1';
            // Re-render modal to update model dropdown and API key placeholder
-           this.onOpen();
+           this.renderSettings();
          });
       });
 
@@ -475,7 +477,9 @@ class VoiceDictationSettingsModal extends Modal {
     const isGemini = (this.draft.provider ?? 'whisper') === 'gemini';
     new Setting(contentEl)
       .setName('API key')
-      .setDesc(isGemini ? 'Google AI API key for Gemini.' : 'OpenAI API key for Whisper.')
+      .setDesc(isGemini
+        ? 'Google AI API key for Gemini. Stored in plaintext in your vault data folder.'
+        : 'OpenAI API key for Whisper. Stored in plaintext in your vault data folder.')
       .addText(t => {
         t.inputEl.type = 'password';
         t.setPlaceholder(isGemini ? 'AIza...' : 'sk-...')

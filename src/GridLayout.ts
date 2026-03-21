@@ -4,10 +4,9 @@ import { BlockInstance, LayoutConfig, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
 import { createEmojiPicker } from './utils/emojiPicker';
-import { applyBlockStyling } from './utils/blockStyling';
+import { applyBlockStyling, HEX_COLOR_RE } from './utils/blockStyling';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 /** Compact grid-row height for edit-mode placeholders (cellHeight = 80px). */
 const COMPACT_EDIT_H = 2;
@@ -330,7 +329,6 @@ export class GridLayout {
       // After auto-height changes, repack ALL blocks so those below shift up
       // to fill gaps left by blocks that shrank.  GridStack's compact() and
       // float toggle are unreliable, so we compute positions ourselves.
-      console.debug(`[HP repack] anyResized=${anyResized}`);
       if (anyResized) {
         const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
         for (const gsEl2 of this.gridStack.getGridItems()) {
@@ -357,14 +355,9 @@ export class GridLayout {
   private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): boolean {
     if (!this.gridStack || !gsEl.isConnected) return false;
 
-    console.debug(`[HP_TRACE] resizeBlockToContent called for ${instance.type} (${instance.id})`);
-
     const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
     const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
-    if (!contentEl || !headerZone) {
-      console.debug(`[HP_TRACE] Early exit for ${instance.type} - missing [data-auto-height-content] or header zone`);
-      return false;
-    }
+    if (!contentEl || !headerZone) return false;
 
     // grid-template-rows: 1fr constrains the gallery to the available flex space.
     // Temporarily switch to max-content so the gallery reports its natural height.
@@ -377,18 +370,15 @@ export class GridLayout {
       blockContent.addClass('hp-auto-rows');
     }
 
-    const contentH = contentEl.offsetHeight; // forces reflow at natural height
-    // Debug: compare offsetHeight vs actual rendered bounds for masonry diagnosis
-    const contentRect = contentEl.getBoundingClientRect();
-    const contentStyle = window.getComputedStyle(contentEl);
-    const lastChild = contentEl.lastElementChild as HTMLElement | null;
-    const lastChildBottom = lastChild ? lastChild.getBoundingClientRect().bottom - contentEl.getBoundingClientRect().top : 0;
-    console.debug(`[HP measure-debug] ${instance.type} offsetH=${contentH} rectH=${contentRect.height.toFixed(0)} scrollH=${contentEl.scrollHeight} cols=${contentStyle.getPropertyValue('columns')} lastChildBot=${lastChildBottom.toFixed(0)} children=${contentEl.children.length}`);
+    // Batch all DOM reads before writes to avoid layout thrashing.
+    // Read natural content height and header height while hp-auto-rows is active.
+    const contentH = contentEl.offsetHeight;
+    const headerH = headerZone.offsetHeight;
 
+    // Restore classes (write phase)
     if (blockContent) {
       blockContent.removeClass('hp-auto-rows');
-      // Force reflow before restoring transition so the browser doesn't animate the restore
-      void blockContent.offsetHeight;
+      void blockContent.offsetHeight; // force reflow to prevent transition animation
       blockContent.removeClass('hp-no-transition');
     }
 
@@ -404,14 +394,12 @@ export class GridLayout {
     const divider = wrapper?.querySelector('.block-header-divider');
     const gapCount = divider ? 2 : 1;
     const margin = typeof this.gridStack.opts.margin === 'number' ? this.gridStack.opts.margin : 8;
-    const totalH = headerZone.offsetHeight + pad + contentH + (gap * gapCount) + margin * 2;
+    const totalH = headerH + pad + contentH + (gap * gapCount) + margin * 2;
     const cell = this.gridStack.getCellHeight();
     const rows = Math.max(1, Math.ceil(totalH / cell));
 
-
     const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
     const currentH = node?.h ?? instance.h;
-    console.debug(`[HP auto-height] ${instance.type} contentH=${contentH} headerH=${headerZone.offsetHeight} pad=${pad} gap=${gap} totalH=${totalH} cell=${cell} → rows=${rows} (current=${currentH})`);
     if (rows !== currentH) {
       // Static grid is already lifted by the caller (scheduleResize batch).
       this.gridStack.update(gsEl, { h: rows });
@@ -883,8 +871,10 @@ export class GridLayout {
   destroyAll(): void {
     this.isDestroyed = true;
     if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
+    if (this.batchRafId !== null) { cancelAnimationFrame(this.batchRafId); this.batchRafId = null; }
     for (const id of this.pendingRafs) cancelAnimationFrame(id);
     this.pendingRafs.clear();
+    this.pendingResizes.clear();
     for (const { block } of this.blocks.values()) {
       block?.unload();
     }

@@ -5,6 +5,8 @@ export abstract class BaseBlock extends Component {
   private _headerContainer: HTMLElement | null = null;
   private _scheduleTimer: number | null = null;
   private _renderGen = 0;
+  private _widthObserver: ResizeObserver | null = null;
+  private _widthRafId = 0;
 
   /** Set by subclasses in render() to enable scheduleRender(). */
   protected containerEl: HTMLElement | null = null;
@@ -89,20 +91,23 @@ export abstract class BaseBlock extends Component {
    * Cleanup is registered automatically via `this.register()`.
    */
   protected observeWidthForAutoHeight(el: HTMLElement): void {
+    // Disconnect previous observer to prevent accumulation across re-renders
+    if (this._widthObserver) {
+      this._widthObserver.disconnect();
+      cancelAnimationFrame(this._widthRafId);
+    }
     let prevWidth = 0; // 0 skips the initial observe() callback
-    let rafId = 0;
-    const ro = new ResizeObserver((entries) => {
+    this._widthObserver = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0;
       if (w > 0 && w !== prevWidth) {
         prevWidth = w;
         // Throttle to one dispatch per animation frame to avoid hammering
         // GridStack with layout recalculations during continuous resize.
-        cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(() => this.requestAutoHeight());
+        cancelAnimationFrame(this._widthRafId);
+        this._widthRafId = requestAnimationFrame(() => this.requestAutoHeight());
       }
     });
-    ro.observe(el);
-    this.register(() => { ro.disconnect(); cancelAnimationFrame(rafId); });
+    this._widthObserver.observe(el);
   }
 
   /** Increment and return a new render generation. Call at the start of async renders. */
@@ -119,6 +124,11 @@ export abstract class BaseBlock extends Component {
     if (this._scheduleTimer !== null) {
       window.clearTimeout(this._scheduleTimer);
       this._scheduleTimer = null;
+    }
+    if (this._widthObserver) {
+      this._widthObserver.disconnect();
+      this._widthObserver = null;
+      cancelAnimationFrame(this._widthRafId);
     }
   }
 }

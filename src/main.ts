@@ -135,6 +135,17 @@ function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknow
     cfg._hideBackground = true;
     delete cfg._transparent;
   }
+  // Migrate voice-dictation config field renames.
+  if (m.type === 'voice-dictation' && cfg) {
+    if (typeof cfg.whisperApiKey === 'string' && !cfg.apiKey) {
+      cfg.apiKey = cfg.whisperApiKey;
+    }
+    if (typeof cfg.whisperLanguage === 'string' && !cfg.language) {
+      cfg.language = cfg.whisperLanguage;
+    }
+    delete cfg.whisperApiKey;
+    delete cfg.whisperLanguage;
+  }
   // Clamp button-grid columns to the supported range [1, 3].
   if (m.type === 'button-grid' && cfg && typeof cfg.columns === 'number' && cfg.columns > 3) {
     cfg.columns = 3;
@@ -347,8 +358,10 @@ function registerBlocks(): void {
     defaultConfig: {
       folder: '',
       triggerMode: 'tap',
-      whisperApiKey: '',
-      whisperLanguage: '',
+      provider: 'whisper',
+      apiKey: '',
+      model: '',
+      language: '',
       noteTemplate: '',
     },
     defaultSize: { w: 2, h: 3 },
@@ -438,9 +451,12 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
   onunload(): void { /* Obsidian detaches views automatically */ }
 
+  private savePromise = Promise.resolve();
+
   async saveLayout(layout: LayoutConfig): Promise<void> {
     this.layout = layout;
-    await this.saveData(layout);
+    this.savePromise = this.savePromise.then(() => this.saveData(layout)).catch(() => { /* disk error — in-memory state is authoritative */ });
+    await this.savePromise;
   }
 
   async openHomepage(mode: OpenMode = 'retain'): Promise<void> {
@@ -612,7 +628,11 @@ class HomepageSettingTab extends PluginSettingTab {
       .addButton(btn =>
         btn.setButtonText('Copy to clipboard').onClick(() => void (async () => {
           try {
-            const json = JSON.stringify(this.plugin.layout, null, 2);
+            const exportLayout = structuredClone(this.plugin.layout);
+            for (const block of exportLayout.blocks) {
+              delete (block.config as Record<string, unknown>).apiKey;
+            }
+            const json = JSON.stringify(exportLayout, null, 2);
             await navigator.clipboard.writeText(json);
             btn.setButtonText('Copied!');
           } catch {

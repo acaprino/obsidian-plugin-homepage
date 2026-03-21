@@ -11,6 +11,7 @@ export class StaticTextBlock extends BaseBlock {
   }
 
   private async renderContent(el: HTMLElement): Promise<void> {
+    const gen = this.nextGeneration();
     const { content = '', heightMode = 'auto' } = this.instance.config as {
       content?: string;
       heightMode?: 'auto' | 'fixed';
@@ -43,6 +44,7 @@ export class StaticTextBlock extends BaseBlock {
     }
 
     await MarkdownRenderer.render(this.app, content, contentEl, '', this);
+    if (this.isStale(gen)) return;
   }
 
   private enterInlineEdit(el: HTMLElement): void {
@@ -78,7 +80,8 @@ export class StaticTextBlock extends BaseBlock {
     setIcon(cancelBtn, 'x');
 
     const save = (): void => {
-      const newConfig = { ...this.instance.config, content: textarea.value };
+      const currentConfig = this.plugin.layout.blocks.find(b => b.id === this.instance.id)?.config ?? this.instance.config;
+      const newConfig = { ...currentConfig, content: textarea.value };
       const newBlocks = this.plugin.layout.blocks.map(b =>
         b.id === this.instance.id ? { ...b, config: newConfig } : b,
       );

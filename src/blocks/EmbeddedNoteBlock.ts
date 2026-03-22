@@ -142,7 +142,7 @@ class EmbeddedNoteSettingsModal extends Modal {
 
     const draft = structuredClone(this.config);
 
-    new Setting(contentEl).setName('File path').setDesc('Vault path to the note (e.g. Notes/MyNote.md)').addText(t => {
+    new Setting(contentEl).setName('File path').setDesc('Path to the note (e.g. Notes/MyNote.md)').addText(t => {
       t.setValue(draft.filePath as string ?? '')
        .setPlaceholder('Start typing to search…')
        .onChange(v => { draft.filePath = v; });
@@ -154,7 +154,7 @@ class EmbeddedNoteSettingsModal extends Modal {
     );
     new Setting(contentEl)
       .setName('Height mode')
-      .setDesc('Scroll keeps the block compact \u2014 grow to fit all expands the card to show the full note.')
+      .setDesc('Scroll keeps the block compact. Grow to fit expands the card to show the full note.')
       .addDropdown(d =>
         d.addOption('scroll', 'Scroll (fixed height)')
          .addOption('grow', 'Grow to fit all')

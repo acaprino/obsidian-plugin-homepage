@@ -50,6 +50,7 @@ export interface LayoutConfig {
   openWhenEmpty: boolean;
   pin: boolean;
   hideScrollbar: boolean;
+  compactLayout: boolean;
   blocks: BlockInstance[];
 }
 

@@ -446,7 +446,7 @@ class VoiceDictationSettingsModal extends Modal {
     // Folder
     new Setting(contentEl)
       .setName('Destination folder')
-      .setDesc('New voice notes will be created here. Leave empty for vault root.')
+      .setDesc('Where new voice notes go. Leave blank for vault root.')
       .addText(t => {
         t.setPlaceholder('Voice notes')
          .setValue(this.draft.folder ?? '')
@@ -462,7 +462,7 @@ class VoiceDictationSettingsModal extends Modal {
     // Trigger mode
     new Setting(contentEl)
       .setName('Trigger mode')
-      .setDesc('How the mic button activates recording.')
+      .setDesc('How the mic button starts recording.')
       .addDropdown(d => {
         d.addOption('tap', 'Tap to record')
          .addOption('push', 'Push to talk')
@@ -473,7 +473,7 @@ class VoiceDictationSettingsModal extends Modal {
     // Provider
     new Setting(contentEl)
       .setName('Transcription provider')
-      .setDesc('Cloud service for voice transcription.')
+      .setDesc('Service used for transcription.')
       .addDropdown(d => {
         d.addOption('whisper', 'Whisper')
          .addOption('gemini', 'Gemini')
@@ -506,7 +506,7 @@ class VoiceDictationSettingsModal extends Modal {
     const defaultModel = isGemini ? 'gemini-2.0-flash' : 'whisper-1';
     new Setting(contentEl)
       .setName('Model')
-      .setDesc('Model to use for transcription.')
+      .setDesc('Transcription model.')
       .addDropdown(d => {
         for (const [value, label] of Object.entries(models)) {
           d.addOption(value, label);
@@ -520,7 +520,7 @@ class VoiceDictationSettingsModal extends Modal {
     // Language
     new Setting(contentEl)
       .setName('Language')
-      .setDesc('Language code for transcription (en, it, fr). Leave empty for auto-detect.')
+      .setDesc('Language code (en, it, fr). Leave blank to auto-detect.')
       .addText(t => {
         t.setPlaceholder('Auto')
          .setValue(this.draft.language ?? '')

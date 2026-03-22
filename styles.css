@@ -2136,16 +2136,19 @@
   align-items: center;
   gap: 6px;
 }
+
 .toolbar-zoom-label {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);
   white-space: nowrap;
 }
+
 .toolbar-zoom-slider {
   width: 90px;
   cursor: pointer;
   accent-color: var(--color-accent);
 }
+
 .toolbar-zoom-value {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -2153,6 +2156,7 @@
   min-width: 32px;
   text-align: right;
 }
+
 .toolbar-edit-btn,
 .toolbar-add-btn,
 .toolbar-discard-btn {
@@ -2170,15 +2174,18 @@
     transform 0.12s ease-out,
     box-shadow 0.15s ease-out;
 }
+
 .toolbar-edit-btn:hover,
 .toolbar-add-btn:hover {
   background: var(--background-modifier-hover);
   border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
+
 .toolbar-edit-btn:active,
 .toolbar-add-btn:active {
   transform: scale(0.97);
 }
+
 .toolbar-edit-btn.toolbar-btn-active,
 .toolbar-add-btn.toolbar-btn-active {
   background: var(--color-accent);
@@ -2186,15 +2193,18 @@
   border-color: var(--color-accent);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
+
 /* Discard button — inherits base from the shared selector above, overrides color only */
 .toolbar-discard-btn {
   color: var(--text-muted);
 }
+
 .toolbar-discard-btn:hover {
   background: var(--background-modifier-error, rgba(220, 50, 50, 0.1));
   border-color: var(--text-error, #e05252);
   color: var(--text-error, #e05252);
 }
+
 /* ── Collapsible blocks ─────────────────────────────────── */
 .block-header-zone {
   display: flex;
@@ -2207,21 +2217,26 @@
   margin: 0 -4px;
   transition: background 0.1s ease-out;
 }
+
 .block-header-zone:hover {
   background: var(--background-modifier-hover);
 }
+
 /* In edit mode the handle bar owns interaction — header zone is not clickable */
 .edit-mode .block-header-zone {
   cursor: default;
   pointer-events: none;
 }
+
 .edit-mode .block-header-zone:hover {
   background: transparent;
 }
+
 .block-header-zone .block-header {
   flex: 1;
   margin-bottom: 0;
 }
+
 /* Chevron indicator — CSS-only, rotates on collapse */
 .block-collapse-chevron {
   font-size: 0.65rem;
@@ -2233,40 +2248,49 @@
   transform: rotate(270deg);
   transition: opacity 0.15s ease-out, transform 0.2s ease-out;
 }
+
 .block-collapse-chevron::before {
   content: '›';
 }
+
 .block-collapse-chevron.is-collapsed {
   transform: rotate(90deg);
   opacity: 1;
 }
+
 .homepage-block-wrapper:hover .block-collapse-chevron {
   opacity: 1;
 }
+
 /* Smooth collapse via grid-template-rows */
 .homepage-block-wrapper .block-content {
   display: grid;
   grid-template-rows: 1fr;
   transition: grid-template-rows 0.25s ease-out, opacity 0.2s ease-out;
 }
+
 .homepage-block-wrapper .block-content > * {
   overflow: hidden;
   min-height: 0;
 }
+
 .homepage-block-wrapper.block-collapsed .block-content {
   grid-template-rows: 0fr;
   opacity: 0;
   pointer-events: none;
 }
+
 .homepage-block-wrapper.block-collapsed {
   min-height: unset;
 }
+
 /* Override the generic collapse rules for blocks that use flex layout directly
    on .block-content — their children must remain visible and content-sized. */
 .homepage-block-wrapper .block-content.greeting-block > * {
   overflow: visible;
   min-height: auto;
 }
+
 /* ── Focus visible (keyboard navigation) ────────────────── */
 .homepage-view button:focus-visible,
 .homepage-view select:focus-visible {
@@ -2274,37 +2298,44 @@
   outline-offset: 2px;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
+
 .homepage-view input:focus-visible,
 .homepage-view textarea:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 0;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
+
 /* ── Viewport-fit (scale-to-fit in edit mode) ───────────── */
 /* overflow:visible prevents clipping GridStack resize handles at the last card's edge. */
 /* The grid box = naturalH (flex-shrink:0) so there is no actual overflow to hide. */
 .homepage-grid.viewport-fit {
   overflow: visible;
 }
+
 /* ── Edit Mode ──────────────────────────────────────────── */
 .homepage-grid.edit-mode .homepage-block-wrapper {
   border: 2px dashed var(--color-accent);
   outline: none;
 }
+
 /* Compact edit cards: overflow visible so the compact placeholder is never
    clipped by GridStack's default overflow-y:auto on .grid-stack-item-content. */
 .homepage-grid.edit-mode > .grid-stack-item > .grid-stack-item-content {
   overflow: visible;
 }
+
 /* Hide vertical resize handles for auto-height blocks — their height is auto-managed */
 .homepage-grid.edit-mode .is-auto-height > .ui-resizable-s,
 .homepage-grid.edit-mode .is-auto-height > .ui-resizable-se {
   display: none !important;
 }
+
 /* ── Edit Mode Compact Placeholder ──────────────────────── */
 .edit-mode .block-collapse-chevron {
   display: none;
 }
+
 .block-compact-info {
   display: flex;
   align-items: center;
@@ -2314,22 +2345,26 @@
   color: var(--text-muted);
   font-size: var(--font-interface-size, 0.8125rem);
 }
+
 .block-compact-type {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.6;
 }
+
 .block-compact-size {
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   opacity: 0.5;
 }
+
 .edit-mode .block-content {
   display: flex;
   align-items: center;
   justify-content: center;
 }
+
 .block-handle-bar {
   display: flex;
   align-items: center;
@@ -2338,6 +2373,7 @@
   border-bottom: 1px solid var(--background-modifier-border);
   padding-bottom: 6px;
 }
+
 .block-move-handle {
   cursor: grab;
   color: var(--text-muted);
@@ -2349,20 +2385,24 @@
   align-items: center;
   transition: color 0.12s ease-out, background 0.12s ease-out;
 }
+
 .block-move-handle:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 15%, transparent);
 }
+
 .block-move-handle:active {
   cursor: grabbing;
 }
+
 .block-handle-bar button svg,
 .block-move-handle svg {
   width: 16px;
   height: 16px;
   pointer-events: none;
 }
+
 /* Shared base for all handle-bar action buttons */
 .block-move-up-btn,
 .block-move-down-btn,
@@ -2386,33 +2426,40 @@
     background 0.12s ease-out,
     transform 0.12s ease-out;
 }
+
 .block-move-up-btn:hover,
 .block-move-down-btn:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
 }
+
 .block-move-up-btn svg,
 .block-move-down-btn svg {
   width: 14px;
   height: 14px;
   pointer-events: none;
 }
+
 .block-settings-btn:hover {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
   transform: scale(1.1);
 }
+
 .block-settings-btn:active {
   transform: scale(0.95);
 }
+
 .block-remove-btn:hover {
   color: var(--text-error);
   background: var(--background-modifier-hover);
   transform: scale(1.1);
 }
+
 .block-remove-btn:active {
   transform: scale(0.95);
 }
+
 /* GridStack drag styling */
 .grid-stack-item.ui-draggable-dragging > .grid-stack-item-content .homepage-block-wrapper {
   box-shadow:
@@ -2422,15 +2469,18 @@
   border-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
   opacity: 0.95;
 }
+
 /* ── Add Block Modal ────────────────────────────────────── */
 .add-block-modal-title {
   margin-bottom: 16px;
 }
+
 .add-block-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+
 .add-block-option {
   display: flex;
   flex-direction: column;
@@ -2454,33 +2504,39 @@
   overflow: hidden;
   min-height: 88px;
 }
+
 .add-block-option:hover {
   background: var(--background-modifier-hover);
   border-color: var(--color-accent);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
+
 .add-block-option:active {
   transform: translateY(0) scale(0.98);
   box-shadow: none;
 }
+
 .add-block-icon {
   font-size: 1.5rem;
   line-height: 1;
   color: var(--text-normal);
   font-style: normal;
 }
+
 .add-block-name {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-normal);
   font-weight: 500;
 }
+
 .add-block-desc {
   font-size: 0.6875rem;
   color: var(--text-muted);
   line-height: 1.4;
   max-width: 180px;
 }
+
 /* ── Block header emoji ─────────────────────────────────── */
 .block-header-emoji {
   font-style: normal;
@@ -2489,6 +2545,7 @@
   line-height: 1;
   vertical-align: middle;
 }
+
 /* ── Emoji picker (BlockSettingsModal) ──────────────────── */
 .emoji-picker-row {
   display: flex;
@@ -2497,9 +2554,11 @@
   padding: 8px 0;
   border-top: 1px solid var(--background-modifier-border);
 }
+
 .emoji-picker-row > .emoji-picker-trigger {
   margin-left: auto;
 }
+
 .emoji-picker-trigger {
   display: flex;
   align-items: center;
@@ -2515,13 +2574,16 @@
   min-width: 52px;
   transition: border-color 0.12s ease-out;
 }
+
 .emoji-picker-trigger:hover {
   border-color: var(--color-accent);
 }
+
 .emoji-picker-chevron {
   font-size: 0.65rem;
   color: var(--text-muted);
 }
+
 .emoji-picker-clear {
   background: none;
   border: none;
@@ -2533,10 +2595,12 @@
   box-shadow: none;
   line-height: 1.4;
 }
+
 .emoji-picker-clear:hover {
   color: var(--text-error);
   background: var(--background-modifier-hover);
 }
+
 .emoji-picker-panel {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -2544,6 +2608,7 @@
   padding: 8px;
   margin-bottom: 4px;
 }
+
 .emoji-picker-search {
   width: 100%;
   box-sizing: border-box;
@@ -2555,10 +2620,12 @@
   font-size: var(--font-interface-size, 0.8125rem);
   margin-bottom: 8px;
 }
+
 .emoji-picker-search:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
+
 .emoji-picker-grid {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -2566,6 +2633,7 @@
   max-height: 160px;
   overflow-y: auto;
 }
+
 .emoji-btn {
   background: none;
   border: 1px solid transparent;
@@ -2580,17 +2648,21 @@
     background 0.1s ease-out,
     transform 0.1s ease-out;
 }
+
 .emoji-btn:hover {
   background: var(--background-modifier-hover);
   transform: scale(1.15);
 }
+
 .emoji-btn:active {
   transform: scale(0.95);
 }
+
 .emoji-btn.is-selected {
   background: var(--background-modifier-hover);
   border-color: var(--color-accent);
 }
+
 .emoji-picker-empty {
   grid-column: 1 / -1;
   text-align: center;
@@ -2598,6 +2670,7 @@
   font-size: var(--font-interface-size, 0.8125rem);
   padding: 12px 0;
 }
+
 /* ── Button Grid block — item list editor ──────────────── */
 .btn-grid-item-list {
   display: flex;
@@ -2605,23 +2678,28 @@
   gap: 6px;
   margin-bottom: 8px;
 }
+
 .btn-grid-item-row {
   display: flex;
   gap: 6px;
   align-items: center;
 }
+
 .btn-grid-emoji-picker-row {
   display: flex;
   align-items: center;
   flex-shrink: 0;
 }
+
 .btn-grid-emoji-picker-row .emoji-picker-trigger {
   min-width: unset;
   padding: 4px 6px;
 }
+
 .btn-grid-emoji-picker-row .emoji-picker-clear {
   padding: 2px 4px;
 }
+
 .btn-grid-item-label {
   flex: 1;
   background: var(--background-primary);
@@ -2631,6 +2709,7 @@
   padding: 4px 8px;
   font-size: inherit;
 }
+
 .btn-grid-item-link {
   flex: 1.5;
   background: var(--background-primary);
@@ -2640,11 +2719,13 @@
   padding: 4px 8px;
   font-size: var(--font-interface-size, 0.8125rem);
 }
+
 .btn-grid-item-label:focus-visible,
 .btn-grid-item-link:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
+
 .btn-grid-item-del {
   background: none;
   border: none;
@@ -2656,10 +2737,12 @@
   box-shadow: none;
   flex-shrink: 0;
 }
+
 .btn-grid-item-del:hover {
   color: var(--text-error);
   background: var(--background-modifier-hover);
 }
+
 /* ── Drag-to-reorder in settings modals ────────────────── */
 .drag-grip {
   cursor: grab;
@@ -2684,11 +2767,13 @@
 .settings-link-row.drag-over {
   border-top: 2px solid var(--color-accent);
 }
+
 /* ── Settings rows ──────────────────────────────────────── */
 .settings-link-row .setting-item {
   border-top: none;
   padding: 4px 0;
 }
+
 /* ── Single-Column Mode (mobile / narrow panes) ────────── */
 /* When GridLayout collapses to 1 column, override GridStack's absolute
    positioning with a simple flex column so blocks shrink-wrap their content
@@ -2760,9 +2845,11 @@
   padding: 6px 16px;
   font-size: 0.8125rem;
 }
+
 /* ── Container Query Responsive Breakpoints ────────────── */
 /* CSS breakpoints: 380 / 540 / 768 (UI adaptation).
    See also GridLayout.ts computeEffective(): 480 / 768 / 1024 (column reduction). */
+
 /* ── Medium-narrow (tablets, split panes) ──────────────── */
 @container homepage (max-width: 768px) {
   /* Enlarge edit-mode handle bar buttons for touch */
@@ -2771,6 +2858,7 @@
     min-width: 44px;
     min-height: 44px;
   }
+
   /* Enlarge GridStack resize handles for touch */
   .homepage-grid .ui-resizable-se {
     width: 28px;
@@ -2782,6 +2870,7 @@
   .homepage-grid .ui-resizable-e {
     width: 16px;
   }
+
   /* Enlarge FAB for touch */
   .homepage-edit-fab {
     width: 44px;
@@ -2789,6 +2878,7 @@
     font-size: 1rem;
   }
 }
+
 /* ── Narrow (phones, narrow panes) ─────────────────────── */
 @container homepage (max-width: 540px) {
   .homepage-toolbar.is-visible {
@@ -2797,32 +2887,39 @@
     flex-wrap: wrap;
     max-height: none;
   }
+
   /* Touch-friendly toolbar controls */
   .homepage-toolbar button,
   .homepage-toolbar select,
   .toolbar-col-select {
     min-height: 44px;
   }
+
   /* Shrink zoom group */
   .toolbar-zoom-label { display: none; }
   .toolbar-zoom-slider { width: 60px; }
+
   .homepage-empty-state {
     padding: 40px 16px;
   }
+
   /* Tighter grid spacing on narrow screens */
   .homepage-grid.grid-stack.hp-single-column {
     gap: 8px;
     padding: 8px;
   }
+
   /* Slightly smaller card padding */
   .homepage-block-wrapper {
     padding: var(--hp-card-padding, 10px);
   }
+
   /* Disable staggered block entry animation */
   .homepage-grid--animating .homepage-block-wrapper {
     animation: none;
     opacity: 1;
   }
+
   /* Disable hover transforms on interactive grids */
   .grid-btn:hover {
     transform: none;
@@ -2831,6 +2928,7 @@
   .bookmark-card:hover {
     transform: none;
   }
+
   /* ── Folder links: flow as horizontal chips on narrow screens ── */
   .folder-links-list {
     flex-direction: row;
@@ -2853,6 +2951,7 @@
   .folder-links-align-right .folder-link-item {
     justify-content: flex-start;
   }
+
   /* ── Touch targets for all interactive block elements ── */
   .folder-link-btn,
   .grid-btn,
@@ -2862,37 +2961,46 @@
   .random-note-title {
     min-height: 44px;
   }
+
   /* ── Quote items: tighter on narrow ── */
   .quote-content {
     font-size: 0.9375rem;
   }
 }
+
 /* ── Very narrow (small phones) ────────────────────────── */
 @container homepage (max-width: 380px) {
   /* Reduce grid padding */
   .homepage-grid.grid-stack {
     padding: 4px;
   }
+
   /* Reduce block card padding */
   .homepage-block-wrapper {
     padding: 8px;
   }
+
   /* Hide zoom group — auto-columns handles layout */
   .toolbar-zoom-group { display: none; }
+
   /* Hide column selector — auto-columns handles it */
   .toolbar-col-group { display: none; }
+
   /* Add button: icon only */
   .toolbar-add-text { display: none; }
 }
+
 @container homepage (min-width: 1200px) {
   .homepage-grid {
     padding: 32px;
   }
 }
+
 /* ── Newly Added Block Highlight ────────────────────────── */
 .homepage-block-wrapper.block-just-added {
   animation: hp-block-appear 0.4s ease-out;
 }
+
 @keyframes hp-block-appear {
   from {
     opacity: 0;
@@ -2903,6 +3011,7 @@
     transform: translateY(0) scale(1);
   }
 }
+
 /* ── Elevation Presets ──────────────────────────────────── */
 .block-elevation-1 {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
@@ -2913,6 +3022,7 @@
 .block-elevation-3 {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.08);
 }
+
 /* ── Background Opacity ────────────────────────────────── */
 .homepage-block-wrapper.block-custom-opacity {
   background: color-mix(in srgb, var(--background-secondary) var(--hp-bg-opacity, 100%), transparent);
@@ -2920,6 +3030,7 @@
 .homepage-block-wrapper.block-custom-opacity.block-accented {
   background: color-mix(in srgb, var(--_accent-bg, var(--background-secondary)) var(--hp-bg-opacity, 100%), transparent);
 }
+
 /* ── Collapsible Advanced Styling Section ──────────────── */
 .settings-collapsible-header {
   display: flex;
@@ -2957,6 +3068,7 @@
   font-weight: 400;
   margin-left: 2px;
 }
+
 /* ── Duplicate Button ──────────────────────────────────── */
 .block-duplicate-btn:hover {
   color: var(--text-normal);
@@ -2966,6 +3078,7 @@
 .block-duplicate-btn:active {
   transform: scale(0.95);
 }
+
 /* ── Bookmark Block ────────────────────────────────────── */
 .bookmark-grid {
   display: grid;
@@ -3006,6 +3119,7 @@
   color: var(--text-muted);
   line-height: 1.4;
 }
+
 /* ── Bookmark Settings Item List ───────────────────────── */
 .bookmark-item-list {
   display: flex;
@@ -3046,6 +3160,7 @@
   color: var(--text-error);
   background: var(--background-modifier-hover);
 }
+
 /* ── Recent Files Block ────────────────────────────────── */
 .recent-files-list {
   display: flex;
@@ -3086,6 +3201,7 @@
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+
 /* ── Pomodoro Block ────────────────────────────────────── */
 /* Center pomodoro and voice content relative to the full card, not just below the header */
 .homepage-block-wrapper:has(.pomodoro-block) .block-content,
@@ -3098,10 +3214,12 @@
 .homepage-block-wrapper:has(.voice-block) .block-header-zone {
   z-index: 1;
 }
+
 .pomodoro-block {
   container-type: size;
   height: 100%;
 }
+
 .pomodoro-container {
   display: flex;
   flex-direction: column;
@@ -3111,6 +3229,7 @@
   height: 100%;
   padding: clamp(2px, 2cqh, 8px) 0;
 }
+
 .pomodoro-ring {
   position: relative;
   --ring-size: min(40cqh, 80cqw, 140px);
@@ -3118,10 +3237,12 @@
   height: var(--ring-size);
   flex-shrink: 0;
 }
+
 .pomodoro-ring svg {
   width: 100%;
   height: 100%;
 }
+
 .pomodoro-time {
   position: absolute;
   top: 50%;
@@ -3133,16 +3254,19 @@
   color: var(--text-normal);
   line-height: 1;
 }
+
 .pomodoro-phase {
   font-size: clamp(0.6rem, 5cqh, 0.85rem);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
 .pomodoro-dots {
   display: flex;
   gap: clamp(3px, 1.5cqw, 6px);
 }
+
 .pomodoro-dot {
   --dot-size: clamp(5px, 3cqh, 8px);
   width: var(--dot-size);
@@ -3151,15 +3275,18 @@
   background: var(--background-modifier-border);
   transition: background 0.2s ease-out;
 }
+
 .pomodoro-dot.is-complete {
   background: var(--color-accent);
 }
+
 .pomodoro-controls {
   display: flex;
   gap: clamp(4px, 2cqw, 8px);
   flex-wrap: wrap;
   justify-content: center;
 }
+
 .pomodoro-btn {
   display: flex;
   align-items: center;
@@ -3174,20 +3301,25 @@
   cursor: pointer;
   transition: background 0.12s ease-out, border-color 0.12s ease-out;
 }
+
 .pomodoro-btn-icon { display: none; }
 .pomodoro-btn-icon svg { width: 1em; height: 1em; }
+
 .pomodoro-btn:hover {
   background: var(--background-modifier-hover);
   border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
 }
+
 .pomodoro-btn.is-primary {
   background: var(--block-accent, var(--color-accent));
   color: var(--text-on-accent, #fff);
   border-color: var(--block-accent, var(--color-accent));
 }
+
 .pomodoro-btn.is-primary:hover {
   opacity: 0.9;
 }
+
 /* Small card: controls left (stacked), timer right */
 @container (max-height: 220px) {
   .pomodoro-container {
@@ -3225,6 +3357,7 @@
   .pomodoro-phase,
   .pomodoro-dots { display: none; }
 }
+
 /* Very flat card (1 unit tall): ring + timer + buttons in a row */
 @container (max-height: 120px) {
   .pomodoro-container {
@@ -3262,6 +3395,7 @@
   .pomodoro-btn-icon svg { width: 16px; height: 16px; }
   .pomodoro-btn-label { display: none; }
 }
+
 /* ── Obsidian Mobile (.is-mobile) ──────────────────────── */
 /* .is-mobile is set on <body> by Obsidian on iOS / Android.
    These rules target the mobile *app* specifically, not just narrow panes.
@@ -3273,6 +3407,7 @@
   --hp-card-padding: 10px;
   padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
+
 /* Bigger tap targets across all interactive elements on mobile */
 .is-mobile .folder-link-btn,
 .is-mobile .grid-btn,
@@ -3283,6 +3418,7 @@
 .is-mobile .pomodoro-btn {
   min-height: 44px;
 }
+
 /* Folder links as chips on mobile */
 .is-mobile .folder-links-list {
   flex-direction: row;
@@ -3299,17 +3435,20 @@
 .is-mobile .folder-link-btn:hover {
   transform: none;
 }
+
 /* Disable all hover transforms on mobile (no hover state) */
 .is-mobile .grid-btn:hover,
 .is-mobile .bookmark-card:hover,
 .is-mobile .folder-link-btn:hover .link-emoji {
   transform: none;
 }
+
 /* Single-column: tighter gap */
 .is-mobile .homepage-grid.grid-stack.hp-single-column {
   gap: 6px;
   padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
+
 /* ── Reduced Motion ─────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .homepage-view,
@@ -3318,39 +3457,49 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+
   /* Allow collapse/expand to still transition at reduced speed */
   .homepage-block-wrapper .block-content {
     transition-duration: 0.15s !important;
   }
+
   .toolbar-edit-dot {
     animation: none;
     opacity: 0.7;
   }
 }
+
 /* ── Utility Classes (inline style replacements) ──────── */
 .hp-hidden { display: none; }
+
 /* Grid zoom state (GridLayout.ts setZoom) */
 .homepage-grid.grid-stack.hp-zoomed {
   flex-shrink: 0;
   transform-origin: top center;
   transform: var(--hp-grid-transform, none);
 }
+
 /* Auto-height measurement helpers (GridLayout.ts resizeBlockToContent) */
 .hp-no-transition { transition: none !important; }
 .hp-auto-rows { grid-template-rows: max-content !important; }
+
 /* Gradient background for cards (blockStyling.ts) */
 .homepage-block-wrapper.block-has-gradient {
   background: var(--hp-bg-gradient);
 }
+
 /* No cursor pointer for unlinked buttons (ButtonGridBlock.ts) */
 .hp-cursor-default { cursor: default; }
+
 /* Greeting settings preview hint */
 .hp-preview-hint {
   padding: 0 0 8px 0;
   opacity: 0.7;
 }
+
 /* Gradient note label spacing (GridLayout.ts BlockSettingsModal) */
 .hp-gradient-note { margin: 12px 0 4px; }
+
 /* Full-width textarea in quotes settings */
 .hp-textarea-full {
   width: 100%;
@@ -3358,18 +3507,22 @@
   font-family: var(--font-monospace);
   font-size: 12px;
 }
+
 /* Column-direction setting row */
 .hp-setting-column {
   flex-direction: column;
   align-items: stretch;
 }
+
 /* No bottom padding (VideoEmbedBlock empty state) */
 .hp-no-padding-bottom { padding-bottom: 0; }
+
 /* Quote accent color via custom property */
 .quote-content.quote-colored {
   border-left-color: var(--hp-quote-color);
   color: var(--hp-quote-color);
 }
+
 /* Responsive grid columns via custom property */
 .button-grid { grid-template-columns: var(--hp-grid-cols); }
 .bookmark-grid { grid-template-columns: var(--hp-grid-cols); }

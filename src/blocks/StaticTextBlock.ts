@@ -87,7 +87,9 @@ export class StaticTextBlock extends BaseBlock {
       );
       void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
       // Re-render from the updated layout — do NOT reassign this.instance directly
-      this.renderContent(el).catch(() => { /* handled in render */ });
+      this.renderContent(el)
+        .then(() => this.requestAutoHeight())
+        .catch(() => { /* handled in render */ });
     };
 
     const cancel = (): void => {

@@ -135,6 +135,12 @@ export class PomodoroBlock extends BaseBlock {
 
     // ── Tick interval ──────────────────────────────────────────────────
     this.registerInterval(window.setInterval(() => this.tick(), 1000));
+
+    // Clean up store entry when block is unloaded and timer is idle
+    this.register(() => {
+      const s = timerStore.get(this.instance.id);
+      if (!s || !s.running) timerStore.delete(this.instance.id);
+    });
   }
 
   // ── Timer logic ────────────────────────────────────────────────────────

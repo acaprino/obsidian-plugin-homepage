@@ -13,6 +13,8 @@ export type BlockType = typeof BLOCK_TYPES[number];
 
 export type OpenMode = 'replace-all' | 'replace-last' | 'retain';
 
+export type LayoutPriority = 'row' | 'column';
+
 export interface BlockInstance {
   id: string;
   type: BlockType;
@@ -32,6 +34,7 @@ export interface BlockInstance {
 
 export interface LayoutConfig {
   columns: number;
+  layoutPriority: LayoutPriority;
   openOnStartup: boolean;
   openMode: OpenMode;
   manualOpenMode: OpenMode;

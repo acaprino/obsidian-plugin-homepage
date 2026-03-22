@@ -1,6 +1,6 @@
 import { EMOJI_PICKER_SET } from './emojis';
 
-export interface EmojiPickerOptions {
+interface EmojiPickerOptions {
   /** Container to append the trigger row into. */
   container: HTMLElement;
   /** Container to append the dropdown panel into (defaults to container). */

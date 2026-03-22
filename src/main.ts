@@ -1,6 +1,6 @@
 import { App, Modal, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from './HomepageView';
-import { BLOCK_TYPES, BlockInstance, LayoutConfig, OpenMode, IHomepagePlugin } from './types';
+import { BLOCK_TYPES, BlockInstance, LayoutConfig, LayoutPriority, OpenMode, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
@@ -24,13 +24,19 @@ import { VoiceDictationBlock } from './blocks/VoiceDictationBlock';
 /** Immutable template. Always clone via getDefaultLayout(). */
 /** Must stay in sync with OpenMode in types.ts */
 const VALID_OPEN_MODES = new Set<OpenMode>(['replace-all', 'replace-last', 'retain']);
+const VALID_LAYOUT_PRIORITIES = new Set<LayoutPriority>(['row', 'column']);
 
 function isOpenMode(v: unknown): v is OpenMode {
   return typeof v === 'string' && (VALID_OPEN_MODES as Set<string>).has(v);
 }
 
+function isLayoutPriority(v: unknown): v is LayoutPriority {
+  return typeof v === 'string' && (VALID_LAYOUT_PRIORITIES as Set<string>).has(v);
+}
+
 const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   columns: 3,
+  layoutPriority: 'row',
   openOnStartup: false,
   openMode: 'retain',
   manualOpenMode: 'retain',
@@ -192,6 +198,9 @@ function validateLayout(raw: unknown): LayoutConfig {
   const columns = typeof r.columns === 'number' && [2, 3, 4, 5].includes(r.columns)
     ? r.columns
     : defaults.columns;
+  const layoutPriority = isLayoutPriority(r.layoutPriority)
+    ? r.layoutPriority
+    : defaults.layoutPriority;
   const openOnStartup = typeof r.openOnStartup === 'boolean'
     ? r.openOnStartup
     : defaults.openOnStartup;
@@ -224,7 +233,7 @@ function validateLayout(raw: unknown): LayoutConfig {
     x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
   }));
 
-  return { columns, openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin, hideScrollbar, blocks };
+  return { columns, layoutPriority, openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin, hideScrollbar, blocks };
 }
 
 // ── Block registration ───────────────────────────────────────────────────────
@@ -588,6 +597,20 @@ class HomepageSettingTab extends PluginSettingTab {
           .setValue(String(this.plugin.layout.columns))
           .onChange((value) => {
             void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName('Layout priority')
+      .setDesc('Row-first fills blocks left-to-right across each row. Column-first fills blocks top-to-bottom in each column.')
+      .addDropdown(drop =>
+        drop
+          .addOption('row', 'Row-first')
+          .addOption('column', 'Column-first')
+          .setValue(this.plugin.layout.layoutPriority)
+          .onChange((value) => {
+            if (!isLayoutPriority(value)) return;
+            void this.plugin.saveLayout({ ...this.plugin.layout, layoutPriority: value });
           }),
       );
 

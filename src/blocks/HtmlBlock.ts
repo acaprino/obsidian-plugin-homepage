@@ -22,8 +22,15 @@ export class HtmlBlock extends BaseBlock {
 
     // Defense-in-depth: strip dangerous tags that could bypass sanitizeHTMLToDom
     // in the Electron context (iframe, object, embed, form, meta, link, base).
+    // Loop until stable to defeat nested constructs like <scr<script>ipt>.
     const DANGEROUS_TAGS_RE = /<\/?\s*(iframe|object|embed|form|meta|link|base|script|style|svg)\b[^>]*>/gi;
-    contentEl.appendChild(sanitizeHTMLToDom(html.replace(DANGEROUS_TAGS_RE, '')));
+    let sanitized = html;
+    let prev: string;
+    do {
+      prev = sanitized;
+      sanitized = sanitized.replace(DANGEROUS_TAGS_RE, '');
+    } while (sanitized !== prev);
+    contentEl.appendChild(sanitizeHTMLToDom(sanitized));
   }
 
   openSettings(onSave: (config: Record<string, unknown>) => void): void {

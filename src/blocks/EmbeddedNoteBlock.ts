@@ -24,17 +24,20 @@ export class EmbeddedNoteBlock extends BaseBlock {
       if (file.path === filePath) trigger();
     }));
 
-    // Update the config and re-render if the embedded file is renamed
+    // Update the config and re-render if the embedded file is renamed.
+    // Read filePath from the live layout (not this.instance) to avoid stale refs
+    // after a prior rename already updated the persisted config.
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-      const { filePath = '' } = this.instance.config as { filePath?: string };
+      const current = this.plugin.layout.blocks.find(b => b.id === this.instance.id);
+      const filePath = (current?.config.filePath as string) ?? '';
       if (oldPath === filePath) {
-        // Update config through immutable layout mutation
         const newBlocks = this.plugin.layout.blocks.map(b =>
           b.id === this.instance.id ? { ...b, config: { ...b.config, filePath: file.path } } : b,
         );
-        void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+        void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks }).then(trigger);
+        return;
       }
-      if (oldPath === filePath || file.path === filePath) trigger();
+      if (file.path === filePath) trigger();
     }));
 
     return this.renderContent(el).catch(e => {
@@ -45,7 +48,9 @@ export class EmbeddedNoteBlock extends BaseBlock {
 
   private async renderContent(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
-    const { filePath = '', showTitle = true, heightMode = 'scroll' } = this.instance.config as {
+    // Read from the live layout to pick up rename-updated filePath
+    const liveConfig = this.plugin.layout.blocks.find(b => b.id === this.instance.id)?.config ?? this.instance.config;
+    const { filePath = '', showTitle = true, heightMode = 'scroll' } = liveConfig as {
       filePath?: string;
       showTitle?: boolean;
       heightMode?: 'scroll' | 'grow';
@@ -76,6 +81,8 @@ export class EmbeddedNoteBlock extends BaseBlock {
       contentEl.setAttribute('tabindex', '0');
       contentEl.setAttribute('role', 'region');
       contentEl.setAttribute('aria-label', file.basename);
+    } else if (heightMode === 'grow') {
+      contentEl.setAttribute('data-auto-height-content', '');
     }
 
     try {

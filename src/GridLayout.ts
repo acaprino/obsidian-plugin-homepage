@@ -1,6 +1,6 @@
 import { App, ColorComponent, Modal, Setting, setIcon } from 'obsidian';
 import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
-import { BlockInstance, LayoutConfig, IHomepagePlugin } from './types';
+import { BlockInstance, LayoutConfig, LayoutPriority, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
 import { createEmojiPicker } from './utils/emojiPicker';
@@ -46,6 +46,26 @@ export class GridLayout {
   /** Expose the root grid element so HomepageView can reorder it in the DOM. */
   getElement(): HTMLElement {
     return this.gridEl;
+  }
+
+  /**
+   * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
+   * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
+   */
+  private buildLayoutUpdate(
+    blocks: BlockInstance[],
+    extra?: { columns?: number },
+  ): LayoutConfig {
+    const mobile = this.plugin.isMobileActive();
+    const base = { ...this.plugin.layout };
+    if (mobile) {
+      base.mobileBlocks = blocks;
+      if (extra?.columns !== undefined) base.mobileColumns = extra.columns;
+    } else {
+      base.blocks = blocks;
+      if (extra?.columns !== undefined) base.columns = extra.columns;
+    }
+    return base;
   }
 
   render(blocks: BlockInstance[], columns: number, isInitial = false): void {
@@ -113,7 +133,7 @@ export class GridLayout {
     // Repack y values so items are tightly stacked from the start.
     // Edit mode: view-mode y positions leave large gaps between compact-h items.
     // View mode: saved y positions may have gaps — pack to eliminate them.
-    GridLayout.packRows(items, columns);
+    GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
 
     this.columns = columns;
     this.gridEl.classList.toggle('hp-single-column', columns === 1);
@@ -198,6 +218,23 @@ export class GridLayout {
       // Edit handles
       if (this.editMode) {
         this.attachEditHandles(wrapper, instance);
+      }
+    }
+
+    // In single-column flex mode, reorder DOM elements by position
+    // so blocks appear in the user's chosen priority order.
+    if (columns === 1) {
+      const priority = this.plugin.activeLayoutPriority();
+      const gridItems = [...this.gridEl.querySelectorAll<HTMLElement>(':scope > .grid-stack-item')];
+      gridItems.sort((a, b) => {
+        const na = (a as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
+        const nb = (b as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
+        return priority === 'column'
+          ? ((na?.x ?? 0) - (nb?.x ?? 0)) || ((na?.y ?? 0) - (nb?.y ?? 0))
+          : ((na?.y ?? 0) - (nb?.y ?? 0)) || ((na?.x ?? 0) - (nb?.x ?? 0));
+      });
+      for (const el of gridItems) {
+        this.gridEl.appendChild(el);
       }
     }
 
@@ -336,7 +373,7 @@ export class GridLayout {
           if (!node) continue;
           nodeItems.push({ el: gsEl2 as HTMLElement, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
         }
-        GridLayout.packRows(nodeItems, this.effectiveColumns);
+        GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
         this.gridStack.batchUpdate();
         for (const item of nodeItems) {
           this.gridStack.update(item.el, { y: item.y });
@@ -442,20 +479,20 @@ export class GridLayout {
         // Read live height from GridStack (accounts for user resizes since render)
         const liveH = gsNode?.h ?? instance.h;
         if (this.gridStack) this.gridStack.update(gsEl, { h: 1 });
-        newBlocks = this.plugin.layout.blocks.map(b =>
+        newBlocks = this.plugin.activeBlocks().map(b =>
           b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b,
         );
       } else {
         // Restore the saved expanded height
-        const currentBlock = this.plugin.layout.blocks.find(b => b.id === instance.id);
+        const currentBlock = this.plugin.activeBlocks().find(b => b.id === instance.id);
         const origH = currentBlock?._expandedH ?? instance.h;
         if (this.gridStack) this.gridStack.update(gsEl, { h: origH });
-        newBlocks = this.plugin.layout.blocks.map(b =>
+        newBlocks = this.plugin.activeBlocks().map(b =>
           b.id === instance.id ? { ...b, collapsed: false, h: origH } : b,
         );
       }
 
-      void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+      void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
     };
 
     headerZone.addEventListener('click', toggleCollapse);
@@ -497,16 +534,16 @@ export class GridLayout {
     dupBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       // Read current state from layout (not stale render-time closure)
-      const current = this.plugin.layout.blocks.find(b => b.id === instance.id);
+      const current = this.plugin.activeBlocks().find(b => b.id === instance.id);
       if (!current) return;
       const clone: BlockInstance = {
         ...structuredClone(current),
         id: crypto.randomUUID(),
         y: current.y + current.h,
       };
-      const newBlocks = [...this.plugin.layout.blocks, clone];
+      const newBlocks = [...this.plugin.activeBlocks(), clone];
       this.lastAddedBlockId = clone.id;
-      this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+      this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
       this.rerender();
     });
 
@@ -519,10 +556,10 @@ export class GridLayout {
       const entry = this.blocks.get(instance.id);
       if (!entry) return;
       const onSave = (config: Record<string, unknown>) => {
-        const newBlocks = this.plugin.layout.blocks.map(b =>
+        const newBlocks = this.plugin.activeBlocks().map(b =>
           b.id === instance.id ? { ...b, config } : b,
         );
-        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
         this.rerender();
       };
       // In edit mode blocks aren't instantiated — create a temporary one for settings
@@ -558,15 +595,15 @@ export class GridLayout {
           entry.block?.unload();
           this.blocks.delete(instance.id);
         }
-        const remaining = this.plugin.layout.blocks.filter(b => b.id !== instance.id);
+        const remaining = this.plugin.activeBlocks().filter(b => b.id !== instance.id);
         if (remaining.length === 0) {
-          this.onLayoutChange({ ...this.plugin.layout, blocks: [] });
+          this.onLayoutChange(this.buildLayoutUpdate([]));
           this.rerender();
           return;
         }
         // Read compacted positions from GridStack and persist them
         if (!this.gridStack) {
-          this.onLayoutChange({ ...this.plugin.layout, blocks: remaining });
+          this.onLayoutChange(this.buildLayoutUpdate(remaining));
           return;
         }
         const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
@@ -584,7 +621,7 @@ export class GridLayout {
           const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w } : pos;
           return { ...b, ...update };
         });
-        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
       }).open();
     });
 
@@ -597,11 +634,11 @@ export class GridLayout {
 
   /** Swap a block's position with its nearest spatial neighbor in the given direction. */
   private swapWithNeighbor(instance: BlockInstance, direction: 'up' | 'down'): void {
-    const blocks = this.plugin.layout.blocks;
+    const blocks = this.plugin.activeBlocks();
     const current = blocks.find(b => b.id === instance.id);
     if (!current) return;
 
-    const columns = this.plugin.layout.columns;
+    const columns = this.plugin.activeColumns();
     const neighbor = blocks
       .filter(b => b.id !== instance.id && (
         direction === 'up'
@@ -624,13 +661,26 @@ export class GridLayout {
       }
       return b;
     });
-    this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
     this.rerender();
   }
 
   /** Read current positions from GridStack nodes and persist to layout. */
   private syncLayoutFromGrid(): void {
     if (!this.gridStack) return;
+
+    // When responsive columns are active (effectiveColumns < userColumns),
+    // GridStack nodes hold transient positions adapted for the narrow viewport.
+    // Persisting x/y/w from the responsive layout would destroy the canonical
+    // (desktop) layout.  Only persist height changes in this case.
+    // Note: dragstop/resizestop callers are gated by staticGrid (only active in
+    // edit mode), so isResponsive is always false for manual user interactions.
+    const isResponsive = this.effectiveColumns !== this.userColumns && !this.editMode;
+
+    // Fast path: when every block is auto-height and we are in responsive mode,
+    // there is nothing to persist — skip the GridStack DOM traversal entirely.
+    if (isResponsive && this.plugin.activeBlocks().every(b => this.shouldAutoHeight(b))) return;
+
     const nodes = this.gridStack.getGridItems();
     const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
 
@@ -651,26 +701,32 @@ export class GridLayout {
     // Skip save if nothing actually changed.
     // In edit mode, auto-height blocks only compare x/y/w — compact h values must not be saved.
     // Fixed height blocks CAN be resized manually in edit mode, so we DO save their h.
-    const changed = this.plugin.layout.blocks.some(b => {
+    // In responsive mode, only h changes matter — x/y/w are transient.
+    const changed = this.plugin.activeBlocks().some(b => {
       const pos = posMap.get(b.id);
       if (!pos) return false;
       const isAuto = this.shouldAutoHeight(b);
+      if (isResponsive) return !isAuto && b.h !== pos.h;
       if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || (!isAuto && b.h !== pos.h);
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
     if (!changed) return;
 
-    const newBlocks = this.plugin.layout.blocks.map(b => {
+    const newBlocks = this.plugin.activeBlocks().map(b => {
       const pos = posMap.get(b.id);
       if (!pos) return b;
       const isAuto = this.shouldAutoHeight(b);
-      const update = this.editMode 
-        ? { x: pos.x, y: pos.y, w: pos.w, ...(isAuto ? {} : { h: pos.h }) } 
+      if (isResponsive) {
+        // Only persist height for non-auto-height blocks; leave x/y/w canonical.
+        return isAuto ? b : { ...b, h: pos.h };
+      }
+      const update = this.editMode
+        ? { x: pos.x, y: pos.y, w: pos.w, ...(isAuto ? {} : { h: pos.h }) }
         : pos;
       return { ...b, ...update };
     });
 
-    this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
   }
 
   setEditMode(enabled: boolean, skipRepack = false): void {
@@ -678,10 +734,11 @@ export class GridLayout {
       // Repack y-positions: compact edit heights create y offsets that
       // would overlap blocks at full view-mode heights.
       const repacked = GridLayout.repackEditLayout(
-        this.plugin.layout.blocks,
+        this.plugin.activeBlocks(),
         this.userColumns,
+        this.plugin.activeLayoutPriority(),
       );
-      this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
+      this.onLayoutChange(this.buildLayoutUpdate(repacked));
     }
     // Set editMode before rerender so setupResponsiveColumns skips
     // responsive remapping while in edit mode (canonical layout preserved).
@@ -700,14 +757,23 @@ export class GridLayout {
    * Greedy column-height packing: sort items by position, then assign each
    * the lowest available y in its target columns. Mutates items in place.
    * Works on any object with { x, y, w, h } (GridStackWidget or BlockInstance).
+   *
+   * @param priority 'row' sorts (y, x) — left-to-right across rows.
+   *                 'column' sorts (x, y) — top-to-bottom within each column.
    */
   private static packRows<T extends { x?: number; y?: number; w?: number; h?: number }>(
-    items: T[], columns: number,
+    items: T[], columns: number, priority: LayoutPriority = 'row',
   ): void {
     const safeCols = Math.max(1, columns);
-    items.sort((a, b) =>
-      (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0),
-    );
+    if (priority === 'column') {
+      items.sort((a, b) =>
+        (a.x ?? 0) - (b.x ?? 0) || (a.y ?? 0) - (b.y ?? 0),
+      );
+    } else {
+      items.sort((a, b) =>
+        (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0),
+      );
+    }
     const colHeights = new Array<number>(safeCols).fill(0);
     for (const item of items) {
       const w = Math.min(item.w ?? 1, safeCols);
@@ -729,9 +795,9 @@ export class GridLayout {
    * reflect compact heights and may overlap at full view-mode heights.
    * Re-pack into a collision-free layout using real h values.
    */
-  private static repackEditLayout(blocks: BlockInstance[], columns: number): BlockInstance[] {
+  private static repackEditLayout(blocks: BlockInstance[], columns: number, priority: LayoutPriority = 'row'): BlockInstance[] {
     const packed = blocks.map(b => ({ ...b }));
-    GridLayout.packRows(packed, columns);
+    GridLayout.packRows(packed, columns, priority);
     return packed;
   }
 
@@ -763,11 +829,11 @@ export class GridLayout {
 
   /** Update column count, clamping each block's w to fit. */
   setColumns(n: number): void {
-    const newBlocks = this.plugin.layout.blocks.map(b => ({
+    const newBlocks = this.plugin.activeBlocks().map(b => ({
       ...b,
       w: Math.min(b.w, n),
     }));
-    this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks, { columns: n }));
     this.rerender();
   }
 
@@ -811,13 +877,27 @@ export class GridLayout {
       const x = Math.min(node.x ?? 0, Math.max(0, next - w));
       nodeItems.push({ el: gsEl as HTMLElement, x, y: node.y ?? 0, w, h: node.h ?? 1 });
     }
-    GridLayout.packRows(nodeItems, next);
+    GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority());
 
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
       this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
     }
     this.gridStack.batchUpdate(false);
+
+    // In single-column flex mode, DOM order determines visual order.
+    // Reorder DOM elements by packed position using the user's priority.
+    if (next === 1) {
+      const priority = this.plugin.activeLayoutPriority();
+      const sorted = nodeItems.slice().sort((a, b) =>
+        priority === 'column'
+          ? (a.x - b.x || a.y - b.y)
+          : (a.y - b.y || a.x - b.x),
+      );
+      for (const item of sorted) {
+        this.gridEl.appendChild(item.el);
+      }
+    }
   }
 
   /**
@@ -855,16 +935,16 @@ export class GridLayout {
   }
 
   addBlock(instance: BlockInstance): void {
-    const maxY = this.plugin.layout.blocks.reduce((m, b) => Math.max(m, b.y + b.h), 0);
+    const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
     const positioned = { ...instance, y: maxY };
-    const newBlocks = [...this.plugin.layout.blocks, positioned];
+    const newBlocks = [...this.plugin.activeBlocks(), positioned];
     this.lastAddedBlockId = positioned.id;
-    this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
     this.rerender();
   }
 
   private rerender(): void {
-    this.render(this.plugin.layout.blocks, this.plugin.layout.columns);
+    this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
   }
 
   /** Unload all blocks and destroy GridStack instance. */

@@ -13,6 +13,10 @@ export type BlockType = typeof BLOCK_TYPES[number];
 
 export type OpenMode = 'replace-all' | 'replace-last' | 'retain';
 
+export type LayoutPriority = 'row' | 'column';
+
+export type ResponsiveMode = 'unified' | 'separate';
+
 export interface BlockInstance {
   id: string;
   type: BlockType;
@@ -32,6 +36,14 @@ export interface BlockInstance {
 
 export interface LayoutConfig {
   columns: number;
+  layoutPriority: LayoutPriority;
+  responsiveMode: ResponsiveMode;
+  /** Column count used on mobile when responsiveMode is 'separate'. */
+  mobileColumns: number;
+  /** Layout priority used on mobile when responsiveMode is 'separate'. */
+  mobileLayoutPriority: LayoutPriority;
+  /** Blocks used on mobile when responsiveMode is 'separate'. */
+  mobileBlocks: BlockInstance[];
   openOnStartup: boolean;
   openMode: OpenMode;
   manualOpenMode: OpenMode;
@@ -53,4 +65,12 @@ export interface IHomepagePlugin {
   app: App;
   layout: LayoutConfig;
   saveLayout(layout: LayoutConfig): Promise<void>;
+  /** True when running on a mobile device AND responsiveMode is 'separate'. */
+  isMobileActive(): boolean;
+  /** Resolved blocks for the current platform (desktop blocks or mobile blocks). */
+  activeBlocks(): BlockInstance[];
+  /** Resolved column count for the current platform. */
+  activeColumns(): number;
+  /** Resolved layout priority for the current platform. */
+  activeLayoutPriority(): LayoutPriority;
 }

@@ -1,5 +1,5 @@
 import { App, CachedMetadata, Modal, Setting, moment } from 'obsidian';
-import { cacheHasTag, getFilesWithTag } from '../utils/tags';
+import { cacheHasTag, clearTagCache, getFilesWithTag } from '../utils/tags';
 import { parseNoteInsight } from '../utils/noteContent';
 import { BaseBlock } from './BaseBlock';
 
@@ -32,6 +32,9 @@ type QuotesConfig = {
 };
 
 export class QuotesListBlock extends BaseBlock {
+  /** Column ResizeObserver — disconnected before each re-render. */
+  private colsRo: ResizeObserver | null = null;
+
   render(el: HTMLElement): Promise<void> {
     this.containerEl = el;
     el.addClass('quotes-list-block');
@@ -43,14 +46,13 @@ export class QuotesListBlock extends BaseBlock {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
       const tagSearch = cfg.tag.startsWith('#') ? cfg.tag : `#${cfg.tag}`;
-      if (cacheHasTag(cache, tagSearch)) trigger();
+      if (cacheHasTag(cache, tagSearch)) { clearTagCache(); trigger(); }
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
-      // Only markdown files can have tags
-      if (file.path.endsWith('.md')) trigger();
+      if (file.path.endsWith('.md')) { clearTagCache(); trigger(); }
     }));
 
     return this.loadAndRender(el).catch(e => {
@@ -171,9 +173,10 @@ export class QuotesListBlock extends BaseBlock {
         colsEl.style.setProperty('--hp-column-count', String(effective));
       };
       updateCols();
-      const ro = new ResizeObserver(updateCols);
-      ro.observe(colsEl);
-      this.register(() => ro.disconnect());
+      this.colsRo?.disconnect();
+      this.colsRo = new ResizeObserver(updateCols);
+      this.colsRo.observe(colsEl);
+      this.register(() => { this.colsRo?.disconnect(); this.colsRo = null; });
     }
 
     // Watch width changes for auto-height recalculation

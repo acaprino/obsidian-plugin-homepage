@@ -1,5 +1,5 @@
 import { App, Modal, Setting, TFile, moment } from 'obsidian';
-import { cacheHasTag, getFilesWithTag } from '../utils/tags';
+import { cacheHasTag, clearTagCache, getFilesWithTag } from '../utils/tags';
 import { BaseBlock } from './BaseBlock';
 
 const MS_PER_DAY = 86_400_000;
@@ -32,17 +32,17 @@ export class RandomNoteBlock extends BaseBlock {
       const tag = this.getTag();
       if (!tag) return;
       const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
-      if (cacheHasTag(cache, tagSearch)) trigger();
+      if (cacheHasTag(cache, tagSearch)) { clearTagCache(); trigger(); }
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
       if (!this.getTag() || !file.path.endsWith('.md')) return;
-      slowTrigger();
+      clearTagCache(); slowTrigger();
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file) => {
       if (!this.getTag() || !file.path.endsWith('.md')) return;
-      slowTrigger();
+      clearTagCache(); slowTrigger();
     }));
 
     this.loadAndRender(el).catch(e => {

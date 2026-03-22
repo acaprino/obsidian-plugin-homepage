@@ -40,7 +40,7 @@ export class EditToolbar {
     this.editMode = !this.editMode;
     if (this.editMode) {
       // Snapshot blocks so Discard can restore them (not the full layout — settings changes must survive)
-      this.blocksSnapshot = structuredClone(this.plugin.layout.blocks);
+      this.blocksSnapshot = structuredClone(this.plugin.activeBlocks());
     } else {
       this.blocksSnapshot = null;
       this.zoomScale = 1;
@@ -63,7 +63,14 @@ export class EditToolbar {
     if (!this.editMode) return; // re-entrancy guard
     if (this.blocksSnapshot) {
       // Build restored layout (only blocks revert; global settings survive)
-      const restored = { ...this.plugin.layout, blocks: this.blocksSnapshot };
+      // Route restored blocks to the correct field (desktop or mobile)
+      const mobile = this.plugin.isMobileActive();
+      const restored = structuredClone(this.plugin.layout);
+      if (mobile) {
+        restored.mobileBlocks = this.blocksSnapshot;
+      } else {
+        restored.blocks = this.blocksSnapshot;
+      }
       // Set synchronously so the rerender triggered by setEditMode(false) reads the correct state
       this.plugin.layout = restored;
       void this.plugin.saveLayout(restored);
@@ -93,9 +100,10 @@ export class EditToolbar {
     const colGroup = this.toolbarEl.createDiv({ cls: 'toolbar-col-group' });
     const colSelect = colGroup.createEl('select', { cls: 'toolbar-col-select' });
     colSelect.setAttribute('aria-label', 'Number of columns');
-    [2, 3, 4, 5].forEach(n => {
+    const colChoices = this.plugin.isMobileActive() ? [1, 2, 3] : [2, 3, 4, 5];
+    colChoices.forEach(n => {
       const opt = colSelect.createEl('option', { value: String(n), text: `${n} col` });
-      if (n === this.plugin.layout.columns) opt.selected = true;
+      if (n === this.plugin.activeColumns()) opt.selected = true;
     });
     colSelect.addEventListener('change', () => {
       this.onColumnsChange(Number(colSelect.value));
@@ -146,7 +154,7 @@ export class EditToolbar {
         type,
         x: 0,
         y: 1000,
-        w: Math.min(factory.defaultSize.w, this.plugin.layout.columns),
+        w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
         config: { ...factory.defaultConfig },
       };

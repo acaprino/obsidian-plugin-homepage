@@ -27,8 +27,6 @@ export class HomepageView extends ItemView {
     contentEl.addClass('homepage-view');
     contentEl.toggleClass('homepage-no-scrollbar', !!this.plugin.layout.hideScrollbar);
 
-    const layout: LayoutConfig = this.plugin.layout;
-
     const onLayoutChange = (newLayout: LayoutConfig) => {
       this.plugin.layout = newLayout;
       void this.plugin.saveLayout(newLayout);
@@ -48,7 +46,7 @@ export class HomepageView extends ItemView {
     contentEl.insertBefore(this.toolbar.getElement(), this.grid.getElement());
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
 
-    this.grid.render(layout.blocks, layout.columns, true);
+    this.grid.render(this.plugin.activeBlocks(), this.plugin.activeColumns(), true);
     return Promise.resolve();
   }
 

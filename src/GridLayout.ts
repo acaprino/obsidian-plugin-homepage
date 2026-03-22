@@ -21,6 +21,7 @@ export class GridLayout {
   private gridStack: GridStack | null = null;
   private blocks = new Map<string, { block: BaseBlock | null; wrapper: HTMLElement }>();
   private animTimer: ReturnType<typeof setTimeout> | null = null;
+  private syncTimer: ReturnType<typeof setTimeout> | null = null;
   private editMode = false;
   private columns = 3;
   private pendingRafs = new Set<number>();
@@ -107,7 +108,7 @@ export class GridLayout {
       cls: 'homepage-empty-desc',
       text: this.editMode
         ? 'Click the button below to add your first block.'
-        : 'Add blocks to build your personal dashboard. Toggle Edit mode in the toolbar to get started.',
+        : 'Toggle Edit mode in the toolbar to start adding blocks.',
     });
     if (this.editMode && this.onRequestAddBlock) {
       const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add your first block' });
@@ -133,7 +134,10 @@ export class GridLayout {
     // Repack y values so items are tightly stacked from the start.
     // Edit mode: view-mode y positions leave large gaps between compact-h items.
     // View mode: saved y positions may have gaps — pack to eliminate them.
-    GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
+    // When compactLayout is off, skip packing to preserve intentional gaps.
+    if (this.plugin.layout.compactLayout) {
+      GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
+    }
 
     this.columns = columns;
     this.gridEl.classList.toggle('hp-single-column', columns === 1);
@@ -348,11 +352,12 @@ export class GridLayout {
     this.pendingResizes.set(instance.id, { gsEl, instance });
     if (this.batchRafId !== null) return; // already scheduled
     this.batchRafId = requestAnimationFrame(() => {
-      this.pendingRafs.delete(this.batchRafId!);
+      const rafId = this.batchRafId!;
+      this.pendingRafs.delete(rafId);
       this.batchRafId = null;
+      if (this.isDestroyed || !this.gridStack) return;
       const batch = Array.from(this.pendingResizes.values());
       this.pendingResizes.clear();
-      if (!this.gridStack) return;
 
       // Lift static grid for the entire batch so updates + compaction work.
       const isStatic = !!this.gridStack.opts.staticGrid;
@@ -367,19 +372,21 @@ export class GridLayout {
       // to fill gaps left by blocks that shrank.  GridStack's compact() and
       // float toggle are unreliable, so we compute positions ourselves.
       if (anyResized) {
-        const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
-        for (const gsEl2 of this.gridStack.getGridItems()) {
-          const node = (gsEl2 as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
-          if (!node) continue;
-          nodeItems.push({ el: gsEl2 as HTMLElement, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+        if (this.plugin.layout.compactLayout) {
+          const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
+          for (const gsEl2 of this.gridStack.getGridItems()) {
+            const node = (gsEl2 as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
+            if (!node) continue;
+            nodeItems.push({ el: gsEl2 as HTMLElement, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+          }
+          GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
+          this.gridStack.batchUpdate();
+          for (const item of nodeItems) {
+            this.gridStack.update(item.el, { y: item.y });
+          }
+          this.gridStack.batchUpdate(false);
         }
-        GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
-        this.gridStack.batchUpdate();
-        for (const item of nodeItems) {
-          this.gridStack.update(item.el, { y: item.y });
-        }
-        this.gridStack.batchUpdate(false);
-        this.syncLayoutFromGrid();
+        this.scheduleSyncLayout();
       }
 
       if (isStatic) this.gridStack.setStatic(true);
@@ -617,8 +624,8 @@ export class GridLayout {
         const newBlocks = remaining.map(b => {
           const pos = posMap.get(b.id);
           if (!pos) return b;
-          // In edit mode, only persist x/y/w — compact h must not overwrite real heights.
-          const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+          const isAuto = this.shouldAutoHeight(b);
+          const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
           return { ...b, ...update };
         });
         this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
@@ -666,6 +673,15 @@ export class GridLayout {
   }
 
   /** Read current positions from GridStack nodes and persist to layout. */
+  /** Debounced sync — coalesces rapid auto-height resize saves into one write. */
+  private scheduleSyncLayout(): void {
+    if (this.syncTimer !== null) clearTimeout(this.syncTimer);
+    this.syncTimer = setTimeout(() => {
+      this.syncTimer = null;
+      if (!this.isDestroyed) this.syncLayoutFromGrid();
+    }, 50);
+  }
+
   private syncLayoutFromGrid(): void {
     if (!this.gridStack) return;
 
@@ -699,15 +715,16 @@ export class GridLayout {
     }
 
     // Skip save if nothing actually changed.
-    // In edit mode, auto-height blocks only compare x/y/w — compact h values must not be saved.
-    // Fixed height blocks CAN be resized manually in edit mode, so we DO save their h.
+    // Auto-height blocks only compare x/y/w — h is always derived from content,
+    // so persisting it would corrupt y-positions on next open.
+    // Fixed-height blocks persist all four fields.
     // In responsive mode, only h changes matter — x/y/w are transient.
     const changed = this.plugin.activeBlocks().some(b => {
       const pos = posMap.get(b.id);
       if (!pos) return false;
       const isAuto = this.shouldAutoHeight(b);
       if (isResponsive) return !isAuto && b.h !== pos.h;
-      if (this.editMode) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || (!isAuto && b.h !== pos.h);
+      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
     if (!changed) return;
@@ -720,8 +737,8 @@ export class GridLayout {
         // Only persist height for non-auto-height blocks; leave x/y/w canonical.
         return isAuto ? b : { ...b, h: pos.h };
       }
-      const update = this.editMode
-        ? { x: pos.x, y: pos.y, w: pos.w, ...(isAuto ? {} : { h: pos.h }) }
+      const update = isAuto
+        ? { x: pos.x, y: pos.y, w: pos.w }
         : pos;
       return { ...b, ...update };
     });
@@ -730,7 +747,7 @@ export class GridLayout {
   }
 
   setEditMode(enabled: boolean, skipRepack = false): void {
-    if (!enabled && this.editMode && !skipRepack) {
+    if (!enabled && this.editMode && !skipRepack && this.plugin.layout.compactLayout) {
       // Repack y-positions: compact edit heights create y offsets that
       // would overlap blocks at full view-mode heights.
       const repacked = GridLayout.repackEditLayout(
@@ -951,6 +968,7 @@ export class GridLayout {
   destroyAll(): void {
     this.isDestroyed = true;
     if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
+    if (this.syncTimer) { clearTimeout(this.syncTimer); this.syncTimer = null; }
     if (this.batchRafId !== null) { cancelAnimationFrame(this.batchRafId); this.batchRafId = null; }
     for (const id of this.pendingRafs) cancelAnimationFrame(id);
     this.pendingRafs.clear();
@@ -1066,7 +1084,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(titleBody)
       .setName('Title label')
-      .setDesc('Leave empty to use the default title.')
+      .setDesc('Leave blank for the default.')
       .addText(t =>
         t.setValue(typeof draft._titleLabel === 'string' ? draft._titleLabel : '')
          .setPlaceholder('Default title')
@@ -1101,7 +1119,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(titleBody)
       .setName('Show divider after title')
-      .setDesc('Display a thin separator line between the title and the block content.')
+      .setDesc('Show a thin line between the title and content.')
       .addToggle(t =>
         t.setValue(draft._showDivider === true)
          .onChange(v => { draft._showDivider = v; refreshPreview(); }),
@@ -1109,7 +1127,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(titleBody)
       .setName('Title gap')
-      .setDesc('Space between the title and content in pixels (0 = default).')
+      .setDesc('Gap between title and content in pixels (0 = default).')
       .addSlider(s =>
         s.setLimits(0, 48, 2)
          .setValue(typeof draft._titleGap === 'number' ? draft._titleGap : 0)
@@ -1124,7 +1142,7 @@ class BlockSettingsModal extends Modal {
 
     const accentRow = new Setting(cardBody)
       .setName('Accent color')
-      .setDesc('Pick a color to tint the card header, background, and border.');
+      .setDesc('Tints the card header, background, and border.');
 
     const currentColor = typeof draft._accentColor === 'string' ? draft._accentColor : '';
 
@@ -1158,7 +1176,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(cardBody)
       .setName('Accent intensity')
-      .setDesc('How strong the accent tint appears on the card background (5–100%).')
+      .setDesc('Strength of the accent tint on the card background (5–100%).')
       .addSlider(s => {
         s.setLimits(5, 100, 5)
          .setValue(typeof draft._accentIntensity === 'number' ? draft._accentIntensity : 15)
@@ -1173,7 +1191,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(cardBody)
       .setName('Hide border')
-      .setDesc('Remove the card border and hover highlight.')
+      .setDesc('Remove the border and hover highlight.')
       .addToggle(t =>
         t.setValue(draft._hideBorder === true)
          .onChange(v => { draft._hideBorder = v; refreshPreview(); }),
@@ -1181,7 +1199,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(cardBody)
       .setName('Hide background')
-      .setDesc('Remove the card background — the block blends into the page.')
+      .setDesc('Remove the card background so the block blends into the page.')
       .addToggle(t =>
         t.setValue(draft._hideBackground === true)
          .onChange(v => { draft._hideBackground = v; refreshPreview(); }),
@@ -1189,7 +1207,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(cardBody)
       .setName('Hide header background')
-      .setDesc('Remove the colored header bar while keeping the card border and background tint.')
+      .setDesc('Remove the colored header bar but keep the border and background tint.')
       .addToggle(t =>
         t.setValue(draft._hideHeaderAccent === true)
          .onChange(v => { draft._hideHeaderAccent = v; refreshPreview(); }),
@@ -1197,7 +1215,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(cardBody)
       .setName('Card padding')
-      .setDesc('Custom inner padding in pixels (0 = default). Supports negative values.')
+      .setDesc('Inner padding in pixels (0 = default). Negative values allowed.')
       .addSlider(s =>
         s.setLimits(-48, 48, 4)
          .setValue(typeof draft._cardPadding === 'number' ? draft._cardPadding : 0)
@@ -1242,7 +1260,7 @@ class BlockSettingsModal extends Modal {
 
     new Setting(advancedBody)
       .setName('Backdrop blur')
-      .setDesc('Glassmorphism blur behind the card (works when opacity < 100).')
+      .setDesc('Blur behind the card (only visible when opacity < 100).')
       .addSlider(s =>
         s.setLimits(0, 20, 1)
          .setValue(typeof draft._backdropBlur === 'number' ? draft._backdropBlur : 0)
@@ -1344,7 +1362,7 @@ class RemoveBlockConfirmModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     new Setting(contentEl).setName('Remove block?').setHeading();
-    contentEl.createEl('p', { text: 'This block will be removed from the homepage.' });
+    contentEl.createEl('p', { text: 'This will remove the block from your homepage.' });
     new Setting(contentEl)
       .addButton(btn =>
         btn.setButtonText('Remove').setWarning().onClick(() => {

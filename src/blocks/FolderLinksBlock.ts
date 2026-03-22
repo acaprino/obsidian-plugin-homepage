@@ -163,7 +163,7 @@ class FolderLinksSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Link alignment')
-      .setDesc('Align links to the left, center, or right.')
+      .setDesc('Left, center, or right.')
       .addDropdown(d =>
         d.addOptions({ left: 'Left', center: 'Center', right: 'Right' })
          .setValue(draft.linkAlign ?? 'left')
@@ -173,7 +173,7 @@ class FolderLinksSettingsModal extends Modal {
     let folderText: import('obsidian').TextComponent;
     new Setting(contentEl)
       .setName('Auto-list folder')
-      .setDesc('List all notes from this vault folder as links.')
+      .setDesc('Auto-list all notes from a folder.')
       .addText(t => {
         folderText = t;
         t.setValue(draft.folder ?? '')

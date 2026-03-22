@@ -502,7 +502,7 @@
   line-height: 1.5;
 }
 
-
+>>>>>>> develop
 /* ── Block Loading Placeholder ──────────────────────────── */
 .block-loading {
   color: var(--text-muted);
@@ -2131,7 +2131,9 @@
   gap: 4px;
 }
 
+<<<<<<< HEAD
 
+=======
 /* ── Zoom slider ──────────────────────────────────────────── */
 .toolbar-zoom-group {
   display: flex;
@@ -2326,7 +2328,6 @@
 .homepage-grid.edit-mode > .grid-stack-item > .grid-stack-item-content {
   overflow: visible;
 }
-
 
 /* Hide vertical resize handles for auto-height blocks — their height is auto-managed */
 .homepage-grid.edit-mode .is-auto-height > .ui-resizable-s,
@@ -3397,50 +3398,6 @@
   .pomodoro-btn-icon { display: flex; }
   .pomodoro-btn-icon svg { width: 16px; height: 16px; }
   .pomodoro-btn-label { display: none; }
-}
-
-/* ── Layout Preset Cards ───────────────────────────────── */
-.preset-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
-  margin-top: 8px;
-}
-.preset-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 16px 12px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m, 8px);
-  cursor: pointer;
-  text-align: center;
-  color: var(--text-normal);
-  font-size: inherit;
-  transition: background 0.15s ease-out, border-color 0.15s ease-out, transform 0.15s ease-out;
-}
-.preset-card:hover {
-  background: var(--background-modifier-hover);
-  border-color: var(--color-accent);
-  transform: translateY(-2px);
-}
-.preset-card:active {
-  transform: translateY(0) scale(0.98);
-}
-.preset-icon {
-  font-size: 1.5rem;
-  line-height: 1;
-}
-.preset-name {
-  font-weight: 500;
-  font-size: var(--font-interface-size, 0.8125rem);
-}
-.preset-desc {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  line-height: 1.4;
 }
 
 /* ── Obsidian Mobile (.is-mobile) ──────────────────────── */

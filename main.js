@@ -6138,6 +6138,22 @@ var GridLayout = class _GridLayout {
   getElement() {
     return this.gridEl;
   }
+  /**
+   * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
+   * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
+   */
+  buildLayoutUpdate(blocks, extra) {
+    const mobile = this.plugin.isMobileActive();
+    const base = { ...this.plugin.layout };
+    if (mobile) {
+      base.mobileBlocks = blocks;
+      if (extra?.columns !== void 0) base.mobileColumns = extra.columns;
+    } else {
+      base.blocks = blocks;
+      if (extra?.columns !== void 0) base.columns = extra.columns;
+    }
+    return base;
+  }
   render(blocks, columns, isInitial = false) {
     this.destroyAll();
     this.isDestroyed = false;
@@ -6190,7 +6206,7 @@ var GridLayout = class _GridLayout {
       // load() before we've added any DOM content, causing "firstElementChild is null".
       // We call resizeToContent() manually after building each block's DOM below.
     }));
-    _GridLayout.packRows(items, columns, this.plugin.layout.layoutPriority);
+    _GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
     this.columns = columns;
     this.gridEl.classList.toggle("hp-single-column", columns === 1);
     this.gridStack = GridStack.init({
@@ -6257,7 +6273,7 @@ var GridLayout = class _GridLayout {
       }
     }
     if (columns === 1) {
-      const priority = this.plugin.layout.layoutPriority;
+      const priority = this.plugin.activeLayoutPriority();
       const gridItems = [...this.gridEl.querySelectorAll(":scope > .grid-stack-item")];
       gridItems.sort((a, b) => {
         const na = a.gridstackNode;
@@ -6373,7 +6389,7 @@ var GridLayout = class _GridLayout {
           if (!node) continue;
           nodeItems.push({ el: gsEl2, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
         }
-        _GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.layout.layoutPriority);
+        _GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
         this.gridStack.batchUpdate();
         for (const item of nodeItems) {
           this.gridStack.update(item.el, { y: item.y });
@@ -6451,18 +6467,18 @@ var GridLayout = class _GridLayout {
       if (isNowCollapsed) {
         const liveH = gsNode?.h ?? instance.h;
         if (this.gridStack) this.gridStack.update(gsEl, { h: 1 });
-        newBlocks = this.plugin.layout.blocks.map(
+        newBlocks = this.plugin.activeBlocks().map(
           (b) => b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b
         );
       } else {
-        const currentBlock = this.plugin.layout.blocks.find((b) => b.id === instance.id);
+        const currentBlock = this.plugin.activeBlocks().find((b) => b.id === instance.id);
         const origH = currentBlock?._expandedH ?? instance.h;
         if (this.gridStack) this.gridStack.update(gsEl, { h: origH });
-        newBlocks = this.plugin.layout.blocks.map(
+        newBlocks = this.plugin.activeBlocks().map(
           (b) => b.id === instance.id ? { ...b, collapsed: false, h: origH } : b
         );
       }
-      void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+      void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
     };
     headerZone.addEventListener("click", toggleCollapse);
     headerZone.addEventListener("keydown", (e) => {
@@ -6497,16 +6513,16 @@ var GridLayout = class _GridLayout {
     dupBtn.setAttribute("aria-label", "Duplicate block");
     dupBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      const current = this.plugin.layout.blocks.find((b) => b.id === instance.id);
+      const current = this.plugin.activeBlocks().find((b) => b.id === instance.id);
       if (!current) return;
       const clone = {
         ...structuredClone(current),
         id: crypto.randomUUID(),
         y: current.y + current.h
       };
-      const newBlocks = [...this.plugin.layout.blocks, clone];
+      const newBlocks = [...this.plugin.activeBlocks(), clone];
       this.lastAddedBlockId = clone.id;
-      this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+      this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
       this.rerender();
     });
     const settingsBtn = bar.createEl("button", { cls: "block-settings-btn" });
@@ -6517,10 +6533,10 @@ var GridLayout = class _GridLayout {
       const entry = this.blocks.get(instance.id);
       if (!entry) return;
       const onSave = (config) => {
-        const newBlocks = this.plugin.layout.blocks.map(
+        const newBlocks = this.plugin.activeBlocks().map(
           (b) => b.id === instance.id ? { ...b, config } : b
         );
-        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
         this.rerender();
       };
       let tempBlock = null;
@@ -6553,14 +6569,14 @@ var GridLayout = class _GridLayout {
           entry.block?.unload();
           this.blocks.delete(instance.id);
         }
-        const remaining = this.plugin.layout.blocks.filter((b) => b.id !== instance.id);
+        const remaining = this.plugin.activeBlocks().filter((b) => b.id !== instance.id);
         if (remaining.length === 0) {
-          this.onLayoutChange({ ...this.plugin.layout, blocks: [] });
+          this.onLayoutChange(this.buildLayoutUpdate([]));
           this.rerender();
           return;
         }
         if (!this.gridStack) {
-          this.onLayoutChange({ ...this.plugin.layout, blocks: remaining });
+          this.onLayoutChange(this.buildLayoutUpdate(remaining));
           return;
         }
         const posMap = /* @__PURE__ */ new Map();
@@ -6577,7 +6593,7 @@ var GridLayout = class _GridLayout {
           const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w } : pos;
           return { ...b, ...update };
         });
-        this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
       }).open();
     });
     const headerZone = wrapper.querySelector(".block-header-zone");
@@ -6587,10 +6603,10 @@ var GridLayout = class _GridLayout {
   }
   /** Swap a block's position with its nearest spatial neighbor in the given direction. */
   swapWithNeighbor(instance, direction) {
-    const blocks = this.plugin.layout.blocks;
+    const blocks = this.plugin.activeBlocks();
     const current = blocks.find((b) => b.id === instance.id);
     if (!current) return;
-    const columns = this.plugin.layout.columns;
+    const columns = this.plugin.activeColumns();
     const neighbor = blocks.filter((b) => b.id !== instance.id && (direction === "up" ? b.y < current.y || b.y === current.y && b.x < current.x : b.y > current.y || b.y === current.y && b.x > current.x)).sort(
       (a, b) => direction === "up" ? b.y - a.y || b.x - a.x : a.y - b.y || a.x - b.x
     )[0];
@@ -6604,14 +6620,14 @@ var GridLayout = class _GridLayout {
       }
       return b;
     });
-    this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
     this.rerender();
   }
   /** Read current positions from GridStack nodes and persist to layout. */
   syncLayoutFromGrid() {
     if (!this.gridStack) return;
     const isResponsive = this.effectiveColumns !== this.userColumns && !this.editMode;
-    if (isResponsive && this.plugin.layout.blocks.every((b) => this.shouldAutoHeight(b))) return;
+    if (isResponsive && this.plugin.activeBlocks().every((b) => this.shouldAutoHeight(b))) return;
     const nodes = this.gridStack.getGridItems();
     const posMap = /* @__PURE__ */ new Map();
     for (const el of nodes) {
@@ -6627,7 +6643,7 @@ var GridLayout = class _GridLayout {
         });
       }
     }
-    const changed = this.plugin.layout.blocks.some((b) => {
+    const changed = this.plugin.activeBlocks().some((b) => {
       const pos = posMap.get(b.id);
       if (!pos) return false;
       const isAuto = this.shouldAutoHeight(b);
@@ -6636,7 +6652,7 @@ var GridLayout = class _GridLayout {
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
     if (!changed) return;
-    const newBlocks = this.plugin.layout.blocks.map((b) => {
+    const newBlocks = this.plugin.activeBlocks().map((b) => {
       const pos = posMap.get(b.id);
       if (!pos) return b;
       const isAuto = this.shouldAutoHeight(b);
@@ -6646,16 +6662,16 @@ var GridLayout = class _GridLayout {
       const update = this.editMode ? { x: pos.x, y: pos.y, w: pos.w, ...isAuto ? {} : { h: pos.h } } : pos;
       return { ...b, ...update };
     });
-    this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
   }
   setEditMode(enabled, skipRepack = false) {
     if (!enabled && this.editMode && !skipRepack) {
       const repacked = _GridLayout.repackEditLayout(
-        this.plugin.layout.blocks,
+        this.plugin.activeBlocks(),
         this.userColumns,
-        this.plugin.layout.layoutPriority
+        this.plugin.activeLayoutPriority()
       );
-      this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
+      this.onLayoutChange(this.buildLayoutUpdate(repacked));
     }
     this.editMode = enabled;
     if (this.gridStack) {
@@ -6735,11 +6751,11 @@ var GridLayout = class _GridLayout {
   }
   /** Update column count, clamping each block's w to fit. */
   setColumns(n) {
-    const newBlocks = this.plugin.layout.blocks.map((b) => ({
+    const newBlocks = this.plugin.activeBlocks().map((b) => ({
       ...b,
       w: Math.min(b.w, n)
     }));
-    this.onLayoutChange({ ...this.plugin.layout, columns: n, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks, { columns: n }));
     this.rerender();
   }
   /**
@@ -6772,14 +6788,14 @@ var GridLayout = class _GridLayout {
       const x = Math.min(node.x ?? 0, Math.max(0, next - w));
       nodeItems.push({ el: gsEl, x, y: node.y ?? 0, w, h: node.h ?? 1 });
     }
-    _GridLayout.packRows(nodeItems, next, this.plugin.layout.layoutPriority);
+    _GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority());
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
       this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
     }
     this.gridStack.batchUpdate(false);
     if (next === 1) {
-      const priority = this.plugin.layout.layoutPriority;
+      const priority = this.plugin.activeLayoutPriority();
       const sorted = nodeItems.slice().sort(
         (a, b) => priority === "column" ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x
       );
@@ -6816,15 +6832,15 @@ var GridLayout = class _GridLayout {
     }
   }
   addBlock(instance) {
-    const maxY = this.plugin.layout.blocks.reduce((m, b) => Math.max(m, b.y + b.h), 0);
+    const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
     const positioned = { ...instance, y: maxY };
-    const newBlocks = [...this.plugin.layout.blocks, positioned];
+    const newBlocks = [...this.plugin.activeBlocks(), positioned];
     this.lastAddedBlockId = positioned.id;
-    this.onLayoutChange({ ...this.plugin.layout, blocks: newBlocks });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
     this.rerender();
   }
   rerender() {
-    this.render(this.plugin.layout.blocks, this.plugin.layout.columns);
+    this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
   }
   /** Unload all blocks and destroy GridStack instance. */
   destroyAll() {
@@ -7194,7 +7210,7 @@ var EditToolbar = class {
   toggleEditMode() {
     this.editMode = !this.editMode;
     if (this.editMode) {
-      this.blocksSnapshot = structuredClone(this.plugin.layout.blocks);
+      this.blocksSnapshot = structuredClone(this.plugin.activeBlocks());
     } else {
       this.blocksSnapshot = null;
       this.zoomScale = 1;
@@ -7214,7 +7230,13 @@ var EditToolbar = class {
   discardChanges() {
     if (!this.editMode) return;
     if (this.blocksSnapshot) {
-      const restored = { ...this.plugin.layout, blocks: this.blocksSnapshot };
+      const mobile = this.plugin.isMobileActive();
+      const restored = structuredClone(this.plugin.layout);
+      if (mobile) {
+        restored.mobileBlocks = this.blocksSnapshot;
+      } else {
+        restored.blocks = this.blocksSnapshot;
+      }
       this.plugin.layout = restored;
       void this.plugin.saveLayout(restored);
       this.blocksSnapshot = null;
@@ -7237,9 +7259,10 @@ var EditToolbar = class {
     const colGroup = this.toolbarEl.createDiv({ cls: "toolbar-col-group" });
     const colSelect = colGroup.createEl("select", { cls: "toolbar-col-select" });
     colSelect.setAttribute("aria-label", "Number of columns");
-    [2, 3, 4, 5].forEach((n) => {
+    const colChoices = this.plugin.isMobileActive() ? [1, 2, 3] : [2, 3, 4, 5];
+    colChoices.forEach((n) => {
       const opt = colSelect.createEl("option", { value: String(n), text: `${n} col` });
-      if (n === this.plugin.layout.columns) opt.selected = true;
+      if (n === this.plugin.activeColumns()) opt.selected = true;
     });
     colSelect.addEventListener("change", () => {
       this.onColumnsChange(Number(colSelect.value));
@@ -7281,7 +7304,7 @@ var EditToolbar = class {
         type,
         x: 0,
         y: 1e3,
-        w: Math.min(factory.defaultSize.w, this.plugin.layout.columns),
+        w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
         config: { ...factory.defaultConfig }
       };
@@ -7375,7 +7398,6 @@ var HomepageView = class extends import_obsidian3.ItemView {
     contentEl.empty();
     contentEl.addClass("homepage-view");
     contentEl.toggleClass("homepage-no-scrollbar", !!this.plugin.layout.hideScrollbar);
-    const layout = this.plugin.layout;
     const onLayoutChange = (newLayout) => {
       this.plugin.layout = newLayout;
       void this.plugin.saveLayout(newLayout);
@@ -7392,7 +7414,7 @@ var HomepageView = class extends import_obsidian3.ItemView {
     );
     contentEl.insertBefore(this.toolbar.getElement(), this.grid.getElement());
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
-    this.grid.render(layout.blocks, layout.columns, true);
+    this.grid.render(this.plugin.activeBlocks(), this.plugin.activeColumns(), true);
     return Promise.resolve();
   }
   onClose() {
@@ -11004,15 +11026,23 @@ var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
 // src/main.ts
 var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
 var VALID_LAYOUT_PRIORITIES = /* @__PURE__ */ new Set(["row", "column"]);
+var VALID_RESPONSIVE_MODES = /* @__PURE__ */ new Set(["unified", "separate"]);
 function isOpenMode(v) {
   return typeof v === "string" && VALID_OPEN_MODES.has(v);
 }
 function isLayoutPriority(v) {
   return typeof v === "string" && VALID_LAYOUT_PRIORITIES.has(v);
 }
+function isResponsiveMode(v) {
+  return typeof v === "string" && VALID_RESPONSIVE_MODES.has(v);
+}
 var DEFAULT_LAYOUT_DATA = {
   columns: 3,
   layoutPriority: "row",
+  responsiveMode: "unified",
+  mobileColumns: 1,
+  mobileLayoutPriority: "row",
+  mobileBlocks: [],
   openOnStartup: false,
   openMode: "retain",
   manualOpenMode: "retain",
@@ -11173,31 +11203,48 @@ function isValidBlockInstance(b) {
   const block = b;
   return typeof block.id === "string" && SAFE_ID_RE.test(block.id) && typeof block.type === "string" && VALID_BLOCK_TYPES.has(block.type) && typeof block.x === "number" && Number.isFinite(block.x) && block.x >= 0 && typeof block.y === "number" && Number.isFinite(block.y) && block.y >= 0 && typeof block.w === "number" && Number.isFinite(block.w) && block.w >= 1 && typeof block.h === "number" && block.h >= 1 && Number.isFinite(block.h) && block.config !== null && typeof block.config === "object" && !Array.isArray(block.config);
 }
+function validateBlocks(raw, columns, defaults) {
+  if (!Array.isArray(raw)) return defaults;
+  const migrated = raw.map((b) => migrateBlockInstance(b));
+  const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
+  return valid.map((b) => ({
+    ...b,
+    w: Math.min(b.w, columns),
+    x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns)))
+  }));
+}
 function validateLayout(raw) {
   const defaults = getDefaultLayout();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return defaults;
   const r = raw;
   const columns = typeof r.columns === "number" && [2, 3, 4, 5].includes(r.columns) ? r.columns : defaults.columns;
   const layoutPriority = isLayoutPriority(r.layoutPriority) ? r.layoutPriority : defaults.layoutPriority;
+  const responsiveMode = isResponsiveMode(r.responsiveMode) ? r.responsiveMode : defaults.responsiveMode;
+  const mobileColumns = typeof r.mobileColumns === "number" && [1, 2, 3].includes(r.mobileColumns) ? r.mobileColumns : defaults.mobileColumns;
+  const mobileLayoutPriority = isLayoutPriority(r.mobileLayoutPriority) ? r.mobileLayoutPriority : defaults.mobileLayoutPriority;
   const openOnStartup = typeof r.openOnStartup === "boolean" ? r.openOnStartup : defaults.openOnStartup;
   const openMode = isOpenMode(r.openMode) ? r.openMode : defaults.openMode;
   const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
   const openWhenEmpty = typeof r.openWhenEmpty === "boolean" ? r.openWhenEmpty : defaults.openWhenEmpty;
   const pin = typeof r.pin === "boolean" ? r.pin : defaults.pin;
   const hideScrollbar = typeof r.hideScrollbar === "boolean" ? r.hideScrollbar : defaults.hideScrollbar;
-  let rawBlocks;
-  if (Array.isArray(r.blocks)) {
-    const migrated = r.blocks.map((b) => migrateBlockInstance(b));
-    rawBlocks = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
-  } else {
-    rawBlocks = defaults.blocks;
-  }
-  const blocks = rawBlocks.map((b) => ({
-    ...b,
-    w: Math.min(b.w, columns),
-    x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns)))
-  }));
-  return { columns, layoutPriority, openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin, hideScrollbar, blocks };
+  const blocks = validateBlocks(r.blocks, columns, defaults.blocks);
+  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks);
+  return {
+    columns,
+    layoutPriority,
+    responsiveMode,
+    mobileColumns,
+    mobileLayoutPriority,
+    mobileBlocks,
+    openOnStartup,
+    openMode,
+    manualOpenMode,
+    openWhenEmpty,
+    pin,
+    hideScrollbar,
+    blocks
+  };
 }
 function registerBlocks() {
   BlockRegistry.clear();
@@ -11396,6 +11443,20 @@ var HomepagePlugin = class extends import_obsidian21.Plugin {
   }
   onunload() {
   }
+  // ── Platform-aware layout helpers ─────────────────────────────────
+  isMobileActive() {
+    return import_obsidian21.Platform.isMobile && this.layout.responsiveMode === "separate";
+  }
+  activeBlocks() {
+    return this.isMobileActive() ? this.layout.mobileBlocks : this.layout.blocks;
+  }
+  activeColumns() {
+    return this.isMobileActive() ? this.layout.mobileColumns : this.layout.columns;
+  }
+  activeLayoutPriority() {
+    return this.isMobileActive() ? this.layout.mobileLayoutPriority : this.layout.layoutPriority;
+  }
+  // ── Persistence ───────────────────────────────────────────────────
   savePromise = Promise.resolve();
   async saveLayout(layout) {
     this.layout = layout;
@@ -11480,6 +11541,16 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         }
       })
     );
+    new import_obsidian21.Setting(containerEl).setName("Layout").setHeading();
+    new import_obsidian21.Setting(containerEl).setName("Responsive mode").setDesc("Unified: single layout adapts to all screen sizes. Separate: independent layouts for desktop and mobile.").addDropdown(
+      (drop) => drop.addOption("unified", "Unified (adaptive)").addOption("separate", "Separate (desktop + mobile)").setValue(this.plugin.layout.responsiveMode).onChange((value) => {
+        if (!isResponsiveMode(value)) return;
+        void this.plugin.saveLayout({ ...this.plugin.layout, responsiveMode: value }).then(() => this.display());
+      })
+    );
+    if (this.plugin.layout.responsiveMode === "separate") {
+      new import_obsidian21.Setting(containerEl).setName("Desktop layout").setHeading();
+    }
     new import_obsidian21.Setting(containerEl).setName("Default columns").setDesc("Number of columns in the grid layout.").addDropdown(
       (drop) => drop.addOption("2", "2 columns").addOption("3", "3 columns").addOption("4", "4 columns").addOption("5", "5 columns").setValue(String(this.plugin.layout.columns)).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
@@ -11491,6 +11562,44 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         void this.plugin.saveLayout({ ...this.plugin.layout, layoutPriority: value });
       })
     );
+    if (this.plugin.layout.responsiveMode === "separate") {
+      new import_obsidian21.Setting(containerEl).setName("Mobile layout").setHeading();
+      new import_obsidian21.Setting(containerEl).setName("Mobile columns").setDesc("Number of columns on mobile devices.").addDropdown(
+        (drop) => drop.addOption("1", "1 column").addOption("2", "2 columns").addOption("3", "3 columns").setValue(String(this.plugin.layout.mobileColumns)).onChange((value) => {
+          void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
+        })
+      );
+      new import_obsidian21.Setting(containerEl).setName("Mobile layout priority").setDesc("Block fill direction on mobile.").addDropdown(
+        (drop) => drop.addOption("row", "Row-first").addOption("column", "Column-first").setValue(this.plugin.layout.mobileLayoutPriority).onChange((value) => {
+          if (!isLayoutPriority(value)) return;
+          void this.plugin.saveLayout({ ...this.plugin.layout, mobileLayoutPriority: value });
+        })
+      );
+      new import_obsidian21.Setting(containerEl).setName("Copy desktop layout to mobile").setDesc("Replace the mobile layout with a copy of the current desktop layout, clamped to mobile columns.").addButton(
+        (btn) => btn.setButtonText("Copy to mobile").onClick(() => void (async () => {
+          const desktopBlocks = structuredClone(this.plugin.layout.blocks);
+          const mobileCols = this.plugin.layout.mobileColumns;
+          const clamped = desktopBlocks.map((b) => ({
+            ...b,
+            id: crypto.randomUUID(),
+            w: Math.min(b.w, mobileCols),
+            x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols)))
+          }));
+          await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: clamped });
+          for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+            if (leaf.view instanceof HomepageView) {
+              await leaf.view.reload();
+            }
+          }
+          btn.setButtonText("Copied!");
+          setTimeout(() => {
+            btn.setButtonText("Copy to mobile");
+          }, 2e3);
+        })())
+      );
+      const mobileBlockCount = this.plugin.layout.mobileBlocks.length;
+      new import_obsidian21.Setting(containerEl).setName("Mobile blocks").setDesc(mobileBlockCount + " block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.");
+    }
     new import_obsidian21.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage \u2014 content is still scrollable.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.hideScrollbar).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
@@ -11515,6 +11624,9 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         try {
           const exportLayout = structuredClone(this.plugin.layout);
           for (const block of exportLayout.blocks) {
+            delete block.config.apiKey;
+          }
+          for (const block of exportLayout.mobileBlocks) {
             delete block.config.apiKey;
           }
           const json = JSON.stringify(exportLayout, null, 2);

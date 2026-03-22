@@ -1,6 +1,6 @@
-import { App, Modal, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
+import { App, Modal, Platform, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from './HomepageView';
-import { BLOCK_TYPES, BlockInstance, LayoutConfig, LayoutPriority, OpenMode, IHomepagePlugin } from './types';
+import { BLOCK_TYPES, BlockInstance, LayoutConfig, LayoutPriority, OpenMode, ResponsiveMode, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
@@ -25,6 +25,7 @@ import { VoiceDictationBlock } from './blocks/VoiceDictationBlock';
 /** Must stay in sync with OpenMode in types.ts */
 const VALID_OPEN_MODES = new Set<OpenMode>(['replace-all', 'replace-last', 'retain']);
 const VALID_LAYOUT_PRIORITIES = new Set<LayoutPriority>(['row', 'column']);
+const VALID_RESPONSIVE_MODES = new Set<ResponsiveMode>(['unified', 'separate']);
 
 function isOpenMode(v: unknown): v is OpenMode {
   return typeof v === 'string' && (VALID_OPEN_MODES as Set<string>).has(v);
@@ -34,9 +35,17 @@ function isLayoutPriority(v: unknown): v is LayoutPriority {
   return typeof v === 'string' && (VALID_LAYOUT_PRIORITIES as Set<string>).has(v);
 }
 
+function isResponsiveMode(v: unknown): v is ResponsiveMode {
+  return typeof v === 'string' && (VALID_RESPONSIVE_MODES as Set<string>).has(v);
+}
+
 const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   columns: 3,
   layoutPriority: 'row',
+  responsiveMode: 'unified',
+  mobileColumns: 1,
+  mobileLayoutPriority: 'row',
+  mobileBlocks: [],
   openOnStartup: false,
   openMode: 'retain',
   manualOpenMode: 'retain',
@@ -185,6 +194,19 @@ function isValidBlockInstance(b: unknown): b is BlockInstance {
   );
 }
 
+
+/** Validate and clamp a block array, applying migration and column clamping. */
+function validateBlocks(raw: unknown, columns: number, defaults: BlockInstance[]): BlockInstance[] {
+  if (!Array.isArray(raw)) return defaults;
+  const migrated: unknown[] = raw.map(b => migrateBlockInstance(b as Record<string, unknown>));
+  const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
+  return valid.map(b => ({
+    ...b,
+    w: Math.min(b.w, columns),
+    x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
+  }));
+}
+
 /**
  * Validate and sanitize data loaded from disk.
  * Invalid fields are replaced with defaults.
@@ -201,6 +223,15 @@ function validateLayout(raw: unknown): LayoutConfig {
   const layoutPriority = isLayoutPriority(r.layoutPriority)
     ? r.layoutPriority
     : defaults.layoutPriority;
+  const responsiveMode = isResponsiveMode(r.responsiveMode)
+    ? r.responsiveMode
+    : defaults.responsiveMode;
+  const mobileColumns = typeof r.mobileColumns === 'number' && [1, 2, 3].includes(r.mobileColumns)
+    ? r.mobileColumns
+    : defaults.mobileColumns;
+  const mobileLayoutPriority = isLayoutPriority(r.mobileLayoutPriority)
+    ? r.mobileLayoutPriority
+    : defaults.mobileLayoutPriority;
   const openOnStartup = typeof r.openOnStartup === 'boolean'
     ? r.openOnStartup
     : defaults.openOnStartup;
@@ -219,21 +250,15 @@ function validateLayout(raw: unknown): LayoutConfig {
   const hideScrollbar = typeof r.hideScrollbar === 'boolean'
     ? r.hideScrollbar
     : defaults.hideScrollbar;
-  let rawBlocks: BlockInstance[];
-  if (Array.isArray(r.blocks)) {
-    const migrated: unknown[] = r.blocks.map(b => migrateBlockInstance(b as Record<string, unknown>));
-    rawBlocks = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
-  } else {
-    rawBlocks = defaults.blocks;
-  }
-  // Clamp x/w to fit within the column count (fixes stale 12-column GridStack data)
-  const blocks: BlockInstance[] = rawBlocks.map(b => ({
-    ...b,
-    w: Math.min(b.w, columns),
-    x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
-  }));
+  const blocks = validateBlocks(r.blocks, columns, defaults.blocks);
+  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks);
 
-  return { columns, layoutPriority, openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin, hideScrollbar, blocks };
+  return {
+    columns, layoutPriority, responsiveMode,
+    mobileColumns, mobileLayoutPriority, mobileBlocks,
+    openOnStartup, openMode, manualOpenMode, openWhenEmpty,
+    pin, hideScrollbar, blocks,
+  };
 }
 
 // ── Block registration ───────────────────────────────────────────────────────
@@ -460,6 +485,26 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
   onunload(): void { /* Obsidian detaches views automatically */ }
 
+  // ── Platform-aware layout helpers ─────────────────────────────────
+
+  isMobileActive(): boolean {
+    return Platform.isMobile && this.layout.responsiveMode === 'separate';
+  }
+
+  activeBlocks(): BlockInstance[] {
+    return this.isMobileActive() ? this.layout.mobileBlocks : this.layout.blocks;
+  }
+
+  activeColumns(): number {
+    return this.isMobileActive() ? this.layout.mobileColumns : this.layout.columns;
+  }
+
+  activeLayoutPriority(): LayoutPriority {
+    return this.isMobileActive() ? this.layout.mobileLayoutPriority : this.layout.layoutPriority;
+  }
+
+  // ── Persistence ───────────────────────────────────────────────────
+
   private savePromise = Promise.resolve();
 
   async saveLayout(layout: LayoutConfig): Promise<void> {
@@ -585,6 +630,26 @@ class HomepageSettingTab extends PluginSettingTab {
       );
 
     // ── Layout ────────────────────────────────────────────────────────
+    new Setting(containerEl).setName('Layout').setHeading();
+
+    new Setting(containerEl)
+      .setName('Responsive mode')
+      .setDesc('Unified: single layout adapts to all screen sizes. Separate: independent layouts for desktop and mobile.')
+      .addDropdown(drop =>
+        drop
+          .addOption('unified', 'Unified (adaptive)')
+          .addOption('separate', 'Separate (desktop + mobile)')
+          .setValue(this.plugin.layout.responsiveMode)
+          .onChange((value) => {
+            if (!isResponsiveMode(value)) return;
+            void this.plugin.saveLayout({ ...this.plugin.layout, responsiveMode: value }).then(() => this.display());
+          }),
+      );
+
+    if (this.plugin.layout.responsiveMode === 'separate') {
+      new Setting(containerEl).setName('Desktop layout').setHeading();
+    }
+
     new Setting(containerEl)
       .setName('Default columns')
       .setDesc('Number of columns in the grid layout.')
@@ -613,6 +678,68 @@ class HomepageSettingTab extends PluginSettingTab {
             void this.plugin.saveLayout({ ...this.plugin.layout, layoutPriority: value });
           }),
       );
+
+    // ── Mobile layout settings (only when separate) ─────────────────
+    if (this.plugin.layout.responsiveMode === 'separate') {
+      new Setting(containerEl).setName('Mobile layout').setHeading();
+
+      new Setting(containerEl)
+        .setName('Mobile columns')
+        .setDesc('Number of columns on mobile devices.')
+        .addDropdown(drop =>
+          drop
+            .addOption('1', '1 column')
+            .addOption('2', '2 columns')
+            .addOption('3', '3 columns')
+            .setValue(String(this.plugin.layout.mobileColumns))
+            .onChange((value) => {
+              void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
+            }),
+        );
+
+      new Setting(containerEl)
+        .setName('Mobile layout priority')
+        .setDesc('Block fill direction on mobile.')
+        .addDropdown(drop =>
+          drop
+            .addOption('row', 'Row-first')
+            .addOption('column', 'Column-first')
+            .setValue(this.plugin.layout.mobileLayoutPriority)
+            .onChange((value) => {
+              if (!isLayoutPriority(value)) return;
+              void this.plugin.saveLayout({ ...this.plugin.layout, mobileLayoutPriority: value });
+            }),
+        );
+
+      new Setting(containerEl)
+        .setName('Copy desktop layout to mobile')
+        .setDesc('Replace the mobile layout with a copy of the current desktop layout, clamped to mobile columns.')
+        .addButton(btn =>
+          btn.setButtonText('Copy to mobile').onClick(() => void (async () => {
+            const desktopBlocks = structuredClone(this.plugin.layout.blocks);
+            const mobileCols = this.plugin.layout.mobileColumns;
+            const clamped = desktopBlocks.map(b => ({
+              ...b,
+              id: crypto.randomUUID(),
+              w: Math.min(b.w, mobileCols),
+              x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols))),
+            }));
+            await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: clamped });
+            for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+              if (leaf.view instanceof HomepageView) {
+                await leaf.view.reload();
+              }
+            }
+            btn.setButtonText('Copied!');
+            setTimeout(() => { btn.setButtonText('Copy to mobile'); }, 2000);
+          })()),
+        );
+
+      const mobileBlockCount = this.plugin.layout.mobileBlocks.length;
+      new Setting(containerEl)
+        .setName('Mobile blocks')
+        .setDesc(mobileBlockCount + ' block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.');
+    }
 
     new Setting(containerEl)
       .setName('Hide scrollbar')
@@ -653,6 +780,9 @@ class HomepageSettingTab extends PluginSettingTab {
           try {
             const exportLayout = structuredClone(this.plugin.layout);
             for (const block of exportLayout.blocks) {
+              delete block.config.apiKey;
+            }
+            for (const block of exportLayout.mobileBlocks) {
               delete block.config.apiKey;
             }
             const json = JSON.stringify(exportLayout, null, 2);

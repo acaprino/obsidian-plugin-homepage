@@ -252,7 +252,7 @@ class RandomNoteSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Tag filter')
-      .setDesc('Required. Only notes with this tag are candidates.')
+      .setDesc('Only notes with this tag will appear.')
       .addText(t =>
         t.setPlaceholder('#tag or tag')
          .setValue(draft.tag ?? '')
@@ -261,7 +261,7 @@ class RandomNoteSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Daily seed')
-      .setDesc('Show the same note all day; changes at midnight.')
+      .setDesc('Same note all day, changes at midnight.')
       .addToggle(t =>
         t.setValue(draft.dailySeed ?? false)
          .onChange(v => { draft.dailySeed = v; }),
@@ -276,7 +276,7 @@ class RandomNoteSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Cover image property')
-      .setDesc('Frontmatter property name that holds the image path.')
+      .setDesc('Frontmatter property with the image path.')
       .addText(t =>
         t.setPlaceholder('Cover')
          .setValue(draft.imageProperty ?? '')
@@ -285,7 +285,7 @@ class RandomNoteSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Title property')
-      .setDesc('Frontmatter property for the note title. Falls back to filename.')
+      .setDesc('Frontmatter property for the title. Falls back to filename.')
       .addText(t =>
         t.setPlaceholder('Title')
          .setValue(draft.titleProperty ?? 'title')
@@ -294,7 +294,7 @@ class RandomNoteSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Show content preview')
-      .setDesc('Show first paragraph or frontmatter description/excerpt.')
+      .setDesc('Show the first paragraph or frontmatter description.')
       .addToggle(t =>
         t.setValue(draft.showPreview ?? true)
          .onChange(v => { draft.showPreview = v; }),

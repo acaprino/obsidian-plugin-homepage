@@ -340,7 +340,7 @@ class QuotesSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Source')
-      .setDesc('Pull quotes from tagged notes, or enter them manually.')
+      .setDesc('From tagged notes, or entered manually.')
       .addDropdown(d =>
         d.addOption('tag', 'Notes with tag')
          .addOption('text', 'Manual text')
@@ -379,7 +379,7 @@ class QuotesSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Display')
-      .setDesc('Show all items as a grid, or rotate through one at a time.')
+      .setDesc('Grid shows all at once. Rotate cycles through one at a time.')
       .addDropdown(d =>
         d.addOption('list', 'All items')
          .addOption('single', 'One at a time')
@@ -396,7 +396,7 @@ class QuotesSettingsModal extends Modal {
     singleSection.toggleClass('hp-hidden', draft.mode !== 'single');
     new Setting(singleSection)
       .setName('Daily seed')
-      .setDesc('Show the same item all day; changes at midnight.')
+      .setDesc('Same item all day, changes at midnight.')
       .addToggle(t =>
         t.setValue(draft.dailySeed !== false)
          .onChange(v => { draft.dailySeed = v; }),
@@ -412,7 +412,7 @@ class QuotesSettingsModal extends Modal {
     );
     new Setting(listSection)
       .setName('Height mode')
-      .setDesc('Scroll keeps the block compact \u2014 grow to fit all works best at full width.')
+      .setDesc('Scroll keeps the block compact. Grow to fit works best at full width.')
       .addDropdown(d =>
         d.addOption('wrap', 'Scroll (fixed height)')
          .addOption('extend', 'Grow to fit all')
@@ -425,7 +425,7 @@ class QuotesSettingsModal extends Modal {
     );
     new Setting(listSection)
       .setName('Quote style')
-      .setDesc('Classic shows a left accent bar. Centered stacks quotes in one column. Card wraps each quote in its own box.')
+      .setDesc('Classic: left accent bar. Centered: single column. Card: each quote in its own box.')
       .addDropdown(d =>
         d.addOption('classic', 'Classic')
          .addOption('centered', 'Centered')
@@ -436,7 +436,7 @@ class QuotesSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Text alignment')
-      .setDesc('Align text to the left, center, or right.')
+      .setDesc('Left, center, or right.')
       .addDropdown(d =>
         d.addOption('left', 'Left')
          .addOption('center', 'Center')
@@ -447,7 +447,7 @@ class QuotesSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Vertical alignment')
-      .setDesc('Align the quotes list or card vertically within the block.')
+      .setDesc('Vertical alignment within the block.')
       .addDropdown(d =>
         d.addOption('top', 'Top')
          .addOption('middle', 'Middle')
@@ -459,7 +459,7 @@ class QuotesSettingsModal extends Modal {
     // Font settings apply in both modes
     new Setting(contentEl)
       .setName('Font style')
-      .setDesc('Preset font family. Overridden by a custom font below (line-height preset still applies).')
+      .setDesc('Font preset. A custom font below will override this (line-height still applies).')
       .addDropdown(d =>
         d.addOption('default', 'Default')
          .addOption('serif', 'Serif')
@@ -469,7 +469,7 @@ class QuotesSettingsModal extends Modal {
       );
     new Setting(contentEl)
       .setName('Custom font')
-      .setDesc('Any installed font family. Overrides the font style preset above.')
+      .setDesc('Any installed font. Overrides the preset above.')
       .addText(t =>
         t.setPlaceholder('Georgia')
          .setValue(typeof draft.customFont === 'string' ? draft.customFont : '')

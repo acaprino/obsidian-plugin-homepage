@@ -78,7 +78,7 @@ class ClockSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Style')
-      .setDesc('Visual style of the clock.')
+      .setDesc('How the clock looks.')
       .addDropdown(d =>
         d.addOptions(CLOCK_STYLES)
          .setValue(draft.clockStyle as string ?? 'minimal')
@@ -94,7 +94,7 @@ class ClockSettingsModal extends Modal {
     );
     new Setting(contentEl)
       .setName('Custom format')
-      .setDesc('Optional moment.js format string (leave empty for default).')
+      .setDesc('Moment.js format string. Leave blank for default.')
       .addText(t =>
         t.setValue(draft.format as string ?? '')
          .onChange(v => { draft.format = v; }),

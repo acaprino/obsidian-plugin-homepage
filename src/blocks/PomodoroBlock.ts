@@ -431,7 +431,7 @@ class PomodoroSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Sessions before long break')
-      .setDesc('Number of work sessions before a long break.')
+      .setDesc('Work sessions before a long break.')
       .addSlider(s =>
         s.setLimits(2, 8, 1)
          .setValue(draft.sessionsBeforeLong as number ?? 4)
@@ -441,7 +441,7 @@ class PomodoroSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Notification sound')
-      .setDesc('Play a sound when a phase completes.')
+      .setDesc('Play a sound when a phase ends.')
       .addDropdown(d => {
         d.addOption('none', 'None')
          .addOption('crystal', 'Crystal')
@@ -458,7 +458,7 @@ class PomodoroSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Auto-start next session')
-      .setDesc('Automatically start the next phase of the cycle.')
+      .setDesc('Start the next phase automatically.')
       .addToggle(t =>
         t.setValue((draft as PomodoroConfig).autoStartCycle ?? false)
          .onChange(v => { (draft as PomodoroConfig).autoStartCycle = v; }),

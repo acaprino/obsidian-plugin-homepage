@@ -52,6 +52,7 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   openWhenEmpty: false,
   pin: false,
   hideScrollbar: false,
+  compactLayout: true,
   blocks: [
     // Row 0 (y: 0–2)
     {
@@ -250,6 +251,9 @@ function validateLayout(raw: unknown): LayoutConfig {
   const hideScrollbar = typeof r.hideScrollbar === 'boolean'
     ? r.hideScrollbar
     : defaults.hideScrollbar;
+  const compactLayout = typeof r.compactLayout === 'boolean'
+    ? r.compactLayout
+    : defaults.compactLayout;
   const blocks = validateBlocks(r.blocks, columns, defaults.blocks);
   const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks);
 
@@ -257,7 +261,7 @@ function validateLayout(raw: unknown): LayoutConfig {
     columns, layoutPriority, responsiveMode,
     mobileColumns, mobileLayoutPriority, mobileBlocks,
     openOnStartup, openMode, manualOpenMode, openWhenEmpty,
-    pin, hideScrollbar, blocks,
+    pin, hideScrollbar, compactLayout, blocks,
   };
 }
 
@@ -562,7 +566,7 @@ class HomepageSettingTab extends PluginSettingTab {
     // ── Opening behavior ──────────────────────────────────────────────
     new Setting(containerEl)
       .setName('Open on startup')
-      .setDesc('Automatically open the homepage when Obsidian starts.')
+      .setDesc('Open the homepage when Obsidian starts.')
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.openOnStartup)
@@ -574,7 +578,7 @@ class HomepageSettingTab extends PluginSettingTab {
     if (this.plugin.layout.openOnStartup) {
       new Setting(containerEl)
         .setName('Startup open mode')
-        .setDesc('How to handle existing tabs when opening homepage on startup.')
+        .setDesc('What to do with existing tabs on startup.')
         .addDropdown(drop => {
           for (const [value, label] of Object.entries(openModeOptions)) {
             drop.addOption(value, label);
@@ -590,7 +594,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Open when empty')
-      .setDesc('Automatically open the homepage when all tabs are closed.')
+      .setDesc('Open the homepage when all tabs are closed.')
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.openWhenEmpty)
@@ -601,7 +605,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Manual open mode')
-      .setDesc('How to handle existing tabs when opening homepage via command or ribbon.')
+      .setDesc('What to do with existing tabs when you open the homepage manually.')
       .addDropdown(drop => {
         for (const [value, label] of Object.entries(openModeOptions)) {
           drop.addOption(value, label);
@@ -616,7 +620,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Pin homepage tab')
-      .setDesc('Pin the homepage tab so it cannot be accidentally closed.')
+      .setDesc('Prevent the homepage tab from being closed.')
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.pin)
@@ -634,7 +638,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Responsive mode')
-      .setDesc('Unified: single layout adapts to all screen sizes. Separate: independent layouts for desktop and mobile.')
+      .setDesc('Unified: one layout for all screen sizes. Separate: different layouts for desktop and mobile.')
       .addDropdown(drop =>
         drop
           .addOption('unified', 'Unified (adaptive)')
@@ -652,7 +656,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Default columns')
-      .setDesc('Number of columns in the grid layout.')
+      .setDesc('Number of grid columns.')
       .addDropdown(drop =>
         drop
           .addOption('2', '2 columns')
@@ -667,7 +671,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Layout priority')
-      .setDesc('Row-first fills blocks left-to-right across each row. Column-first fills blocks top-to-bottom in each column.')
+      .setDesc('Row-first fills left to right, then down. Column-first fills top to bottom, then across.')
       .addDropdown(drop =>
         drop
           .addOption('row', 'Row-first')
@@ -685,7 +689,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
       new Setting(containerEl)
         .setName('Mobile columns')
-        .setDesc('Number of columns on mobile devices.')
+        .setDesc('Number of grid columns on mobile.')
         .addDropdown(drop =>
           drop
             .addOption('1', '1 column')
@@ -699,7 +703,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
       new Setting(containerEl)
         .setName('Mobile layout priority')
-        .setDesc('Block fill direction on mobile.')
+        .setDesc('Fill direction on mobile.')
         .addDropdown(drop =>
           drop
             .addOption('row', 'Row-first')
@@ -713,7 +717,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
       new Setting(containerEl)
         .setName('Copy desktop layout to mobile')
-        .setDesc('Replace the mobile layout with a copy of the current desktop layout, clamped to mobile columns.')
+        .setDesc('Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.')
         .addButton(btn =>
           btn.setButtonText('Copy to mobile').onClick(() => void (async () => {
             const desktopBlocks = structuredClone(this.plugin.layout.blocks);
@@ -743,7 +747,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Hide scrollbar')
-      .setDesc('Hide the scrollbar on the homepage \u2014 content is still scrollable.')
+      .setDesc('Hide the scrollbar on the homepage. You can still scroll.')
       .addToggle(toggle =>
         toggle
           .setValue(this.plugin.layout.hideScrollbar)
@@ -756,8 +760,24 @@ class HomepageSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName('Compact layout')
+      .setDesc('Remove vertical gaps between blocks. Turn off to allow free placement with gaps.')
+      .addToggle(toggle =>
+        toggle
+          .setValue(this.plugin.layout.compactLayout)
+          .onChange(async (value) => {
+            await this.plugin.saveLayout({ ...this.plugin.layout, compactLayout: value });
+            for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+              if (leaf.view instanceof HomepageView) {
+                await leaf.view.reload();
+              }
+            }
+          }),
+      );
+
+    new Setting(containerEl)
       .setName('Reset to default layout')
-      .setDesc('Restore all blocks to the original default layout \u2014 cannot be undone.')
+      .setDesc('Restore all blocks to the default layout. This can\u2019t be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
           await this.plugin.saveLayout(getDefaultLayout());
@@ -774,7 +794,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Export layout')
-      .setDesc('Copy the current layout to clipboard as JSON.')
+      .setDesc('Copy the layout to your clipboard as JSON.')
       .addButton(btn =>
         btn.setButtonText('Copy to clipboard').onClick(() => void (async () => {
           try {
@@ -797,7 +817,7 @@ class HomepageSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Import layout')
-      .setDesc('Paste a previously exported layout JSON to restore it.')
+      .setDesc('Paste an exported layout JSON to restore it.')
       .addButton(btn =>
         btn.setButtonText('Import from clipboard').onClick(() => void (async () => {
           try {

@@ -357,7 +357,7 @@ class ImageGallerySettingsModal extends Modal {
       );
     new Setting(contentEl)
       .setName('Height')
-      .setDesc('Auto: expands to show all images \u2014 fixed: uses the block\'s row height and scrolls.')
+      .setDesc('Auto: expands to fit all images. Fixed: uses the block\'s row height and scrolls.')
       .addDropdown(d =>
         d.addOption('auto', 'Auto (fit all images)')
          .addOption('fixed', 'Fixed (scroll)')

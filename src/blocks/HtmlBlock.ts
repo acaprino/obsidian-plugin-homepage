@@ -54,7 +54,7 @@ class HtmlBlockSettingsModal extends Modal {
 
     const draft = structuredClone(this.config);
 
-    new Setting(contentEl).setName('HTML').setDesc('HTML is sanitized before rendering.');
+    new Setting(contentEl).setName('HTML').setDesc('Sanitized before rendering.');
     const textarea = contentEl.createEl('textarea', { cls: 'html-settings-textarea' });
     textarea.value = draft.html as string ?? '';
     textarea.rows = 12;

@@ -100,7 +100,7 @@ class RecentFilesSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Max items')
-      .setDesc('Number of recent files to show (5\u201320).')
+      .setDesc('How many files to show (5\u201320).')
       .addSlider(s =>
         s.setLimits(5, 20, 1)
          .setValue(draft.maxItems ?? 10)
@@ -110,7 +110,7 @@ class RecentFilesSettingsModal extends Modal {
 
     new Setting(contentEl)
       .setName('Show timestamps')
-      .setDesc('Display relative time next to each file name.')
+      .setDesc('Show relative time next to each file.')
       .addToggle(t =>
         t.setValue(draft.showTimestamp ?? true)
          .onChange(v => { draft.showTimestamp = v; }),

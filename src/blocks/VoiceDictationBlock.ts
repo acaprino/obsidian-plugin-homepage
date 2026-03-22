@@ -39,6 +39,7 @@ export class VoiceDictationBlock extends BaseBlock {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private recordedMimeType = 'audio/webm';
+  private activeStream: MediaStream | null = null;
 
   // Elapsed timer handle
   private elapsedSeconds = 0;
@@ -49,6 +50,8 @@ export class VoiceDictationBlock extends BaseBlock {
     el.addClass('voice-block');
     this.containerEl = el;
     this.setState(el, 'idle');
+    // Single cleanup registration for the active mic stream on unload
+    this.register(() => this.stopActiveStream());
 
     this.renderHeader(el, 'Voice notes');
 
@@ -109,7 +112,7 @@ export class VoiceDictationBlock extends BaseBlock {
         this.mediaRecorder.onstop = null;
         this.mediaRecorder.stop();
       }
-      this.mediaRecorder?.stream.getTracks().forEach(t => t.stop());
+      this.stopActiveStream();
       if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
     });
   }
@@ -177,12 +180,15 @@ export class VoiceDictationBlock extends BaseBlock {
     if (!transcript.trim()) return;
 
     const folder = (cfg.folder ?? '').trim();
+    // Reject path traversal attempts
+    const segments = folder.split(/[/\\]/).filter(Boolean);
+    if (segments.some(s => s === '..')) return;
+    const safePath = segments.join('/');
     const timestamp = moment().format('YYYY-MM-DD HH-mm-ss');
-    const notePath = folder ? `${folder}/${timestamp}.md` : `${timestamp}.md`;
+    const notePath = safePath ? `${safePath}/${timestamp}.md` : `${timestamp}.md`;
 
     // Recursive folder creation
-    if (folder) {
-      const segments = folder.split('/').filter(Boolean);
+    if (safePath) {
       let accumulated = '';
       for (const seg of segments) {
         accumulated = accumulated ? `${accumulated}/${seg}` : seg;
@@ -210,6 +216,9 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
+    // Stop any previous stream before acquiring a new one
+    this.stopActiveStream();
+
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -217,9 +226,7 @@ export class VoiceDictationBlock extends BaseBlock {
       new Notice('Microphone access denied');
       return;
     }
-    // Register stream cleanup immediately so the mic is released even if
-    // the block is unloaded before MediaRecorder is assigned.
-    this.register(() => stream.getTracks().forEach(t => t.stop()));
+    this.activeStream = stream;
 
     // Pick a supported mime type — webm on desktop/Android, mp4 on iOS
     this.recordedMimeType = 'audio/webm';
@@ -257,13 +264,20 @@ export class VoiceDictationBlock extends BaseBlock {
     }
   }
 
+  private stopActiveStream(): void {
+    if (this.activeStream) {
+      this.activeStream.getTracks().forEach(t => t.stop());
+      this.activeStream = null;
+    }
+  }
+
   private async handleCloudStop(el: HTMLElement): Promise<void> {
     const cfg = this.instance.config as VoiceDictationConfig;
 
     const blob = new Blob(this.audioChunks, { type: this.recordedMimeType });
     this.audioChunks = [];
 
-    this.mediaRecorder?.stream.getTracks().forEach(t => t.stop());
+    this.stopActiveStream();
 
     if (blob.size === 0) {
       new Notice('No audio captured');

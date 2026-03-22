@@ -6190,7 +6190,7 @@ var GridLayout = class _GridLayout {
       // load() before we've added any DOM content, causing "firstElementChild is null".
       // We call resizeToContent() manually after building each block's DOM below.
     }));
-    _GridLayout.packRows(items, columns);
+    _GridLayout.packRows(items, columns, this.plugin.layout.layoutPriority);
     this.columns = columns;
     this.gridEl.classList.toggle("hp-single-column", columns === 1);
     this.gridStack = GridStack.init({
@@ -6254,6 +6254,18 @@ var GridLayout = class _GridLayout {
       this.setupCollapseToggle(gsEl, instance, headerZone);
       if (this.editMode) {
         this.attachEditHandles(wrapper, instance);
+      }
+    }
+    if (columns === 1) {
+      const priority = this.plugin.layout.layoutPriority;
+      const gridItems = [...this.gridEl.querySelectorAll(":scope > .grid-stack-item")];
+      gridItems.sort((a, b) => {
+        const na = a.gridstackNode;
+        const nb = b.gridstackNode;
+        return priority === "column" ? (na?.x ?? 0) - (nb?.x ?? 0) || (na?.y ?? 0) - (nb?.y ?? 0) : (na?.y ?? 0) - (nb?.y ?? 0) || (na?.x ?? 0) - (nb?.x ?? 0);
+      });
+      for (const el of gridItems) {
+        this.gridEl.appendChild(el);
       }
     }
     this.gridStack.on("dragstop", () => {
@@ -6361,7 +6373,7 @@ var GridLayout = class _GridLayout {
           if (!node) continue;
           nodeItems.push({ el: gsEl2, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
         }
-        _GridLayout.packRows(nodeItems, this.effectiveColumns);
+        _GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.layout.layoutPriority);
         this.gridStack.batchUpdate();
         for (const item of nodeItems) {
           this.gridStack.update(item.el, { y: item.y });
@@ -6640,7 +6652,8 @@ var GridLayout = class _GridLayout {
     if (!enabled && this.editMode && !skipRepack) {
       const repacked = _GridLayout.repackEditLayout(
         this.plugin.layout.blocks,
-        this.userColumns
+        this.userColumns,
+        this.plugin.layout.layoutPriority
       );
       this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
     }
@@ -6657,12 +6670,21 @@ var GridLayout = class _GridLayout {
    * Greedy column-height packing: sort items by position, then assign each
    * the lowest available y in its target columns. Mutates items in place.
    * Works on any object with { x, y, w, h } (GridStackWidget or BlockInstance).
+   *
+   * @param priority 'row' sorts (y, x) — left-to-right across rows.
+   *                 'column' sorts (x, y) — top-to-bottom within each column.
    */
-  static packRows(items, columns) {
+  static packRows(items, columns, priority = "row") {
     const safeCols = Math.max(1, columns);
-    items.sort(
-      (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0)
-    );
+    if (priority === "column") {
+      items.sort(
+        (a, b) => (a.x ?? 0) - (b.x ?? 0) || (a.y ?? 0) - (b.y ?? 0)
+      );
+    } else {
+      items.sort(
+        (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0)
+      );
+    }
     const colHeights = new Array(safeCols).fill(0);
     for (const item of items) {
       const w = Math.min(item.w ?? 1, safeCols);
@@ -6683,9 +6705,9 @@ var GridLayout = class _GridLayout {
    * reflect compact heights and may overlap at full view-mode heights.
    * Re-pack into a collision-free layout using real h values.
    */
-  static repackEditLayout(blocks, columns) {
+  static repackEditLayout(blocks, columns, priority = "row") {
     const packed = blocks.map((b) => ({ ...b }));
-    _GridLayout.packRows(packed, columns);
+    _GridLayout.packRows(packed, columns, priority);
     return packed;
   }
   /** Compute zoom scale that fits all grid content in the viewport. */
@@ -6750,12 +6772,21 @@ var GridLayout = class _GridLayout {
       const x = Math.min(node.x ?? 0, Math.max(0, next - w));
       nodeItems.push({ el: gsEl, x, y: node.y ?? 0, w, h: node.h ?? 1 });
     }
-    _GridLayout.packRows(nodeItems, next);
+    _GridLayout.packRows(nodeItems, next, this.plugin.layout.layoutPriority);
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
       this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
     }
     this.gridStack.batchUpdate(false);
+    if (next === 1) {
+      const priority = this.plugin.layout.layoutPriority;
+      const sorted = nodeItems.slice().sort(
+        (a, b) => priority === "column" ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x
+      );
+      for (const item of sorted) {
+        this.gridEl.appendChild(item.el);
+      }
+    }
   }
   /**
    * Observe container width and dynamically adjust GridStack column count.
@@ -8350,6 +8381,9 @@ function getFilesWithTag(app, tag) {
   tagCache.set(tag, { files, timestamp: Date.now() });
   return files;
 }
+function clearTagCache() {
+  tagCache.clear();
+}
 
 // src/utils/noteContent.ts
 function parseNoteInsight(content, cache) {
@@ -8366,6 +8400,8 @@ var DEBOUNCE_MS = 500;
 var MS_PER_DAY = 864e5;
 var SAFE_FONT_RE = /^[a-zA-Z0-9\s,'\-_]+$/;
 var QuotesListBlock = class extends BaseBlock {
+  /** Column ResizeObserver — disconnected before each re-render. */
+  colsRo = null;
   render(el) {
     this.containerEl = el;
     el.addClass("quotes-list-block");
@@ -8377,12 +8413,18 @@ var QuotesListBlock = class extends BaseBlock {
       const cfg = this.instance.config;
       if (cfg.source === "text" || !cfg.tag) return;
       const tagSearch = cfg.tag.startsWith("#") ? cfg.tag : `#${cfg.tag}`;
-      if (cacheHasTag(cache, tagSearch)) trigger();
+      if (cacheHasTag(cache, tagSearch)) {
+        clearTagCache();
+        trigger();
+      }
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       const cfg = this.instance.config;
       if (cfg.source === "text" || !cfg.tag) return;
-      if (file.path.endsWith(".md")) trigger();
+      if (file.path.endsWith(".md")) {
+        clearTagCache();
+        trigger();
+      }
     }));
     return this.loadAndRender(el).catch((e) => {
       console.error("[Homepage Blocks] QuotesListBlock failed to render:", e);
@@ -8477,9 +8519,13 @@ var QuotesListBlock = class extends BaseBlock {
         colsEl.style.setProperty("--hp-column-count", String(effective));
       };
       updateCols();
-      const ro = new ResizeObserver(updateCols);
-      ro.observe(colsEl);
-      this.register(() => ro.disconnect());
+      this.colsRo?.disconnect();
+      this.colsRo = new ResizeObserver(updateCols);
+      this.colsRo.observe(colsEl);
+      this.register(() => {
+        this.colsRo?.disconnect();
+        this.colsRo = null;
+      });
     }
     if (heightMode !== "wrap") {
       this.observeWidthForAutoHeight(colsEl);
@@ -8820,6 +8866,8 @@ var DEBOUNCE_MS2 = 300;
 var ImageGalleryBlock = class extends BaseBlock {
   /** The AbortController for the lightbox opened by THIS instance (if any). */
   myLightboxAc = null;
+  /** Masonry column ResizeObserver — disconnected before each re-render. */
+  masonryRo = null;
   onunload() {
     super.onunload();
     if (this.myLightboxAc && this.myLightboxAc === activeLightboxAc) {
@@ -8887,9 +8935,13 @@ var ImageGalleryBlock = class extends BaseBlock {
         }
       };
       updateCols();
-      const ro = new ResizeObserver(updateCols);
-      ro.observe(gallery);
-      this.register(() => ro.disconnect());
+      this.masonryRo?.disconnect();
+      this.masonryRo = new ResizeObserver(updateCols);
+      this.masonryRo.observe(gallery);
+      this.register(() => {
+        this.masonryRo?.disconnect();
+        this.masonryRo = null;
+      });
     } else {
       const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
       gallery.style.setProperty("--hp-grid-cols", responsiveGridColumns(safeCols, 100));
@@ -9075,14 +9127,16 @@ var EmbeddedNoteBlock = class extends BaseBlock {
       if (file.path === filePath) trigger();
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
-      const { filePath = "" } = this.instance.config;
+      const current = this.plugin.layout.blocks.find((b) => b.id === this.instance.id);
+      const filePath = current?.config.filePath ?? "";
       if (oldPath === filePath) {
         const newBlocks = this.plugin.layout.blocks.map(
           (b) => b.id === this.instance.id ? { ...b, config: { ...b.config, filePath: file.path } } : b
         );
-        void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+        void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks }).then(trigger);
+        return;
       }
-      if (oldPath === filePath || file.path === filePath) trigger();
+      if (file.path === filePath) trigger();
     }));
     return this.renderContent(el).catch((e) => {
       console.error("[Homepage Blocks] EmbeddedNoteBlock failed to render:", e);
@@ -9091,7 +9145,8 @@ var EmbeddedNoteBlock = class extends BaseBlock {
   }
   async renderContent(el) {
     const gen = this.nextGeneration();
-    const { filePath = "", showTitle = true, heightMode = "scroll" } = this.instance.config;
+    const liveConfig = this.plugin.layout.blocks.find((b) => b.id === this.instance.id)?.config ?? this.instance.config;
+    const { filePath = "", showTitle = true, heightMode = "scroll" } = liveConfig;
     el.empty();
     el.toggleClass("embedded-note-block--grow", heightMode === "grow");
     if (!filePath) {
@@ -9113,6 +9168,8 @@ var EmbeddedNoteBlock = class extends BaseBlock {
       contentEl.setAttribute("tabindex", "0");
       contentEl.setAttribute("role", "region");
       contentEl.setAttribute("aria-label", file.basename);
+    } else if (heightMode === "grow") {
+      contentEl.setAttribute("data-auto-height-content", "");
     }
     try {
       const content = await this.app.vault.read(file);
@@ -9250,7 +9307,7 @@ var StaticTextBlock = class extends BaseBlock {
         (b) => b.id === this.instance.id ? { ...b, config: newConfig } : b
       );
       void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
-      this.renderContent(el).catch(() => {
+      this.renderContent(el).then(() => this.requestAutoHeight()).catch(() => {
       });
     };
     const cancel = () => {
@@ -9324,7 +9381,13 @@ var HtmlBlock = class extends BaseBlock {
       return;
     }
     const DANGEROUS_TAGS_RE = /<\/?\s*(iframe|object|embed|form|meta|link|base|script|style|svg)\b[^>]*>/gi;
-    contentEl.appendChild((0, import_obsidian14.sanitizeHTMLToDom)(html.replace(DANGEROUS_TAGS_RE, "")));
+    let sanitized = html;
+    let prev;
+    do {
+      prev = sanitized;
+      sanitized = sanitized.replace(DANGEROUS_TAGS_RE, "");
+    } while (sanitized !== prev);
+    contentEl.appendChild((0, import_obsidian14.sanitizeHTMLToDom)(sanitized));
   }
   openSettings(onSave) {
     new HtmlBlockSettingsModal(this.app, this.instance.config, onSave).open();
@@ -9476,7 +9539,7 @@ var VideoEmbedBlock = class _VideoEmbedBlock extends BaseBlock {
     const label = container.createDiv({ cls: "video-embed-thumb-label" });
     label.setText("Watch on YouTube");
     this.registerDomEvent(container, "click", () => {
-      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, "_blank");
+      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, "_blank", "noopener,noreferrer");
     });
   }
   renderSingleVideo(el, videoIdOrUrl) {
@@ -9643,7 +9706,7 @@ var VideoEmbedBlock = class _VideoEmbedBlock extends BaseBlock {
     label.setText("Watch on YouTube");
     container.insertBefore(label, controlBar);
     this.registerDomEvent(overlay, "click", () => {
-      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, "_blank");
+      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, "_blank", "noopener,noreferrer");
     });
   }
   // SECURITY INVARIANT: allow-same-origin + allow-scripts nullifies the sandbox.
@@ -9678,10 +9741,18 @@ var VideoEmbedBlock = class _VideoEmbedBlock extends BaseBlock {
     return this.iframeEl;
   }
   updateIframe(src) {
-    if (this.iframeEl) {
-      this.iframeEl.removeClass("hp-hidden");
-      this.iframeEl.setAttribute("src", src);
+    if (!this.iframeEl) return;
+    try {
+      const host = new URL(src).hostname;
+      if (!_VideoEmbedBlock.ALLOWED_EMBED_HOSTS.test(host)) {
+        console.error(`[Homepage Blocks] Blocked iframe src from unknown origin: ${host}`);
+        return;
+      }
+    } catch {
+      return;
     }
+    this.iframeEl.removeClass("hp-hidden");
+    this.iframeEl.setAttribute("src", src);
   }
   openSettings(onSave) {
     new VideoEmbedSettingsModal(this.app, this.instance.config, onSave).open();
@@ -10030,6 +10101,10 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
     }
     this.updateDisplay();
     this.registerInterval(window.setInterval(() => this.tick(), 1e3));
+    this.register(() => {
+      const s = timerStore.get(this.instance.id);
+      if (!s || !s.running) timerStore.delete(this.instance.id);
+    });
   }
   // ── Timer logic ────────────────────────────────────────────────────────
   /** Persist timer state to module-level store so it survives re-renders. */
@@ -10326,14 +10401,19 @@ var RandomNoteBlock = class extends BaseBlock {
       const tag = this.getTag();
       if (!tag) return;
       const tagSearch = tag.startsWith("#") ? tag : `#${tag}`;
-      if (cacheHasTag(cache, tagSearch)) trigger();
+      if (cacheHasTag(cache, tagSearch)) {
+        clearTagCache();
+        trigger();
+      }
     }));
     this.registerEvent(this.app.vault.on("delete", (file) => {
       if (!this.getTag() || !file.path.endsWith(".md")) return;
+      clearTagCache();
       slowTrigger();
     }));
     this.registerEvent(this.app.vault.on("rename", (file) => {
       if (!this.getTag() || !file.path.endsWith(".md")) return;
+      clearTagCache();
       slowTrigger();
     }));
     this.loadAndRender(el).catch((e) => {
@@ -10535,6 +10615,7 @@ var VoiceDictationBlock = class extends BaseBlock {
   mediaRecorder = null;
   audioChunks = [];
   recordedMimeType = "audio/webm";
+  activeStream = null;
   // Elapsed timer handle
   elapsedSeconds = 0;
   elapsedIntervalRef = null;
@@ -10543,6 +10624,7 @@ var VoiceDictationBlock = class extends BaseBlock {
     el.addClass("voice-block");
     this.containerEl = el;
     this.setState(el, "idle");
+    this.register(() => this.stopActiveStream());
     this.renderHeader(el, "Voice notes");
     const body = el.createDiv({ cls: "voice-body" });
     this.statusEl = body.createDiv({ cls: "voice-status", text: "Tap to record" });
@@ -10593,7 +10675,7 @@ var VoiceDictationBlock = class extends BaseBlock {
         this.mediaRecorder.onstop = null;
         this.mediaRecorder.stop();
       }
-      this.mediaRecorder?.stream.getTracks().forEach((t) => t.stop());
+      this.stopActiveStream();
       if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
     });
   }
@@ -10650,10 +10732,12 @@ var VoiceDictationBlock = class extends BaseBlock {
   async saveNote(transcript, cfg) {
     if (!transcript.trim()) return;
     const folder = (cfg.folder ?? "").trim();
+    const segments = folder.split(/[/\\]/).filter(Boolean);
+    if (segments.some((s) => s === "..")) return;
+    const safePath = segments.join("/");
     const timestamp = (0, import_obsidian20.moment)().format("YYYY-MM-DD HH-mm-ss");
-    const notePath = folder ? `${folder}/${timestamp}.md` : `${timestamp}.md`;
-    if (folder) {
-      const segments = folder.split("/").filter(Boolean);
+    const notePath = safePath ? `${safePath}/${timestamp}.md` : `${timestamp}.md`;
+    if (safePath) {
       let accumulated = "";
       for (const seg of segments) {
         accumulated = accumulated ? `${accumulated}/${seg}` : seg;
@@ -10674,6 +10758,7 @@ var VoiceDictationBlock = class extends BaseBlock {
       new import_obsidian20.Notice("API key required \u2014 configure it in block settings");
       return;
     }
+    this.stopActiveStream();
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -10681,7 +10766,7 @@ var VoiceDictationBlock = class extends BaseBlock {
       new import_obsidian20.Notice("Microphone access denied");
       return;
     }
-    this.register(() => stream.getTracks().forEach((t) => t.stop()));
+    this.activeStream = stream;
     this.recordedMimeType = "audio/webm";
     const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/aac", "audio/ogg"];
     for (const mt of candidates) {
@@ -10709,11 +10794,17 @@ var VoiceDictationBlock = class extends BaseBlock {
       this.mediaRecorder.stop();
     }
   }
+  stopActiveStream() {
+    if (this.activeStream) {
+      this.activeStream.getTracks().forEach((t) => t.stop());
+      this.activeStream = null;
+    }
+  }
   async handleCloudStop(el) {
     const cfg = this.instance.config;
     const blob = new Blob(this.audioChunks, { type: this.recordedMimeType });
     this.audioChunks = [];
-    this.mediaRecorder?.stream.getTracks().forEach((t) => t.stop());
+    this.stopActiveStream();
     if (blob.size === 0) {
       new import_obsidian20.Notice("No audio captured");
       this.setState(el, "idle");
@@ -10912,11 +11003,16 @@ var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
 
 // src/main.ts
 var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
+var VALID_LAYOUT_PRIORITIES = /* @__PURE__ */ new Set(["row", "column"]);
 function isOpenMode(v) {
   return typeof v === "string" && VALID_OPEN_MODES.has(v);
 }
+function isLayoutPriority(v) {
+  return typeof v === "string" && VALID_LAYOUT_PRIORITIES.has(v);
+}
 var DEFAULT_LAYOUT_DATA = {
   columns: 3,
+  layoutPriority: "row",
   openOnStartup: false,
   openMode: "retain",
   manualOpenMode: "retain",
@@ -11082,6 +11178,7 @@ function validateLayout(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return defaults;
   const r = raw;
   const columns = typeof r.columns === "number" && [2, 3, 4, 5].includes(r.columns) ? r.columns : defaults.columns;
+  const layoutPriority = isLayoutPriority(r.layoutPriority) ? r.layoutPriority : defaults.layoutPriority;
   const openOnStartup = typeof r.openOnStartup === "boolean" ? r.openOnStartup : defaults.openOnStartup;
   const openMode = isOpenMode(r.openMode) ? r.openMode : defaults.openMode;
   const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
@@ -11100,7 +11197,7 @@ function validateLayout(raw) {
     w: Math.min(b.w, columns),
     x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns)))
   }));
-  return { columns, openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin, hideScrollbar, blocks };
+  return { columns, layoutPriority, openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin, hideScrollbar, blocks };
 }
 function registerBlocks() {
   BlockRegistry.clear();
@@ -11386,6 +11483,12 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
     new import_obsidian21.Setting(containerEl).setName("Default columns").setDesc("Number of columns in the grid layout.").addDropdown(
       (drop) => drop.addOption("2", "2 columns").addOption("3", "3 columns").addOption("4", "4 columns").addOption("5", "5 columns").setValue(String(this.plugin.layout.columns)).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
+      })
+    );
+    new import_obsidian21.Setting(containerEl).setName("Layout priority").setDesc("Row-first fills blocks left-to-right across each row. Column-first fills blocks top-to-bottom in each column.").addDropdown(
+      (drop) => drop.addOption("row", "Row-first").addOption("column", "Column-first").setValue(this.plugin.layout.layoutPriority).onChange((value) => {
+        if (!isLayoutPriority(value)) return;
+        void this.plugin.saveLayout({ ...this.plugin.layout, layoutPriority: value });
       })
     );
     new import_obsidian21.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage \u2014 content is still scrollable.").addToggle(

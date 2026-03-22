@@ -1,6 +1,6 @@
 import { App, ColorComponent, Modal, Setting, setIcon } from 'obsidian';
 import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
-import { BlockInstance, LayoutConfig, IHomepagePlugin } from './types';
+import { BlockInstance, LayoutConfig, LayoutPriority, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
 import { createEmojiPicker } from './utils/emojiPicker';
@@ -113,7 +113,7 @@ export class GridLayout {
     // Repack y values so items are tightly stacked from the start.
     // Edit mode: view-mode y positions leave large gaps between compact-h items.
     // View mode: saved y positions may have gaps — pack to eliminate them.
-    GridLayout.packRows(items, columns);
+    GridLayout.packRows(items, columns, this.plugin.layout.layoutPriority);
 
     this.columns = columns;
     this.gridEl.classList.toggle('hp-single-column', columns === 1);
@@ -198,6 +198,23 @@ export class GridLayout {
       // Edit handles
       if (this.editMode) {
         this.attachEditHandles(wrapper, instance);
+      }
+    }
+
+    // In single-column flex mode, reorder DOM elements by position
+    // so blocks appear in the user's chosen priority order.
+    if (columns === 1) {
+      const priority = this.plugin.layout.layoutPriority;
+      const gridItems = [...this.gridEl.querySelectorAll<HTMLElement>(':scope > .grid-stack-item')];
+      gridItems.sort((a, b) => {
+        const na = (a as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
+        const nb = (b as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
+        return priority === 'column'
+          ? ((na?.x ?? 0) - (nb?.x ?? 0)) || ((na?.y ?? 0) - (nb?.y ?? 0))
+          : ((na?.y ?? 0) - (nb?.y ?? 0)) || ((na?.x ?? 0) - (nb?.x ?? 0));
+      });
+      for (const el of gridItems) {
+        this.gridEl.appendChild(el);
       }
     }
 
@@ -336,7 +353,7 @@ export class GridLayout {
           if (!node) continue;
           nodeItems.push({ el: gsEl2 as HTMLElement, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
         }
-        GridLayout.packRows(nodeItems, this.effectiveColumns);
+        GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.layout.layoutPriority);
         this.gridStack.batchUpdate();
         for (const item of nodeItems) {
           this.gridStack.update(item.el, { y: item.y });
@@ -699,6 +716,7 @@ export class GridLayout {
       const repacked = GridLayout.repackEditLayout(
         this.plugin.layout.blocks,
         this.userColumns,
+        this.plugin.layout.layoutPriority,
       );
       this.onLayoutChange({ ...this.plugin.layout, blocks: repacked });
     }
@@ -719,14 +737,23 @@ export class GridLayout {
    * Greedy column-height packing: sort items by position, then assign each
    * the lowest available y in its target columns. Mutates items in place.
    * Works on any object with { x, y, w, h } (GridStackWidget or BlockInstance).
+   *
+   * @param priority 'row' sorts (y, x) — left-to-right across rows.
+   *                 'column' sorts (x, y) — top-to-bottom within each column.
    */
   private static packRows<T extends { x?: number; y?: number; w?: number; h?: number }>(
-    items: T[], columns: number,
+    items: T[], columns: number, priority: LayoutPriority = 'row',
   ): void {
     const safeCols = Math.max(1, columns);
-    items.sort((a, b) =>
-      (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0),
-    );
+    if (priority === 'column') {
+      items.sort((a, b) =>
+        (a.x ?? 0) - (b.x ?? 0) || (a.y ?? 0) - (b.y ?? 0),
+      );
+    } else {
+      items.sort((a, b) =>
+        (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0),
+      );
+    }
     const colHeights = new Array<number>(safeCols).fill(0);
     for (const item of items) {
       const w = Math.min(item.w ?? 1, safeCols);
@@ -748,9 +775,9 @@ export class GridLayout {
    * reflect compact heights and may overlap at full view-mode heights.
    * Re-pack into a collision-free layout using real h values.
    */
-  private static repackEditLayout(blocks: BlockInstance[], columns: number): BlockInstance[] {
+  private static repackEditLayout(blocks: BlockInstance[], columns: number, priority: LayoutPriority = 'row'): BlockInstance[] {
     const packed = blocks.map(b => ({ ...b }));
-    GridLayout.packRows(packed, columns);
+    GridLayout.packRows(packed, columns, priority);
     return packed;
   }
 
@@ -830,13 +857,27 @@ export class GridLayout {
       const x = Math.min(node.x ?? 0, Math.max(0, next - w));
       nodeItems.push({ el: gsEl as HTMLElement, x, y: node.y ?? 0, w, h: node.h ?? 1 });
     }
-    GridLayout.packRows(nodeItems, next);
+    GridLayout.packRows(nodeItems, next, this.plugin.layout.layoutPriority);
 
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
       this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
     }
     this.gridStack.batchUpdate(false);
+
+    // In single-column flex mode, DOM order determines visual order.
+    // Reorder DOM elements by packed position using the user's priority.
+    if (next === 1) {
+      const priority = this.plugin.layout.layoutPriority;
+      const sorted = nodeItems.slice().sort((a, b) =>
+        priority === 'column'
+          ? (a.x - b.x || a.y - b.y)
+          : (a.y - b.y || a.x - b.x),
+      );
+      for (const item of sorted) {
+        this.gridEl.appendChild(item.el);
+      }
+    }
   }
 
   /**

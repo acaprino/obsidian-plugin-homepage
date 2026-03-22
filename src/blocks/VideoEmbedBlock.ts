@@ -172,7 +172,7 @@ export class VideoEmbedBlock extends BaseBlock {
     label.setText('Watch on YouTube');
 
     this.registerDomEvent(container, 'click', () => {
-      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, '_blank');
+      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, '_blank', 'noopener,noreferrer');
     });
   }
 
@@ -400,7 +400,7 @@ export class VideoEmbedBlock extends BaseBlock {
 
     // Click thumbnail to open on YouTube
     this.registerDomEvent(overlay, 'click', () => {
-      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, '_blank');
+      window.open(`${YT_ORIGIN}/watch?v=${videoId}`, '_blank', 'noopener,noreferrer');
     });
   }
 
@@ -440,10 +440,16 @@ export class VideoEmbedBlock extends BaseBlock {
   }
 
   private updateIframe(src: string): void {
-    if (this.iframeEl) {
-      this.iframeEl.removeClass('hp-hidden');
-      this.iframeEl.setAttribute('src', src);
-    }
+    if (!this.iframeEl) return;
+    try {
+      const host = new URL(src).hostname;
+      if (!VideoEmbedBlock.ALLOWED_EMBED_HOSTS.test(host)) {
+        console.error(`[Homepage Blocks] Blocked iframe src from unknown origin: ${host}`);
+        return;
+      }
+    } catch { return; }
+    this.iframeEl.removeClass('hp-hidden');
+    this.iframeEl.setAttribute('src', src);
   }
 
   openSettings(onSave: (config: Record<string, unknown>) => void): void {

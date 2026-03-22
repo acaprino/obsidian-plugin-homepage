@@ -502,21 +502,6 @@
   line-height: 1.5;
 }
 
-.block-empty-hint-action {
-  font-size: var(--font-interface-size, 0.8125rem);
-  color: var(--text-accent, var(--color-accent));
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 12px;
-  border-radius: var(--radius-s, 4px);
-  transition: background 0.12s ease-out;
-  box-shadow: none;
-}
-
-.block-empty-hint-action:hover {
-  background: var(--background-modifier-hover);
-}
 
 /* ── Block Loading Placeholder ──────────────────────────── */
 .block-loading {
@@ -2151,11 +2136,6 @@
   gap: 4px;
 }
 
-.toolbar-col-auto-hint {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
 
 /* ── Zoom slider ──────────────────────────────────────────── */
 .toolbar-zoom-group {
@@ -3465,7 +3445,7 @@
 .is-mobile .homepage-view {
   --hp-padding: 6px;
   --hp-card-padding: 10px;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Bigger tap targets across all interactive elements on mobile */
@@ -3506,6 +3486,7 @@
 /* Single-column: tighter gap */
 .is-mobile .homepage-grid.grid-stack.hp-single-column {
   gap: 6px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── Reduced Motion ─────────────────────────────────────── */

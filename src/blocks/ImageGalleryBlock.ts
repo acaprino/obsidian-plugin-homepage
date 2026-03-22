@@ -121,6 +121,8 @@ const DEBOUNCE_MS = 300;
 export class ImageGalleryBlock extends BaseBlock {
   /** The AbortController for the lightbox opened by THIS instance (if any). */
   private myLightboxAc: AbortController | null = null;
+  /** Masonry column ResizeObserver — disconnected before each re-render. */
+  private masonryRo: ResizeObserver | null = null;
 
   onunload(): void {
     super.onunload();
@@ -202,9 +204,10 @@ export class ImageGalleryBlock extends BaseBlock {
         }
       };
       updateCols();
-      const ro = new ResizeObserver(updateCols);
-      ro.observe(gallery);
-      this.register(() => ro.disconnect());
+      this.masonryRo?.disconnect();
+      this.masonryRo = new ResizeObserver(updateCols);
+      this.masonryRo.observe(gallery);
+      this.register(() => { this.masonryRo?.disconnect(); this.masonryRo = null; });
     } else {
       const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
       gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols, 100));

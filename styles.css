@@ -502,21 +502,6 @@
   line-height: 1.5;
 }
 
-.block-empty-hint-action {
-  font-size: var(--font-interface-size, 0.8125rem);
-  color: var(--text-accent, var(--color-accent));
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 12px;
-  border-radius: var(--radius-s, 4px);
-  transition: background 0.12s ease-out;
-  box-shadow: none;
-}
-
-.block-empty-hint-action:hover {
-  background: var(--background-modifier-hover);
-}
 
 /* ── Block Loading Placeholder ──────────────────────────── */
 .block-loading {
@@ -950,7 +935,6 @@
   height: 100%;
   --voice-recording-color: hsl(0, 72%, 56%);
 }
-
 .voice-body {
   display: flex;
   flex-direction: column;
@@ -2092,12 +2076,8 @@
 .homepage-view:has(.homepage-toolbar.is-visible) .homepage-grid.grid-stack {
   overflow-y: visible;
   min-height: auto;
-  /* Pull the grid up by exactly the GridStack item margin (8 px, set in
-     GridStack.init — see GridLayout.ts) so the first row of blocks lands
-     flush with the editing toolbar. Using a negative margin rather than
-     overriding --gs-item-margin-top keeps normal 16 px gaps between all
-     other rows intact. Review this offset if the GridStack margin changes. */
-  margin-top: -8px;
+  /* Add breathing room between the editing toolbar and the grid content. */
+  margin-top: 12px;
 }
 
 .toolbar-edit-indicator {
@@ -2151,11 +2131,6 @@
   gap: 4px;
 }
 
-.toolbar-col-auto-hint {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
 
 /* ── Zoom slider ──────────────────────────────────────────── */
 .toolbar-zoom-group {
@@ -3231,6 +3206,18 @@
 }
 
 /* ── Pomodoro Block ────────────────────────────────────── */
+/* Center pomodoro and voice content relative to the full card, not just below the header */
+.homepage-block-wrapper:has(.pomodoro-block) .block-content,
+.homepage-block-wrapper:has(.voice-block) .block-content {
+  position: absolute;
+  inset: var(--hp-card-padding);
+  z-index: 0;
+}
+.homepage-block-wrapper:has(.pomodoro-block) .block-header-zone,
+.homepage-block-wrapper:has(.voice-block) .block-header-zone {
+  z-index: 1;
+}
+
 .pomodoro-block {
   container-type: size;
   height: 100%;
@@ -3465,7 +3452,7 @@
 .is-mobile .homepage-view {
   --hp-padding: 6px;
   --hp-card-padding: 10px;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Bigger tap targets across all interactive elements on mobile */
@@ -3506,6 +3493,7 @@
 /* Single-column: tighter gap */
 .is-mobile .homepage-grid.grid-stack.hp-single-column {
   gap: 6px;
+  padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── Reduced Motion ─────────────────────────────────────── */

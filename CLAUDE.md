@@ -46,25 +46,45 @@ npx tsc --noEmit       # type-check (run after every .ts change)
 ### LayoutConfig
 `LayoutConfig` in `types.ts` holds global layout state:
 - `columns` -- grid column count (2–5)
+- `layoutPriority` -- `'row'` or `'column'` fill direction
+- `responsiveMode` -- `'unified'` (single adaptive layout) or `'separate'` (independent desktop + mobile)
+- `mobileColumns` -- grid column count on mobile (1–3), used when `responsiveMode` is `'separate'`
+- `mobileLayoutPriority` -- fill direction on mobile, used when `responsiveMode` is `'separate'`
+- `mobileBlocks` -- block array for mobile, used when `responsiveMode` is `'separate'`
 - `openOnStartup` -- auto-open homepage on Obsidian launch
 - `openMode` -- how homepage opens on startup (`'replace-all'`, `'replace-last'`, `'retain'`)
 - `manualOpenMode` -- how homepage opens from ribbon/command (same `OpenMode` values)
 - `openWhenEmpty` -- open homepage when no other tabs are open
 - `pin` -- prevent the homepage tab from being closed
 - `hideScrollbar` -- hide the homepage scroll bar
-- `blocks` -- array of `BlockInstance`
+- `blocks` -- array of `BlockInstance` (desktop blocks, or the only blocks when `responsiveMode` is `'unified'`)
 
 ### Layout Model (GridStack coordinates)
 `BlockInstance` uses `{ x, y, w, h }` -- 0-indexed column/row position and span. Old `col/row/colSpan/rowSpan` fields are auto-migrated in `migrateBlockInstance()`.
 
 ### Immutable Layout Mutations
-Never mutate `BlockInstance` objects in place. Pattern:
+Never mutate `BlockInstance` objects in place. Use the platform-aware helpers:
 ```typescript
-const newBlocks = this.plugin.layout.blocks.map(b =>
+// Read: always use activeBlocks() / activeColumns() / activeLayoutPriority()
+const newBlocks = this.plugin.activeBlocks().map(b =>
   b.id === id ? { ...b, ...changes } : b,
 );
-void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+// Write (in GridLayout): use buildLayoutUpdate() to route to correct field
+this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
+// Write (elsewhere): use plugin.saveLayout() with the full layout
+void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
 ```
+`buildLayoutUpdate()` in `GridLayout` routes blocks to `mobileBlocks` or `blocks`
+(and columns to `mobileColumns` or `columns`) based on `plugin.isMobileActive()`.
+
+### Responsive Mode
+`IHomepagePlugin` exposes platform-aware accessors:
+- `isMobileActive()` -- true when `Platform.isMobile && responsiveMode === 'separate'`
+- `activeBlocks()` -- returns `mobileBlocks` or `blocks`
+- `activeColumns()` -- returns `mobileColumns` or `columns`
+- `activeLayoutPriority()` -- returns `mobileLayoutPriority` or `layoutPriority`
+
+All grid/toolbar code uses these accessors instead of reading `layout.blocks` directly.
 
 ### BaseBlock (`src/blocks/BaseBlock.ts`)
 - Extends Obsidian `Component` -- use `this.registerInterval()`, `this.registerEvent()`, `this.register()` for auto-cleanup. Never raw `setInterval`/`vault.on`.

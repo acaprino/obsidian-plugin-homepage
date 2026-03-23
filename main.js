@@ -8573,7 +8573,6 @@ var QuotesListBlock = class extends BaseBlock {
       quoteStyle = "classic",
       fontStyle = "default",
       customFont = "",
-      mode = "list",
       dailySeed = true,
       textAlign = "left",
       verticalAlign = "top"
@@ -8581,7 +8580,8 @@ var QuotesListBlock = class extends BaseBlock {
     el.style.setProperty("--hp-quote-valign", verticalAlign === "middle" ? "center" : verticalAlign === "bottom" ? "flex-end" : "flex-start");
     el.style.setProperty("--hp-quote-align", textAlign === "center" ? "center" : textAlign === "right" ? "right" : "start");
     this.renderHeader(el, "Quotes");
-    const safeMode = mode === "single" ? "single" : "list";
+    const effectiveMax = typeof maxItems === "number" && maxItems > 0 ? maxItems : 0;
+    const safeMode = effectiveMax === 1 ? "single" : "list";
     const safeFontStyle = fontStyle === "serif" || fontStyle === "handwriting" ? fontStyle : "default";
     el.toggleClass("quote-font-serif", safeFontStyle === "serif");
     el.toggleClass("quote-font-handwriting", safeFontStyle === "handwriting");
@@ -8591,6 +8591,7 @@ var QuotesListBlock = class extends BaseBlock {
     el.toggleClass("quote-style-centered", false);
     el.toggleClass("quote-style-card", false);
     el.toggleClass("quotes-list-block--extend", false);
+    el.toggleClass("quote-no-accent", this.instance.config.hideAccentBar === true);
     if (safeMode === "single") {
       if (source === "text") {
         this.renderSingleTextQuote(el, quotes, dailySeed);
@@ -8662,7 +8663,7 @@ var QuotesListBlock = class extends BaseBlock {
       this.observeWidthForAutoHeight(colsEl);
     }
     if (source === "text") {
-      this.renderTextQuotes(colsEl, quotes, maxItems);
+      this.renderTextQuotes(colsEl, quotes, effectiveMax);
       return;
     }
     if (!tag) {
@@ -8672,7 +8673,8 @@ var QuotesListBlock = class extends BaseBlock {
       return;
     }
     const tagSearch = tag.startsWith("#") ? tag : `#${tag}`;
-    const files = getFilesWithTag(this.app, tagSearch).slice(0, maxItems);
+    const allFiles = getFilesWithTag(this.app, tagSearch);
+    const files = effectiveMax > 0 ? allFiles.slice(0, effectiveMax) : allFiles;
     const results = await Promise.allSettled(
       files.map(async (file) => {
         const content = await this.app.vault.read(file);
@@ -8741,7 +8743,8 @@ var QuotesListBlock = class extends BaseBlock {
       hint.createDiv({ cls: "block-empty-hint-text", text: "No quotes yet. Add them in settings, separated by ---." });
       return;
     }
-    const blocks = raw.split(/\n---\n/).map((b) => b.trim()).filter(Boolean).slice(0, maxItems);
+    const allBlocks = raw.split(/\n---\n/).map((b) => b.trim()).filter(Boolean);
+    const blocks = maxItems > 0 ? allBlocks.slice(0, maxItems) : allBlocks;
     for (const block of blocks) {
       const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
       const lastLine = lines[lines.length - 1];
@@ -8775,10 +8778,9 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian10.Setting(contentEl).setName("Quotes list settings").setHeading();
+    new import_obsidian10.Setting(contentEl).setName("Quotes settings").setHeading();
     const draft = structuredClone(this.config);
     draft.source ??= "tag";
-    draft.mode ??= "list";
     let tagSection;
     let textSection;
     new import_obsidian10.Setting(contentEl).setName("Source").setDesc("From tagged notes, or entered manually.").addDropdown(
@@ -8811,42 +8813,38 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
     textarea.addEventListener("input", () => {
       draft.quotes = textarea.value;
     });
-    let singleSection;
-    let listSection;
-    new import_obsidian10.Setting(contentEl).setName("Display").setDesc("Grid shows all at once. Rotate cycles through one at a time.").addDropdown(
-      (d) => d.addOption("list", "All items").addOption("single", "One at a time").setValue(draft.mode ?? "list").onChange((v) => {
-        draft.mode = v === "single" ? "single" : "list";
-        singleSection.toggleClass("hp-hidden", v !== "single");
-        listSection.toggleClass("hp-hidden", v !== "list");
+    new import_obsidian10.Setting(contentEl).setName("Max quotes").setDesc("Leave empty for all. Set to 1 for a daily rotating quote.").addText(
+      (t) => t.setPlaceholder("All").setValue(typeof draft.maxItems === "number" && draft.maxItems > 0 ? String(draft.maxItems) : "").onChange((v) => {
+        const n = parseInt(v);
+        draft.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
+        dailySeedSetting.toggleClass("hp-hidden", draft.maxItems !== 1);
       })
     );
-    singleSection = contentEl.createDiv();
-    singleSection.toggleClass("hp-hidden", draft.mode !== "single");
-    new import_obsidian10.Setting(singleSection).setName("Daily seed").setDesc("Same item all day, changes at midnight.").addToggle(
+    const dailySeedSetting = contentEl.createDiv();
+    dailySeedSetting.toggleClass("hp-hidden", (draft.maxItems ?? 0) !== 1);
+    new import_obsidian10.Setting(dailySeedSetting).setName("Daily seed").setDesc("Same quote all day, changes at midnight.").addToggle(
       (t) => t.setValue(draft.dailySeed !== false).onChange((v) => {
         draft.dailySeed = v;
       })
     );
-    listSection = contentEl.createDiv();
-    listSection.toggleClass("hp-hidden", draft.mode !== "list");
-    new import_obsidian10.Setting(listSection).setName("Columns").addDropdown(
+    new import_obsidian10.Setting(contentEl).setName("Columns").addDropdown(
       (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(typeof draft.columns === "number" ? draft.columns : 2)).onChange((v) => {
         draft.columns = Number(v);
       })
     );
-    new import_obsidian10.Setting(listSection).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit works best at full width.").addDropdown(
+    new import_obsidian10.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands to show all quotes.").addDropdown(
       (d) => d.addOption("wrap", "Scroll (fixed height)").addOption("extend", "Grow to fit all").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "extend").onChange((v) => {
         draft.heightMode = v === "wrap" ? "wrap" : "extend";
       })
     );
-    new import_obsidian10.Setting(listSection).setName("Max items").addText(
-      (t) => t.setValue(String(typeof draft.maxItems === "number" ? draft.maxItems : 20)).onChange((v) => {
-        draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200);
-      })
-    );
-    new import_obsidian10.Setting(listSection).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
+    new import_obsidian10.Setting(contentEl).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
       (d) => d.addOption("classic", "Classic").addOption("centered", "Centered").addOption("card", "Card").setValue(typeof draft.quoteStyle === "string" ? draft.quoteStyle : "classic").onChange((v) => {
         draft.quoteStyle = v === "centered" || v === "card" ? v : "classic";
+      })
+    );
+    new import_obsidian10.Setting(contentEl).setName("Hide accent bar").setDesc("Remove the vertical line next to each quote.").addToggle(
+      (t) => t.setValue(draft.hideAccentBar === true).onChange((v) => {
+        draft.hideAccentBar = v;
       })
     );
     new import_obsidian10.Setting(contentEl).setName("Text alignment").setDesc("Left, center, or right.").addDropdown(
@@ -11397,7 +11395,7 @@ function registerBlocks() {
   BlockRegistry.register({
     type: "quotes-list",
     displayName: "Quotes",
-    defaultConfig: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20, quoteStyle: "classic", fontStyle: "default", customFont: "", mode: "list", dailySeed: true, showNoteTitle: true },
+    defaultConfig: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 0, quoteStyle: "classic", fontStyle: "default", customFont: "", dailySeed: true, showNoteTitle: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin)
   });

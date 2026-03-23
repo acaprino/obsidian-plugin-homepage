@@ -25,11 +25,11 @@ type QuotesConfig = {
   quoteStyle?: 'classic' | 'centered' | 'card';
   fontStyle?: 'default' | 'serif' | 'handwriting';
   customFont?: string;
-  mode?: 'list' | 'single';
   dailySeed?: boolean;
   textAlign?: 'left' | 'center' | 'right';
   verticalAlign?: 'top' | 'middle' | 'bottom';
   showNoteTitle?: boolean;
+  hideAccentBar?: boolean;
 };
 
 export class QuotesListBlock extends BaseBlock {
@@ -67,7 +67,7 @@ export class QuotesListBlock extends BaseBlock {
     const {
       source = 'tag', tag = '', quotes = '', columns = 2, maxItems = 20,
       heightMode = 'extend', quoteStyle = 'classic', fontStyle = 'default',
-      customFont = '', mode = 'list', dailySeed = true,
+      customFont = '', dailySeed = true,
       textAlign = 'left', verticalAlign = 'top',
     } = this.instance.config as QuotesConfig;
 
@@ -76,7 +76,10 @@ export class QuotesListBlock extends BaseBlock {
 
     this.renderHeader(el, 'Quotes');
 
-    const safeMode = mode === 'single' ? 'single' : 'list';
+    // maxItems === 1 triggers single-quote mode (daily rotation);
+    // 0 or undefined means show all; otherwise show that many.
+    const effectiveMax = typeof maxItems === 'number' && maxItems > 0 ? maxItems : 0;
+    const safeMode = effectiveMax === 1 ? 'single' : 'list';
 
     // Runtime enum validation — guards against tampered data.json values.
     const safeFontStyle = fontStyle === 'serif' || fontStyle === 'handwriting' ? fontStyle : 'default';
@@ -95,6 +98,7 @@ export class QuotesListBlock extends BaseBlock {
     el.toggleClass('quote-style-centered', false);
     el.toggleClass('quote-style-card', false);
     el.toggleClass('quotes-list-block--extend', false);
+    el.toggleClass('quote-no-accent', (this.instance.config as QuotesConfig).hideAccentBar === true);
 
     // ── Single mode ──────────────────────────────────────────────────────────
     if (safeMode === 'single') {
@@ -187,7 +191,7 @@ export class QuotesListBlock extends BaseBlock {
     }
 
     if (source === 'text') {
-      this.renderTextQuotes(colsEl, quotes, maxItems);
+      this.renderTextQuotes(colsEl, quotes, effectiveMax);
       return;
     }
 
@@ -200,7 +204,8 @@ export class QuotesListBlock extends BaseBlock {
     }
 
     const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
-    const files = getFilesWithTag(this.app, tagSearch).slice(0, maxItems);
+    const allFiles = getFilesWithTag(this.app, tagSearch);
+    const files = effectiveMax > 0 ? allFiles.slice(0, effectiveMax) : allFiles;
 
     // Read all files in parallel for better performance
     const results = await Promise.allSettled(
@@ -286,7 +291,8 @@ export class QuotesListBlock extends BaseBlock {
       return;
     }
 
-    const blocks = raw.split(/\n---\n/).map(b => b.trim()).filter(Boolean).slice(0, maxItems);
+    const allBlocks = raw.split(/\n---\n/).map(b => b.trim()).filter(Boolean);
+    const blocks = maxItems > 0 ? allBlocks.slice(0, maxItems) : allBlocks;
 
     for (const block of blocks) {
       const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
@@ -331,11 +337,10 @@ class QuotesSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    new Setting(contentEl).setName('Quotes list settings').setHeading();
+    new Setting(contentEl).setName('Quotes settings').setHeading();
 
     const draft = structuredClone(this.config) as QuotesConfig;
     draft.source ??= 'tag';
-    draft.mode ??= 'list';
 
     // Source toggle — shows/hides the relevant section
     let tagSection: HTMLElement;
@@ -383,57 +388,45 @@ class QuotesSettingsModal extends Modal {
     textarea.value = draft.quotes ?? '';
     textarea.addEventListener('input', () => { draft.quotes = textarea.value; });
 
-    // Display mode
-    let singleSection: HTMLElement;
-    let listSection: HTMLElement;
-
+    // ── Display settings (always visible) ──────────────────
     new Setting(contentEl)
-      .setName('Display')
-      .setDesc('Grid shows all at once. Rotate cycles through one at a time.')
-      .addDropdown(d =>
-        d.addOption('list', 'All items')
-         .addOption('single', 'One at a time')
-         .setValue(draft.mode ?? 'list')
+      .setName('Max quotes')
+      .setDesc('Leave empty for all. Set to 1 for a daily rotating quote.')
+      .addText(t =>
+        t.setPlaceholder('All')
+         .setValue(typeof draft.maxItems === 'number' && draft.maxItems > 0 ? String(draft.maxItems) : '')
          .onChange(v => {
-           draft.mode = v === 'single' ? 'single' : 'list';
-           singleSection.toggleClass('hp-hidden', v !== 'single');
-           listSection.toggleClass('hp-hidden', v !== 'list');
+           const n = parseInt(v);
+           draft.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
+           dailySeedSetting.toggleClass('hp-hidden', draft.maxItems !== 1);
          }),
       );
 
-    // Single-mode options
-    singleSection = contentEl.createDiv();
-    singleSection.toggleClass('hp-hidden', draft.mode !== 'single');
-    new Setting(singleSection)
+    const dailySeedSetting = contentEl.createDiv();
+    dailySeedSetting.toggleClass('hp-hidden', (draft.maxItems ?? 0) !== 1);
+    new Setting(dailySeedSetting)
       .setName('Daily seed')
-      .setDesc('Same item all day, changes at midnight.')
+      .setDesc('Same quote all day, changes at midnight.')
       .addToggle(t =>
         t.setValue(draft.dailySeed !== false)
          .onChange(v => { draft.dailySeed = v; }),
       );
 
-    // List-mode options
-    listSection = contentEl.createDiv();
-    listSection.toggleClass('hp-hidden', draft.mode !== 'list');
-    new Setting(listSection).setName('Columns').addDropdown(d =>
+    new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('1', '1').addOption('2', '2').addOption('3', '3')
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 2))
        .onChange(v => { draft.columns = Number(v); }),
     );
-    new Setting(listSection)
+    new Setting(contentEl)
       .setName('Height mode')
-      .setDesc('Scroll keeps the block compact. Grow to fit works best at full width.')
+      .setDesc('Scroll keeps the block compact. Grow to fit expands to show all quotes.')
       .addDropdown(d =>
         d.addOption('wrap', 'Scroll (fixed height)')
          .addOption('extend', 'Grow to fit all')
          .setValue(typeof draft.heightMode === 'string' ? draft.heightMode : 'extend')
          .onChange(v => { draft.heightMode = v === 'wrap' ? 'wrap' : 'extend'; }),
       );
-    new Setting(listSection).setName('Max items').addText(t =>
-      t.setValue(String(typeof draft.maxItems === 'number' ? draft.maxItems : 20))
-       .onChange(v => { draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200); }),
-    );
-    new Setting(listSection)
+    new Setting(contentEl)
       .setName('Quote style')
       .setDesc('Classic: left accent bar. Centered: single column. Card: each quote in its own box.')
       .addDropdown(d =>
@@ -442,6 +435,13 @@ class QuotesSettingsModal extends Modal {
          .addOption('card', 'Card')
          .setValue(typeof draft.quoteStyle === 'string' ? draft.quoteStyle : 'classic')
          .onChange(v => { draft.quoteStyle = v === 'centered' || v === 'card' ? v : 'classic'; }),
+      );
+    new Setting(contentEl)
+      .setName('Hide accent bar')
+      .setDesc('Remove the vertical line next to each quote.')
+      .addToggle(t =>
+        t.setValue(draft.hideAccentBar === true)
+         .onChange(v => { draft.hideAccentBar = v; }),
       );
 
     new Setting(contentEl)

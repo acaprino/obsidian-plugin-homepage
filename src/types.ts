@@ -6,7 +6,7 @@ export const BLOCK_TYPES = [
   'quotes-list', 'image-gallery', 'clock', 'embedded-note',
   'static-text', 'html', 'video-embed',
   'bookmarks', 'recent-files', 'pomodoro', 'spacer', 'random-note',
-  'voice-dictation',
+  'voice-dictation', 'vault-search',
 ] as const;
 
 export type BlockType = typeof BLOCK_TYPES[number];

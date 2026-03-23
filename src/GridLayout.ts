@@ -876,6 +876,16 @@ export class GridLayout {
     if (!this.gridStack) return;
     this.effectiveColumns = next;
 
+    // Cancel any pending auto-height RAF from a previous column state.
+    // Without this, a stale resize batch could fire after a rapid
+    // narrow→canonical→narrow oscillation and persist mixed positions.
+    if (this.batchRafId !== null) {
+      cancelAnimationFrame(this.batchRafId);
+      this.pendingRafs.delete(this.batchRafId);
+      this.batchRafId = null;
+      this.pendingResizes.clear();
+    }
+
     // Single-column mode: switch to CSS flex layout so blocks shrink-wrap
     // their content instead of using GridStack's fixed row heights.
     this.gridEl.classList.toggle('hp-single-column', next === 1);
@@ -883,6 +893,32 @@ export class GridLayout {
     // Use 'none' so GridStack doesn't auto-scale widths, then manually
     // clamp each block's w to the new column count and repack.
     this.gridStack.column(next, 'none');
+
+    // When returning to the user's canonical column count, restore saved
+    // positions exactly.  The responsive repacking is a lossy transform
+    // (multiple source positions map to the same packed output), so we
+    // cannot invert it — we must read from the persisted layout instead.
+    if (next === this.userColumns) {
+      const saved = this.plugin.activeBlocks();
+      const lookup = new Map(saved.map(b => [b.id, b]));
+      const autoHeightItems: Array<{ gsEl: HTMLElement; b: BlockInstance }> = [];
+      this.gridStack.batchUpdate();
+      for (const gsEl of this.gridStack.getGridItems()) {
+        const id = gsEl.getAttribute('gs-id');
+        const b = id ? lookup.get(id) : undefined;
+        if (!b) continue;
+        const isAuto = this.shouldAutoHeight(b);
+        this.gridStack.update(gsEl as HTMLElement, {
+          x: b.x, y: b.y, w: Math.min(b.w, next),
+          ...(isAuto ? {} : { h: b.h }),
+          maxW: next,
+        });
+        if (isAuto) autoHeightItems.push({ gsEl: gsEl as HTMLElement, b });
+      }
+      this.gridStack.batchUpdate(false);
+      for (const { gsEl, b } of autoHeightItems) this.scheduleResize(gsEl, b);
+      return;
+    }
 
     // Collect current nodes, clamp widths, and pack rows ourselves
     // (GridStack's compact() is unreliable with float:true / static grids).

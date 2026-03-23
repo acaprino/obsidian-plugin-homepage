@@ -6793,8 +6793,37 @@ var GridLayout = class _GridLayout {
   applyColumnChange(next) {
     if (!this.gridStack) return;
     this.effectiveColumns = next;
+    if (this.batchRafId !== null) {
+      cancelAnimationFrame(this.batchRafId);
+      this.pendingRafs.delete(this.batchRafId);
+      this.batchRafId = null;
+      this.pendingResizes.clear();
+    }
     this.gridEl.classList.toggle("hp-single-column", next === 1);
     this.gridStack.column(next, "none");
+    if (next === this.userColumns) {
+      const saved = this.plugin.activeBlocks();
+      const lookup = new Map(saved.map((b) => [b.id, b]));
+      const autoHeightItems = [];
+      this.gridStack.batchUpdate();
+      for (const gsEl of this.gridStack.getGridItems()) {
+        const id = gsEl.getAttribute("gs-id");
+        const b = id ? lookup.get(id) : void 0;
+        if (!b) continue;
+        const isAuto = this.shouldAutoHeight(b);
+        this.gridStack.update(gsEl, {
+          x: b.x,
+          y: b.y,
+          w: Math.min(b.w, next),
+          ...isAuto ? {} : { h: b.h },
+          maxW: next
+        });
+        if (isAuto) autoHeightItems.push({ gsEl, b });
+      }
+      this.gridStack.batchUpdate(false);
+      for (const { gsEl, b } of autoHeightItems) this.scheduleResize(gsEl, b);
+      return;
+    }
     const nodeItems = [];
     for (const gsEl of this.gridStack.getGridItems()) {
       const node = gsEl.gridstackNode;

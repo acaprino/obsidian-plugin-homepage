@@ -29,6 +29,8 @@ export class GridLayout {
   private effectiveColumns: number;
   private userColumns = 3;
   private isDestroyed = false;
+  /** True while GridStack is initializing — suppresses dragstop/resizestop sync. */
+  private initPhase = false;
   /** Callback to trigger the Add Block modal from the empty state CTA. */
   onRequestAddBlock: (() => void) | null = null;
   /** ID of the most recently added block — used for scroll-into-view. */
@@ -117,6 +119,12 @@ export class GridLayout {
   }
 
   private initGridStack(blocks: BlockInstance[], columns: number, isInitial: boolean): void {
+    // Suppress dragstop/resizestop sync until init settles.
+    // GridStack may auto-adjust blocks during load() when the viewport
+    // is narrower than the logical column count, firing spurious events
+    // that would corrupt the persisted canonical layout.
+    this.initPhase = true;
+
     // Build widget items WITHOUT content — DOM will be built manually using Obsidian API
     // (GridStack sets content via innerHTML which Obsidian blocks)
     const items: GridStackWidget[] = blocks.map((instance) => ({
@@ -245,10 +253,12 @@ export class GridLayout {
     // GridStack already compensates for CSS transform via getValuesFromTransformedElement
     // (dragTransform.xScale/yScale), so we do NOT need to clear the viewport-fit scale.
     this.gridStack.on('dragstop', () => {
+      if (this.initPhase) return;
       this.syncLayoutFromGrid();
     });
 
     this.gridStack.on('resizestop', () => {
+      if (this.initPhase) return;
       this.syncLayoutFromGrid();
       this.updateCompactSizeLabels();
     });
@@ -266,6 +276,17 @@ export class GridLayout {
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }
+
+    // Allow GridStack auto-adjustment events to settle before enabling
+    // sync.  Events fire asynchronously after load(), so a rAF is enough.
+    // Track in pendingRafs so destroyAll cancels it — prevents a stale
+    // rAF from a prior init clearing initPhase on a newly created grid.
+    const initRaf = requestAnimationFrame(() => {
+      this.pendingRafs.delete(initRaf);
+      if (this.isDestroyed) return;
+      this.initPhase = false;
+    });
+    this.pendingRafs.add(initRaf);
   }
 
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
@@ -356,6 +377,15 @@ export class GridLayout {
       this.pendingRafs.delete(rafId);
       this.batchRafId = null;
       if (this.isDestroyed || !this.gridStack) return;
+
+      // Single-column flex mode: CSS height:auto handles all sizing.
+      // GridStack row calculations (80px cells) are meaningless here and
+      // cause infinite resize oscillation as content reflows.
+      if (this.effectiveColumns === 1) {
+        this.pendingResizes.clear();
+        return;
+      }
+
       const batch = Array.from(this.pendingResizes.values());
       this.pendingResizes.clear();
 
@@ -397,7 +427,9 @@ export class GridLayout {
   /** Measure a block's natural content height and update its GridStack row count.
    *  Returns true if the height was changed. */
   private resizeBlockToContent(gsEl: HTMLElement, instance: BlockInstance): boolean {
-    if (!this.gridStack || !gsEl.isConnected) return false;
+    if (!this.gridStack || !gsEl.isConnected) {
+      return false;
+    }
 
     const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
     const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
@@ -683,7 +715,7 @@ export class GridLayout {
   }
 
   private syncLayoutFromGrid(): void {
-    if (!this.gridStack) return;
+    if (!this.gridStack || this.initPhase) return;
 
     // When responsive columns are active (effectiveColumns < userColumns),
     // GridStack nodes hold transient positions adapted for the narrow viewport.
@@ -691,11 +723,17 @@ export class GridLayout {
     // (desktop) layout.  Only persist height changes in this case.
     // Note: dragstop/resizestop callers are gated by staticGrid (only active in
     // edit mode), so isResponsive is always false for manual user interactions.
-    const isResponsive = this.effectiveColumns !== this.userColumns && !this.editMode;
+    // Responsive guard: when effective columns differ from canonical,
+    // only persist h (not x/y/w) to avoid overwriting the canonical layout.
+    // This applies in view mode AND edit mode — in edit mode at a narrow
+    // viewport, the 5-column grid is squeezed and positions are distorted.
+    const isResponsive = this.effectiveColumns !== this.userColumns;
 
     // Fast path: when every block is auto-height and we are in responsive mode,
     // there is nothing to persist — skip the GridStack DOM traversal entirely.
-    if (isResponsive && this.plugin.activeBlocks().every(b => this.shouldAutoHeight(b))) return;
+    if (isResponsive && this.plugin.activeBlocks().every(b => this.shouldAutoHeight(b))) {
+      return;
+    }
 
     const nodes = this.gridStack.getGridItems();
     const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
@@ -727,7 +765,9 @@ export class GridLayout {
       if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
-    if (!changed) return;
+    if (!changed) {
+      return;
+    }
 
     const newBlocks = this.plugin.activeBlocks().map(b => {
       const pos = posMap.get(b.id);
@@ -760,6 +800,11 @@ export class GridLayout {
     // Set editMode before rerender so setupResponsiveColumns skips
     // responsive remapping while in edit mode (canonical layout preserved).
     this.editMode = enabled;
+    if (enabled) {
+      // Force canonical columns so isResponsive is false and drag/resize
+      // changes in edit mode are fully persisted (not treated as responsive).
+      this.effectiveColumns = this.userColumns;
+    }
     if (this.gridStack) {
       this.gridStack.setStatic(!enabled);
     }
@@ -1003,6 +1048,7 @@ export class GridLayout {
   /** Unload all blocks and destroy GridStack instance. */
   destroyAll(): void {
     this.isDestroyed = true;
+    this.initPhase = false;
     if (this.animTimer) { clearTimeout(this.animTimer); this.animTimer = null; }
     if (this.syncTimer) { clearTimeout(this.syncTimer); this.syncTimer = null; }
     if (this.batchRafId !== null) { cancelAnimationFrame(this.batchRafId); this.batchRafId = null; }

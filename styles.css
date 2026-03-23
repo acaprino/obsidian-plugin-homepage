@@ -2813,9 +2813,24 @@
 .homepage-grid.grid-stack.hp-single-column .block-content.spacer-block {
   min-height: 0;
 }
-/* Pomodoro uses container-type:size which needs an explicit height.
-   In single-column mode, switch to inline-size so it auto-heights,
-   and lay out ring + controls horizontally. */
+/* Pomodoro & Voice use container-type:size + position:absolute on
+   .block-content which needs an explicit height.  In single-column
+   flex mode, remove the absolute positioning so blocks participate
+   in the flex flow and auto-height correctly. */
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper:has(.pomodoro-block) .block-content,
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper:has(.voice-block) .block-content {
+  position: relative;
+  inset: auto;
+}
+.homepage-grid.grid-stack.hp-single-column .voice-block {
+  container-type: inline-size;
+  height: auto;
+}
+.homepage-grid.grid-stack.hp-single-column .voice-body {
+  height: auto;
+  gap: 12px;
+  padding: 8px 0;
+}
 .homepage-grid.grid-stack.hp-single-column .pomodoro-block {
   container-type: inline-size;
   height: auto;

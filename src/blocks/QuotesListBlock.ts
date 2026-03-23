@@ -29,6 +29,7 @@ type QuotesConfig = {
   dailySeed?: boolean;
   textAlign?: 'left' | 'center' | 'right';
   verticalAlign?: 'top' | 'middle' | 'bottom';
+  showNoteTitle?: boolean;
 };
 
 export class QuotesListBlock extends BaseBlock {
@@ -131,7 +132,8 @@ export class QuotesListBlock extends BaseBlock {
         const cache = this.app.metadataCache.getFileCache(file);
         const { heading, body } = parseNoteInsight(content, cache);
         const card = el.createDiv({ cls: 'insight-card' });
-        card.createDiv({ cls: 'insight-title', text: heading || file.basename });
+        const showTitle = (this.instance.config as QuotesConfig).showNoteTitle !== false;
+        if (showTitle) card.createDiv({ cls: 'insight-title', text: heading || file.basename });
         card.createDiv({ cls: 'insight-body', text: body });
       } catch (e) {
         console.error('[Homepage Blocks] QuotesListBlock single mode failed to read file:', e);
@@ -231,7 +233,8 @@ export class QuotesListBlock extends BaseBlock {
         quote.addClass('quote-colored');
       }
 
-      item.createDiv({ cls: 'quote-source', text: file.basename });
+      const showTitle = (this.instance.config as QuotesConfig).showNoteTitle !== false;
+      if (showTitle) item.createDiv({ cls: 'quote-source', text: file.basename });
     }
   }
 
@@ -359,6 +362,13 @@ class QuotesSettingsModal extends Modal {
       t.setValue(draft.tag ?? '')
        .onChange(v => { draft.tag = v; }),
     );
+    new Setting(tagSection)
+      .setName('Show note title')
+      .setDesc('Display the note filename as the quote attribution.')
+      .addToggle(t =>
+        t.setValue(draft.showNoteTitle !== false)
+         .onChange(v => { draft.showNoteTitle = v; }),
+      );
 
     // Text section
     textSection = contentEl.createDiv();

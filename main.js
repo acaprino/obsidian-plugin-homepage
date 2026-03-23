@@ -8617,7 +8617,8 @@ var QuotesListBlock = class extends BaseBlock {
         const cache = this.app.metadataCache.getFileCache(file);
         const { heading, body } = parseNoteInsight(content, cache);
         const card2 = el.createDiv({ cls: "insight-card" });
-        card2.createDiv({ cls: "insight-title", text: heading || file.basename });
+        const showTitle = this.instance.config.showNoteTitle !== false;
+        if (showTitle) card2.createDiv({ cls: "insight-title", text: heading || file.basename });
         card2.createDiv({ cls: "insight-body", text: body });
       } catch (e) {
         console.error("[Homepage Blocks] QuotesListBlock single mode failed to read file:", e);
@@ -8695,7 +8696,8 @@ var QuotesListBlock = class extends BaseBlock {
         quote.style.setProperty("--hp-quote-color", color);
         quote.addClass("quote-colored");
       }
-      item.createDiv({ cls: "quote-source", text: file.basename });
+      const showTitle = this.instance.config.showNoteTitle !== false;
+      if (showTitle) item.createDiv({ cls: "quote-source", text: file.basename });
     }
   }
   /** Render a single quote picked from the text list (daily or random). */
@@ -8791,6 +8793,11 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
     new import_obsidian10.Setting(tagSection).setName("Tag").setDesc("Without # prefix").addText(
       (t) => t.setValue(draft.tag ?? "").onChange((v) => {
         draft.tag = v;
+      })
+    );
+    new import_obsidian10.Setting(tagSection).setName("Show note title").setDesc("Display the note filename as the quote attribution.").addToggle(
+      (t) => t.setValue(draft.showNoteTitle !== false).onChange((v) => {
+        draft.showNoteTitle = v;
       })
     );
     textSection = contentEl.createDiv();
@@ -11389,8 +11396,8 @@ function registerBlocks() {
   });
   BlockRegistry.register({
     type: "quotes-list",
-    displayName: "Quotes list",
-    defaultConfig: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20, quoteStyle: "classic", fontStyle: "default", customFont: "", mode: "list", dailySeed: true },
+    displayName: "Quotes",
+    defaultConfig: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20, quoteStyle: "classic", fontStyle: "default", customFont: "", mode: "list", dailySeed: true, showNoteTitle: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin)
   });

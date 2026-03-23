@@ -908,8 +908,12 @@
   background: color-mix(in oklch, var(--block-accent) 15%, transparent);
 }
 
-/* ── Insight Block ──────────────────────────────────────── */
+/* ── Insight Block (single-mode quotes / random-note) ──── */
 .insight-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: var(--hp-quote-valign, flex-start);
+  height: 100%;
   margin-top: 4px;
 }
 
@@ -926,6 +930,10 @@
   color: var(--text-normal);
   font-size: inherit;
   line-height: 1.6;
+}
+.quote-no-accent .insight-body {
+  border-left: none;
+  padding-left: 0;
 }
 
 /* ── Voice Dictation Block ──────────────────────────────── */
@@ -1338,7 +1346,9 @@
 
 /* ── Quotes List Block ──────────────────────────────────── */
 .quotes-columns {
-  column-gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(var(--hp-column-count, 2), 1fr);
+  gap: 14px;
   max-height: 500px;
   overflow-y: auto;
 }
@@ -1366,8 +1376,6 @@
 }
 
 .quote-item {
-  margin-bottom: 10px;
-  break-inside: avoid;
 }
 
 .quote-content {
@@ -1378,6 +1386,10 @@
   line-height: 1.6;
   color: var(--text-normal);
 }
+.quote-no-accent .quote-content {
+  border-left: none;
+  padding-left: 0;
+}
 
 .quote-source {
   font-size: var(--font-interface-size, 0.8125rem);
@@ -1387,7 +1399,7 @@
 
 /* ── Quote style: centered ──────────────────────────────── */
 .quotes-list-block.quote-style-centered .quotes-columns {
-  column-count: 1;
+  grid-template-columns: 1fr;
 }
 .quotes-list-block.quote-style-centered .quote-item {
   text-align: center;
@@ -1445,7 +1457,9 @@
 /* --hp-quote-font is set by a preset class below or overridden by inline style
    (custom font via setProperty). The base rule always consumes it. */
 .quotes-list-block .quote-content,
-.quotes-list-block .quote-source {
+.quotes-list-block .quote-source,
+.quotes-list-block .insight-body,
+.quotes-list-block .insight-title {
   font-family: var(--hp-quote-font, inherit);
 }
 
@@ -1454,11 +1468,12 @@
 }
 
 .quotes-list-block.quote-font-handwriting {
-  --hp-quote-font: 'Segoe Script', 'Bradley Hand ITC', 'Bradley Hand', cursive;
+  --hp-quote-font: 'Dancing Script', 'Caveat', 'Patrick Hand', 'Segoe Script', cursive;
   --hp-quote-line-height: 1.9;
 }
 
-.quotes-list-block .quote-content {
+.quotes-list-block .quote-content,
+.quotes-list-block .insight-body {
   line-height: var(--hp-quote-line-height, 1.6);
 }
 
@@ -2217,6 +2232,15 @@
   margin: 0 -4px;
   transition: background 0.1s ease-out;
 }
+/* When title is hidden, the header zone only contains the collapse chevron.
+   Collapse it to zero height so it doesn't consume vertical space. */
+.block-header-zone:not(:has(.block-header)) {
+  padding: 0;
+  margin: 0;
+  min-height: 0;
+  height: 0;
+  overflow: hidden;
+}
 
 .block-header-zone:hover {
   background: var(--background-modifier-hover);
@@ -2813,9 +2837,24 @@
 .homepage-grid.grid-stack.hp-single-column .block-content.spacer-block {
   min-height: 0;
 }
-/* Pomodoro uses container-type:size which needs an explicit height.
-   In single-column mode, switch to inline-size so it auto-heights,
-   and lay out ring + controls horizontally. */
+/* Pomodoro & Voice use container-type:size + position:absolute on
+   .block-content which needs an explicit height.  In single-column
+   flex mode, remove the absolute positioning so blocks participate
+   in the flex flow and auto-height correctly. */
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper:has(.pomodoro-block) .block-content,
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper:has(.voice-block) .block-content {
+  position: relative;
+  inset: auto;
+}
+.homepage-grid.grid-stack.hp-single-column .voice-block {
+  container-type: inline-size;
+  height: auto;
+}
+.homepage-grid.grid-stack.hp-single-column .voice-body {
+  height: auto;
+  gap: 12px;
+  padding: 8px 0;
+}
 .homepage-grid.grid-stack.hp-single-column .pomodoro-block {
   container-type: inline-size;
   height: auto;
@@ -3528,4 +3567,4 @@
 .bookmark-grid { grid-template-columns: var(--hp-grid-cols); }
 .image-gallery:not(.masonry-layout) { grid-template-columns: var(--hp-grid-cols); }
 .image-gallery.masonry-layout { columns: var(--hp-masonry-cols, 3); }
-.quotes-columns { column-count: var(--hp-column-count, 2); }
+.quotes-columns { grid-template-columns: repeat(var(--hp-column-count, 2), 1fr); }

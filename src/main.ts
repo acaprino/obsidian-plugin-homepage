@@ -305,8 +305,8 @@ function registerBlocks(): void {
 
   BlockRegistry.register({
     type: 'quotes-list',
-    displayName: 'Quotes list',
-    defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20, quoteStyle: 'classic', fontStyle: 'default', customFont: '', mode: 'list', dailySeed: true },
+    displayName: 'Quotes',
+    defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 0, quoteStyle: 'classic', fontStyle: 'default', customFont: '', dailySeed: true, showNoteTitle: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
   });

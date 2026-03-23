@@ -6111,7 +6111,47 @@ var ACCENT_PRESETS = [
   "#6c5ce7",
   "#636e72"
 ];
+var Scheduler = class {
+  timers = /* @__PURE__ */ new Map();
+  rafs = /* @__PURE__ */ new Map();
+  timeout(name, ms, fn) {
+    this.cancelTimeout(name);
+    this.timers.set(name, setTimeout(() => {
+      this.timers.delete(name);
+      fn();
+    }, ms));
+  }
+  raf(name, fn) {
+    this.cancelRaf(name);
+    const id = requestAnimationFrame(() => {
+      this.rafs.delete(name);
+      fn();
+    });
+    this.rafs.set(name, id);
+  }
+  cancelTimeout(name) {
+    const id = this.timers.get(name);
+    if (id !== void 0) {
+      clearTimeout(id);
+      this.timers.delete(name);
+    }
+  }
+  cancelRaf(name) {
+    const id = this.rafs.get(name);
+    if (id !== void 0) {
+      cancelAnimationFrame(id);
+      this.rafs.delete(name);
+    }
+  }
+  cancelAll() {
+    for (const id of this.timers.values()) clearTimeout(id);
+    this.timers.clear();
+    for (const id of this.rafs.values()) cancelAnimationFrame(id);
+    this.rafs.clear();
+  }
+};
 var GridLayout = class _GridLayout {
+  // ── Public API ─────────────────────────────────────────────────────────
   constructor(containerEl, app, plugin, onLayoutChange) {
     this.app = app;
     this.plugin = plugin;
@@ -6122,15 +6162,12 @@ var GridLayout = class _GridLayout {
   gridEl;
   gridStack = null;
   blocks = /* @__PURE__ */ new Map();
-  animTimer = null;
-  syncTimer = null;
+  scheduler = new Scheduler();
   editMode = false;
-  columns = 3;
-  pendingRafs = /* @__PURE__ */ new Set();
   resizeObserver = null;
   effectiveColumns;
-  userColumns = 3;
-  isDestroyed = false;
+  canonicalColumns = 3;
+  phase = 0 /* Destroyed */;
   /** Callback to trigger the Add Block modal from the empty state CTA. */
   onRequestAddBlock = null;
   /** ID of the most recently added block — used for scroll-into-view. */
@@ -6139,34 +6176,16 @@ var GridLayout = class _GridLayout {
   getElement() {
     return this.gridEl;
   }
-  /**
-   * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
-   * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
-   */
-  buildLayoutUpdate(blocks, extra) {
-    const mobile = this.plugin.isMobileActive();
-    const base = { ...this.plugin.layout };
-    if (mobile) {
-      base.mobileBlocks = blocks;
-      if (extra?.columns !== void 0) base.mobileColumns = extra.columns;
-    } else {
-      base.blocks = blocks;
-      if (extra?.columns !== void 0) base.columns = extra.columns;
-    }
-    return base;
-  }
   render(blocks, columns, isInitial = false) {
-    this.destroyAll();
-    this.isDestroyed = false;
+    this.teardown();
+    this.phase = 2 /* Ready */;
     this.gridEl.setAttribute("role", "list");
     this.gridEl.setAttribute("aria-label", "Homepage blocks");
     if (isInitial) {
       this.gridEl.addClass("homepage-grid--animating");
-      if (this.animTimer) clearTimeout(this.animTimer);
-      this.animTimer = setTimeout(() => {
-        this.animTimer = null;
+      this.scheduler.timeout("anim", 500, () => {
         this.gridEl.removeClass("homepage-grid--animating");
-      }, 500);
+      });
     }
     if (this.editMode) {
       this.gridEl.addClass("edit-mode");
@@ -6179,23 +6198,99 @@ var GridLayout = class _GridLayout {
     }
     this.initGridStack(blocks, columns, isInitial);
   }
-  renderEmptyState() {
-    this.gridEl.empty();
-    const empty = this.gridEl.createDiv({ cls: "homepage-empty-state" });
-    empty.createDiv({ cls: "homepage-empty-icon", text: "\u{1F3E0}" });
-    empty.createEl("p", { cls: "homepage-empty-title", text: "Your homepage is empty" });
-    empty.createEl("p", {
-      cls: "homepage-empty-desc",
-      text: this.editMode ? "Click the button below to add your first block." : "Toggle Edit mode in the toolbar to start adding blocks."
-    });
-    if (this.editMode && this.onRequestAddBlock) {
-      const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add your first block" });
-      cta.addEventListener("click", () => {
-        this.onRequestAddBlock?.();
-      });
+  /** Full teardown: unload blocks and remove the grid element from the DOM. */
+  destroy() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.teardown();
+    this.gridEl.remove();
+  }
+  setEditMode(enabled, skipRepack = false) {
+    if (!enabled && this.editMode && !skipRepack && this.plugin.layout.compactLayout) {
+      const repacked = _GridLayout.repackEditLayout(
+        this.plugin.activeBlocks(),
+        this.canonicalColumns,
+        this.plugin.activeLayoutPriority()
+      );
+      this.onLayoutChange(this.buildLayoutUpdate(repacked));
+    }
+    this.editMode = enabled;
+    if (enabled) {
+      this.effectiveColumns = this.canonicalColumns;
+    }
+    if (this.gridStack) {
+      this.gridStack.setStatic(!enabled);
+    }
+    this.rerender();
+    if (!enabled) {
+      this.setZoom(1);
     }
   }
+  /** Update column count, clamping each block's w to fit. */
+  setColumns(n) {
+    const newBlocks = this.plugin.activeBlocks().map((b) => ({
+      ...b,
+      w: Math.min(b.w, n)
+    }));
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks, { columns: n }));
+    this.rerender();
+  }
+  /** Apply a zoom scale (0.1–1) via CSS transform. */
+  setZoom(scale) {
+    if (!this.gridEl.isConnected) return;
+    if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+    if (scale >= 1) {
+      this.gridEl.style.removeProperty("--hp-grid-transform");
+      this.gridEl.removeClass("hp-zoomed");
+      this.gridEl.removeClass("viewport-fit");
+      return;
+    }
+    this.gridEl.style.setProperty("--hp-grid-transform", `scale(${scale})`);
+    this.gridEl.addClass("hp-zoomed");
+    this.gridEl.addClass("viewport-fit");
+  }
+  /** Compute zoom scale that fits all grid content in the viewport. */
+  computeFitZoom() {
+    if (!this.gridEl.isConnected) return 1;
+    const viewportHeight = this.gridEl.parentElement?.clientHeight ?? 0;
+    const contentHeight = this.gridEl.scrollHeight;
+    if (viewportHeight <= 0 || contentHeight <= viewportHeight) return 1;
+    const scale = viewportHeight / contentHeight;
+    return Math.max(0.75, Math.min(1, Math.round(scale * 20) / 20));
+  }
+  addBlock(instance) {
+    const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
+    const positioned = { ...instance, y: maxY };
+    const newBlocks = [...this.plugin.activeBlocks(), positioned];
+    this.lastAddedBlockId = positioned.id;
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
+    this.rerender();
+  }
+  // ── Rendering ──────────────────────────────────────────────────────────
+  rerender() {
+    this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
+  }
+  /** Unload all blocks and destroy GridStack instance. */
+  teardown() {
+    this.phase = 0 /* Destroyed */;
+    this.scheduler.cancelAll();
+    this.pendingResizes.clear();
+    for (const { block } of this.blocks.values()) {
+      block?.unload();
+    }
+    this.blocks.clear();
+    if (this.gridStack) {
+      this.gridStack.removeAll(false);
+      this.gridStack.destroy(false);
+      this.gridStack = null;
+    }
+    this.gridEl.empty();
+    this.gridEl.removeClass("viewport-fit");
+    this.gridEl.style.removeProperty("--hp-grid-transform");
+    this.gridEl.removeClass("hp-zoomed");
+  }
   initGridStack(blocks, columns, isInitial) {
+    this.phase = 1 /* Initializing */;
     const items = blocks.map((instance) => ({
       id: instance.id,
       x: instance.x,
@@ -6210,7 +6305,7 @@ var GridLayout = class _GridLayout {
     if (this.plugin.layout.compactLayout) {
       _GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
     }
-    this.columns = columns;
+    this.effectiveColumns = columns;
     this.gridEl.classList.toggle("hp-single-column", columns === 1);
     this.gridStack = GridStack.init({
       column: columns,
@@ -6254,19 +6349,19 @@ var GridLayout = class _GridLayout {
         const needsResize = this.shouldAutoHeight(instance);
         if (needsResize) {
           gsEl.addEventListener("request-auto-height", () => {
-            this.scheduleResize(gsEl, instance);
+            this.requestAutoHeight(gsEl, instance);
           });
         }
         const result = block.render(contentEl);
         if (result instanceof Promise) {
           result.then(() => {
-            if (needsResize) this.scheduleResize(gsEl, instance);
+            if (needsResize) this.requestAutoHeight(gsEl, instance);
           }).catch((e) => {
             console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
             contentEl.setText("Error rendering block. Check console for details.");
           });
         } else if (needsResize) {
-          this.scheduleResize(gsEl, instance);
+          this.requestAutoHeight(gsEl, instance);
         }
         this.blocks.set(instance.id, { block, wrapper });
       }
@@ -6288,10 +6383,12 @@ var GridLayout = class _GridLayout {
       }
     }
     this.gridStack.on("dragstop", () => {
-      this.syncLayoutFromGrid();
+      if (this.phase !== 2 /* Ready */) return;
+      this.persistLayout();
     });
     this.gridStack.on("resizestop", () => {
-      this.syncLayoutFromGrid();
+      if (this.phase !== 2 /* Ready */) return;
+      this.persistLayout();
       this.updateCompactSizeLabels();
     });
     const viewEl = this.gridEl.closest(".homepage-view");
@@ -6305,6 +6402,10 @@ var GridLayout = class _GridLayout {
         el.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
     }
+    this.scheduler.raf("initSettle", () => {
+      if (this.phase === 0 /* Destroyed */) return;
+      this.phase = 2 /* Ready */;
+    });
   }
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
   buildBlockWrapper(container, instance, animDelayMs) {
@@ -6344,6 +6445,22 @@ var GridLayout = class _GridLayout {
     info.createSpan({ cls: "block-compact-type", text: instance.type });
     info.createSpan({ cls: "block-compact-size", text: `${instance.w}\xD7${instance.h}` });
   }
+  renderEmptyState() {
+    this.gridEl.empty();
+    const empty = this.gridEl.createDiv({ cls: "homepage-empty-state" });
+    empty.createDiv({ cls: "homepage-empty-icon", text: "\u{1F3E0}" });
+    empty.createEl("p", { cls: "homepage-empty-title", text: "Your homepage is empty" });
+    empty.createEl("p", {
+      cls: "homepage-empty-desc",
+      text: this.editMode ? "Click the button below to add your first block." : "Toggle Edit mode in the toolbar to start adding blocks."
+    });
+    if (this.editMode && this.onRequestAddBlock) {
+      const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add your first block" });
+      cta.addEventListener("click", () => {
+        this.onRequestAddBlock?.();
+      });
+    }
+  }
   /** Update all compact size labels to reflect current GridStack node dimensions. */
   updateCompactSizeLabels() {
     if (!this.gridStack) return;
@@ -6355,6 +6472,19 @@ var GridLayout = class _GridLayout {
       }
     }
   }
+  // ── Auto-Height ────────────────────────────────────────────────────────
+  /** Determine if a block should auto-expand beyond its grid cell height. */
+  shouldAutoHeight(instance) {
+    const hm = instance.config.heightMode;
+    const heightMode = typeof hm === "string" ? hm : "";
+    if (instance.type === "image-gallery") return heightMode !== "fixed";
+    if (instance.type === "quotes-list") return heightMode !== "wrap";
+    if (instance.type === "button-grid") return true;
+    if (instance.type === "embedded-note" && heightMode === "grow") return true;
+    if (instance.type === "static-text") return heightMode !== "fixed";
+    if (instance.type === "random-note") return true;
+    return false;
+  }
   /**
    * Resize a block's grid row to fit its natural content height.
    *
@@ -6364,53 +6494,42 @@ var GridLayout = class _GridLayout {
    * which has height:auto and reports its true rendered height via offsetHeight.
    */
   /**
-   * Schedule a resizeBlockToContent call.  All requests within the same frame
+   * Schedule a measureAndResize call.  All requests within the same frame
    * are coalesced into a single batch to prevent cross-block resize cascading
    * (Block A resize → column reflow → Block B width change → Block B resize → …).
    */
   pendingResizes = /* @__PURE__ */ new Map();
-  batchRafId = null;
-  scheduleResize(gsEl, instance) {
+  requestAutoHeight(gsEl, instance) {
     this.pendingResizes.set(instance.id, { gsEl, instance });
-    if (this.batchRafId !== null) return;
-    this.batchRafId = requestAnimationFrame(() => {
-      const rafId = this.batchRafId;
-      this.pendingRafs.delete(rafId);
-      this.batchRafId = null;
-      if (this.isDestroyed || !this.gridStack) return;
+    this.scheduler.raf("autoHeight", () => {
+      if (this.phase === 0 /* Destroyed */ || !this.gridStack) return;
+      if (this.effectiveColumns === 1) {
+        this.pendingResizes.clear();
+        return;
+      }
       const batch = Array.from(this.pendingResizes.values());
       this.pendingResizes.clear();
       const isStatic = !!this.gridStack.opts.staticGrid;
       if (isStatic) this.gridStack.setStatic(false);
       let anyResized = false;
       for (const { gsEl: el, instance: inst } of batch) {
-        if (this.resizeBlockToContent(el, inst)) anyResized = true;
+        if (this.measureAndResize(el, inst)) anyResized = true;
       }
       if (anyResized) {
         if (this.plugin.layout.compactLayout) {
-          const nodeItems = [];
-          for (const gsEl2 of this.gridStack.getGridItems()) {
-            const node = gsEl2.gridstackNode;
-            if (!node) continue;
-            nodeItems.push({ el: gsEl2, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
-          }
-          _GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
-          this.gridStack.batchUpdate();
-          for (const item of nodeItems) {
-            this.gridStack.update(item.el, { y: item.y });
-          }
-          this.gridStack.batchUpdate(false);
+          this.repackGridNodes();
         }
-        this.scheduleSyncLayout();
+        this.persistLayoutDebounced();
       }
       if (isStatic) this.gridStack.setStatic(true);
     });
-    this.pendingRafs.add(this.batchRafId);
   }
   /** Measure a block's natural content height and update its GridStack row count.
    *  Returns true if the height was changed. */
-  resizeBlockToContent(gsEl, instance) {
-    if (!this.gridStack || !gsEl.isConnected) return false;
+  measureAndResize(gsEl, instance) {
+    if (!this.gridStack || !gsEl.isConnected) {
+      return false;
+    }
     const contentEl = gsEl.querySelector("[data-auto-height-content]");
     const headerZone = gsEl.querySelector(".block-header-zone");
     if (!contentEl || !headerZone) return false;
@@ -6445,18 +6564,254 @@ var GridLayout = class _GridLayout {
     }
     return false;
   }
-  /** Determine if a block should auto-expand beyond its grid cell height. */
-  shouldAutoHeight(instance) {
-    const hm = instance.config.heightMode;
-    const heightMode = typeof hm === "string" ? hm : "";
-    if (instance.type === "image-gallery") return heightMode !== "fixed";
-    if (instance.type === "quotes-list") return heightMode === "extend";
-    if (instance.type === "button-grid") return true;
-    if (instance.type === "embedded-note" && heightMode === "grow") return true;
-    if (instance.type === "static-text") return heightMode !== "fixed";
-    if (instance.type === "random-note") return true;
-    return false;
+  // ── Layout Persistence ─────────────────────────────────────────────────
+  /**
+   * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
+   * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
+   */
+  buildLayoutUpdate(blocks, extra) {
+    const mobile = this.plugin.isMobileActive();
+    const base = { ...this.plugin.layout };
+    if (mobile) {
+      base.mobileBlocks = blocks;
+      if (extra?.columns !== void 0) base.mobileColumns = extra.columns;
+    } else {
+      base.blocks = blocks;
+      if (extra?.columns !== void 0) base.columns = extra.columns;
+    }
+    return base;
   }
+  persistLayout() {
+    if (!this.gridStack || this.phase !== 2 /* Ready */) return;
+    if (this.isResponsive && this.plugin.activeBlocks().every((b) => this.shouldAutoHeight(b))) {
+      return;
+    }
+    const nodes = this.gridStack.getGridItems();
+    const posMap = /* @__PURE__ */ new Map();
+    for (const el of nodes) {
+      const node = el.gridstackNode;
+      const id = el.getAttribute("gs-id");
+      if (id && node) {
+        const w = Math.min(node.w ?? 1, this.effectiveColumns);
+        posMap.set(id, {
+          x: Math.min(node.x ?? 0, Math.max(0, this.effectiveColumns - w)),
+          y: node.y ?? 0,
+          w,
+          h: node.h ?? 1
+        });
+      }
+    }
+    const changed = this.plugin.activeBlocks().some((b) => {
+      const pos = posMap.get(b.id);
+      if (!pos) return false;
+      const isAuto = this.shouldAutoHeight(b);
+      if (this.isResponsive) return !isAuto && b.h !== pos.h;
+      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
+      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
+    });
+    if (!changed) {
+      return;
+    }
+    const newBlocks = this.plugin.activeBlocks().map((b) => {
+      const pos = posMap.get(b.id);
+      if (!pos) return b;
+      const isAuto = this.shouldAutoHeight(b);
+      if (this.isResponsive) {
+        return isAuto ? b : { ...b, h: pos.h };
+      }
+      const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+      return { ...b, ...update };
+    });
+    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
+  }
+  /** Read current positions from GridStack nodes and persist to layout. */
+  /** Debounced persistLayout — coalesces rapid auto-height resize saves into one write. */
+  persistLayoutDebounced() {
+    this.scheduler.timeout("sync", 50, () => {
+      if (this.phase !== 0 /* Destroyed */) this.persistLayout();
+    });
+  }
+  /** True when the grid is showing a responsive (narrowed) layout — persistence should be restricted. */
+  get isResponsive() {
+    return this.effectiveColumns !== this.canonicalColumns;
+  }
+  // ── Responsive Columns ─────────────────────────────────────────────────
+  /**
+   * Compute effective columns from container width and user's desired max.
+   * Breakpoints: 480 / 768 / 1024 (column reduction).
+   * See also styles.css container queries: 380 / 540 / 768 (CSS adaptation).
+   */
+  computeEffective(width) {
+    const max = this.canonicalColumns;
+    if (width < 480) return 1;
+    if (width < 768) return Math.min(2, max);
+    if (width < 1024) return Math.min(3, max);
+    return max;
+  }
+  /**
+   * Apply a column count change: clamp block widths (keep original proportions,
+   * don't scale down), then repack so blocks stack vertically at narrower widths
+   * instead of sitting side-by-side with huge height mismatches.
+   */
+  applyColumnChange(next) {
+    if (!this.gridStack) return;
+    this.effectiveColumns = next;
+    this.scheduler.cancelRaf("autoHeight");
+    this.pendingResizes.clear();
+    this.gridEl.classList.toggle("hp-single-column", next === 1);
+    this.gridStack.column(next, "none");
+    if (next === this.canonicalColumns) {
+      const saved = this.plugin.activeBlocks();
+      const lookup = new Map(saved.map((b) => [b.id, b]));
+      const autoHeightItems = [];
+      this.gridStack.batchUpdate();
+      for (const gsEl of this.gridStack.getGridItems()) {
+        const id = gsEl.getAttribute("gs-id");
+        const b = id ? lookup.get(id) : void 0;
+        if (!b) continue;
+        const isAuto = this.shouldAutoHeight(b);
+        this.gridStack.update(gsEl, {
+          x: b.x,
+          y: b.y,
+          w: Math.min(b.w, next),
+          ...isAuto ? {} : { h: b.h },
+          maxW: next
+        });
+        if (isAuto) autoHeightItems.push({ gsEl, b });
+      }
+      this.gridStack.batchUpdate(false);
+      for (const { gsEl, b } of autoHeightItems) this.requestAutoHeight(gsEl, b);
+      return;
+    }
+    const nodeItems = [];
+    for (const gsEl of this.gridStack.getGridItems()) {
+      const node = gsEl.gridstackNode;
+      if (!node) continue;
+      const w = Math.min(node.w ?? 1, next);
+      const x = Math.min(node.x ?? 0, Math.max(0, next - w));
+      nodeItems.push({ el: gsEl, x, y: node.y ?? 0, w, h: node.h ?? 1 });
+    }
+    _GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority(), true);
+    this.gridStack.batchUpdate();
+    for (const item of nodeItems) {
+      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
+    }
+    this.gridStack.batchUpdate(false);
+    if (next === 1) {
+      const priority = this.plugin.activeLayoutPriority();
+      const sorted = nodeItems.slice().sort(
+        (a, b) => priority === "column" ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x
+      );
+      for (const item of sorted) {
+        this.gridEl.appendChild(item.el);
+      }
+    }
+  }
+  /**
+   * Observe container width and dynamically adjust GridStack column count.
+   * The user's saved column count (`this.canonicalColumns`) acts as the desired maximum.
+   * The observer persists across rerenders — only created once, disconnected in destroy().
+   */
+  setupResponsiveColumns(viewEl, userCols) {
+    this.canonicalColumns = userCols;
+    if (!viewEl) return;
+    if (!this.resizeObserver) {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        if (this.phase === 0 /* Destroyed */ || !this.gridStack) return;
+        if (this.editMode) return;
+        const entry = entries[0];
+        if (!entry) return;
+        const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+        const next = this.computeEffective(width);
+        if (next !== this.effectiveColumns) {
+          this.applyColumnChange(next);
+        }
+      });
+      this.resizeObserver.observe(viewEl);
+    }
+    this.effectiveColumns = this.computeEffective(viewEl.clientWidth);
+    if (this.effectiveColumns !== userCols && this.gridStack && !this.editMode) {
+      this.applyColumnChange(this.effectiveColumns);
+    }
+  }
+  // ── Layout Utilities ───────────────────────────────────────────────────
+  /**
+   * Greedy column-height packing: sort items by position, then assign each
+   * the lowest available y in its target columns. Mutates items in place.
+   * Works on any object with { x, y, w, h } (GridStackWidget or BlockInstance).
+   *
+   * @param priority 'row' sorts (y, x) — left-to-right across rows.
+   *                 'column' sorts (x, y) — top-to-bottom within each column.
+   */
+  static packRows(items, columns, priority = "row", reflow = false) {
+    const safeCols = Math.max(1, columns);
+    if (priority === "column") {
+      items.sort(
+        (a, b) => (a.x ?? 0) - (b.x ?? 0) || (a.y ?? 0) - (b.y ?? 0)
+      );
+    } else {
+      items.sort(
+        (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0)
+      );
+    }
+    const colHeights = new Array(safeCols).fill(0);
+    for (const item of items) {
+      const w = Math.min(item.w ?? 1, safeCols);
+      let x;
+      if (reflow) {
+        x = 0;
+        let bestY = Infinity;
+        for (let cx = 0; cx <= safeCols - w; cx++) {
+          let maxH2 = 0;
+          for (let c = cx; c < cx + w; c++) {
+            maxH2 = Math.max(maxH2, colHeights[c] ?? 0);
+          }
+          if (maxH2 < bestY) {
+            bestY = maxH2;
+            x = cx;
+          }
+        }
+      } else {
+        x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      }
+      let maxH = 0;
+      for (let c = x; c < x + w; c++) {
+        maxH = Math.max(maxH, colHeights[c] ?? 0);
+      }
+      item.x = x;
+      item.y = maxH;
+      for (let c = x; c < x + w; c++) {
+        colHeights[c] = maxH + (item.h ?? 1);
+      }
+    }
+  }
+  /**
+   * After exiting compact edit mode, y-positions saved during editing
+   * reflect compact heights and may overlap at full view-mode heights.
+   * Re-pack into a collision-free layout using real h values.
+   */
+  static repackEditLayout(blocks, columns, priority = "row") {
+    const packed = blocks.map((b) => ({ ...b }));
+    _GridLayout.packRows(packed, columns, priority);
+    return packed;
+  }
+  /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */
+  repackGridNodes() {
+    if (!this.gridStack) return;
+    const nodeItems = [];
+    for (const gsEl of this.gridStack.getGridItems()) {
+      const node = gsEl.gridstackNode;
+      if (!node) continue;
+      nodeItems.push({ el: gsEl, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+    }
+    _GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
+    this.gridStack.batchUpdate();
+    for (const item of nodeItems) {
+      this.gridStack.update(item.el, { y: item.y });
+    }
+    this.gridStack.batchUpdate(false);
+  }
+  // ── Block Interactions ─────────────────────────────────────────────────
   setupCollapseToggle(gsEl, instance, headerZone) {
     const wrapper = gsEl.querySelector(".homepage-block-wrapper");
     const chevron = headerZone.querySelector(".block-collapse-chevron");
@@ -6629,272 +6984,6 @@ var GridLayout = class _GridLayout {
     });
     this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
     this.rerender();
-  }
-  /** Read current positions from GridStack nodes and persist to layout. */
-  /** Debounced sync — coalesces rapid auto-height resize saves into one write. */
-  scheduleSyncLayout() {
-    if (this.syncTimer !== null) clearTimeout(this.syncTimer);
-    this.syncTimer = setTimeout(() => {
-      this.syncTimer = null;
-      if (!this.isDestroyed) this.syncLayoutFromGrid();
-    }, 50);
-  }
-  syncLayoutFromGrid() {
-    if (!this.gridStack) return;
-    const isResponsive = this.effectiveColumns !== this.userColumns && !this.editMode;
-    if (isResponsive && this.plugin.activeBlocks().every((b) => this.shouldAutoHeight(b))) return;
-    const nodes = this.gridStack.getGridItems();
-    const posMap = /* @__PURE__ */ new Map();
-    for (const el of nodes) {
-      const node = el.gridstackNode;
-      const id = el.getAttribute("gs-id");
-      if (id && node) {
-        const w = Math.min(node.w ?? 1, this.columns);
-        posMap.set(id, {
-          x: Math.min(node.x ?? 0, Math.max(0, this.columns - w)),
-          y: node.y ?? 0,
-          w,
-          h: node.h ?? 1
-        });
-      }
-    }
-    const changed = this.plugin.activeBlocks().some((b) => {
-      const pos = posMap.get(b.id);
-      if (!pos) return false;
-      const isAuto = this.shouldAutoHeight(b);
-      if (isResponsive) return !isAuto && b.h !== pos.h;
-      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
-      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
-    });
-    if (!changed) return;
-    const newBlocks = this.plugin.activeBlocks().map((b) => {
-      const pos = posMap.get(b.id);
-      if (!pos) return b;
-      const isAuto = this.shouldAutoHeight(b);
-      if (isResponsive) {
-        return isAuto ? b : { ...b, h: pos.h };
-      }
-      const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
-      return { ...b, ...update };
-    });
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-  }
-  setEditMode(enabled, skipRepack = false) {
-    if (!enabled && this.editMode && !skipRepack && this.plugin.layout.compactLayout) {
-      const repacked = _GridLayout.repackEditLayout(
-        this.plugin.activeBlocks(),
-        this.userColumns,
-        this.plugin.activeLayoutPriority()
-      );
-      this.onLayoutChange(this.buildLayoutUpdate(repacked));
-    }
-    this.editMode = enabled;
-    if (this.gridStack) {
-      this.gridStack.setStatic(!enabled);
-    }
-    this.rerender();
-    if (!enabled) {
-      this.setZoom(1);
-    }
-  }
-  /**
-   * Greedy column-height packing: sort items by position, then assign each
-   * the lowest available y in its target columns. Mutates items in place.
-   * Works on any object with { x, y, w, h } (GridStackWidget or BlockInstance).
-   *
-   * @param priority 'row' sorts (y, x) — left-to-right across rows.
-   *                 'column' sorts (x, y) — top-to-bottom within each column.
-   */
-  static packRows(items, columns, priority = "row") {
-    const safeCols = Math.max(1, columns);
-    if (priority === "column") {
-      items.sort(
-        (a, b) => (a.x ?? 0) - (b.x ?? 0) || (a.y ?? 0) - (b.y ?? 0)
-      );
-    } else {
-      items.sort(
-        (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0)
-      );
-    }
-    const colHeights = new Array(safeCols).fill(0);
-    for (const item of items) {
-      const w = Math.min(item.w ?? 1, safeCols);
-      const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
-      let maxH = 0;
-      for (let c = x; c < x + w; c++) {
-        maxH = Math.max(maxH, colHeights[c] ?? 0);
-      }
-      item.x = x;
-      item.y = maxH;
-      for (let c = x; c < x + w; c++) {
-        colHeights[c] = maxH + (item.h ?? 1);
-      }
-    }
-  }
-  /**
-   * After exiting compact edit mode, y-positions saved during editing
-   * reflect compact heights and may overlap at full view-mode heights.
-   * Re-pack into a collision-free layout using real h values.
-   */
-  static repackEditLayout(blocks, columns, priority = "row") {
-    const packed = blocks.map((b) => ({ ...b }));
-    _GridLayout.packRows(packed, columns, priority);
-    return packed;
-  }
-  /** Compute zoom scale that fits all grid content in the viewport. */
-  computeFitZoom() {
-    if (!this.gridEl.isConnected) return 1;
-    const viewportHeight = this.gridEl.parentElement?.clientHeight ?? 0;
-    const contentHeight = this.gridEl.scrollHeight;
-    if (viewportHeight <= 0 || contentHeight <= viewportHeight) return 1;
-    const scale = viewportHeight / contentHeight;
-    return Math.max(0.75, Math.min(1, Math.round(scale * 20) / 20));
-  }
-  /** Apply a zoom scale (0.1–1) via CSS transform. */
-  setZoom(scale) {
-    if (!this.gridEl.isConnected) return;
-    if (!Number.isFinite(scale) || scale <= 0) scale = 1;
-    if (scale >= 1) {
-      this.gridEl.style.removeProperty("--hp-grid-transform");
-      this.gridEl.removeClass("hp-zoomed");
-      this.gridEl.removeClass("viewport-fit");
-      return;
-    }
-    this.gridEl.style.setProperty("--hp-grid-transform", `scale(${scale})`);
-    this.gridEl.addClass("hp-zoomed");
-    this.gridEl.addClass("viewport-fit");
-  }
-  /** Update column count, clamping each block's w to fit. */
-  setColumns(n) {
-    const newBlocks = this.plugin.activeBlocks().map((b) => ({
-      ...b,
-      w: Math.min(b.w, n)
-    }));
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks, { columns: n }));
-    this.rerender();
-  }
-  /**
-   * Compute effective columns from container width and user's desired max.
-   * Breakpoints: 480 / 768 / 1024 (column reduction).
-   * See also styles.css container queries: 380 / 540 / 768 (CSS adaptation).
-   */
-  computeEffective(width) {
-    const max = this.userColumns;
-    if (width < 480) return 1;
-    if (width < 768) return Math.min(2, max);
-    if (width < 1024) return Math.min(3, max);
-    return max;
-  }
-  /**
-   * Apply a column count change: clamp block widths (keep original proportions,
-   * don't scale down), then repack so blocks stack vertically at narrower widths
-   * instead of sitting side-by-side with huge height mismatches.
-   */
-  applyColumnChange(next) {
-    if (!this.gridStack) return;
-    this.effectiveColumns = next;
-    this.gridEl.classList.toggle("hp-single-column", next === 1);
-    this.gridStack.column(next, "none");
-    const nodeItems = [];
-    for (const gsEl of this.gridStack.getGridItems()) {
-      const node = gsEl.gridstackNode;
-      if (!node) continue;
-      const w = Math.min(node.w ?? 1, next);
-      const x = Math.min(node.x ?? 0, Math.max(0, next - w));
-      nodeItems.push({ el: gsEl, x, y: node.y ?? 0, w, h: node.h ?? 1 });
-    }
-    _GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority());
-    this.gridStack.batchUpdate();
-    for (const item of nodeItems) {
-      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
-    }
-    this.gridStack.batchUpdate(false);
-    if (next === 1) {
-      const priority = this.plugin.activeLayoutPriority();
-      const sorted = nodeItems.slice().sort(
-        (a, b) => priority === "column" ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x
-      );
-      for (const item of sorted) {
-        this.gridEl.appendChild(item.el);
-      }
-    }
-  }
-  /**
-   * Observe container width and dynamically adjust GridStack column count.
-   * The user's saved column count (`this.userColumns`) acts as the desired maximum.
-   * The observer persists across rerenders — only created once, disconnected in destroy().
-   */
-  setupResponsiveColumns(viewEl, userCols) {
-    this.userColumns = userCols;
-    if (!viewEl) return;
-    if (!this.resizeObserver) {
-      this.resizeObserver = new ResizeObserver((entries) => {
-        if (this.isDestroyed || !this.gridStack) return;
-        if (this.editMode) return;
-        const entry = entries[0];
-        if (!entry) return;
-        const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
-        const next = this.computeEffective(width);
-        if (next !== this.effectiveColumns) {
-          this.applyColumnChange(next);
-        }
-      });
-      this.resizeObserver.observe(viewEl);
-    }
-    this.effectiveColumns = this.computeEffective(viewEl.clientWidth);
-    if (this.effectiveColumns !== userCols && this.gridStack && !this.editMode) {
-      this.applyColumnChange(this.effectiveColumns);
-    }
-  }
-  addBlock(instance) {
-    const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
-    const positioned = { ...instance, y: maxY };
-    const newBlocks = [...this.plugin.activeBlocks(), positioned];
-    this.lastAddedBlockId = positioned.id;
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-    this.rerender();
-  }
-  rerender() {
-    this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
-  }
-  /** Unload all blocks and destroy GridStack instance. */
-  destroyAll() {
-    this.isDestroyed = true;
-    if (this.animTimer) {
-      clearTimeout(this.animTimer);
-      this.animTimer = null;
-    }
-    if (this.syncTimer) {
-      clearTimeout(this.syncTimer);
-      this.syncTimer = null;
-    }
-    if (this.batchRafId !== null) {
-      cancelAnimationFrame(this.batchRafId);
-      this.batchRafId = null;
-    }
-    for (const id of this.pendingRafs) cancelAnimationFrame(id);
-    this.pendingRafs.clear();
-    this.pendingResizes.clear();
-    for (const { block } of this.blocks.values()) {
-      block?.unload();
-    }
-    this.blocks.clear();
-    if (this.gridStack) {
-      this.gridStack.removeAll(false);
-      this.gridStack.destroy(false);
-      this.gridStack = null;
-    }
-    this.gridEl.empty();
-    this.gridEl.removeClass("viewport-fit");
-    this.gridEl.style.removeProperty("--hp-grid-transform");
-    this.gridEl.removeClass("hp-zoomed");
-  }
-  /** Full teardown: unload blocks and remove the grid element from the DOM. */
-  destroy() {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.destroyAll();
-    this.gridEl.remove();
   }
 };
 var BlockSettingsModal = class extends import_obsidian.Modal {
@@ -8484,7 +8573,6 @@ var QuotesListBlock = class extends BaseBlock {
       quoteStyle = "classic",
       fontStyle = "default",
       customFont = "",
-      mode = "list",
       dailySeed = true,
       textAlign = "left",
       verticalAlign = "top"
@@ -8492,7 +8580,8 @@ var QuotesListBlock = class extends BaseBlock {
     el.style.setProperty("--hp-quote-valign", verticalAlign === "middle" ? "center" : verticalAlign === "bottom" ? "flex-end" : "flex-start");
     el.style.setProperty("--hp-quote-align", textAlign === "center" ? "center" : textAlign === "right" ? "right" : "start");
     this.renderHeader(el, "Quotes");
-    const safeMode = mode === "single" ? "single" : "list";
+    const effectiveMax = typeof maxItems === "number" && maxItems > 0 ? maxItems : 0;
+    const safeMode = effectiveMax === 1 ? "single" : "list";
     const safeFontStyle = fontStyle === "serif" || fontStyle === "handwriting" ? fontStyle : "default";
     el.toggleClass("quote-font-serif", safeFontStyle === "serif");
     el.toggleClass("quote-font-handwriting", safeFontStyle === "handwriting");
@@ -8502,6 +8591,7 @@ var QuotesListBlock = class extends BaseBlock {
     el.toggleClass("quote-style-centered", false);
     el.toggleClass("quote-style-card", false);
     el.toggleClass("quotes-list-block--extend", false);
+    el.toggleClass("quote-no-accent", this.instance.config.hideAccentBar === true);
     if (safeMode === "single") {
       if (source === "text") {
         this.renderSingleTextQuote(el, quotes, dailySeed);
@@ -8528,7 +8618,8 @@ var QuotesListBlock = class extends BaseBlock {
         const cache = this.app.metadataCache.getFileCache(file);
         const { heading, body } = parseNoteInsight(content, cache);
         const card2 = el.createDiv({ cls: "insight-card" });
-        card2.createDiv({ cls: "insight-title", text: heading || file.basename });
+        const showTitle = this.instance.config.showNoteTitle !== false;
+        if (showTitle) card2.createDiv({ cls: "insight-title", text: heading || file.basename });
         card2.createDiv({ cls: "insight-body", text: body });
       } catch (e) {
         console.error("[Homepage Blocks] QuotesListBlock single mode failed to read file:", e);
@@ -8572,7 +8663,7 @@ var QuotesListBlock = class extends BaseBlock {
       this.observeWidthForAutoHeight(colsEl);
     }
     if (source === "text") {
-      this.renderTextQuotes(colsEl, quotes, maxItems);
+      this.renderTextQuotes(colsEl, quotes, effectiveMax);
       return;
     }
     if (!tag) {
@@ -8582,7 +8673,8 @@ var QuotesListBlock = class extends BaseBlock {
       return;
     }
     const tagSearch = tag.startsWith("#") ? tag : `#${tag}`;
-    const files = getFilesWithTag(this.app, tagSearch).slice(0, maxItems);
+    const allFiles = getFilesWithTag(this.app, tagSearch);
+    const files = effectiveMax > 0 ? allFiles.slice(0, effectiveMax) : allFiles;
     const results = await Promise.allSettled(
       files.map(async (file) => {
         const content = await this.app.vault.read(file);
@@ -8606,7 +8698,8 @@ var QuotesListBlock = class extends BaseBlock {
         quote.style.setProperty("--hp-quote-color", color);
         quote.addClass("quote-colored");
       }
-      item.createDiv({ cls: "quote-source", text: file.basename });
+      const showTitle = this.instance.config.showNoteTitle !== false;
+      if (showTitle) item.createDiv({ cls: "quote-source", text: file.basename });
     }
   }
   /** Render a single quote picked from the text list (daily or random). */
@@ -8650,7 +8743,8 @@ var QuotesListBlock = class extends BaseBlock {
       hint.createDiv({ cls: "block-empty-hint-text", text: "No quotes yet. Add them in settings, separated by ---." });
       return;
     }
-    const blocks = raw.split(/\n---\n/).map((b) => b.trim()).filter(Boolean).slice(0, maxItems);
+    const allBlocks = raw.split(/\n---\n/).map((b) => b.trim()).filter(Boolean);
+    const blocks = maxItems > 0 ? allBlocks.slice(0, maxItems) : allBlocks;
     for (const block of blocks) {
       const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
       const lastLine = lines[lines.length - 1];
@@ -8684,10 +8778,9 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian10.Setting(contentEl).setName("Quotes list settings").setHeading();
+    new import_obsidian10.Setting(contentEl).setName("Quotes settings").setHeading();
     const draft = structuredClone(this.config);
     draft.source ??= "tag";
-    draft.mode ??= "list";
     let tagSection;
     let textSection;
     new import_obsidian10.Setting(contentEl).setName("Source").setDesc("From tagged notes, or entered manually.").addDropdown(
@@ -8704,6 +8797,11 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
         draft.tag = v;
       })
     );
+    new import_obsidian10.Setting(tagSection).setName("Show note title").setDesc("Display the note filename as the quote attribution.").addToggle(
+      (t) => t.setValue(draft.showNoteTitle !== false).onChange((v) => {
+        draft.showNoteTitle = v;
+      })
+    );
     textSection = contentEl.createDiv();
     textSection.toggleClass("hp-hidden", draft.source !== "text");
     const textSetting = new import_obsidian10.Setting(textSection).setName("Quotes").setDesc("Separate quotes with --- on its own line, then add a source with \u2014 (e.g. \u2014 author).");
@@ -8715,42 +8813,38 @@ var QuotesSettingsModal = class extends import_obsidian10.Modal {
     textarea.addEventListener("input", () => {
       draft.quotes = textarea.value;
     });
-    let singleSection;
-    let listSection;
-    new import_obsidian10.Setting(contentEl).setName("Display").setDesc("Grid shows all at once. Rotate cycles through one at a time.").addDropdown(
-      (d) => d.addOption("list", "All items").addOption("single", "One at a time").setValue(draft.mode ?? "list").onChange((v) => {
-        draft.mode = v === "single" ? "single" : "list";
-        singleSection.toggleClass("hp-hidden", v !== "single");
-        listSection.toggleClass("hp-hidden", v !== "list");
+    new import_obsidian10.Setting(contentEl).setName("Max quotes").setDesc("Leave empty for all. Set to 1 for a daily rotating quote.").addText(
+      (t) => t.setPlaceholder("All").setValue(typeof draft.maxItems === "number" && draft.maxItems > 0 ? String(draft.maxItems) : "").onChange((v) => {
+        const n = parseInt(v);
+        draft.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
+        dailySeedSetting.toggleClass("hp-hidden", draft.maxItems !== 1);
       })
     );
-    singleSection = contentEl.createDiv();
-    singleSection.toggleClass("hp-hidden", draft.mode !== "single");
-    new import_obsidian10.Setting(singleSection).setName("Daily seed").setDesc("Same item all day, changes at midnight.").addToggle(
+    const dailySeedSetting = contentEl.createDiv();
+    dailySeedSetting.toggleClass("hp-hidden", (draft.maxItems ?? 0) !== 1);
+    new import_obsidian10.Setting(dailySeedSetting).setName("Daily seed").setDesc("Same quote all day, changes at midnight.").addToggle(
       (t) => t.setValue(draft.dailySeed !== false).onChange((v) => {
         draft.dailySeed = v;
       })
     );
-    listSection = contentEl.createDiv();
-    listSection.toggleClass("hp-hidden", draft.mode !== "list");
-    new import_obsidian10.Setting(listSection).setName("Columns").addDropdown(
+    new import_obsidian10.Setting(contentEl).setName("Columns").addDropdown(
       (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(typeof draft.columns === "number" ? draft.columns : 2)).onChange((v) => {
         draft.columns = Number(v);
       })
     );
-    new import_obsidian10.Setting(listSection).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit works best at full width.").addDropdown(
+    new import_obsidian10.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands to show all quotes.").addDropdown(
       (d) => d.addOption("wrap", "Scroll (fixed height)").addOption("extend", "Grow to fit all").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "extend").onChange((v) => {
         draft.heightMode = v === "wrap" ? "wrap" : "extend";
       })
     );
-    new import_obsidian10.Setting(listSection).setName("Max items").addText(
-      (t) => t.setValue(String(typeof draft.maxItems === "number" ? draft.maxItems : 20)).onChange((v) => {
-        draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200);
-      })
-    );
-    new import_obsidian10.Setting(listSection).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
+    new import_obsidian10.Setting(contentEl).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
       (d) => d.addOption("classic", "Classic").addOption("centered", "Centered").addOption("card", "Card").setValue(typeof draft.quoteStyle === "string" ? draft.quoteStyle : "classic").onChange((v) => {
         draft.quoteStyle = v === "centered" || v === "card" ? v : "classic";
+      })
+    );
+    new import_obsidian10.Setting(contentEl).setName("Hide accent bar").setDesc("Remove the vertical line next to each quote.").addToggle(
+      (t) => t.setValue(draft.hideAccentBar === true).onChange((v) => {
+        draft.hideAccentBar = v;
       })
     );
     new import_obsidian10.Setting(contentEl).setName("Text alignment").setDesc("Left, center, or right.").addDropdown(
@@ -11300,8 +11394,8 @@ function registerBlocks() {
   });
   BlockRegistry.register({
     type: "quotes-list",
-    displayName: "Quotes list",
-    defaultConfig: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20, quoteStyle: "classic", fontStyle: "default", customFont: "", mode: "list", dailySeed: true },
+    displayName: "Quotes",
+    defaultConfig: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 0, quoteStyle: "classic", fontStyle: "default", customFont: "", dailySeed: true, showNoteTitle: true },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin)
   });

@@ -11146,6 +11146,7 @@ var BLUR_DELAY_MS = 50;
 var VaultSearchBlock = class extends BaseBlock {
   dropdownEl = null;
   inputEl = null;
+  wrapperEl = null;
   selectedIndex = -1;
   debounceTimer = null;
   blurTimer = null;
@@ -11155,6 +11156,7 @@ var VaultSearchBlock = class extends BaseBlock {
     el.addClass("vault-search-block");
     this.renderHeader(el, "Vault Search");
     const wrapper = el.createDiv({ cls: "vault-search-input-wrapper" });
+    this.wrapperEl = wrapper;
     const iconEl = wrapper.createSpan({ cls: "vault-search-icon" });
     (0, import_obsidian21.setIcon)(iconEl, "search");
     const input = wrapper.createEl("input", {
@@ -11167,9 +11169,11 @@ var VaultSearchBlock = class extends BaseBlock {
       }
     });
     this.inputEl = input;
-    const dropdown = el.createDiv({ cls: "vault-search-dropdown" });
-    dropdown.style.display = "none";
+    const dropdown = document.body.createDiv({ cls: "vault-search-dropdown vault-search-dropdown--hidden" });
     this.dropdownEl = dropdown;
+    this.register(() => {
+      dropdown.remove();
+    });
     input.addEventListener("input", () => {
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
       this.debounceTimer = setTimeout(() => {
@@ -11283,16 +11287,28 @@ var VaultSearchBlock = class extends BaseBlock {
     const index = this.selectedIndex >= 0 ? this.selectedIndex : 0;
     const result = this.results[index];
     if (result) {
-      this.app.workspace.openLinkText(result.path, "");
+      void this.app.workspace.openLinkText(result.path, "");
       this.closeDropdown();
       if (this.inputEl) this.inputEl.value = "";
     }
   }
+  positionDropdown() {
+    if (!this.dropdownEl || !this.wrapperEl) return;
+    const rect = this.wrapperEl.getBoundingClientRect();
+    this.dropdownEl.style.top = `${rect.bottom + 4}px`;
+    this.dropdownEl.style.left = `${rect.left}px`;
+    this.dropdownEl.style.width = `${rect.width}px`;
+  }
   showDropdown() {
-    if (this.dropdownEl) this.dropdownEl.style.display = "";
+    if (this.dropdownEl) {
+      this.positionDropdown();
+      this.dropdownEl.removeClass("vault-search-dropdown--hidden");
+    }
   }
   closeDropdown() {
-    if (this.dropdownEl) this.dropdownEl.style.display = "none";
+    if (this.dropdownEl) {
+      this.dropdownEl.addClass("vault-search-dropdown--hidden");
+    }
     this.selectedIndex = -1;
     this.results = [];
   }
@@ -11309,7 +11325,7 @@ var VaultSearchSettingsModal = class extends import_obsidian21.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian21.Setting(contentEl).setName("Vault Search settings").setHeading();
+    new import_obsidian21.Setting(contentEl).setName("Vault search settings").setHeading();
     const draft = { ...this.config };
     new import_obsidian21.Setting(contentEl).setName("Placeholder text").setDesc("Text shown when the search field is empty.").addText(
       (t) => t.setPlaceholder("Search vault...").setValue(draft.placeholder ?? "").onChange((v) => {

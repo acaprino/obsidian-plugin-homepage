@@ -1457,7 +1457,9 @@
 /* --hp-quote-font is set by a preset class below or overridden by inline style
    (custom font via setProperty). The base rule always consumes it. */
 .quotes-list-block .quote-content,
-.quotes-list-block .quote-source {
+.quotes-list-block .quote-source,
+.quotes-list-block .insight-body,
+.quotes-list-block .insight-title {
   font-family: var(--hp-quote-font, inherit);
 }
 
@@ -1466,11 +1468,12 @@
 }
 
 .quotes-list-block.quote-font-handwriting {
-  --hp-quote-font: 'Segoe Script', 'Bradley Hand ITC', 'Bradley Hand', cursive;
+  --hp-quote-font: 'Dancing Script', 'Caveat', 'Patrick Hand', 'Segoe Script', cursive;
   --hp-quote-line-height: 1.9;
 }
 
-.quotes-list-block .quote-content {
+.quotes-list-block .quote-content,
+.quotes-list-block .insight-body {
   line-height: var(--hp-quote-line-height, 1.6);
 }
 

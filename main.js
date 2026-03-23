@@ -6131,6 +6131,8 @@ var GridLayout = class _GridLayout {
   effectiveColumns;
   userColumns = 3;
   isDestroyed = false;
+  /** True while GridStack is initializing — suppresses dragstop/resizestop sync. */
+  initPhase = false;
   /** Callback to trigger the Add Block modal from the empty state CTA. */
   onRequestAddBlock = null;
   /** ID of the most recently added block — used for scroll-into-view. */
@@ -6196,6 +6198,7 @@ var GridLayout = class _GridLayout {
     }
   }
   initGridStack(blocks, columns, isInitial) {
+    this.initPhase = true;
     const items = blocks.map((instance) => ({
       id: instance.id,
       x: instance.x,
@@ -6288,9 +6291,11 @@ var GridLayout = class _GridLayout {
       }
     }
     this.gridStack.on("dragstop", () => {
+      if (this.initPhase) return;
       this.syncLayoutFromGrid();
     });
     this.gridStack.on("resizestop", () => {
+      if (this.initPhase) return;
       this.syncLayoutFromGrid();
       this.updateCompactSizeLabels();
     });
@@ -6305,6 +6310,12 @@ var GridLayout = class _GridLayout {
         el.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
     }
+    const initRaf = requestAnimationFrame(() => {
+      this.pendingRafs.delete(initRaf);
+      if (this.isDestroyed) return;
+      this.initPhase = false;
+    });
+    this.pendingRafs.add(initRaf);
   }
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
   buildBlockWrapper(container, instance, animDelayMs) {
@@ -6378,6 +6389,10 @@ var GridLayout = class _GridLayout {
       this.pendingRafs.delete(rafId);
       this.batchRafId = null;
       if (this.isDestroyed || !this.gridStack) return;
+      if (this.effectiveColumns === 1) {
+        this.pendingResizes.clear();
+        return;
+      }
       const batch = Array.from(this.pendingResizes.values());
       this.pendingResizes.clear();
       const isStatic = !!this.gridStack.opts.staticGrid;
@@ -6410,7 +6425,9 @@ var GridLayout = class _GridLayout {
   /** Measure a block's natural content height and update its GridStack row count.
    *  Returns true if the height was changed. */
   resizeBlockToContent(gsEl, instance) {
-    if (!this.gridStack || !gsEl.isConnected) return false;
+    if (!this.gridStack || !gsEl.isConnected) {
+      return false;
+    }
     const contentEl = gsEl.querySelector("[data-auto-height-content]");
     const headerZone = gsEl.querySelector(".block-header-zone");
     if (!contentEl || !headerZone) return false;
@@ -6640,9 +6657,11 @@ var GridLayout = class _GridLayout {
     }, 50);
   }
   syncLayoutFromGrid() {
-    if (!this.gridStack) return;
-    const isResponsive = this.effectiveColumns !== this.userColumns && !this.editMode;
-    if (isResponsive && this.plugin.activeBlocks().every((b) => this.shouldAutoHeight(b))) return;
+    if (!this.gridStack || this.initPhase) return;
+    const isResponsive = this.effectiveColumns !== this.userColumns;
+    if (isResponsive && this.plugin.activeBlocks().every((b) => this.shouldAutoHeight(b))) {
+      return;
+    }
     const nodes = this.gridStack.getGridItems();
     const posMap = /* @__PURE__ */ new Map();
     for (const el of nodes) {
@@ -6666,7 +6685,9 @@ var GridLayout = class _GridLayout {
       if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
-    if (!changed) return;
+    if (!changed) {
+      return;
+    }
     const newBlocks = this.plugin.activeBlocks().map((b) => {
       const pos = posMap.get(b.id);
       if (!pos) return b;
@@ -6689,6 +6710,9 @@ var GridLayout = class _GridLayout {
       this.onLayoutChange(this.buildLayoutUpdate(repacked));
     }
     this.editMode = enabled;
+    if (enabled) {
+      this.effectiveColumns = this.userColumns;
+    }
     if (this.gridStack) {
       this.gridStack.setStatic(!enabled);
     }
@@ -6889,6 +6913,7 @@ var GridLayout = class _GridLayout {
   /** Unload all blocks and destroy GridStack instance. */
   destroyAll() {
     this.isDestroyed = true;
+    this.initPhase = false;
     if (this.animTimer) {
       clearTimeout(this.animTimer);
       this.animTimer = null;

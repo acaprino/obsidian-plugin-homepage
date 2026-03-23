@@ -12,6 +12,7 @@ const BLUR_DELAY_MS = 50;
 export class VaultSearchBlock extends BaseBlock {
   private dropdownEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
+  private wrapperEl: HTMLElement | null = null;
   private selectedIndex = -1;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private blurTimer: ReturnType<typeof setTimeout> | null = null;
@@ -24,6 +25,7 @@ export class VaultSearchBlock extends BaseBlock {
     this.renderHeader(el, 'Vault Search');
 
     const wrapper = el.createDiv({ cls: 'vault-search-input-wrapper' });
+    this.wrapperEl = wrapper;
     const iconEl = wrapper.createSpan({ cls: 'vault-search-icon' });
     setIcon(iconEl, 'search');
 
@@ -38,9 +40,12 @@ export class VaultSearchBlock extends BaseBlock {
     });
     this.inputEl = input;
 
-    const dropdown = el.createDiv({ cls: 'vault-search-dropdown' });
-    dropdown.style.display = 'none';
+    // Dropdown appended to document.body with position:fixed to escape
+    // all overflow:hidden/auto ancestors in the GridStack layout.
+    const dropdown = document.body.createDiv({ cls: 'vault-search-dropdown vault-search-dropdown--hidden' });
     this.dropdownEl = dropdown;
+
+    this.register(() => { dropdown.remove(); });
 
     input.addEventListener('input', () => {
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -170,18 +175,31 @@ export class VaultSearchBlock extends BaseBlock {
     const index = this.selectedIndex >= 0 ? this.selectedIndex : 0;
     const result = this.results[index];
     if (result) {
-      this.app.workspace.openLinkText(result.path, '');
+      void this.app.workspace.openLinkText(result.path, '');
       this.closeDropdown();
       if (this.inputEl) this.inputEl.value = '';
     }
   }
 
+  private positionDropdown(): void {
+    if (!this.dropdownEl || !this.wrapperEl) return;
+    const rect = this.wrapperEl.getBoundingClientRect();
+    this.dropdownEl.style.top = `${rect.bottom + 4}px`;
+    this.dropdownEl.style.left = `${rect.left}px`;
+    this.dropdownEl.style.width = `${rect.width}px`;
+  }
+
   private showDropdown(): void {
-    if (this.dropdownEl) this.dropdownEl.style.display = '';
+    if (this.dropdownEl) {
+      this.positionDropdown();
+      this.dropdownEl.removeClass('vault-search-dropdown--hidden');
+    }
   }
 
   private closeDropdown(): void {
-    if (this.dropdownEl) this.dropdownEl.style.display = 'none';
+    if (this.dropdownEl) {
+      this.dropdownEl.addClass('vault-search-dropdown--hidden');
+    }
     this.selectedIndex = -1;
     this.results = [];
   }
@@ -203,7 +221,7 @@ class VaultSearchSettingsModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
-    new Setting(contentEl).setName('Vault Search settings').setHeading();
+    new Setting(contentEl).setName('Vault search settings').setHeading();
 
     const draft = { ...this.config } as VaultSearchConfig;
 

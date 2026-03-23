@@ -6478,7 +6478,7 @@ var GridLayout = class _GridLayout {
     const hm = instance.config.heightMode;
     const heightMode = typeof hm === "string" ? hm : "";
     if (instance.type === "image-gallery") return heightMode !== "fixed";
-    if (instance.type === "quotes-list") return heightMode === "extend";
+    if (instance.type === "quotes-list") return heightMode !== "wrap";
     if (instance.type === "button-grid") return true;
     if (instance.type === "embedded-note" && heightMode === "grow") return true;
     if (instance.type === "static-text") return heightMode !== "fixed";

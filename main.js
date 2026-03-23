@@ -6691,7 +6691,7 @@ var GridLayout = class _GridLayout {
       const x = Math.min(node.x ?? 0, Math.max(0, next - w));
       nodeItems.push({ el: gsEl, x, y: node.y ?? 0, w, h: node.h ?? 1 });
     }
-    _GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority());
+    _GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority(), true);
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
       this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
@@ -6743,7 +6743,7 @@ var GridLayout = class _GridLayout {
    * @param priority 'row' sorts (y, x) — left-to-right across rows.
    *                 'column' sorts (x, y) — top-to-bottom within each column.
    */
-  static packRows(items, columns, priority = "row") {
+  static packRows(items, columns, priority = "row", reflow = false) {
     const safeCols = Math.max(1, columns);
     if (priority === "column") {
       items.sort(
@@ -6757,7 +6757,23 @@ var GridLayout = class _GridLayout {
     const colHeights = new Array(safeCols).fill(0);
     for (const item of items) {
       const w = Math.min(item.w ?? 1, safeCols);
-      const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      let x;
+      if (reflow) {
+        x = 0;
+        let bestY = Infinity;
+        for (let cx = 0; cx <= safeCols - w; cx++) {
+          let maxH2 = 0;
+          for (let c = cx; c < cx + w; c++) {
+            maxH2 = Math.max(maxH2, colHeights[c] ?? 0);
+          }
+          if (maxH2 < bestY) {
+            bestY = maxH2;
+            x = cx;
+          }
+        }
+      } else {
+        x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      }
       let maxH = 0;
       for (let c = x; c < x + w; c++) {
         maxH = Math.max(maxH, colHeights[c] ?? 0);

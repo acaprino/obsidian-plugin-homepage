@@ -789,7 +789,7 @@ export class GridLayout {
       const x = Math.min(node.x ?? 0, Math.max(0, next - w));
       nodeItems.push({ el: gsEl as HTMLElement, x, y: node.y ?? 0, w, h: node.h ?? 1 });
     }
-    GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority());
+    GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority(), true);
 
     this.gridStack.batchUpdate();
     for (const item of nodeItems) {
@@ -857,7 +857,7 @@ export class GridLayout {
    *                 'column' sorts (x, y) — top-to-bottom within each column.
    */
   private static packRows<T extends { x?: number; y?: number; w?: number; h?: number }>(
-    items: T[], columns: number, priority: LayoutPriority = 'row',
+    items: T[], columns: number, priority: LayoutPriority = 'row', reflow = false,
   ): void {
     const safeCols = Math.max(1, columns);
     if (priority === 'column') {
@@ -872,7 +872,23 @@ export class GridLayout {
     const colHeights = new Array<number>(safeCols).fill(0);
     for (const item of items) {
       const w = Math.min(item.w ?? 1, safeCols);
-      const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      let x: number;
+      if (reflow) {
+        // Find the x position whose spanned columns have the lowest max height.
+        // This fills gaps instead of preserving original column assignments
+        // (which are meaningless after a responsive column change).
+        x = 0;
+        let bestY = Infinity;
+        for (let cx = 0; cx <= safeCols - w; cx++) {
+          let maxH = 0;
+          for (let c = cx; c < cx + w; c++) {
+            maxH = Math.max(maxH, colHeights[c] ?? 0);
+          }
+          if (maxH < bestY) { bestY = maxH; x = cx; }
+        }
+      } else {
+        x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      }
       let maxH = 0;
       for (let c = x; c < x + w; c++) {
         maxH = Math.max(maxH, colHeights[c] ?? 0);

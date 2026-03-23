@@ -23,7 +23,7 @@ __export(main_exports, {
   default: () => HomepagePlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian21 = require("obsidian");
+var import_obsidian22 = require("obsidian");
 
 // src/HomepageView.ts
 var import_obsidian3 = require("obsidian");
@@ -7450,7 +7450,8 @@ var BLOCK_META = {
   "pomodoro": { icon: "\u{1F345}", desc: "Pomodoro timer with work/break cycles" },
   "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" },
   "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" },
-  "voice-dictation": { icon: "\u{1F399}\uFE0F", desc: "Record voice notes saved automatically to a folder" }
+  "voice-dictation": { icon: "\u{1F399}\uFE0F", desc: "Record voice notes saved automatically to a folder" },
+  "vault-search": { icon: "\u{1F50D}", desc: "Search notes by name with live results" }
 };
 var AddBlockModal = class extends import_obsidian2.Modal {
   constructor(app, onSelect) {
@@ -7561,7 +7562,8 @@ var BLOCK_TYPES = [
   "pomodoro",
   "spacer",
   "random-note",
-  "voice-dictation"
+  "voice-dictation",
+  "vault-search"
 ];
 
 // src/blocks/GreetingBlock.ts
@@ -11136,6 +11138,196 @@ var VoiceDictationSettingsModal = class extends import_obsidian20.Modal {
   }
 };
 
+// src/blocks/VaultSearchBlock.ts
+var import_obsidian21 = require("obsidian");
+var DEBOUNCE_MS6 = 150;
+var MAX_RESULTS = 10;
+var BLUR_DELAY_MS = 50;
+var VaultSearchBlock = class extends BaseBlock {
+  dropdownEl = null;
+  inputEl = null;
+  selectedIndex = -1;
+  debounceTimer = null;
+  blurTimer = null;
+  results = [];
+  render(el) {
+    const cfg = this.instance.config;
+    el.addClass("vault-search-block");
+    this.renderHeader(el, "Vault Search");
+    const wrapper = el.createDiv({ cls: "vault-search-input-wrapper" });
+    const iconEl = wrapper.createSpan({ cls: "vault-search-icon" });
+    (0, import_obsidian21.setIcon)(iconEl, "search");
+    const input = wrapper.createEl("input", {
+      cls: "vault-search-input",
+      attr: {
+        type: "text",
+        placeholder: cfg.placeholder || "Search vault...",
+        spellcheck: "false",
+        autocomplete: "off"
+      }
+    });
+    this.inputEl = input;
+    const dropdown = el.createDiv({ cls: "vault-search-dropdown" });
+    dropdown.style.display = "none";
+    this.dropdownEl = dropdown;
+    input.addEventListener("input", () => {
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      this.debounceTimer = setTimeout(() => {
+        this.debounceTimer = null;
+        this.search(input.value.trim());
+      }, DEBOUNCE_MS6);
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        this.moveSelection(1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.moveSelection(-1);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (this.debounceTimer) {
+          clearTimeout(this.debounceTimer);
+          this.debounceTimer = null;
+          this.search(input.value.trim());
+        }
+        this.openSelected();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.closeDropdown();
+        input.value = "";
+        input.blur();
+      }
+    });
+    input.addEventListener("focus", () => {
+      if (input.value.trim()) this.showDropdown();
+    });
+    input.addEventListener("blur", () => {
+      if (this.blurTimer) clearTimeout(this.blurTimer);
+      this.blurTimer = setTimeout(() => {
+        this.blurTimer = null;
+        this.closeDropdown();
+      }, BLUR_DELAY_MS);
+    });
+    this.register(() => {
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      if (this.blurTimer) clearTimeout(this.blurTimer);
+    });
+  }
+  search(query) {
+    if (!query) {
+      this.closeDropdown();
+      return;
+    }
+    const lower = query.toLowerCase();
+    const files = this.app.vault.getMarkdownFiles();
+    const matches = [];
+    for (const file of files) {
+      const idx = file.basename.toLowerCase().indexOf(lower);
+      if (idx >= 0) {
+        matches.push({ name: file.basename, path: file.path, score: idx });
+      }
+    }
+    matches.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
+    this.results = matches.slice(0, MAX_RESULTS);
+    this.selectedIndex = -1;
+    this.renderResults();
+    if (this.results.length > 0) {
+      this.showDropdown();
+    } else {
+      this.closeDropdown();
+    }
+  }
+  renderResults() {
+    if (!this.dropdownEl) return;
+    this.dropdownEl.empty();
+    for (const [i, result] of this.results.entries()) {
+      const item = this.dropdownEl.createDiv({
+        cls: "vault-search-result" + (i === this.selectedIndex ? " is-selected" : "")
+      });
+      const iconEl = item.createSpan({ cls: "vault-search-result-icon" });
+      (0, import_obsidian21.setIcon)(iconEl, "file-text");
+      const textEl = item.createDiv({ cls: "vault-search-result-text" });
+      textEl.createDiv({ cls: "vault-search-result-name", text: result.name });
+      const folder = result.path.substring(0, result.path.lastIndexOf("/"));
+      if (folder) {
+        textEl.createDiv({ cls: "vault-search-result-path", text: folder });
+      }
+      const openResult = (e) => {
+        e.preventDefault();
+        void this.app.workspace.openLinkText(result.path, "");
+        this.closeDropdown();
+        if (this.inputEl) this.inputEl.value = "";
+      };
+      item.addEventListener("mousedown", openResult);
+      item.addEventListener("touchstart", openResult, { passive: false });
+      item.addEventListener("mouseenter", () => {
+        this.selectedIndex = i;
+        this.updateSelection();
+      });
+    }
+  }
+  moveSelection(delta) {
+    if (this.results.length === 0) return;
+    this.selectedIndex = (this.selectedIndex + delta + this.results.length) % this.results.length;
+    this.updateSelection();
+  }
+  updateSelection() {
+    if (!this.dropdownEl) return;
+    const items = this.dropdownEl.querySelectorAll(".vault-search-result");
+    items.forEach((el, i) => {
+      el.toggleClass("is-selected", i === this.selectedIndex);
+    });
+  }
+  openSelected() {
+    const index = this.selectedIndex >= 0 ? this.selectedIndex : 0;
+    const result = this.results[index];
+    if (result) {
+      this.app.workspace.openLinkText(result.path, "");
+      this.closeDropdown();
+      if (this.inputEl) this.inputEl.value = "";
+    }
+  }
+  showDropdown() {
+    if (this.dropdownEl) this.dropdownEl.style.display = "";
+  }
+  closeDropdown() {
+    if (this.dropdownEl) this.dropdownEl.style.display = "none";
+    this.selectedIndex = -1;
+    this.results = [];
+  }
+  openSettings(onSave) {
+    new VaultSearchSettingsModal(this.app, this.instance.config, onSave).open();
+  }
+};
+var VaultSearchSettingsModal = class extends import_obsidian21.Modal {
+  constructor(app, config, onSave) {
+    super(app);
+    this.config = config;
+    this.onSave = onSave;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian21.Setting(contentEl).setName("Vault Search settings").setHeading();
+    const draft = { ...this.config };
+    new import_obsidian21.Setting(contentEl).setName("Placeholder text").setDesc("Text shown when the search field is empty.").addText(
+      (t) => t.setPlaceholder("Search vault...").setValue(draft.placeholder ?? "").onChange((v) => {
+        draft.placeholder = v;
+      })
+    );
+    new import_obsidian21.Setting(contentEl).addButton(
+      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
+        this.onSave(draft);
+        this.close();
+      })
+    );
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
 // src/main.ts
 var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
 var VALID_LAYOUT_PRIORITIES = /* @__PURE__ */ new Set(["row", "column"]);
@@ -11484,8 +11676,15 @@ function registerBlocks() {
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new VoiceDictationBlock(app, instance, plugin)
   });
+  BlockRegistry.register({
+    type: "vault-search",
+    displayName: "Vault Search",
+    defaultConfig: { placeholder: "Search vault..." },
+    defaultSize: { w: 2, h: 2 },
+    create: (app, instance, plugin) => new VaultSearchBlock(app, instance, plugin)
+  });
 }
-var HomepagePlugin = class extends import_obsidian21.Plugin {
+var HomepagePlugin = class extends import_obsidian22.Plugin {
   layout = getDefaultLayout();
   async onload() {
     registerBlocks();
@@ -11561,7 +11760,7 @@ var HomepagePlugin = class extends import_obsidian21.Plugin {
   }
   // ── Platform-aware layout helpers ─────────────────────────────────
   isMobileActive() {
-    return import_obsidian21.Platform.isMobile && this.layout.responsiveMode === "separate";
+    return import_obsidian22.Platform.isMobile && this.layout.responsiveMode === "separate";
   }
   activeBlocks() {
     return this.isMobileActive() ? this.layout.mobileBlocks : this.layout.blocks;
@@ -11606,7 +11805,7 @@ var HomepagePlugin = class extends import_obsidian21.Plugin {
     if (this.layout.pin) leaf.setPinned(true);
   }
 };
-var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
+var HomepageSettingTab = class extends import_obsidian22.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -11619,13 +11818,13 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
       "replace-last": "Replace active tab",
       "replace-all": "Close all tabs"
     };
-    new import_obsidian21.Setting(containerEl).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
+    new import_obsidian22.Setting(containerEl).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.openOnStartup).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
       })
     );
     if (this.plugin.layout.openOnStartup) {
-      new import_obsidian21.Setting(containerEl).setName("Startup open mode").setDesc("What to do with existing tabs on startup.").addDropdown((drop) => {
+      new import_obsidian22.Setting(containerEl).setName("Startup open mode").setDesc("What to do with existing tabs on startup.").addDropdown((drop) => {
         for (const [value, label] of Object.entries(openModeOptions)) {
           drop.addOption(value, label);
         }
@@ -11635,12 +11834,12 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         });
       });
     }
-    new import_obsidian21.Setting(containerEl).setName("Open when empty").setDesc("Open the homepage when all tabs are closed.").addToggle(
+    new import_obsidian22.Setting(containerEl).setName("Open when empty").setDesc("Open the homepage when all tabs are closed.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.openWhenEmpty).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
       })
     );
-    new import_obsidian21.Setting(containerEl).setName("Manual open mode").setDesc("What to do with existing tabs when you open the homepage manually.").addDropdown((drop) => {
+    new import_obsidian22.Setting(containerEl).setName("Manual open mode").setDesc("What to do with existing tabs when you open the homepage manually.").addDropdown((drop) => {
       for (const [value, label] of Object.entries(openModeOptions)) {
         drop.addOption(value, label);
       }
@@ -11649,7 +11848,7 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
       });
     });
-    new import_obsidian21.Setting(containerEl).setName("Pin homepage tab").setDesc("Prevent the homepage tab from being closed.").addToggle(
+    new import_obsidian22.Setting(containerEl).setName("Pin homepage tab").setDesc("Prevent the homepage tab from being closed.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.pin).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -11657,41 +11856,41 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         }
       })
     );
-    new import_obsidian21.Setting(containerEl).setName("Layout").setHeading();
-    new import_obsidian21.Setting(containerEl).setName("Responsive mode").setDesc("Unified: one layout for all screen sizes. Separate: different layouts for desktop and mobile.").addDropdown(
+    new import_obsidian22.Setting(containerEl).setName("Layout").setHeading();
+    new import_obsidian22.Setting(containerEl).setName("Responsive mode").setDesc("Unified: one layout for all screen sizes. Separate: different layouts for desktop and mobile.").addDropdown(
       (drop) => drop.addOption("unified", "Unified (adaptive)").addOption("separate", "Separate (desktop + mobile)").setValue(this.plugin.layout.responsiveMode).onChange((value) => {
         if (!isResponsiveMode(value)) return;
         void this.plugin.saveLayout({ ...this.plugin.layout, responsiveMode: value }).then(() => this.display());
       })
     );
     if (this.plugin.layout.responsiveMode === "separate") {
-      new import_obsidian21.Setting(containerEl).setName("Desktop layout").setHeading();
+      new import_obsidian22.Setting(containerEl).setName("Desktop layout").setHeading();
     }
-    new import_obsidian21.Setting(containerEl).setName("Default columns").setDesc("Number of grid columns.").addDropdown(
+    new import_obsidian22.Setting(containerEl).setName("Default columns").setDesc("Number of grid columns.").addDropdown(
       (drop) => drop.addOption("2", "2 columns").addOption("3", "3 columns").addOption("4", "4 columns").addOption("5", "5 columns").setValue(String(this.plugin.layout.columns)).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
       })
     );
-    new import_obsidian21.Setting(containerEl).setName("Layout priority").setDesc("Row-first fills left to right, then down. Column-first fills top to bottom, then across.").addDropdown(
+    new import_obsidian22.Setting(containerEl).setName("Layout priority").setDesc("Row-first fills left to right, then down. Column-first fills top to bottom, then across.").addDropdown(
       (drop) => drop.addOption("row", "Row-first").addOption("column", "Column-first").setValue(this.plugin.layout.layoutPriority).onChange((value) => {
         if (!isLayoutPriority(value)) return;
         void this.plugin.saveLayout({ ...this.plugin.layout, layoutPriority: value });
       })
     );
     if (this.plugin.layout.responsiveMode === "separate") {
-      new import_obsidian21.Setting(containerEl).setName("Mobile layout").setHeading();
-      new import_obsidian21.Setting(containerEl).setName("Mobile columns").setDesc("Number of grid columns on mobile.").addDropdown(
+      new import_obsidian22.Setting(containerEl).setName("Mobile layout").setHeading();
+      new import_obsidian22.Setting(containerEl).setName("Mobile columns").setDesc("Number of grid columns on mobile.").addDropdown(
         (drop) => drop.addOption("1", "1 column").addOption("2", "2 columns").addOption("3", "3 columns").setValue(String(this.plugin.layout.mobileColumns)).onChange((value) => {
           void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
         })
       );
-      new import_obsidian21.Setting(containerEl).setName("Mobile layout priority").setDesc("Fill direction on mobile.").addDropdown(
+      new import_obsidian22.Setting(containerEl).setName("Mobile layout priority").setDesc("Fill direction on mobile.").addDropdown(
         (drop) => drop.addOption("row", "Row-first").addOption("column", "Column-first").setValue(this.plugin.layout.mobileLayoutPriority).onChange((value) => {
           if (!isLayoutPriority(value)) return;
           void this.plugin.saveLayout({ ...this.plugin.layout, mobileLayoutPriority: value });
         })
       );
-      new import_obsidian21.Setting(containerEl).setName("Copy desktop layout to mobile").setDesc("Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.").addButton(
+      new import_obsidian22.Setting(containerEl).setName("Copy desktop layout to mobile").setDesc("Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.").addButton(
         (btn) => btn.setButtonText("Copy to mobile").onClick(() => void (async () => {
           const desktopBlocks = structuredClone(this.plugin.layout.blocks);
           const mobileCols = this.plugin.layout.mobileColumns;
@@ -11714,9 +11913,9 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         })())
       );
       const mobileBlockCount = this.plugin.layout.mobileBlocks.length;
-      new import_obsidian21.Setting(containerEl).setName("Mobile blocks").setDesc(mobileBlockCount + " block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.");
+      new import_obsidian22.Setting(containerEl).setName("Mobile blocks").setDesc(mobileBlockCount + " block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.");
     }
-    new import_obsidian21.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage. You can still scroll.").addToggle(
+    new import_obsidian22.Setting(containerEl).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage. You can still scroll.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.hideScrollbar).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -11724,7 +11923,7 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         }
       })
     );
-    new import_obsidian21.Setting(containerEl).setName("Compact layout").setDesc("Remove vertical gaps between blocks. Turn off to allow free placement with gaps.").addToggle(
+    new import_obsidian22.Setting(containerEl).setName("Compact layout").setDesc("Remove vertical gaps between blocks. Turn off to allow free placement with gaps.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.compactLayout).onChange(async (value) => {
         await this.plugin.saveLayout({ ...this.plugin.layout, compactLayout: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -11734,7 +11933,7 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         }
       })
     );
-    new import_obsidian21.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
+    new import_obsidian22.Setting(containerEl).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
         await this.plugin.saveLayout(getDefaultLayout());
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -11744,8 +11943,8 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         }
       })())
     );
-    new import_obsidian21.Setting(containerEl).setName("Export / import").setHeading();
-    new import_obsidian21.Setting(containerEl).setName("Export layout").setDesc("Copy the layout to your clipboard as JSON.").addButton(
+    new import_obsidian22.Setting(containerEl).setName("Export / import").setHeading();
+    new import_obsidian22.Setting(containerEl).setName("Export layout").setDesc("Copy the layout to your clipboard as JSON.").addButton(
       (btn) => btn.setButtonText("Copy to clipboard").onClick(() => void (async () => {
         try {
           const exportLayout = structuredClone(this.plugin.layout);
@@ -11766,7 +11965,7 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
         }, 2e3);
       })())
     );
-    new import_obsidian21.Setting(containerEl).setName("Import layout").setDesc("Paste an exported layout JSON to restore it.").addButton(
+    new import_obsidian22.Setting(containerEl).setName("Import layout").setDesc("Paste an exported layout JSON to restore it.").addButton(
       (btn) => btn.setButtonText("Import from clipboard").onClick(() => void (async () => {
         try {
           const text = await navigator.clipboard.readText();
@@ -11796,7 +11995,7 @@ var HomepageSettingTab = class extends import_obsidian21.PluginSettingTab {
     );
   }
 };
-var ConfirmPresetModal = class extends import_obsidian21.Modal {
+var ConfirmPresetModal = class extends import_obsidian22.Modal {
   constructor(app, presetName, onConfirm) {
     super(app);
     this.presetName = presetName;
@@ -11805,9 +12004,9 @@ var ConfirmPresetModal = class extends import_obsidian21.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian21.Setting(contentEl).setName("Load preset?").setHeading();
+    new import_obsidian22.Setting(contentEl).setName("Load preset?").setHeading();
     contentEl.createEl("p", { text: `This will replace your current layout with the "${this.presetName}" preset. This cannot be undone.` });
-    new import_obsidian21.Setting(contentEl).addButton(
+    new import_obsidian22.Setting(contentEl).addButton(
       (btn) => btn.setButtonText("Load preset").setWarning().onClick(() => {
         void Promise.resolve(this.onConfirm()).catch((e) => console.error("[Homepage Blocks] Preset apply failed:", e));
         this.close();

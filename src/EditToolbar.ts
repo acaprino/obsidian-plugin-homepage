@@ -199,6 +199,7 @@ const BLOCK_META: Record<BlockType, { icon: string; desc: string }> = {
   'spacer':        { icon: '\u2B1C', desc: 'Empty space for layout spacing' },
   'random-note':   { icon: '\u{1F3B2}', desc: 'Random note card with cover image and preview' },
   'voice-dictation': { icon: '🎙️', desc: 'Record voice notes saved automatically to a folder' },
+  'vault-search':  { icon: '\u{1F50D}', desc: 'Search notes by name with live results' },
 };
 
 class AddBlockModal extends Modal {

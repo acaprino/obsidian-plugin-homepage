@@ -1,6 +1,6 @@
 # Homepage Blocks
 
-A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md). Build a personal dashboard from 15 native block types — no Dataview required.
+A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 
 ![Homepage overview](screenshots/homepage-overview.png)
 

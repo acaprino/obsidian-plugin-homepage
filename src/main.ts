@@ -18,6 +18,7 @@ import { PomodoroBlock } from './blocks/PomodoroBlock';
 import { SpacerBlock } from './blocks/SpacerBlock';
 import { RandomNoteBlock } from './blocks/RandomNoteBlock';
 import { VoiceDictationBlock } from './blocks/VoiceDictationBlock';
+import { VaultSearchBlock } from './blocks/VaultSearchBlock';
 
 // ── Default layout ──────────────────────────────────────────────────────────
 
@@ -404,6 +405,13 @@ function registerBlocks(): void {
     },
     defaultSize: { w: 2, h: 3 },
     create: (app, instance, plugin) => new VoiceDictationBlock(app, instance, plugin),
+  });
+  BlockRegistry.register({
+    type: 'vault-search',
+    displayName: 'Vault Search',
+    defaultConfig: { placeholder: 'Search vault...' },
+    defaultSize: { w: 2, h: 2 },
+    create: (app, instance, plugin) => new VaultSearchBlock(app, instance, plugin),
   });
 }
 

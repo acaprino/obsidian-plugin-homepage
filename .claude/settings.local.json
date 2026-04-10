@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"D:\\\\alfios_vault\\\\.obsidian\\\\plugins\\\\obsidian-plugin-homepage\" && npx tsc --noEmit 2>&1 | head -10)"
+    ]
+  }
+}

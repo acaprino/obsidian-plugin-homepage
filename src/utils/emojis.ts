@@ -75,6 +75,12 @@ export const EMOJI_PICKER_SET: [string, string][] = [
   ['🐾','paw prints animal pet footprint track dog cat walk trail path follow clue trace mark step wild forest ground muddy'],
   ['🐱','cat kitten pet feline meow cute furry animal whiskers playful independent curious agile pounce purr cuddly fluffy lazy graceful clever'],
   ['🐶','dog puppy pet canine bark loyal cute furry animal friend faithful companion fetch walk leash tail wag obedient loving playful'],
+  ['🐦','bird tweet chirp fly wing feather animal nature sky perch nest song sparrow finch robin bluebird avian beak flock'],
+  ['🦅','eagle bird raptor fly soar majestic predator wing sky freedom hunt prey powerful wild nature hawk falcon talons bald'],
+  ['🐧','penguin bird cold ice arctic antarctic animal cute waddle tuxedo swim fish emperor colony winter flightless snow south pole'],
+  ['🦉','owl bird night wise nocturnal hoot wisdom animal forest eye feather silent hunt branch tree mysterious clever nature perch'],
+  ['🦜','parrot bird colorful tropical talk mimic pet feather fly beak wing exotic jungle rainforest perch smart pirate macaw cockatoo'],
+  ['🕊️','dove bird peace white fly gentle wing olive branch freedom hope calm pure spirit symbol nature pigeon harmony love'],
   // Food & objects
   ['☕','coffee tea hot drink cup morning cafe latte espresso brew cappuccino java bean roast aroma cafeteria steam warm cozy mocha'],
   ['🍵','tea cup hot drink matcha green herbal warm sip beverage chamomile jasmine oolong steep kettle ceremony calming soothing refreshing zen'],

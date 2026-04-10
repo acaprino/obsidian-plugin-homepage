@@ -950,6 +950,13 @@
   border: none;
 }
 
+.vault-search-input-wrapper:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
+  border-radius: var(--radius-s, 4px);
+}
+
 .vault-search-icon {
   color: var(--text-muted);
   flex-shrink: 0;
@@ -970,6 +977,11 @@
   font-size: var(--font-ui-medium);
   width: 100%;
   padding: 2px 0;
+}
+
+.vault-search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .vault-search-input::placeholder {

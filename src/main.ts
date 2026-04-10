@@ -101,7 +101,7 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
       id: 'default-quotes',
       type: 'quotes-list',
       x: 0, y: 6, w: 2, h: 3,
-      config: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20 },
+      config: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 0 },
     },
     // Row 3 (y: 8)
     {
@@ -115,7 +115,7 @@ const DEFAULT_LAYOUT_DATA: LayoutConfig = {
       id: 'default-gallery',
       type: 'image-gallery',
       x: 0, y: 11, w: 3, h: 3,
-      config: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 20 },
+      config: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 0 },
     },
   ],
 };
@@ -315,7 +315,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'image-gallery',
     displayName: 'Image gallery',
-    defaultConfig: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 20 },
+    defaultConfig: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 0 },
     defaultSize: { w: 3, h: 3 },
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin),
   });

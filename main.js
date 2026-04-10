@@ -6143,7 +6143,39 @@ function getRelativeLuminance(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 var VALID_BORDER_STYLES = ["solid", "dashed", "dotted"];
+var HP_BTN_KEY_RE = /^--hp-btn-[a-z0-9-]+$/;
+var UNSAFE_VALUE_RE = /\b(?:url|image|image-set|cross-fade|element|paint)\s*\(/i;
+function parseAllowlistedCustomCss(input) {
+  const out = [];
+  const stripped = input.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const raw of stripped.split(";")) {
+    const idx = raw.indexOf(":");
+    if (idx < 0) continue;
+    const key = raw.slice(0, idx).trim();
+    const value = raw.slice(idx + 1).trim();
+    if (!key || !value) continue;
+    if (!HP_BTN_KEY_RE.test(key)) continue;
+    if (UNSAFE_VALUE_RE.test(value)) continue;
+    if (/\p{Cc}/u.test(value)) continue;
+    out.push([key, value]);
+  }
+  return out;
+}
 function applyBlockStyling(el, config) {
+  const prevKeys = el.getAttribute("data-hp-custom-css-keys");
+  if (prevKeys) {
+    for (const k of prevKeys.split(",")) {
+      if (k) el.style.removeProperty(k);
+    }
+  }
+  const rawCustomCss = typeof config.customCss === "string" ? config.customCss : "";
+  const safeDecls = parseAllowlistedCustomCss(rawCustomCss);
+  for (const [k, v] of safeDecls) el.style.setProperty(k, v);
+  if (safeDecls.length > 0) {
+    el.setAttribute("data-hp-custom-css-keys", safeDecls.map(([k]) => k).join(","));
+  } else {
+    el.removeAttribute("data-hp-custom-css-keys");
+  }
   const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
   el.toggleClass("block-accented", !!accentColor);
   el.toggleClass("block-no-header-accent", config._hideHeaderAccent === true);
@@ -8566,6 +8598,15 @@ var ButtonGridSettingsModal = class extends import_obsidian9.Modal {
         draft.columns = Number(v);
       })
     );
+    const cssSection = contentEl.createDiv({ cls: "hp-custom-css-section" });
+    cssSection.createDiv({ cls: "setting-item-name", text: "Custom CSS" });
+    const cssTextarea = cssSection.createEl("textarea", { cls: "hp-custom-css-textarea" });
+    cssTextarea.placeholder = "--hp-btn-bg: transparent;\n--hp-btn-border: none;\n--hp-btn-shadow: none;\n--hp-btn-hover-bg: var(--background-modifier-hover);\n--hp-btn-hover-border-color: transparent;\n--hp-btn-hover-transform: none;\n--hp-btn-hover-shadow: none;";
+    cssTextarea.maxLength = 4096;
+    cssTextarea.value = typeof draft.customCss === "string" ? draft.customCss : "";
+    cssTextarea.addEventListener("input", () => {
+      draft.customCss = cssTextarea.value;
+    });
     contentEl.createEl("p", { text: "Items", cls: "setting-item-name" });
     const listEl = contentEl.createDiv({ cls: "btn-grid-item-list" });
     const dragState = { dragIdx: -1 };
@@ -11664,6 +11705,9 @@ function migrateBlockInstance(b) {
   if (m.type === "button-grid" && cfg && typeof cfg.columns === "number" && cfg.columns > 3) {
     cfg.columns = 3;
   }
+  if (cfg && m.type !== "button-grid" && "customCss" in cfg) {
+    delete cfg.customCss;
+  }
   if (cfg && typeof cfg.title === "string") {
     if (cfg.title && !cfg._titleLabel) {
       cfg._titleLabel = cfg.title;
@@ -12121,9 +12165,11 @@ var HomepageSettingTab = class extends import_obsidian22.PluginSettingTab {
           const exportLayout = structuredClone(this.plugin.layout);
           for (const block of exportLayout.blocks) {
             delete block.config.apiKey;
+            delete block.config.customCss;
           }
           for (const block of exportLayout.mobileBlocks) {
             delete block.config.apiKey;
+            delete block.config.customCss;
           }
           const json = JSON.stringify(exportLayout, null, 2);
           await navigator.clipboard.writeText(json);

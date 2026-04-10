@@ -6319,7 +6319,7 @@ var GridLayout = class _GridLayout {
     this.gridEl.remove();
   }
   setEditMode(enabled, skipRepack = false) {
-    if (!enabled && this.editMode && !skipRepack && this.plugin.layout.compactLayout) {
+    if (!enabled && this.editMode && !skipRepack) {
       const repacked = _GridLayout.repackEditLayout(
         this.plugin.activeBlocks(),
         this.canonicalColumns,
@@ -6899,13 +6899,48 @@ var GridLayout = class _GridLayout {
     }
   }
   /**
-   * After exiting compact edit mode, y-positions saved during editing
-   * reflect compact heights and may overlap at full view-mode heights.
-   * Re-pack into a collision-free layout using real h values.
+   * After exiting edit mode, y-positions saved during editing reflect
+   * compact heights (COMPACT_EDIT_H) and may overlap at full view-mode
+   * heights.  Re-pack into a collision-free layout using real h values,
+   * preserving row grouping: blocks that shared the same y in edit mode
+   * stay on the same row in view mode, preventing visual reordering.
    */
   static repackEditLayout(blocks, columns, priority = "row") {
     const packed = blocks.map((b) => ({ ...b }));
-    _GridLayout.packRows(packed, columns, priority);
+    const safeCols = Math.max(1, columns);
+    const groupMap = /* @__PURE__ */ new Map();
+    for (const block of packed) {
+      let g = groupMap.get(block.y);
+      if (!g) {
+        g = [];
+        groupMap.set(block.y, g);
+      }
+      g.push(block);
+    }
+    const groups = [...groupMap.values()];
+    groups.sort((a, b) => a[0].y - b[0].y);
+    for (const g of groups) g.sort((a, b) => a.x - b.x);
+    const colHeights = new Array(safeCols).fill(0);
+    for (const group of groups) {
+      let rowY = 0;
+      for (const block of group) {
+        const w = Math.min(block.w, safeCols);
+        const x = Math.max(0, Math.min(block.x, safeCols - w));
+        for (let c = x; c < x + w; c++) {
+          rowY = Math.max(rowY, colHeights[c]);
+        }
+      }
+      for (const block of group) {
+        block.w = Math.min(block.w, safeCols);
+        block.x = Math.max(0, Math.min(block.x, safeCols - block.w));
+        block.y = rowY;
+      }
+      for (const block of group) {
+        for (let c = block.x; c < block.x + block.w; c++) {
+          colHeights[c] = Math.max(colHeights[c], rowY + block.h);
+        }
+      }
+    }
     return packed;
   }
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */

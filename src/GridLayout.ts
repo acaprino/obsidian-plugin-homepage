@@ -129,7 +129,7 @@ export class GridLayout {
   }
 
   setEditMode(enabled: boolean, skipRepack = false): void {
-    if (!enabled && this.editMode && !skipRepack && this.plugin.layout.compactLayout) {
+    if (!enabled && this.editMode && !skipRepack) {
       // Repack y-positions: compact edit heights create y offsets that
       // would overlap blocks at full view-mode heights.
       const repacked = GridLayout.repackEditLayout(
@@ -902,13 +902,61 @@ export class GridLayout {
   }
 
   /**
-   * After exiting compact edit mode, y-positions saved during editing
-   * reflect compact heights and may overlap at full view-mode heights.
-   * Re-pack into a collision-free layout using real h values.
+   * After exiting edit mode, y-positions saved during editing reflect
+   * compact heights (COMPACT_EDIT_H) and may overlap at full view-mode
+   * heights.  Re-pack into a collision-free layout using real h values,
+   * preserving row grouping: blocks that shared the same y in edit mode
+   * stay on the same row in view mode, preventing visual reordering.
    */
   private static repackEditLayout(blocks: BlockInstance[], columns: number, priority: LayoutPriority = 'row'): BlockInstance[] {
     const packed = blocks.map(b => ({ ...b }));
-    GridLayout.packRows(packed, columns, priority);
+    const safeCols = Math.max(1, columns);
+
+    // Group blocks by their edit-mode y (same visual row) using a Map
+    // so the grouping is independent of sort order.
+    const groupMap = new Map<number, BlockInstance[]>();
+    for (const block of packed) {
+      let g = groupMap.get(block.y);
+      if (!g) { g = []; groupMap.set(block.y, g); }
+      g.push(block);
+    }
+
+    // Sort groups by ascending y (row order) regardless of priority.
+    // Within each group, sort by x for consistent left-to-right placement.
+    const groups = [...groupMap.values()];
+    groups.sort((a, b) => a[0].y - b[0].y);
+    for (const g of groups) g.sort((a, b) => a.x - b.x);
+
+    // Place each group: find earliest y where all blocks fit, then advance heights
+    const colHeights = new Array<number>(safeCols).fill(0);
+    for (const group of groups) {
+      // Find the maximum colHeight across all columns occupied by this group
+      let rowY = 0;
+      for (const block of group) {
+        const w = Math.min(block.w, safeCols);
+        const x = Math.max(0, Math.min(block.x, safeCols - w));
+        for (let c = x; c < x + w; c++) {
+          rowY = Math.max(rowY, colHeights[c]);
+        }
+      }
+
+      // Place all blocks in the group at rowY, clamp x and w
+      for (const block of group) {
+        block.w = Math.min(block.w, safeCols);
+        block.x = Math.max(0, Math.min(block.x, safeCols - block.w));
+        block.y = rowY;
+      }
+
+      // Advance column heights by each block's real h (w already clamped above).
+      // Use Math.max so a shorter block doesn't reduce the height set by a
+      // taller block when their column spans overlap within the same group.
+      for (const block of group) {
+        for (let c = block.x; c < block.x + block.w; c++) {
+          colHeights[c] = Math.max(colHeights[c], rowY + block.h);
+        }
+      }
+    }
+
     return packed;
   }
 

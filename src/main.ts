@@ -167,6 +167,13 @@ function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknow
   if (m.type === 'button-grid' && cfg && typeof cfg.columns === 'number' && cfg.columns > 3) {
     cfg.columns = 3;
   }
+  // customCss is only meaningful for button-grid (the block's UI is gated to
+  // that type and the exposed --hp-btn-* vars only affect .grid-btn). Drop it
+  // from any other block type so an imported/hand-edited layout cannot carry
+  // hidden styles on blocks whose settings UI no longer exposes the field.
+  if (cfg && m.type !== 'button-grid' && 'customCss' in cfg) {
+    delete cfg.customCss;
+  }
   // Migrate per-block title to shared _titleLabel system.
   if (cfg && typeof cfg.title === 'string') {
     if (cfg.title && !cfg._titleLabel) {
@@ -809,9 +816,11 @@ class HomepageSettingTab extends PluginSettingTab {
             const exportLayout = structuredClone(this.plugin.layout);
             for (const block of exportLayout.blocks) {
               delete block.config.apiKey;
+              delete block.config.customCss;
             }
             for (const block of exportLayout.mobileBlocks) {
               delete block.config.apiKey;
+              delete block.config.customCss;
             }
             const json = JSON.stringify(exportLayout, null, 2);
             await navigator.clipboard.writeText(json);

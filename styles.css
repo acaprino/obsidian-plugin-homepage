@@ -1399,49 +1399,54 @@
   gap: 8px;
 }
 
-.grid-btn {
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m, 8px);
-  padding: 8px 12px;
+/* Specificity note: `.button-grid .grid-btn` is (0,2,0) — needed to beat
+   Obsidian's theme rules that set `button { background-color: ... }` with
+   (0,1,1) specificity. `.grid-btn` alone (0,1,0) lost the cascade duel on
+   background-color while winning on border/color. */
+.button-grid .grid-btn {
+  background: var(--hp-btn-bg, var(--background-primary));
+  border: var(--hp-btn-border, 1px solid var(--background-modifier-border));
+  border-radius: var(--hp-btn-radius, var(--radius-m, 8px));
+  padding: var(--hp-btn-padding, 8px 12px);
   text-align: left;
   cursor: pointer;
   font-size: inherit;
-  color: var(--text-normal);
+  color: var(--hp-btn-color, var(--text-normal));
   transition:
     background 0.15s ease-out,
     border-color 0.15s ease-out,
     transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
     box-shadow 0.15s ease-out;
-  box-shadow: none;
+  box-shadow: var(--hp-btn-shadow, none);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--hp-btn-gap, 6px);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.grid-btn > span {
+.button-grid .grid-btn > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.grid-btn:hover {
-  background: var(--background-modifier-hover);
-  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+.button-grid .grid-btn:hover {
+  background: var(--hp-btn-hover-bg, var(--background-modifier-hover));
+  border-color: var(--hp-btn-hover-border-color,
+    var(--background-modifier-border-hover, var(--background-modifier-border)));
+  transform: var(--hp-btn-hover-transform, translateY(-1px));
+  box-shadow: var(--hp-btn-hover-shadow, 0 2px 6px rgba(0, 0, 0, 0.06));
 }
 
-.grid-btn:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow: none;
+.button-grid .grid-btn:active {
+  transform: var(--hp-btn-active-transform, translateY(0) scale(0.98));
+  box-shadow: var(--hp-btn-active-shadow, none);
 }
 
-.grid-btn-emoji {
-  font-size: 1rem;
+.button-grid .grid-btn-emoji {
+  font-size: var(--hp-btn-emoji-size, 1rem);
 }
 
 /* ── Button Grid responsive ───────────────────────────── */
@@ -3221,6 +3226,41 @@
   font-size: 0.75rem;
   font-weight: 400;
   margin-left: 2px;
+}
+
+/* ── Custom CSS section (Button Grid settings modal) ────── */
+.hp-custom-css-section {
+  margin: 1.2em 0;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.hp-custom-css-section .setting-item-name {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  margin-bottom: 0.6em;
+}
+
+.hp-custom-css-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 160px;
+  padding: 10px 12px;
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre;
+  background: var(--background-primary-alt);
+  color: var(--text-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.hp-custom-css-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
 }
 
 /* ── Duplicate Button ──────────────────────────────────── */

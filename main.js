@@ -6629,9 +6629,7 @@ var GridLayout = class _GridLayout {
         if (this.measureAndResize(el, inst)) anyResized = true;
       }
       if (anyResized) {
-        if (this.plugin.layout.compactLayout) {
-          this.repackGridNodes();
-        }
+        this.repackGridNodes();
         this.persistLayoutDebounced();
       }
       if (isStatic) this.gridStack.setStatic(true);
@@ -6849,98 +6847,95 @@ var GridLayout = class _GridLayout {
   }
   // ── Layout Utilities ───────────────────────────────────────────────────
   /**
-   * Greedy column-height packing: sort items by position, then assign each
-   * the lowest available y in its target columns. Mutates items in place.
-   * Works on any object with { x, y, w, h } (GridStackWidget or BlockInstance).
+   * Row-group-aware packing: items sharing the same y form a "row group" and
+   * stay on the same row in the output, preserving visual row grouping.
+   * Mutates items in place.  Works on any object with { x, y, w, h }.
    *
-   * @param priority 'row' sorts (y, x) — left-to-right across rows.
-   *                 'column' sorts (x, y) — top-to-bottom within each column.
+   * When `reflow=true` (responsive column change), falls back to greedy
+   * column-height packing: each item is assigned the x with the lowest max
+   * height.  Row groups don't apply because old x positions are meaningless
+   * after a column count change.
+   *
+   * @param priority Reserved for future use; grouping is always by y.
    */
-  static packRows(items, columns, priority = "row", reflow = false) {
+  static packRows(items, columns, _priority = "row", reflow = false) {
     const safeCols = Math.max(1, columns);
-    if (priority === "column") {
-      items.sort(
-        (a, b) => (a.x ?? 0) - (b.x ?? 0) || (a.y ?? 0) - (b.y ?? 0)
-      );
-    } else {
+    const colHeights = new Array(safeCols).fill(0);
+    if (reflow) {
       items.sort(
         (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0)
       );
-    }
-    const colHeights = new Array(safeCols).fill(0);
-    for (const item of items) {
-      const w = Math.min(item.w ?? 1, safeCols);
-      let x;
-      if (reflow) {
-        x = 0;
+      for (const item of items) {
+        const w = Math.min(item.w ?? 1, safeCols);
+        let x = 0;
         let bestY = Infinity;
         for (let cx = 0; cx <= safeCols - w; cx++) {
-          let maxH2 = 0;
+          let maxH = 0;
           for (let c = cx; c < cx + w; c++) {
-            maxH2 = Math.max(maxH2, colHeights[c] ?? 0);
+            maxH = Math.max(maxH, colHeights[c] ?? 0);
           }
-          if (maxH2 < bestY) {
-            bestY = maxH2;
+          if (maxH < bestY) {
+            bestY = maxH;
             x = cx;
           }
         }
-      } else {
-        x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+        item.x = x;
+        item.w = w;
+        item.y = bestY;
+        for (let c = x; c < x + w; c++) {
+          colHeights[c] = bestY + (item.h ?? 1);
+        }
       }
-      let maxH = 0;
-      for (let c = x; c < x + w; c++) {
-        maxH = Math.max(maxH, colHeights[c] ?? 0);
+      return;
+    }
+    const groupMap = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      const y = item.y ?? 0;
+      let g = groupMap.get(y);
+      if (!g) {
+        g = [];
+        groupMap.set(y, g);
       }
-      item.x = x;
-      item.y = maxH;
-      for (let c = x; c < x + w; c++) {
-        colHeights[c] = maxH + (item.h ?? 1);
+      g.push(item);
+    }
+    const groups = [...groupMap.values()];
+    groups.sort((a, b) => (a[0].y ?? 0) - (b[0].y ?? 0));
+    for (const g of groups) g.sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+    for (const group of groups) {
+      let rowY = 0;
+      for (const item of group) {
+        const w = Math.min(item.w ?? 1, safeCols);
+        const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+        for (let c = x; c < x + w; c++) {
+          rowY = Math.max(rowY, colHeights[c] ?? 0);
+        }
+      }
+      for (const item of group) {
+        const w = Math.min(item.w ?? 1, safeCols);
+        item.w = w;
+        item.x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+        item.y = rowY;
+      }
+      for (const item of group) {
+        const x = item.x ?? 0;
+        const w = item.w ?? 1;
+        const h = item.h ?? 1;
+        for (let c = x; c < x + w; c++) {
+          colHeights[c] = Math.max(colHeights[c] ?? 0, rowY + h);
+        }
       }
     }
   }
   /**
    * After exiting edit mode, y-positions saved during editing reflect
    * compact heights (COMPACT_EDIT_H) and may overlap at full view-mode
-   * heights.  Re-pack into a collision-free layout using real h values,
-   * preserving row grouping: blocks that shared the same y in edit mode
-   * stay on the same row in view mode, preventing visual reordering.
+   * heights.  Re-pack into a collision-free layout using real h values.
+   * Delegates to the row-group-aware packRows, which preserves visual
+   * row grouping from edit mode.
    */
   static repackEditLayout(blocks, columns, priority = "row") {
     const packed = blocks.map((b) => ({ ...b }));
-    const safeCols = Math.max(1, columns);
-    const groupMap = /* @__PURE__ */ new Map();
-    for (const block of packed) {
-      let g = groupMap.get(block.y);
-      if (!g) {
-        g = [];
-        groupMap.set(block.y, g);
-      }
-      g.push(block);
-    }
-    const groups = [...groupMap.values()];
-    groups.sort((a, b) => a[0].y - b[0].y);
-    for (const g of groups) g.sort((a, b) => a.x - b.x);
-    const colHeights = new Array(safeCols).fill(0);
-    for (const group of groups) {
-      let rowY = 0;
-      for (const block of group) {
-        const w = Math.min(block.w, safeCols);
-        const x = Math.max(0, Math.min(block.x, safeCols - w));
-        for (let c = x; c < x + w; c++) {
-          rowY = Math.max(rowY, colHeights[c]);
-        }
-      }
-      for (const block of group) {
-        block.w = Math.min(block.w, safeCols);
-        block.x = Math.max(0, Math.min(block.x, safeCols - block.w));
-        block.y = rowY;
-      }
-      for (const block of group) {
-        for (let c = block.x; c < block.x + block.w; c++) {
-          colHeights[c] = Math.max(colHeights[c], rowY + block.h);
-        }
-      }
-    }
+    _GridLayout.packRows(packed, columns, priority);
     return packed;
   }
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */

@@ -5758,6 +5758,12 @@ var EMOJI_PICKER_SET = [
   ["\u{1F43E}", "paw prints animal pet footprint track dog cat walk trail path follow clue trace mark step wild forest ground muddy"],
   ["\u{1F431}", "cat kitten pet feline meow cute furry animal whiskers playful independent curious agile pounce purr cuddly fluffy lazy graceful clever"],
   ["\u{1F436}", "dog puppy pet canine bark loyal cute furry animal friend faithful companion fetch walk leash tail wag obedient loving playful"],
+  ["\u{1F426}", "bird tweet chirp fly wing feather animal nature sky perch nest song sparrow finch robin bluebird avian beak flock"],
+  ["\u{1F985}", "eagle bird raptor fly soar majestic predator wing sky freedom hunt prey powerful wild nature hawk falcon talons bald"],
+  ["\u{1F427}", "penguin bird cold ice arctic antarctic animal cute waddle tuxedo swim fish emperor colony winter flightless snow south pole"],
+  ["\u{1F989}", "owl bird night wise nocturnal hoot wisdom animal forest eye feather silent hunt branch tree mysterious clever nature perch"],
+  ["\u{1F99C}", "parrot bird colorful tropical talk mimic pet feather fly beak wing exotic jungle rainforest perch smart pirate macaw cockatoo"],
+  ["\u{1F54A}\uFE0F", "dove bird peace white fly gentle wing olive branch freedom hope calm pure spirit symbol nature pigeon harmony love"],
   // Food & objects
   ["\u2615", "coffee tea hot drink cup morning cafe latte espresso brew cappuccino java bean roast aroma cafeteria steam warm cozy mocha"],
   ["\u{1F375}", "tea cup hot drink matcha green herbal warm sip beverage chamomile jasmine oolong steep kettle ceremony calming soothing refreshing zen"],
@@ -9050,7 +9056,8 @@ var ImageGalleryBlock = class extends BaseBlock {
     const cfg = this.instance.config;
     const folder = cfg.folder ?? "";
     const columns = Math.max(1, Math.min(6, Math.floor(Number(cfg.columns) || 3)));
-    const maxItems = Math.max(1, Math.min(200, Math.floor(Number(cfg.maxItems) || 20)));
+    const rawMax = Number(cfg.maxItems);
+    const maxItems = rawMax > 0 ? Math.max(1, Math.min(500, Math.floor(rawMax))) : 0;
     const layout = cfg.layout ?? "grid";
     const heightMode = cfg.heightMode ?? "auto";
     this.renderHeader(el, "Gallery");
@@ -9094,7 +9101,7 @@ var ImageGalleryBlock = class extends BaseBlock {
       gallery.setText(`Folder "${folder}" not found.`);
       return;
     }
-    const files = this.getMediaFiles(folderObj, maxItems);
+    const files = this.getMediaFiles(folderObj, maxItems || Infinity);
     const lightboxItems = files.map((f) => {
       const e = `.${f.extension.toLowerCase()}`;
       return {
@@ -9149,6 +9156,16 @@ var ImageGalleryBlock = class extends BaseBlock {
         video.addEventListener("loadedmetadata", () => {
           video.currentTime = 0.1;
         }, { once: true });
+        imageLoadPromises.push(
+          new Promise((resolve) => {
+            if (video.readyState >= 1) {
+              resolve();
+              return;
+            }
+            video.addEventListener("loadedmetadata", () => resolve(), { once: true });
+            video.addEventListener("error", () => resolve(), { once: true });
+          })
+        );
         wrapper.addEventListener("mouseenter", () => {
           if (!isLightboxOpen()) video.play().catch(() => {
           });
@@ -9228,9 +9245,10 @@ var ImageGallerySettingsModal = class extends import_obsidian11.Modal {
         draft.columns = Number(v);
       })
     );
-    new import_obsidian11.Setting(contentEl).setName("Max items").addText(
-      (t) => t.setValue(String(typeof draft.maxItems === "number" ? draft.maxItems : 20)).onChange((v) => {
-        draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200);
+    new import_obsidian11.Setting(contentEl).setName("Max items").setDesc("0 = show all files.").addText(
+      (t) => t.setValue(String(typeof draft.maxItems === "number" ? draft.maxItems : 0)).onChange((v) => {
+        const n = parseInt(v) || 0;
+        draft.maxItems = Math.min(Math.max(0, n), 500);
       })
     );
     new import_obsidian11.Setting(contentEl).addButton(
@@ -11438,7 +11456,7 @@ var DEFAULT_LAYOUT_DATA = {
       y: 6,
       w: 2,
       h: 3,
-      config: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 20 }
+      config: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 0 }
     },
     // Row 3 (y: 8)
     {
@@ -11458,7 +11476,7 @@ var DEFAULT_LAYOUT_DATA = {
       y: 11,
       w: 3,
       h: 3,
-      config: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 20 }
+      config: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 0 }
     }
   ]
 };
@@ -11610,7 +11628,7 @@ function registerBlocks() {
   BlockRegistry.register({
     type: "image-gallery",
     displayName: "Image gallery",
-    defaultConfig: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 20 },
+    defaultConfig: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 0 },
     defaultSize: { w: 3, h: 3 },
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin)
   });

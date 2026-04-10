@@ -176,7 +176,8 @@ export class ImageGalleryBlock extends BaseBlock {
     };
     const folder = cfg.folder ?? '';
     const columns = Math.max(1, Math.min(6, Math.floor(Number(cfg.columns) || 3)));
-    const maxItems = Math.max(1, Math.min(200, Math.floor(Number(cfg.maxItems) || 20)));
+    const rawMax = Number(cfg.maxItems);
+    const maxItems = rawMax > 0 ? Math.max(1, Math.min(500, Math.floor(rawMax))) : 0;
     const layout = cfg.layout ?? 'grid';
     const heightMode = cfg.heightMode ?? 'auto';
 
@@ -226,7 +227,7 @@ export class ImageGalleryBlock extends BaseBlock {
       return;
     }
 
-    const files = this.getMediaFiles(folderObj, maxItems);
+    const files = this.getMediaFiles(folderObj, maxItems || Infinity);
 
     const lightboxItems: LightboxItem[] = files.map(f => {
       const e = `.${f.extension.toLowerCase()}`;
@@ -279,6 +280,14 @@ export class ImageGalleryBlock extends BaseBlock {
         video.src = lightboxItems[index].src;
         // Seek to first frame so thumbnail isn't a black box
         video.addEventListener('loadedmetadata', () => { video.currentTime = 0.1; }, { once: true });
+        // Wait for metadata so natural aspect ratio dimensions are available for auto-height
+        imageLoadPromises.push(
+          new Promise<void>(resolve => {
+            if (video.readyState >= 1) { resolve(); return; }
+            video.addEventListener('loadedmetadata', () => resolve(), { once: true });
+            video.addEventListener('error', () => resolve(), { once: true });
+          }),
+        );
 
         wrapper.addEventListener('mouseenter', () => { if (!isLightboxOpen()) video.play().catch(() => { /* hover preview — ignore if autoplay restricted */ }); });
         wrapper.addEventListener('mouseleave', () => { video.pause(); video.currentTime = 0.1; });
@@ -375,9 +384,12 @@ class ImageGallerySettingsModal extends Modal {
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 3))
        .onChange(v => { draft.columns = Number(v); }),
     );
-    new Setting(contentEl).setName('Max items').addText(t =>
-      t.setValue(String(typeof draft.maxItems === 'number' ? draft.maxItems : 20))
-       .onChange(v => { draft.maxItems = Math.min(Math.max(1, parseInt(v) || 20), 200); }),
+    new Setting(contentEl).setName('Max items').setDesc('0 = show all files.').addText(t =>
+      t.setValue(String(typeof draft.maxItems === 'number' ? draft.maxItems : 0))
+       .onChange(v => {
+         const n = parseInt(v) || 0;
+         draft.maxItems = Math.min(Math.max(0, n), 500);
+       }),
     );
     new Setting(contentEl).addButton(btn =>
       btn.setButtonText('Save').setCta().onClick(() => {

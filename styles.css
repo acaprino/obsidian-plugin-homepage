@@ -1779,8 +1779,6 @@
   width: 100%;
   display: block;
   border-radius: var(--radius-m, 8px);
-  aspect-ratio: 3 / 2;
-  object-fit: cover;
 }
 
 .video-play-overlay {

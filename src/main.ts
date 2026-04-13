@@ -26,7 +26,7 @@ import { imageCache } from './utils/imageCache';
 /** Immutable template. Always clone via getDefaultLayout(). */
 /** Must stay in sync with OpenMode in types.ts */
 const VALID_OPEN_MODES = new Set<OpenMode>(['replace-all', 'replace-last', 'retain']);
-const VALID_LAYOUT_PRIORITIES = new Set<LayoutPriority>(['row', 'column']);
+const VALID_LAYOUT_PRIORITIES = new Set<LayoutPriority>(['row']);
 const VALID_RESPONSIVE_MODES = new Set<ResponsiveMode>(['unified', 'separate']);
 
 function isOpenMode(v: unknown): v is OpenMode {
@@ -680,20 +680,6 @@ class HomepageSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(containerEl)
-      .setName('Layout priority')
-      .setDesc('Row-first fills left to right, then down. Column-first fills top to bottom, then across.')
-      .addDropdown(drop =>
-        drop
-          .addOption('row', 'Row-first')
-          .addOption('column', 'Column-first')
-          .setValue(this.plugin.layout.layoutPriority)
-          .onChange((value) => {
-            if (!isLayoutPriority(value)) return;
-            void this.plugin.saveLayout({ ...this.plugin.layout, layoutPriority: value });
-          }),
-      );
-
     // ── Mobile layout settings (only when separate) ─────────────────
     if (this.plugin.layout.responsiveMode === 'separate') {
       new Setting(containerEl).setName('Mobile layout').setHeading();
@@ -709,20 +695,6 @@ class HomepageSettingTab extends PluginSettingTab {
             .setValue(String(this.plugin.layout.mobileColumns))
             .onChange((value) => {
               void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
-            }),
-        );
-
-      new Setting(containerEl)
-        .setName('Mobile layout priority')
-        .setDesc('Fill direction on mobile.')
-        .addDropdown(drop =>
-          drop
-            .addOption('row', 'Row-first')
-            .addOption('column', 'Column-first')
-            .setValue(this.plugin.layout.mobileLayoutPriority)
-            .onChange((value) => {
-              if (!isLayoutPriority(value)) return;
-              void this.plugin.saveLayout({ ...this.plugin.layout, mobileLayoutPriority: value });
             }),
         );
 

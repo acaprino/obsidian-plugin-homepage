@@ -6488,12 +6488,11 @@ var GridLayout = class _GridLayout {
       }
     }
     if (columns === 1) {
-      const priority = this.plugin.activeLayoutPriority();
       const gridItems = [...this.gridEl.querySelectorAll(":scope > .grid-stack-item")];
       gridItems.sort((a, b) => {
         const na = a.gridstackNode;
         const nb = b.gridstackNode;
-        return priority === "column" ? (na?.x ?? 0) - (nb?.x ?? 0) || (na?.y ?? 0) - (nb?.y ?? 0) : (na?.y ?? 0) - (nb?.y ?? 0) || (na?.x ?? 0) - (nb?.x ?? 0);
+        return (na?.y ?? 0) - (nb?.y ?? 0) || (na?.x ?? 0) - (nb?.x ?? 0);
       });
       for (const el of gridItems) {
         this.gridEl.appendChild(el);
@@ -6827,10 +6826,7 @@ var GridLayout = class _GridLayout {
     }
     this.gridStack.batchUpdate(false);
     if (next === 1) {
-      const priority = this.plugin.activeLayoutPriority();
-      const sorted = nodeItems.slice().sort(
-        (a, b) => priority === "column" ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x
-      );
+      const sorted = nodeItems.slice().sort((a, b) => a.y - b.y || a.x - b.x);
       for (const item of sorted) {
         this.gridEl.appendChild(item.el);
       }
@@ -11688,7 +11684,7 @@ var VaultSearchSettingsModal = class extends import_obsidian21.Modal {
 
 // src/main.ts
 var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
-var VALID_LAYOUT_PRIORITIES = /* @__PURE__ */ new Set(["row", "column"]);
+var VALID_LAYOUT_PRIORITIES = /* @__PURE__ */ new Set(["row"]);
 var VALID_RESPONSIVE_MODES = /* @__PURE__ */ new Set(["unified", "separate"]);
 function isOpenMode(v) {
   return typeof v === "string" && VALID_OPEN_MODES.has(v);
@@ -12230,23 +12226,11 @@ var HomepageSettingTab = class extends import_obsidian22.PluginSettingTab {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
       })
     );
-    new import_obsidian22.Setting(containerEl).setName("Layout priority").setDesc("Row-first fills left to right, then down. Column-first fills top to bottom, then across.").addDropdown(
-      (drop) => drop.addOption("row", "Row-first").addOption("column", "Column-first").setValue(this.plugin.layout.layoutPriority).onChange((value) => {
-        if (!isLayoutPriority(value)) return;
-        void this.plugin.saveLayout({ ...this.plugin.layout, layoutPriority: value });
-      })
-    );
     if (this.plugin.layout.responsiveMode === "separate") {
       new import_obsidian22.Setting(containerEl).setName("Mobile layout").setHeading();
       new import_obsidian22.Setting(containerEl).setName("Mobile columns").setDesc("Number of grid columns on mobile.").addDropdown(
         (drop) => drop.addOption("1", "1 column").addOption("2", "2 columns").addOption("3", "3 columns").setValue(String(this.plugin.layout.mobileColumns)).onChange((value) => {
           void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
-        })
-      );
-      new import_obsidian22.Setting(containerEl).setName("Mobile layout priority").setDesc("Fill direction on mobile.").addDropdown(
-        (drop) => drop.addOption("row", "Row-first").addOption("column", "Column-first").setValue(this.plugin.layout.mobileLayoutPriority).onChange((value) => {
-          if (!isLayoutPriority(value)) return;
-          void this.plugin.saveLayout({ ...this.plugin.layout, mobileLayoutPriority: value });
         })
       );
       new import_obsidian22.Setting(containerEl).setName("Copy desktop layout to mobile").setDesc("Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.").addButton(

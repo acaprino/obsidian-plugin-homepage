@@ -9896,6 +9896,10 @@ var HtmlBlock = class extends BaseBlock {
       hint.createDiv({ cls: "block-empty-hint-text", text: "No HTML content yet. Add your markup in settings." });
       return;
     }
+    if (/<style\b/i.test(html)) {
+      this.renderIframe(contentEl, html);
+      return;
+    }
     const DANGEROUS_TAGS_RE = /<\/?\s*(iframe|object|embed|form|meta|link|base|script|style|svg)\b[^>]*>/gi;
     let sanitized = html;
     let prev;
@@ -9904,6 +9908,58 @@ var HtmlBlock = class extends BaseBlock {
       sanitized = sanitized.replace(DANGEROUS_TAGS_RE, "");
     } while (sanitized !== prev);
     contentEl.appendChild((0, import_obsidian14.sanitizeHTMLToDom)(sanitized));
+  }
+  /** Render full HTML documents inside a sandboxed iframe with Obsidian CSS variable bridging. */
+  renderIframe(contentEl, html) {
+    const SCRIPT_RE = /<\/?\s*script\b[^>]*>/gi;
+    let safe = html;
+    let prev;
+    do {
+      prev = safe;
+      safe = safe.replace(SCRIPT_RE, "");
+    } while (safe !== prev);
+    const varRefs = /* @__PURE__ */ new Set();
+    const VAR_RE = /var\((--[\w-]+)/g;
+    let m;
+    while ((m = VAR_RE.exec(safe)) !== null) varRefs.add(m[1]);
+    const bridgeParts = ["body{margin:0;padding:0}"];
+    if (varRefs.size > 0) {
+      const rootStyle = getComputedStyle(document.body);
+      const pairs = [...varRefs].map((v) => {
+        const val = rootStyle.getPropertyValue(v).trim();
+        return val ? `${v}:${val}` : "";
+      }).filter(Boolean);
+      if (pairs.length > 0) bridgeParts.unshift(`:root{${pairs.join(";")}}`);
+    }
+    const bridge = `<style>${bridgeParts.join("")}</style>`;
+    const headMatch = safe.match(/<head\b[^>]*>/i);
+    if (headMatch && headMatch.index !== void 0) {
+      const pos = headMatch.index + headMatch[0].length;
+      safe = safe.slice(0, pos) + bridge + safe.slice(pos);
+    } else {
+      safe = bridge + safe;
+    }
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("sandbox", "allow-same-origin");
+    iframe.srcdoc = safe;
+    iframe.style.cssText = "width:100%;height:100%;border:none;overflow:hidden;display:block;background:transparent;";
+    contentEl.appendChild(iframe);
+    iframe.addEventListener("load", () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+        const contentH = doc.documentElement.scrollHeight;
+        const availableH = iframe.clientHeight;
+        if (contentH > availableH && availableH > 0) {
+          const scale = availableH / contentH;
+          doc.documentElement.style.overflow = "hidden";
+          doc.body.style.transformOrigin = "top left";
+          doc.body.style.transform = `scale(${scale})`;
+          doc.body.style.width = `${1 / scale * 100}%`;
+        }
+      } catch {
+      }
+    });
   }
   openSettings(onSave) {
     new HtmlBlockSettingsModal(this.app, this.instance.config, onSave).open();
@@ -9920,7 +9976,7 @@ var HtmlBlockSettingsModal = class extends import_obsidian14.Modal {
     contentEl.empty();
     new import_obsidian14.Setting(contentEl).setName("HTML block settings").setHeading();
     const draft = structuredClone(this.config);
-    new import_obsidian14.Setting(contentEl).setName("HTML").setDesc("Sanitized before rendering.");
+    new import_obsidian14.Setting(contentEl).setName("HTML").setDesc("Supports full HTML documents with <style> blocks.");
     const textarea = contentEl.createEl("textarea", { cls: "html-settings-textarea" });
     textarea.value = draft.html ?? "";
     textarea.rows = 12;

@@ -20,9 +20,14 @@ export class HtmlBlock extends BaseBlock {
       return;
     }
 
-    // Defense-in-depth: strip dangerous tags that could bypass sanitizeHTMLToDom
-    // in the Electron context (iframe, object, embed, form, meta, link, base).
-    // Loop until stable to defeat nested constructs like <scr<script>ipt>.
+    // Full-document mode: render inside a sandboxed iframe for perfect
+    // style isolation and full CSS support (flexbox, grid, animations, etc.)
+    if (/<style\b/i.test(html)) {
+      this.renderIframe(contentEl, html);
+      return;
+    }
+
+    // Simple fragment mode: sanitize and render inline
     const DANGEROUS_TAGS_RE = /<\/?\s*(iframe|object|embed|form|meta|link|base|script|style|svg)\b[^>]*>/gi;
     let sanitized = html;
     let prev: string;
@@ -31,6 +36,67 @@ export class HtmlBlock extends BaseBlock {
       sanitized = sanitized.replace(DANGEROUS_TAGS_RE, '');
     } while (sanitized !== prev);
     contentEl.appendChild(sanitizeHTMLToDom(sanitized));
+  }
+
+  /** Render full HTML documents inside a sandboxed iframe with Obsidian CSS variable bridging. */
+  private renderIframe(contentEl: HTMLElement, html: string): void {
+    // Strip script tags for defense-in-depth (sandbox also blocks execution)
+    const SCRIPT_RE = /<\/?\s*script\b[^>]*>/gi;
+    let safe = html;
+    let prev: string;
+    do { prev = safe; safe = safe.replace(SCRIPT_RE, ''); } while (safe !== prev);
+
+    // Collect var(--...) references used in the HTML/CSS
+    const varRefs = new Set<string>();
+    const VAR_RE = /var\((--[\w-]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = VAR_RE.exec(safe)) !== null) varRefs.add(m[1]);
+
+    // Build bridge stylesheet: Obsidian CSS variables + body padding reset
+    const bridgeParts = ['body{margin:0;padding:0}'];
+    if (varRefs.size > 0) {
+      const rootStyle = getComputedStyle(document.body);
+      const pairs = [...varRefs]
+        .map(v => {
+          const val = rootStyle.getPropertyValue(v).trim();
+          return val ? `${v}:${val}` : '';
+        })
+        .filter(Boolean);
+      if (pairs.length > 0) bridgeParts.unshift(`:root{${pairs.join(';')}}`);
+    }
+    const bridge = `<style>${bridgeParts.join('')}</style>`;
+    const headMatch = safe.match(/<head\b[^>]*>/i);
+    if (headMatch && headMatch.index !== undefined) {
+      const pos = headMatch.index + headMatch[0].length;
+      safe = safe.slice(0, pos) + bridge + safe.slice(pos);
+    } else {
+      safe = bridge + safe;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-same-origin');
+    iframe.srcdoc = safe;
+    iframe.style.cssText = 'width:100%;height:100%;border:none;overflow:hidden;display:block;background:transparent;';
+
+    contentEl.appendChild(iframe);
+
+    // Auto-scale content to fit: if content overflows, shrink it proportionally
+    iframe.addEventListener('load', () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) return;
+        const contentH = doc.documentElement.scrollHeight;
+        const availableH = iframe.clientHeight;
+        if (contentH > availableH && availableH > 0) {
+          const scale = availableH / contentH;
+          doc.documentElement.style.overflow = 'hidden';
+          doc.body.style.transformOrigin = 'top left';
+          doc.body.style.transform = `scale(${scale})`;
+          // Compensate width so content fills the visual space after scaling
+          doc.body.style.width = `${(1 / scale) * 100}%`;
+        }
+      } catch { /* cross-origin fallback */ }
+    });
   }
 
   openSettings(onSave: (config: Record<string, unknown>) => void): void {
@@ -54,7 +120,7 @@ class HtmlBlockSettingsModal extends Modal {
 
     const draft = structuredClone(this.config);
 
-    new Setting(contentEl).setName('HTML').setDesc('Sanitized before rendering.');
+    new Setting(contentEl).setName('HTML').setDesc('Supports full HTML documents with <style> blocks.');
     const textarea = contentEl.createEl('textarea', { cls: 'html-settings-textarea' });
     textarea.value = draft.html as string ?? '';
     textarea.rows = 12;

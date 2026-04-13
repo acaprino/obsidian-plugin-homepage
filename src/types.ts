@@ -13,7 +13,7 @@ export type BlockType = typeof BLOCK_TYPES[number];
 
 export type OpenMode = 'replace-all' | 'replace-last' | 'retain';
 
-export type LayoutPriority = 'row' | 'column';
+export type LayoutPriority = 'row';
 
 export type ResponsiveMode = 'unified' | 'separate';
 

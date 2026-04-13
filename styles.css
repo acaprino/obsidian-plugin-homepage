@@ -530,6 +530,53 @@
   100% { background-position: -200% 0; }
 }
 
+/* ── Skeleton Loading Overlay ──────────────────────────── */
+.hp-skeleton-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: calc(var(--hp-card-padding) + var(--hp-title-gap, 8px) + 1.2em) var(--hp-card-padding) var(--hp-card-padding);
+  pointer-events: none;
+  border-radius: inherit;
+  background: var(--background-secondary);
+  transition: opacity 0.2s ease-out;
+}
+
+.hp-skeleton-overlay--out {
+  opacity: 0;
+}
+
+.hp-skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--background-modifier-hover);
+  position: relative;
+  overflow: hidden;
+}
+
+.hp-skeleton-line:nth-child(1) { width: 75%; }
+.hp-skeleton-line:nth-child(2) { width: 55%; }
+.hp-skeleton-line:nth-child(3) { width: 65%; }
+
+.hp-skeleton-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-accent) 8%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: hp-shimmer 1.8s ease-in-out infinite;
+}
+
+.block-collapsed .hp-skeleton-overlay { display: none; }
+
 /* ── Greeting base (wide row) ──────────────────────────── */
 /* Wide card: emoji left, "Salut, Name" inline, time right.
    Like the "1x4 Panoramic" reference — everything on one line. */
@@ -1660,6 +1707,30 @@
 .image-gallery.masonry-layout .gallery-item img {
   aspect-ratio: auto;
   object-fit: unset;
+}
+
+/* ── Gallery thumbnail loading shimmer ─────────────────── */
+.gallery-item--loading {
+  background: var(--background-secondary);
+}
+.gallery-item--loading img {
+  /* Ensure placeholder takes space before thumbnail src is set */
+  aspect-ratio: 3 / 2;
+}
+.gallery-item--loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--background-modifier-hover) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: hp-shimmer 1.8s ease-in-out infinite;
+  pointer-events: none;
 }
 
 /* ── Gallery responsive ───────────────────────────────── */

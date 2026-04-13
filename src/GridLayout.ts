@@ -252,10 +252,10 @@ export class GridLayout {
     }));
 
     // Repack y values so items are tightly stacked from the start.
-    // Edit mode: view-mode y positions leave large gaps between compact-h items.
-    // View mode: saved y positions may have gaps — pack to eliminate them.
-    // When compactLayout is off, skip packing to preserve intentional gaps.
-    if (this.plugin.layout.compactLayout) {
+    // Edit mode: ALWAYS pack — compact heights (COMPACT_EDIT_H) make saved
+    // view-mode y positions incorrect, leaving large visual gaps.
+    // View mode: pack only when compactLayout is on to preserve intentional gaps.
+    if (this.editMode || this.plugin.layout.compactLayout) {
       GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
     }
 
@@ -320,18 +320,26 @@ export class GridLayout {
             this.requestAutoHeight(gsEl, instance);
           });
         }
+        // Skeleton overlay: show shimmer placeholder during initial load
+        const skeletonEl = isInitial ? this.createSkeleton(wrapper) : null;
         const result = block.render(contentEl);
         if (result instanceof Promise) {
           // After async render, wait one frame for the browser to lay out the new DOM,
           // then measure and resize the block to its natural content height.
           result
-            .then(() => { if (needsResize) this.requestAutoHeight(gsEl, instance); })
+            .then(() => {
+              this.removeSkeleton(skeletonEl);
+              if (needsResize) this.requestAutoHeight(gsEl, instance);
+            })
             .catch(e => {
+              this.removeSkeleton(skeletonEl);
               console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
               contentEl.setText('Error rendering block. Check console for details.');
             });
-        } else if (needsResize) {
-          this.requestAutoHeight(gsEl, instance);
+        } else {
+          // Sync render completed — skeleton was never painted, just remove it
+          skeletonEl?.remove();
+          if (needsResize) this.requestAutoHeight(gsEl, instance);
         }
         this.blocks.set(instance.id, { block, wrapper });
       }
@@ -348,14 +356,11 @@ export class GridLayout {
     // In single-column flex mode, reorder DOM elements by position
     // so blocks appear in the user's chosen priority order.
     if (columns === 1) {
-      const priority = this.plugin.activeLayoutPriority();
       const gridItems = [...this.gridEl.querySelectorAll<HTMLElement>(':scope > .grid-stack-item')];
       gridItems.sort((a, b) => {
         const na = (a as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
         const nb = (b as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
-        return priority === 'column'
-          ? ((na?.x ?? 0) - (nb?.x ?? 0)) || ((na?.y ?? 0) - (nb?.y ?? 0))
-          : ((na?.y ?? 0) - (nb?.y ?? 0)) || ((na?.x ?? 0) - (nb?.x ?? 0));
+        return ((na?.y ?? 0) - (nb?.y ?? 0)) || ((na?.x ?? 0) - (nb?.x ?? 0));
       });
       for (const el of gridItems) {
         this.gridEl.appendChild(el);
@@ -427,6 +432,22 @@ export class GridLayout {
     }
     wrapper.createDiv({ cls: 'block-content' });
     return wrapper;
+  }
+
+  /** Create a shimmer skeleton overlay inside the block wrapper for perceived loading speed. */
+  private createSkeleton(wrapper: HTMLElement): HTMLElement {
+    const overlay = wrapper.createDiv({ cls: 'hp-skeleton-overlay' });
+    overlay.createDiv({ cls: 'hp-skeleton-line' });
+    overlay.createDiv({ cls: 'hp-skeleton-line' });
+    overlay.createDiv({ cls: 'hp-skeleton-line' });
+    return overlay;
+  }
+
+  /** Fade out and remove a skeleton overlay. */
+  private removeSkeleton(el: HTMLElement | null): void {
+    if (!el?.isConnected) return;
+    el.classList.add('hp-skeleton-overlay--out');
+    window.setTimeout(() => el.remove(), 200);
   }
 
   /** Render a lightweight symbolic placeholder for edit mode (no real block content). */
@@ -802,12 +823,7 @@ export class GridLayout {
     // In single-column flex mode, DOM order determines visual order.
     // Reorder DOM elements by packed position using the user's priority.
     if (next === 1) {
-      const priority = this.plugin.activeLayoutPriority();
-      const sorted = nodeItems.slice().sort((a, b) =>
-        priority === 'column'
-          ? (a.x - b.x || a.y - b.y)
-          : (a.y - b.y || a.x - b.x),
-      );
+      const sorted = nodeItems.slice().sort((a, b) => (a.y - b.y || a.x - b.x));
       for (const item of sorted) {
         this.gridEl.appendChild(item.el);
       }

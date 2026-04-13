@@ -252,10 +252,10 @@ export class GridLayout {
     }));
 
     // Repack y values so items are tightly stacked from the start.
-    // Edit mode: view-mode y positions leave large gaps between compact-h items.
-    // View mode: saved y positions may have gaps — pack to eliminate them.
-    // When compactLayout is off, skip packing to preserve intentional gaps.
-    if (this.plugin.layout.compactLayout) {
+    // Edit mode: ALWAYS pack — compact heights (COMPACT_EDIT_H) make saved
+    // view-mode y positions incorrect, leaving large visual gaps.
+    // View mode: pack only when compactLayout is on to preserve intentional gaps.
+    if (this.editMode || this.plugin.layout.compactLayout) {
       GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
     }
 

@@ -6415,7 +6415,7 @@ var GridLayout = class _GridLayout {
       // load() before we've added any DOM content, causing "firstElementChild is null".
       // We call resizeToContent() manually after building each block's DOM below.
     }));
-    if (this.plugin.layout.compactLayout) {
+    if (this.editMode || this.plugin.layout.compactLayout) {
       _GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
     }
     this.effectiveColumns = columns;

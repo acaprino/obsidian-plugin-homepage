@@ -355,7 +355,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'video-embed',
     displayName: 'Video embed',
-    defaultConfig: { url: '' },
+    defaultConfig: { url: '', shuffleOnLoad: false },
     defaultSize: { w: 2, h: 4 },
     create: (app, instance, plugin) => new VideoEmbedBlock(app, instance, plugin),
   });

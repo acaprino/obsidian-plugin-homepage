@@ -356,14 +356,11 @@ export class GridLayout {
     // In single-column flex mode, reorder DOM elements by position
     // so blocks appear in the user's chosen priority order.
     if (columns === 1) {
-      const priority = this.plugin.activeLayoutPriority();
       const gridItems = [...this.gridEl.querySelectorAll<HTMLElement>(':scope > .grid-stack-item')];
       gridItems.sort((a, b) => {
         const na = (a as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
         const nb = (b as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
-        return priority === 'column'
-          ? ((na?.x ?? 0) - (nb?.x ?? 0)) || ((na?.y ?? 0) - (nb?.y ?? 0))
-          : ((na?.y ?? 0) - (nb?.y ?? 0)) || ((na?.x ?? 0) - (nb?.x ?? 0));
+        return ((na?.y ?? 0) - (nb?.y ?? 0)) || ((na?.x ?? 0) - (nb?.x ?? 0));
       });
       for (const el of gridItems) {
         this.gridEl.appendChild(el);
@@ -826,12 +823,7 @@ export class GridLayout {
     // In single-column flex mode, DOM order determines visual order.
     // Reorder DOM elements by packed position using the user's priority.
     if (next === 1) {
-      const priority = this.plugin.activeLayoutPriority();
-      const sorted = nodeItems.slice().sort((a, b) =>
-        priority === 'column'
-          ? (a.x - b.x || a.y - b.y)
-          : (a.y - b.y || a.x - b.x),
-      );
+      const sorted = nodeItems.slice().sort((a, b) => (a.y - b.y || a.x - b.x));
       for (const item of sorted) {
         this.gridEl.appendChild(item.el);
       }

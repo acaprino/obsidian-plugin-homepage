@@ -19,6 +19,7 @@ import { SpacerBlock } from './blocks/SpacerBlock';
 import { RandomNoteBlock } from './blocks/RandomNoteBlock';
 import { VoiceDictationBlock } from './blocks/VoiceDictationBlock';
 import { VaultSearchBlock } from './blocks/VaultSearchBlock';
+import { imageCache } from './utils/imageCache';
 
 // ── Default layout ──────────────────────────────────────────────────────────
 
@@ -495,7 +496,9 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     );
   }
 
-  onunload(): void { /* Obsidian detaches views automatically */ }
+  onunload(): void {
+    imageCache.destroy();
+  }
 
   // ── Platform-aware layout helpers ─────────────────────────────────
 

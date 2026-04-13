@@ -2,6 +2,7 @@ import { App, Modal, setIcon, Setting, TAbstractFile, TFile, TFolder } from 'obs
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
+import { imageCache } from '../utils/imageCache';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -116,6 +117,15 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
   showItem(current);
 }
 
+/** Resolve when an <img> finishes loading (or has already loaded). */
+function waitForImage(img: HTMLImageElement): Promise<void> {
+  return new Promise(resolve => {
+    if (img.complete && img.naturalHeight > 0) { resolve(); return; }
+    img.addEventListener('load', () => resolve(), { once: true });
+    img.addEventListener('error', () => resolve(), { once: true });
+  });
+}
+
 const DEBOUNCE_MS = 300;
 
 export class ImageGalleryBlock extends BaseBlock {
@@ -144,10 +154,21 @@ export class ImageGalleryBlock extends BaseBlock {
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
 
     this.registerEvent(this.app.vault.on('create', (f) => { if (isRelevant(f)) trigger(); }));
-    this.registerEvent(this.app.vault.on('delete', (f) => { if (isRelevant(f)) trigger(); }));
-    this.registerEvent(this.app.vault.on('rename', (f, oldPath) => {
-      if (isRelevant(f) || this.isRelevantMedia(oldPath)) trigger();
+    this.registerEvent(this.app.vault.on('delete', (f) => {
+      if (isRelevant(f)) { imageCache.invalidate(f.path); trigger(); }
     }));
+    this.registerEvent(this.app.vault.on('rename', (f, oldPath) => {
+      if (isRelevant(f) || this.isRelevantMedia(oldPath)) {
+        imageCache.invalidate(oldPath);
+        trigger();
+      }
+    }));
+    this.registerEvent(this.app.vault.on('modify', (f) => {
+      if (isRelevant(f)) { imageCache.invalidate(f.path); trigger(); }
+    }));
+
+    // One-time masonry observer cleanup for component teardown
+    this.register(() => { this.masonryRo?.disconnect(); this.masonryRo = null; });
 
     return this.loadAndRender(el).catch(e => {
       console.error('[Homepage Blocks] ImageGalleryBlock failed to render:', e);
@@ -208,10 +229,8 @@ export class ImageGalleryBlock extends BaseBlock {
       this.masonryRo?.disconnect();
       this.masonryRo = new ResizeObserver(updateCols);
       this.masonryRo.observe(gallery);
-      this.register(() => { this.masonryRo?.disconnect(); this.masonryRo = null; });
     } else {
-      const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
-      gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols, 100));
+      gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(columns, 100));
     }
 
     if (!folder) {
@@ -229,16 +248,20 @@ export class ImageGalleryBlock extends BaseBlock {
 
     const files = this.getMediaFiles(folderObj, maxItems || Infinity);
 
+    // Lightbox always uses full-resolution URLs
     const lightboxItems: LightboxItem[] = files.map(f => {
       const e = `.${f.extension.toLowerCase()}`;
       return {
-        src: this.app.vault.getResourcePath(f),
+        src: imageCache.fullUrl(this.app, f),
         alt: f.basename,
         type: IMAGE_EXTS.has(e) ? 'image' as const : 'video' as const,
       };
     });
 
-    const imageLoadPromises: Promise<void>[] = [];
+    const loadPromises: Promise<void>[] = [];
+    // Only use lazy loading in fixed-height (scrollable) mode — auto-height
+    // needs all dimensions upfront for GridStack measurement.
+    const useLazy = heightMode === 'fixed';
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -258,16 +281,26 @@ export class ImageGalleryBlock extends BaseBlock {
 
       if (IMAGE_EXTS.has(ext)) {
         const img = wrapper.createEl('img');
-        img.src = lightboxItems[index].src;
         img.alt = file.basename;
-        // Not lazy — we need dimensions before GridStack can measure the block height.
-        imageLoadPromises.push(
-          new Promise<void>(resolve => {
-            if (img.complete) { resolve(); return; }
-            img.addEventListener('load', () => resolve(), { once: true });
-            img.addEventListener('error', () => resolve(), { once: true });
-          }),
-        );
+        if (useLazy && i >= columns) img.loading = 'lazy';
+
+        // Synchronous cache hit → display immediately (second render onward)
+        const cached = imageCache.getCached(file.path, file.stat.mtime);
+        if (cached) {
+          img.src = cached.thumbUrl;
+          loadPromises.push(waitForImage(img));
+        } else {
+          // Show shimmer placeholder while thumbnail is generated
+          wrapper.addClass('gallery-item--loading');
+          loadPromises.push(
+            imageCache.get(this.app, file).then(entry => {
+              if (this.isStale(gen)) return;
+              img.src = entry.thumbUrl;
+              wrapper.removeClass('gallery-item--loading');
+              return waitForImage(img);
+            }),
+          );
+        }
       } else if (VIDEO_EXTS.has(ext)) {
         wrapper.addClass('gallery-item-video');
         wrapper.createDiv({ cls: 'video-play-overlay', text: '▶' });
@@ -281,7 +314,7 @@ export class ImageGalleryBlock extends BaseBlock {
         // Seek to first frame so thumbnail isn't a black box
         video.addEventListener('loadedmetadata', () => { video.currentTime = 0.1; }, { once: true });
         // Wait for metadata so natural aspect ratio dimensions are available for auto-height
-        imageLoadPromises.push(
+        loadPromises.push(
           new Promise<void>(resolve => {
             if (video.readyState >= 1) { resolve(); return; }
             video.addEventListener('loadedmetadata', () => resolve(), { once: true });
@@ -294,9 +327,8 @@ export class ImageGalleryBlock extends BaseBlock {
       }
     }
 
-    // Wait for images to report their natural dimensions so GridStack can
-    // measure the block's true height before calling resizeToContent.
-    await Promise.all(imageLoadPromises);
+    // Wait for all thumbnails + image decodes so GridStack can measure true height.
+    await Promise.all(loadPromises);
     if (this.isStale(gen)) return; // a newer render superseded this one
 
     // Start width observer AFTER images load so the initial measurement is accurate.

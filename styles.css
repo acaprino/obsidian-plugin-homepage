@@ -1704,6 +1704,30 @@
   object-fit: unset;
 }
 
+/* ── Gallery thumbnail loading shimmer ─────────────────── */
+.gallery-item--loading {
+  background: var(--background-secondary);
+}
+.gallery-item--loading img {
+  /* Ensure placeholder takes space before thumbnail src is set */
+  aspect-ratio: 3 / 2;
+}
+.gallery-item--loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--background-modifier-hover) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: hp-shimmer 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
 /* ── Gallery responsive ───────────────────────────────── */
 /* 500px — cap at 3 columns, slightly tighter gap */
 @container (max-width: 500px) {

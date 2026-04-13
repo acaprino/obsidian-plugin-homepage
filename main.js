@@ -9050,6 +9050,148 @@ function responsiveGridColumns(safeCols, minPx = 120) {
   return `repeat(auto-fill, minmax(max(${minPx}px, calc(100% / ${safeCols})), 1fr))`;
 }
 
+// src/utils/imageCache.ts
+var THUMB_MAX_DIM = 400;
+var THUMB_QUALITY = 0.75;
+var MAX_ENTRIES = 300;
+var THUMB_TIMEOUT_MS = 5e3;
+var MAX_PIXELS = 1e8;
+var THUMBABLE_EXTS = /* @__PURE__ */ new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+var ImageCacheStore = class {
+  entries = /* @__PURE__ */ new Map();
+  pending = /* @__PURE__ */ new Map();
+  disposed = false;
+  /** Synchronous lookup — returns the entry only if already cached and fresh. */
+  getCached(path, mtime) {
+    const e = this.entries.get(path);
+    return e && e.mtime === mtime ? e : null;
+  }
+  /** Async lookup — generates a thumbnail if not cached. */
+  async get(app, file) {
+    const { path } = file;
+    const mtime = file.stat.mtime;
+    const hit = this.entries.get(path);
+    if (hit && hit.mtime === mtime) return hit;
+    const inflight = this.pending.get(path);
+    if (inflight) return inflight;
+    const work = this.generate(app, file, mtime);
+    this.pending.set(path, work);
+    try {
+      const entry = await work;
+      if (this.disposed || this.pending.get(path) !== work) {
+        if (entry.isBlob) URL.revokeObjectURL(entry.thumbUrl);
+        return entry;
+      }
+      const current = this.entries.get(path);
+      if (current?.isBlob) URL.revokeObjectURL(current.thumbUrl);
+      this.entries.set(path, entry);
+      this.evict();
+      return entry;
+    } finally {
+      if (this.pending.get(path) === work) {
+        this.pending.delete(path);
+      }
+    }
+  }
+  /** Get full-res URL (sync — uses cached value or falls back to the Obsidian API). */
+  fullUrl(app, file) {
+    const e = this.entries.get(file.path);
+    return e && e.mtime === file.stat.mtime ? e.fullUrl : app.vault.getResourcePath(file);
+  }
+  /** Remove a path from cache, revoking its blob URL if any. */
+  invalidate(path) {
+    const e = this.entries.get(path);
+    if (e?.isBlob) URL.revokeObjectURL(e.thumbUrl);
+    this.entries.delete(path);
+    this.pending.delete(path);
+  }
+  /** Revoke all blob URLs and clear the cache entirely. */
+  destroy() {
+    this.disposed = true;
+    for (const e of this.entries.values()) {
+      if (e.isBlob) URL.revokeObjectURL(e.thumbUrl);
+    }
+    this.entries.clear();
+    this.pending.clear();
+  }
+  // ── internals ──
+  async generate(app, file, mtime) {
+    const fullUrl = app.vault.getResourcePath(file);
+    const ext = `.${file.extension.toLowerCase()}`;
+    if (!THUMBABLE_EXTS.has(ext)) {
+      return { thumbUrl: fullUrl, fullUrl, mtime, isBlob: false };
+    }
+    try {
+      const thumbUrl = await resizeToBlob(fullUrl, THUMB_MAX_DIM, THUMB_QUALITY);
+      return { thumbUrl, fullUrl, mtime, isBlob: thumbUrl !== fullUrl };
+    } catch {
+      return { thumbUrl: fullUrl, fullUrl, mtime, isBlob: false };
+    }
+  }
+  /** Evict oldest entries (Map insertion order) when over capacity. */
+  evict() {
+    if (this.entries.size <= MAX_ENTRIES) return;
+    const excess = this.entries.size - MAX_ENTRIES;
+    let n = 0;
+    for (const [key] of this.entries) {
+      if (n >= excess) break;
+      this.entries.delete(key);
+      n++;
+    }
+  }
+};
+function resizeToBlob(src, maxDim, quality) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(src), THUMB_TIMEOUT_MS);
+    const img = new Image();
+    img.onload = () => {
+      const { naturalWidth: w, naturalHeight: h } = img;
+      if (w <= maxDim && h <= maxDim) {
+        clearTimeout(timeout);
+        resolve(src);
+        return;
+      }
+      if (w * h > MAX_PIXELS) {
+        clearTimeout(timeout);
+        resolve(src);
+        return;
+      }
+      const scale = Math.min(maxDim / w, maxDim / h);
+      const tw = Math.round(w * scale);
+      const th = Math.round(h * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = tw;
+      canvas.height = th;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        clearTimeout(timeout);
+        resolve(src);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, tw, th);
+      try {
+        canvas.toBlob(
+          (blob) => {
+            clearTimeout(timeout);
+            resolve(blob ? URL.createObjectURL(blob) : src);
+          },
+          "image/webp",
+          quality
+        );
+      } catch {
+        clearTimeout(timeout);
+        resolve(src);
+      }
+    };
+    img.onerror = () => {
+      clearTimeout(timeout);
+      resolve(src);
+    };
+    img.src = src;
+  });
+}
+var imageCache = new ImageCacheStore();
+
 // src/blocks/ImageGalleryBlock.ts
 var IMAGE_EXTS = /* @__PURE__ */ new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
 var VIDEO_EXTS = /* @__PURE__ */ new Set([".mp4", ".webm", ".mov", ".mkv"]);
@@ -9160,6 +9302,16 @@ function openMediaLightbox(items, startIndex) {
   }, { signal });
   showItem(current);
 }
+function waitForImage(img) {
+  return new Promise((resolve) => {
+    if (img.complete && img.naturalHeight > 0) {
+      resolve();
+      return;
+    }
+    img.addEventListener("load", () => resolve(), { once: true });
+    img.addEventListener("error", () => resolve(), { once: true });
+  });
+}
 var DEBOUNCE_MS2 = 300;
 var ImageGalleryBlock = class extends BaseBlock {
   /** The AbortController for the lightbox opened by THIS instance (if any). */
@@ -9187,11 +9339,27 @@ var ImageGalleryBlock = class extends BaseBlock {
       if (isRelevant(f)) trigger();
     }));
     this.registerEvent(this.app.vault.on("delete", (f) => {
-      if (isRelevant(f)) trigger();
+      if (isRelevant(f)) {
+        imageCache.invalidate(f.path);
+        trigger();
+      }
     }));
     this.registerEvent(this.app.vault.on("rename", (f, oldPath) => {
-      if (isRelevant(f) || this.isRelevantMedia(oldPath)) trigger();
+      if (isRelevant(f) || this.isRelevantMedia(oldPath)) {
+        imageCache.invalidate(oldPath);
+        trigger();
+      }
     }));
+    this.registerEvent(this.app.vault.on("modify", (f) => {
+      if (isRelevant(f)) {
+        imageCache.invalidate(f.path);
+        trigger();
+      }
+    }));
+    this.register(() => {
+      this.masonryRo?.disconnect();
+      this.masonryRo = null;
+    });
     return this.loadAndRender(el).catch((e) => {
       console.error("[Homepage Blocks] ImageGalleryBlock failed to render:", e);
       el.setText("Error loading gallery. Check console for details.");
@@ -9237,13 +9405,8 @@ var ImageGalleryBlock = class extends BaseBlock {
       this.masonryRo?.disconnect();
       this.masonryRo = new ResizeObserver(updateCols);
       this.masonryRo.observe(gallery);
-      this.register(() => {
-        this.masonryRo?.disconnect();
-        this.masonryRo = null;
-      });
     } else {
-      const safeCols = Math.max(1, Math.min(6, Math.floor(Number(columns) || 3)));
-      gallery.style.setProperty("--hp-grid-cols", responsiveGridColumns(safeCols, 100));
+      gallery.style.setProperty("--hp-grid-cols", responsiveGridColumns(columns, 100));
     }
     if (!folder) {
       const hint = gallery.createDiv({ cls: "block-empty-hint" });
@@ -9260,12 +9423,13 @@ var ImageGalleryBlock = class extends BaseBlock {
     const lightboxItems = files.map((f) => {
       const e = `.${f.extension.toLowerCase()}`;
       return {
-        src: this.app.vault.getResourcePath(f),
+        src: imageCache.fullUrl(this.app, f),
         alt: f.basename,
         type: IMAGE_EXTS.has(e) ? "image" : "video"
       };
     });
-    const imageLoadPromises = [];
+    const loadPromises = [];
+    const useLazy = heightMode === "fixed";
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const ext = `.${file.extension.toLowerCase()}`;
@@ -9287,18 +9451,23 @@ var ImageGalleryBlock = class extends BaseBlock {
       });
       if (IMAGE_EXTS.has(ext)) {
         const img = wrapper.createEl("img");
-        img.src = lightboxItems[index].src;
         img.alt = file.basename;
-        imageLoadPromises.push(
-          new Promise((resolve) => {
-            if (img.complete) {
-              resolve();
-              return;
-            }
-            img.addEventListener("load", () => resolve(), { once: true });
-            img.addEventListener("error", () => resolve(), { once: true });
-          })
-        );
+        if (useLazy && i >= columns) img.loading = "lazy";
+        const cached = imageCache.getCached(file.path, file.stat.mtime);
+        if (cached) {
+          img.src = cached.thumbUrl;
+          loadPromises.push(waitForImage(img));
+        } else {
+          wrapper.addClass("gallery-item--loading");
+          loadPromises.push(
+            imageCache.get(this.app, file).then((entry) => {
+              if (this.isStale(gen)) return;
+              img.src = entry.thumbUrl;
+              wrapper.removeClass("gallery-item--loading");
+              return waitForImage(img);
+            })
+          );
+        }
       } else if (VIDEO_EXTS.has(ext)) {
         wrapper.addClass("gallery-item-video");
         wrapper.createDiv({ cls: "video-play-overlay", text: "\u25B6" });
@@ -9311,7 +9480,7 @@ var ImageGalleryBlock = class extends BaseBlock {
         video.addEventListener("loadedmetadata", () => {
           video.currentTime = 0.1;
         }, { once: true });
-        imageLoadPromises.push(
+        loadPromises.push(
           new Promise((resolve) => {
             if (video.readyState >= 1) {
               resolve();
@@ -9331,7 +9500,7 @@ var ImageGalleryBlock = class extends BaseBlock {
         });
       }
     }
-    await Promise.all(imageLoadPromises);
+    await Promise.all(loadPromises);
     if (this.isStale(gen)) return;
     if (heightMode !== "fixed") {
       this.observeWidthForAutoHeight(gallery);
@@ -11946,6 +12115,7 @@ var HomepagePlugin = class extends import_obsidian22.Plugin {
     );
   }
   onunload() {
+    imageCache.destroy();
   }
   // ── Platform-aware layout helpers ─────────────────────────────────
   isMobileActive() {

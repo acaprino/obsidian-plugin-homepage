@@ -45,7 +45,7 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 | **Greeting** | Time-aware salutation with 50 language presets and custom emoji per time slot or random pool |
 | **Clock** | Live clock with optional seconds and date display |
 | **Quotes** | Multi-column quotes pulled from tagged notes or entered manually |
-| **Quick Links** | Auto-generated list from a folder, plus manual links |
+| **Quick Links** | Auto-generated list from a folder (with optional glob patterns like `Projects/*.md` or `**/*-draft.md`), plus manual links |
 | **Button Grid** | Emoji-labeled buttons that open notes |
 | **Image Gallery** | Grid or masonry layout from a vault folder, with lightbox |
 | **Video Embed** | YouTube, Vimeo, Dailymotion -- supports playlists with shuffle |

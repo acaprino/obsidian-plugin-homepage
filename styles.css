@@ -2333,30 +2333,6 @@
   margin-bottom: 0;
 }
 
-/* Chevron indicator — CSS-only, rotates on collapse */
-.block-collapse-chevron {
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  opacity: 0.3;
-  line-height: 1;
-  flex-shrink: 0;
-  display: inline-block;
-  transform: rotate(270deg);
-  transition: opacity 0.15s ease-out, transform 0.2s ease-out;
-}
-
-.block-collapse-chevron::before {
-  content: '›';
-}
-
-.block-collapse-chevron.is-collapsed {
-  transform: rotate(90deg);
-  opacity: 1;
-}
-
-.homepage-block-wrapper:hover .block-collapse-chevron {
-  opacity: 1;
-}
 
 /* Smooth collapse via grid-template-rows */
 .homepage-block-wrapper .block-content {

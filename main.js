@@ -6572,10 +6572,6 @@ var GridLayout = class _GridLayout {
       cls: "block-header-zone",
       attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
     });
-    headerZone.createSpan({
-      cls: "block-collapse-chevron" + (effectiveCollapsed ? " is-collapsed" : ""),
-      attr: { "aria-hidden": "true" }
-    });
     if (instance.config._showDivider === true) {
       wrapper.createDiv({ cls: "block-header-divider" });
     }
@@ -7003,14 +6999,12 @@ var GridLayout = class _GridLayout {
   // ── Block Interactions ─────────────────────────────────────────────────
   setupCollapseToggle(gsEl, instance, headerZone) {
     const wrapper = gsEl.querySelector(".homepage-block-wrapper");
-    const chevron = headerZone.querySelector(".block-collapse-chevron");
-    if (!wrapper || !chevron) return;
+    if (!wrapper) return;
     const toggleCollapse = (e) => {
       e.stopPropagation();
       if (this.editMode) return;
       const isNowCollapsed = !wrapper.hasClass("block-collapsed");
       wrapper.toggleClass("block-collapsed", isNowCollapsed);
-      chevron.toggleClass("is-collapsed", isNowCollapsed);
       headerZone.setAttribute("aria-expanded", String(!isNowCollapsed));
       const gsNode = gsEl.gridstackNode;
       let newBlocks;

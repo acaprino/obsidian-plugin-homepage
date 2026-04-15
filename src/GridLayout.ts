@@ -423,10 +423,6 @@ export class GridLayout {
       cls: 'block-header-zone',
       attr: { role: 'button', tabindex: '0', 'aria-expanded': String(!effectiveCollapsed) },
     });
-    headerZone.createSpan({
-      cls: 'block-collapse-chevron' + (effectiveCollapsed ? ' is-collapsed' : ''),
-      attr: { 'aria-hidden': 'true' },
-    });
     if (instance.config._showDivider === true) {
       wrapper.createDiv({ cls: 'block-header-divider' });
     }
@@ -992,15 +988,13 @@ export class GridLayout {
 
   private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {
     const wrapper = gsEl.querySelector('.homepage-block-wrapper') as HTMLElement;
-    const chevron = headerZone.querySelector('.block-collapse-chevron') as HTMLElement;
-    if (!wrapper || !chevron) return;
+    if (!wrapper) return;
 
     const toggleCollapse = (e: Event) => {
       e.stopPropagation();
       if (this.editMode) return;
       const isNowCollapsed = !wrapper.hasClass('block-collapsed');
       wrapper.toggleClass('block-collapsed', isNowCollapsed);
-      chevron.toggleClass('is-collapsed', isNowCollapsed);
       headerZone.setAttribute('aria-expanded', String(!isNowCollapsed));
 
       // Tell GridStack to resize the cell so the grid reflows, and persist the height

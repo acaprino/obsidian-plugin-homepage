@@ -53,7 +53,7 @@ export class HtmlBlock extends BaseBlock {
     while ((m = VAR_RE.exec(safe)) !== null) varRefs.add(m[1]);
 
     // Build bridge stylesheet: Obsidian CSS variables + body padding reset
-    const bridgeParts = ['body{margin:0;padding:0}'];
+    const bridgeParts = ['html{height:100%;margin:0;padding:0}body{margin:0;padding:0;min-height:100%}'];
     if (varRefs.size > 0) {
       const rootStyle = getComputedStyle(document.body);
       const pairs = [...varRefs]
@@ -80,21 +80,30 @@ export class HtmlBlock extends BaseBlock {
 
     contentEl.appendChild(iframe);
 
-    // Auto-scale content to fit: if content overflows, shrink it proportionally
+    // Auto-scale: if content overflows vertically, widen + shrink to fill the card.
+    // Iterates because widening the body causes flex-wrap reflow (shorter content),
+    // which changes the required scale. Converges in 2-3 rounds.
     iframe.addEventListener('load', () => {
       try {
         const doc = iframe.contentDocument;
         if (!doc) return;
-        const contentH = doc.documentElement.scrollHeight;
         const availableH = iframe.clientHeight;
-        if (contentH > availableH && availableH > 0) {
-          const scale = availableH / contentH;
-          doc.documentElement.style.overflow = 'hidden';
-          doc.body.style.transformOrigin = 'top left';
-          doc.body.style.transform = `scale(${scale})`;
-          // Compensate width so content fills the visual space after scaling
+        let contentH = doc.documentElement.scrollHeight;
+        if (contentH <= availableH || availableH <= 0) return;
+
+        let scale = availableH / contentH;
+        for (let i = 0; i < 4; i++) {
           doc.body.style.width = `${(1 / scale) * 100}%`;
+          contentH = doc.documentElement.scrollHeight;
+          const next = availableH / contentH;
+          if (Math.abs(next - scale) < 0.005) { scale = next; break; }
+          scale = next;
         }
+
+        doc.body.style.width = `${(1 / scale) * 100}%`;
+        doc.documentElement.style.overflow = 'hidden';
+        doc.body.style.transformOrigin = 'top left';
+        doc.body.style.transform = `scale(${scale})`;
       } catch { /* cross-origin fallback */ }
     });
   }

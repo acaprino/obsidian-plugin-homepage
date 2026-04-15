@@ -8355,6 +8355,41 @@ function enableDragReorder(row, index, items, state, renderList) {
 
 // src/blocks/FolderLinksBlock.ts
 var VALID_ALIGNS = /* @__PURE__ */ new Set(["left", "center", "right"]);
+function parseFolderPattern(input) {
+  const trimmed = (input ?? "").trim().replace(/\/+$/, "");
+  if (!trimmed) return { folder: "", hasPattern: false, matches: () => true };
+  const wildcardIdx = trimmed.search(/[*?]/);
+  if (wildcardIdx === -1) {
+    return { folder: trimmed, hasPattern: false, matches: () => true };
+  }
+  const lastSlash = trimmed.lastIndexOf("/", wildcardIdx);
+  const folder = lastSlash === -1 ? "" : trimmed.slice(0, lastSlash);
+  const patternStr = lastSlash === -1 ? trimmed : trimmed.slice(lastSlash + 1);
+  const re = globToRegex(patternStr);
+  return { folder, hasPattern: true, matches: (p) => re.test(p) };
+}
+function globToRegex(glob) {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === "*") {
+      if (glob[i + 1] === "*") {
+        re += ".*";
+        i++;
+        if (glob[i + 1] === "/") i++;
+      } else {
+        re += "[^/]*";
+      }
+    } else if (c === "?") {
+      re += "[^/]";
+    } else if (".+^${}()|[]\\".includes(c)) {
+      re += "\\" + c;
+    } else {
+      re += c;
+    }
+  }
+  return new RegExp("^" + re + "$", "i");
+}
 var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
   static DEBOUNCE_MS = 150;
   render(el) {
@@ -8362,9 +8397,10 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
     el.addClass("folder-links-block");
     const trigger = () => this.scheduleRender(_FolderLinksBlock.DEBOUNCE_MS, () => this.renderContent());
     const cfg = this.instance.config;
+    const scopeOf = () => parseFolderPattern(cfg.folder ?? "").folder;
     const isRelevant = (file) => {
-      const folder = (cfg.folder ?? "").trim().replace(/\/+$/, "");
-      return !!folder && file.path.startsWith(folder + "/");
+      const folder = scopeOf();
+      return folder === "" ? true : file.path.startsWith(folder + "/");
     };
     this.registerEvent(this.app.vault.on("create", (f) => {
       if (isRelevant(f)) trigger();
@@ -8373,8 +8409,9 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
       if (isRelevant(f)) trigger();
     }));
     this.registerEvent(this.app.vault.on("rename", (f, oldPath) => {
-      const folder = (cfg.folder ?? "").trim().replace(/\/+$/, "");
-      if (isRelevant(f) || folder && oldPath.startsWith(folder + "/")) trigger();
+      const folder = scopeOf();
+      const underFolder = folder === "" || oldPath.startsWith(folder + "/");
+      if (isRelevant(f) || underFolder) trigger();
     }));
     this.app.workspace.onLayoutReady(() => this.renderContent());
   }
@@ -8383,23 +8420,24 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
     if (!el) return;
     el.empty();
     const cfg = this.instance.config;
-    const folder = cfg.folder ?? "";
+    const folderInput = cfg.folder ?? "";
     const links = cfg.links ?? [];
     const linkAlign = VALID_ALIGNS.has(cfg.linkAlign ?? "") ? cfg.linkAlign : "left";
     const folderEmoji = cfg.folderEmoji ?? "";
     this.renderHeader(el, "Folder links");
     const list = el.createDiv({ cls: "folder-links-list" });
     list.addClass(`folder-links-align-${linkAlign}`);
-    if (folder) {
-      const normalised = folder.trim().replace(/\/+$/, "");
-      if (!normalised) {
+    if (folderInput.trim()) {
+      const parsed = parseFolderPattern(folderInput);
+      if (!parsed.folder && !parsed.hasPattern) {
         list.createEl("p", { text: "Vault root listing is not supported. Select a subfolder.", cls: "block-loading" });
       } else {
-        const folderObj = this.app.vault.getAbstractFileByPath(normalised);
-        if (!(folderObj instanceof import_obsidian8.TFolder)) {
-          list.createEl("p", { text: `Folder "${normalised}" not found.`, cls: "block-loading" });
+        const root = parsed.folder ? this.app.vault.getAbstractFileByPath(parsed.folder) : this.app.vault.getRoot();
+        if (!(root instanceof import_obsidian8.TFolder)) {
+          list.createEl("p", { text: `Folder "${parsed.folder}" not found.`, cls: "block-loading" });
         } else {
-          const notes = this.getNotesInFolder(folderObj).sort((a, b) => a.basename.localeCompare(b.basename));
+          const prefix = parsed.folder ? parsed.folder + "/" : "";
+          const notes = this.getNotesInFolder(root).filter((f) => parsed.matches(prefix ? f.path.slice(prefix.length) : f.path)).sort((a, b) => a.basename.localeCompare(b.basename));
           for (const file of notes) {
             const item = list.createDiv({ cls: "folder-link-item" });
             const btn = item.createEl("button", { cls: "folder-link-btn" });
@@ -8412,7 +8450,8 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
             });
           }
           if (notes.length === 0) {
-            list.createEl("p", { text: `No notes in "${folderObj.path}".`, cls: "block-loading" });
+            const label = parsed.hasPattern ? `matching "${folderInput}"` : `in "${root.path}"`;
+            list.createEl("p", { text: `No notes ${label}.`, cls: "block-loading" });
           }
         }
       }
@@ -8428,7 +8467,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
         void this.app.workspace.openLinkText(link.path, "");
       });
     }
-    if (!folder && links.length === 0) {
+    if (!folderInput.trim() && links.length === 0) {
       const hint = list.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F517}" });
       hint.createDiv({ cls: "block-empty-hint-text", text: "No links yet. Add manual links or pick a folder in settings." });
@@ -8479,9 +8518,9 @@ var FolderLinksSettingsModal = class extends import_obsidian8.Modal {
       })
     );
     let folderText;
-    new import_obsidian8.Setting(contentEl).setName("Auto-list folder").setDesc("Auto-list all notes from a folder.").addText((t) => {
+    new import_obsidian8.Setting(contentEl).setName("Auto-list folder").setDesc("Folder path, with optional wildcards. Examples: Projects, Projects/*.md, Projects/**/*-draft.md").addText((t) => {
       folderText = t;
-      t.setValue(draft.folder ?? "").setPlaceholder("Projects").onChange((v) => {
+      t.setValue(draft.folder ?? "").setPlaceholder("Projects/*.md").onChange((v) => {
         draft.folder = v;
       });
     }).addButton(
@@ -9922,7 +9961,7 @@ var HtmlBlock = class extends BaseBlock {
     const VAR_RE = /var\((--[\w-]+)/g;
     let m;
     while ((m = VAR_RE.exec(safe)) !== null) varRefs.add(m[1]);
-    const bridgeParts = ["body{margin:0;padding:0}"];
+    const bridgeParts = ["html{height:100%;margin:0;padding:0}body{margin:0;padding:0;min-height:100%}"];
     if (varRefs.size > 0) {
       const rootStyle = getComputedStyle(document.body);
       const pairs = [...varRefs].map((v) => {
@@ -9948,15 +9987,24 @@ var HtmlBlock = class extends BaseBlock {
       try {
         const doc = iframe.contentDocument;
         if (!doc) return;
-        const contentH = doc.documentElement.scrollHeight;
         const availableH = iframe.clientHeight;
-        if (contentH > availableH && availableH > 0) {
-          const scale = availableH / contentH;
-          doc.documentElement.style.overflow = "hidden";
-          doc.body.style.transformOrigin = "top left";
-          doc.body.style.transform = `scale(${scale})`;
+        let contentH = doc.documentElement.scrollHeight;
+        if (contentH <= availableH || availableH <= 0) return;
+        let scale = availableH / contentH;
+        for (let i = 0; i < 4; i++) {
           doc.body.style.width = `${1 / scale * 100}%`;
+          contentH = doc.documentElement.scrollHeight;
+          const next = availableH / contentH;
+          if (Math.abs(next - scale) < 5e-3) {
+            scale = next;
+            break;
+          }
+          scale = next;
         }
+        doc.body.style.width = `${1 / scale * 100}%`;
+        doc.documentElement.style.overflow = "hidden";
+        doc.body.style.transformOrigin = "top left";
+        doc.body.style.transform = `scale(${scale})`;
       } catch {
       }
     });

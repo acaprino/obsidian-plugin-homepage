@@ -15,6 +15,32 @@ const MS_PER_DAY = 86_400_000;
 // Double-quotes excluded: single quotes suffice for multi-word font names in CSS.
 const SAFE_FONT_RE = /^[a-zA-Z0-9\s,'\-_]+$/;
 
+// Inline formatting tokenizer: matches **bold** (non-greedy, non-empty)
+// or a #hashtag at start-of-string or after whitespace. Group 3 captures the
+// leading whitespace so we can re-emit it as plain text before the chip.
+const INLINE_FMT_RE = /\*\*([^*\n]+?)\*\*|(^|\s)(#[\p{L}0-9_\-/]+)/gu;
+
+/**
+ * Render text into `el` with inline `**bold**` and `#hashtag` formatting.
+ * Uses Obsidian DOM API (no innerHTML). Unmatched text is appended verbatim.
+ */
+function renderFormatted(el: HTMLElement, text: string): void {
+  INLINE_FMT_RE.lastIndex = 0;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = INLINE_FMT_RE.exec(text)) !== null) {
+    if (m.index > lastIndex) el.appendText(text.slice(lastIndex, m.index));
+    if (m[1] !== undefined) {
+      el.createEl('strong', { text: m[1] });
+    } else {
+      if (m[2]) el.appendText(m[2]);
+      el.createSpan({ cls: 'quote-hashtag', text: m[3] });
+    }
+    lastIndex = INLINE_FMT_RE.lastIndex;
+  }
+  if (lastIndex < text.length) el.appendText(text.slice(lastIndex));
+}
+
 type QuotesConfig = {
   source?: 'tag' | 'text';
   tag?: string;
@@ -138,7 +164,8 @@ export class QuotesListBlock extends BaseBlock {
         const card = el.createDiv({ cls: 'insight-card' });
         const showTitle = (this.instance.config as QuotesConfig).showNoteTitle !== false;
         if (showTitle) card.createDiv({ cls: 'insight-title', text: heading || file.basename });
-        card.createDiv({ cls: 'insight-body', text: body });
+        const bodyEl = card.createDiv({ cls: 'insight-body' });
+        renderFormatted(bodyEl, body);
       } catch (e) {
         console.error('[Homepage Blocks] QuotesListBlock single mode failed to read file:', e);
         el.createDiv({ cls: 'insight-card' }).setText('Error reading file.');
@@ -230,7 +257,8 @@ export class QuotesListBlock extends BaseBlock {
       if (!body) continue;
 
       const item = colsEl.createDiv({ cls: 'quote-item' });
-      const quote = item.createEl('blockquote', { cls: 'quote-content', text: body });
+      const quote = item.createEl('blockquote', { cls: 'quote-content' });
+      renderFormatted(quote, body);
 
       // Validate color before applying to prevent CSS injection
       if (color && COLOR_RE.test(color)) {
@@ -269,7 +297,8 @@ export class QuotesListBlock extends BaseBlock {
 
     const card = el.createDiv({ cls: 'insight-card' });
     if (sourceText) card.createDiv({ cls: 'insight-title', text: sourceText });
-    card.createDiv({ cls: 'insight-body', text: body });
+    const bodyEl = card.createDiv({ cls: 'insight-body' });
+    renderFormatted(bodyEl, body);
   }
 
   /**
@@ -304,7 +333,8 @@ export class QuotesListBlock extends BaseBlock {
       if (!body) continue;
 
       const item = colsEl.createDiv({ cls: 'quote-item' });
-      item.createEl('blockquote', { cls: 'quote-content', text: body });
+      const quote = item.createEl('blockquote', { cls: 'quote-content' });
+      renderFormatted(quote, body);
       if (sourceText) item.createDiv({ cls: 'quote-source', text: sourceText });
     }
   }

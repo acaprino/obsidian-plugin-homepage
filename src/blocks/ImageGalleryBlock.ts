@@ -196,7 +196,7 @@ export class ImageGalleryBlock extends BaseBlock {
       heightMode?: 'auto' | 'fixed';
     };
     const folder = cfg.folder ?? '';
-    const columns = Math.max(1, Math.min(6, Math.floor(Number(cfg.columns) || 3)));
+    const columns = Math.max(1, Math.min(7, Math.floor(Number(cfg.columns) || 3)));
     const rawMax = Number(cfg.maxItems);
     const maxItems = rawMax > 0 ? Math.max(1, Math.min(500, Math.floor(rawMax))) : 0;
     const layout = cfg.layout ?? 'grid';
@@ -412,7 +412,7 @@ class ImageGallerySettingsModal extends Modal {
     );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
-       .addOption('5', '5').addOption('6', '6')
+       .addOption('5', '5').addOption('6', '6').addOption('7', '7')
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 3))
        .onChange(v => { draft.columns = Number(v); }),
     );

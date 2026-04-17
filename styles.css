@@ -1645,6 +1645,25 @@
   line-height: var(--hp-quote-line-height, 1.6);
 }
 
+.quotes-list-block .quote-content strong,
+.quotes-list-block .insight-body strong {
+  font-weight: 700;
+  color: var(--text-normal);
+}
+
+.quote-hashtag {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, transparent);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 /* ── Image Gallery Block ────────────────────────────────── */
 /* Container queries sized from the block wrapper, not .image-gallery itself,
    to avoid breaking auto-height offsetHeight measurement. */

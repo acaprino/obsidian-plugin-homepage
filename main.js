@@ -8762,6 +8762,23 @@ var COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,
 var DEBOUNCE_MS = 500;
 var MS_PER_DAY = 864e5;
 var SAFE_FONT_RE = /^[a-zA-Z0-9\s,'\-_]+$/;
+var INLINE_FMT_RE = /\*\*([^*\n]+?)\*\*|(^|\s)(#[\p{L}0-9_\-/]+)/gu;
+function renderFormatted(el, text) {
+  INLINE_FMT_RE.lastIndex = 0;
+  let lastIndex = 0;
+  let m;
+  while ((m = INLINE_FMT_RE.exec(text)) !== null) {
+    if (m.index > lastIndex) el.appendText(text.slice(lastIndex, m.index));
+    if (m[1] !== void 0) {
+      el.createEl("strong", { text: m[1] });
+    } else {
+      if (m[2]) el.appendText(m[2]);
+      el.createSpan({ cls: "quote-hashtag", text: m[3] });
+    }
+    lastIndex = INLINE_FMT_RE.lastIndex;
+  }
+  if (lastIndex < text.length) el.appendText(text.slice(lastIndex));
+}
 var QuotesListBlock = class extends BaseBlock {
   /** Column ResizeObserver — disconnected before each re-render. */
   colsRo = null;
@@ -8853,7 +8870,8 @@ var QuotesListBlock = class extends BaseBlock {
         const card2 = el.createDiv({ cls: "insight-card" });
         const showTitle = this.instance.config.showNoteTitle !== false;
         if (showTitle) card2.createDiv({ cls: "insight-title", text: heading || file.basename });
-        card2.createDiv({ cls: "insight-body", text: body });
+        const bodyEl = card2.createDiv({ cls: "insight-body" });
+        renderFormatted(bodyEl, body);
       } catch (e) {
         console.error("[Homepage Blocks] QuotesListBlock single mode failed to read file:", e);
         el.createDiv({ cls: "insight-card" }).setText("Error reading file.");
@@ -8926,7 +8944,8 @@ var QuotesListBlock = class extends BaseBlock {
       const body = this.extractBody(content, cache);
       if (!body) continue;
       const item = colsEl.createDiv({ cls: "quote-item" });
-      const quote = item.createEl("blockquote", { cls: "quote-content", text: body });
+      const quote = item.createEl("blockquote", { cls: "quote-content" });
+      renderFormatted(quote, body);
       if (color && COLOR_RE.test(color)) {
         quote.style.setProperty("--hp-quote-color", color);
         quote.addClass("quote-colored");
@@ -8956,7 +8975,8 @@ var QuotesListBlock = class extends BaseBlock {
     const body = bodyLines.join(" ");
     const card = el.createDiv({ cls: "insight-card" });
     if (sourceText) card.createDiv({ cls: "insight-title", text: sourceText });
-    card.createDiv({ cls: "insight-body", text: body });
+    const bodyEl = card.createDiv({ cls: "insight-body" });
+    renderFormatted(bodyEl, body);
   }
   /**
    * Render quotes from plain text. Each quote is separated by `---` on its own line.
@@ -8987,7 +9007,8 @@ var QuotesListBlock = class extends BaseBlock {
       const body = bodyLines.join(" ");
       if (!body) continue;
       const item = colsEl.createDiv({ cls: "quote-item" });
-      item.createEl("blockquote", { cls: "quote-content", text: body });
+      const quote = item.createEl("blockquote", { cls: "quote-content" });
+      renderFormatted(quote, body);
       if (sourceText) item.createDiv({ cls: "quote-source", text: sourceText });
     }
   }
@@ -9448,7 +9469,7 @@ var ImageGalleryBlock = class extends BaseBlock {
     const gen = this.nextGeneration();
     const cfg = this.instance.config;
     const folder = cfg.folder ?? "";
-    const columns = Math.max(1, Math.min(6, Math.floor(Number(cfg.columns) || 3)));
+    const columns = Math.max(1, Math.min(7, Math.floor(Number(cfg.columns) || 3)));
     const rawMax = Number(cfg.maxItems);
     const maxItems = rawMax > 0 ? Math.max(1, Math.min(500, Math.floor(rawMax))) : 0;
     const layout = cfg.layout ?? "grid";
@@ -9635,7 +9656,7 @@ var ImageGallerySettingsModal = class extends import_obsidian11.Modal {
       })
     );
     new import_obsidian11.Setting(contentEl).setName("Columns").addDropdown(
-      (d) => d.addOption("2", "2").addOption("3", "3").addOption("4", "4").addOption("5", "5").addOption("6", "6").setValue(String(typeof draft.columns === "number" ? draft.columns : 3)).onChange((v) => {
+      (d) => d.addOption("2", "2").addOption("3", "3").addOption("4", "4").addOption("5", "5").addOption("6", "6").addOption("7", "7").setValue(String(typeof draft.columns === "number" ? draft.columns : 3)).onChange((v) => {
         draft.columns = Number(v);
       })
     );

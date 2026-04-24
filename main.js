@@ -5924,7 +5924,8 @@ var AutoHeightManager = class {
     const divider = wrapper?.querySelector(".block-header-divider");
     const gapCount = divider ? 2 : 1;
     const margin = typeof gridStack.opts.margin === "number" ? gridStack.opts.margin : 8;
-    const totalH = headerH + pad + contentH + gap * gapCount + margin * 2;
+    const SAFETY_BUFFER = 4;
+    const totalH = headerH + pad + contentH + gap * gapCount + margin * 2 + SAFETY_BUFFER;
     const cell = gridStack.getCellHeight();
     const rows = Math.max(1, Math.ceil(totalH / cell));
     const node = gsEl.gridstackNode;

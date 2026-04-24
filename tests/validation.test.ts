@@ -99,14 +99,57 @@ describe('migrateBlockInstance', () => {
     expect(migrateBlockInstance({ type: 'tag-grid', config: {} }).type).toBe('button-grid');
   });
 
-  it('splits the legacy _transparent flag into _hideBorder + _hideBackground', () => {
+  it('splits the legacy _transparent flag into _showBorder + _showBackground (inverted)', () => {
     const migrated = migrateBlockInstance({
       type: 'clock', config: { _transparent: true },
     });
     const cfg = migrated.config as Record<string, unknown>;
-    expect(cfg._hideBorder).toBe(true);
-    expect(cfg._hideBackground).toBe(true);
+    expect(cfg._showBorder).toBe(false);
+    expect(cfg._showBackground).toBe(false);
     expect(cfg._transparent).toBeUndefined();
+  });
+
+  it.each([
+    ['_hideTitle', '_showTitle'],
+    ['_hideBorder', '_showBorder'],
+    ['_hideBackground', '_showBackground'],
+    ['_hideHeaderAccent', '_showHeaderAccent'],
+  ])('migrates legacy %s: true to %s: false', (hideKey, showKey) => {
+    const migrated = migrateBlockInstance({
+      type: 'clock', config: { [hideKey]: true },
+    });
+    const cfg = migrated.config as Record<string, unknown>;
+    expect(cfg[showKey]).toBe(false);
+    expect(hideKey in cfg).toBe(false);
+  });
+
+  it('drops legacy _hideX: false without setting _showX (absent = shown)', () => {
+    const migrated = migrateBlockInstance({
+      type: 'clock', config: { _hideTitle: false, _hideBorder: false },
+    });
+    const cfg = migrated.config as Record<string, unknown>;
+    expect('_hideTitle' in cfg).toBe(false);
+    expect('_hideBorder' in cfg).toBe(false);
+    expect('_showTitle' in cfg).toBe(false);
+    expect('_showBorder' in cfg).toBe(false);
+  });
+
+  it('does not overwrite an explicit _showX when migrating _hideX', () => {
+    const migrated = migrateBlockInstance({
+      type: 'clock', config: { _hideTitle: true, _showTitle: true },
+    });
+    const cfg = migrated.config as Record<string, unknown>;
+    expect(cfg._showTitle).toBe(true);
+    expect('_hideTitle' in cfg).toBe(false);
+  });
+
+  it('migrates quotes-list hideAccentBar: true to showAccentBar: false', () => {
+    const migrated = migrateBlockInstance({
+      type: 'quotes-list', config: { hideAccentBar: true },
+    });
+    const cfg = migrated.config as Record<string, unknown>;
+    expect(cfg.showAccentBar).toBe(false);
+    expect('hideAccentBar' in cfg).toBe(false);
   });
 
   it('migrates voice-dictation whisperApiKey/whisperLanguage to apiKey/language', () => {
@@ -163,11 +206,11 @@ describe('migrateBlockInstance', () => {
     expect(cfg.title).toBeUndefined();
   });
 
-  it('sets _hideTitle when migrating html/static-text with an empty title', () => {
+  it('sets _showTitle: false when migrating html/static-text with an empty title', () => {
     const html = migrateBlockInstance({ type: 'html', config: { title: '' } });
-    expect((html.config as Record<string, unknown>)._hideTitle).toBe(true);
+    expect((html.config as Record<string, unknown>)._showTitle).toBe(false);
     const text = migrateBlockInstance({ type: 'static-text', config: { title: '' } });
-    expect((text.config as Record<string, unknown>)._hideTitle).toBe(true);
+    expect((text.config as Record<string, unknown>)._showTitle).toBe(false);
   });
 
   it('is idempotent — migrate(migrate(x)) deep-equals migrate(x)', () => {
@@ -237,7 +280,7 @@ describe('validateLayout', () => {
       openMode: 'nope',
       manualOpenMode: null,
       pin: 'true',
-      hideScrollbar: 0,
+      showScrollbar: 0,
       blocks: 'not an array',
     });
     expect(result.columns).toBe(DEFAULT_LAYOUT_DATA.columns);
@@ -246,7 +289,16 @@ describe('validateLayout', () => {
     expect(result.openMode).toBe(DEFAULT_LAYOUT_DATA.openMode);
     expect(result.manualOpenMode).toBe(DEFAULT_LAYOUT_DATA.manualOpenMode);
     expect(result.pin).toBe(DEFAULT_LAYOUT_DATA.pin);
-    expect(result.hideScrollbar).toBe(DEFAULT_LAYOUT_DATA.hideScrollbar);
+    expect(result.showScrollbar).toBe(DEFAULT_LAYOUT_DATA.showScrollbar);
+  });
+
+  it('migrates legacy hideScrollbar: true to showScrollbar: false', () => {
+    expect(validateLayout({ hideScrollbar: true }).showScrollbar).toBe(false);
+    expect(validateLayout({ hideScrollbar: false }).showScrollbar).toBe(true);
+  });
+
+  it('prefers new showScrollbar over legacy hideScrollbar when both are present', () => {
+    expect(validateLayout({ showScrollbar: true, hideScrollbar: true }).showScrollbar).toBe(true);
   });
 
   it('only accepts columns in {2,3,4,5}', () => {
@@ -305,6 +357,6 @@ describe('validateLayout', () => {
     expect(b.type).toBe('button-grid');
     expect(b.x).toBe(1);
     expect(b.y).toBe(0);
-    expect(b.config._hideBorder).toBe(true);
+    expect(b.config._showBorder).toBe(false);
   });
 });

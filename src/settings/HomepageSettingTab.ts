@@ -214,15 +214,15 @@ export class HomepageSettingTab extends PluginSettingTab {
 
   private renderDisplaySection(root: HTMLElement): void {
     new Setting(root)
-      .setName('Hide scrollbar')
-      .setDesc('Hide the scrollbar on the homepage. You can still scroll.')
+      .setName('Show scrollbar')
+      .setDesc('Show the scrollbar on the homepage. You can still scroll when hidden.')
       .addToggle(toggle =>
         toggle
-          .setValue(this.plugin.layout.hideScrollbar)
+          .setValue(this.plugin.layout.showScrollbar !== false)
           .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
+            void this.plugin.saveLayout({ ...this.plugin.layout, showScrollbar: value });
             for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              leaf.view.containerEl.toggleClass('homepage-no-scrollbar', value);
+              leaf.view.containerEl.toggleClass('homepage-no-scrollbar', !value);
             }
           }),
       );

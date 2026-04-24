@@ -58,7 +58,7 @@ npx tsc --noEmit       # type-check (run after every .ts change)
 - `manualOpenMode` -- how homepage opens from ribbon/command (same `OpenMode` values)
 - `openWhenEmpty` -- open homepage when no other tabs are open
 - `pin` -- prevent the homepage tab from being closed
-- `hideScrollbar` -- hide the homepage scroll bar
+- `showScrollbar` -- show the homepage scroll bar (default `true`; `false` hides it)
 - `blocks` -- array of `BlockInstance` (desktop blocks, or the only blocks when `responsiveMode` is `'unified'`)
 
 ### Layout Model (GridStack coordinates)
@@ -91,7 +91,7 @@ All grid/toolbar code uses these accessors instead of reading `layout.blocks` di
 ### BaseBlock (`src/blocks/BaseBlock.ts`)
 - Extends Obsidian `Component` -- use `this.registerInterval()`, `this.registerEvent()`, `this.register()` for auto-cleanup. Never raw `setInterval`/`vault.on`.
 - `render(el)` -- abstract, sync or async
-- `renderHeader(el, title)` -- renders muted header label. Respects `_hideTitle`, `_titleLabel`, `_titleEmoji`, `_titleSize` from config. Always use this, never inline header DOM.
+- `renderHeader(el, title)` -- renders muted header label. Respects `_showTitle` (default `true`; `false` hides), `_titleLabel`, `_titleEmoji`, `_titleSize` from config. Always use this, never inline header DOM.
 - `openSettings(onSave)` -- override to open a per-block `Modal` subclass (defined in the same file)
 - `scheduleRender(delayMs, fn)` -- debounced re-render with `isConnected` guard
 - `nextGeneration()` / `isStale(gen)` -- async staleness check (prevents race conditions when a newer render supersedes an older one)
@@ -115,7 +115,7 @@ Data-driven blocks watch vault events via `this.registerEvent()` and re-render t
 In edit mode, GridLayout renders compact symbolic placeholders (block type + size) instead of full block content. Settings and removal are handled via `block-handle-bar` controls. GridStack's `staticGrid` is toggled for drag/resize.
 
 ### Block Settings Flow
-`GridLayout.BlockSettingsModal` provides shared settings (_titleLabel, _titleEmoji, _hideTitle, _titleSize, _showDivider, _hideBorder, _hideBackground, _hideHeaderAccent, _cardPadding, _accentColor). A "Configure block..." button opens the block's own `openSettings()` modal. Shared `_`-prefixed config keys are merged with block-specific config on save.
+`GridLayout.BlockSettingsModal` provides shared settings (_titleLabel, _titleEmoji, _showTitle, _titleSize, _showDivider, _showBorder, _showBackground, _showHeaderAccent, _cardPadding, _accentColor). All `_show*` visibility flags default to shown -- only `_showX === false` hides. A "Configure block..." button opens the block's own `openSettings()` modal. Shared `_`-prefixed config keys are merged with block-specific config on save.
 
 ### Lightbox
 `ImageGalleryBlock` opens a full-screen lightbox overlay on click. Implemented as plain DOM on `document.body`. Supports arrow key navigation, swipe gestures on touch, prev/next buttons, and close via click/Escape. Lightbox ownership is scoped per block instance (`myLightboxAc`) to prevent cross-instance interference.

@@ -55,7 +55,7 @@ type QuotesConfig = {
   textAlign?: 'left' | 'center' | 'right';
   verticalAlign?: 'top' | 'middle' | 'bottom';
   showNoteTitle?: boolean;
-  hideAccentBar?: boolean;
+  showAccentBar?: boolean;
 };
 
 export class QuotesListBlock extends BaseBlock {
@@ -124,7 +124,7 @@ export class QuotesListBlock extends BaseBlock {
     el.toggleClass('quote-style-centered', false);
     el.toggleClass('quote-style-card', false);
     el.toggleClass('quotes-list-block--extend', false);
-    el.toggleClass('quote-no-accent', (this.instance.config as QuotesConfig).hideAccentBar === true);
+    el.toggleClass('quote-no-accent', (this.instance.config as QuotesConfig).showAccentBar === false);
 
     // ── Single mode ──────────────────────────────────────────────────────────
     if (safeMode === 'single') {
@@ -443,11 +443,11 @@ export class QuotesListBlock extends BaseBlock {
          .onChange(v => { cfg.quoteStyle = v === 'centered' || v === 'card' ? v : 'classic'; }),
       );
     new Setting(body)
-      .setName('Hide accent bar')
-      .setDesc('Remove the vertical line next to each quote.')
+      .setName('Show accent bar')
+      .setDesc('Show the vertical line next to each quote.')
       .addToggle(t =>
-        t.setValue(cfg.hideAccentBar === true)
-         .onChange(v => { cfg.hideAccentBar = v; }),
+        t.setValue(cfg.showAccentBar !== false)
+         .onChange(v => { cfg.showAccentBar = v; }),
       );
 
     new Setting(body)

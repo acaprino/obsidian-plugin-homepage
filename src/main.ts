@@ -1,7 +1,11 @@
-import { App, Modal, Platform, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian';
+import { Notice, Platform, Plugin, WorkspaceLeaf } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from './HomepageView';
-import { BLOCK_TYPES, BlockInstance, LayoutConfig, LayoutPriority, OpenMode, ResponsiveMode, IHomepagePlugin } from './types';
+import { BlockInstance, LayoutConfig, LayoutPriority, OpenMode, IHomepagePlugin } from './types';
+import { getDefaultLayout, validateLayout } from './validation';
 import { BlockRegistry } from './BlockRegistry';
+import { HomepageSettingTab } from './settings/HomepageSettingTab';
+import { installTagCacheListeners } from './utils/tags';
+import { decryptString, encryptString, isEncrypted } from './utils/apiKeyCrypto';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
 import { FolderLinksBlock } from './blocks/FolderLinksBlock';
@@ -20,259 +24,9 @@ import { RandomNoteBlock } from './blocks/RandomNoteBlock';
 import { VoiceDictationBlock } from './blocks/VoiceDictationBlock';
 import { VaultSearchBlock } from './blocks/VaultSearchBlock';
 import { imageCache } from './utils/imageCache';
+import { closeSharedAudioCtx, clearPomodoroState } from './blocks/PomodoroBlock';
+import { abortActiveLightbox } from './blocks/ImageGalleryBlock';
 
-// ── Default layout ──────────────────────────────────────────────────────────
-
-/** Immutable template. Always clone via getDefaultLayout(). */
-/** Must stay in sync with OpenMode in types.ts */
-const VALID_OPEN_MODES = new Set<OpenMode>(['replace-all', 'replace-last', 'retain']);
-const VALID_LAYOUT_PRIORITIES = new Set<LayoutPriority>(['row']);
-const VALID_RESPONSIVE_MODES = new Set<ResponsiveMode>(['unified', 'separate']);
-
-function isOpenMode(v: unknown): v is OpenMode {
-  return typeof v === 'string' && (VALID_OPEN_MODES as Set<string>).has(v);
-}
-
-function isLayoutPriority(v: unknown): v is LayoutPriority {
-  return typeof v === 'string' && (VALID_LAYOUT_PRIORITIES as Set<string>).has(v);
-}
-
-function isResponsiveMode(v: unknown): v is ResponsiveMode {
-  return typeof v === 'string' && (VALID_RESPONSIVE_MODES as Set<string>).has(v);
-}
-
-const DEFAULT_LAYOUT_DATA: LayoutConfig = {
-  columns: 3,
-  layoutPriority: 'row',
-  responsiveMode: 'unified',
-  mobileColumns: 1,
-  mobileLayoutPriority: 'row',
-  mobileBlocks: [],
-  openOnStartup: false,
-  openMode: 'retain',
-  manualOpenMode: 'retain',
-  openWhenEmpty: false,
-  pin: false,
-  hideScrollbar: false,
-  compactLayout: true,
-  blocks: [
-    // Row 0 (y: 0–2)
-    {
-      id: 'default-static-text',
-      type: 'static-text',
-      x: 0, y: 0, w: 1, h: 3,
-      config: { content: '' },
-    },
-    {
-      id: 'default-clock',
-      type: 'clock',
-      x: 1, y: 0, w: 1, h: 3,
-      config: { showSeconds: false, showDate: true },
-    },
-    {
-      id: 'default-folder-links',
-      type: 'folder-links',
-      x: 2, y: 0, w: 1, h: 3,
-      config: { _titleLabel: 'Quick links', links: [] },
-    },
-    // Row 1 (y: 3–5)
-    {
-      id: 'default-insight',
-      type: 'quotes-list',
-      x: 0, y: 3, w: 2, h: 3,
-      config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true },
-    },
-    {
-      id: 'default-button-grid',
-      type: 'button-grid',
-      x: 2, y: 3, w: 1, h: 5,
-      config: {
-        _titleLabel: 'Quick actions', columns: 2, items: [
-          { emoji: '\u{1F4DD}', label: 'New note' },
-          { emoji: '\u{1F4C5}', label: 'Today' },
-          { emoji: '\u{2B50}', label: 'Favorites' },
-          { emoji: '\u{1F50D}', label: 'Search' },
-          { emoji: '\u{1F4DA}', label: 'Library' },
-          { emoji: '\u{2699}\uFE0F', label: 'Settings' },
-        ],
-      },
-    },
-    // Row 2 (y: 6–8)
-    {
-      id: 'default-quotes',
-      type: 'quotes-list',
-      x: 0, y: 6, w: 2, h: 3,
-      config: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 0 },
-    },
-    // Row 3 (y: 8)
-    {
-      id: 'default-voice-dictation',
-      type: 'voice-dictation',
-      x: 0, y: 8, w: 2, h: 3,
-      config: { folder: '', triggerMode: 'tap', _titleLabel: 'Voice notes' },
-    },
-    // Row 4 (y: 11–13)
-    {
-      id: 'default-gallery',
-      type: 'image-gallery',
-      x: 0, y: 11, w: 3, h: 3,
-      config: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 0 },
-    },
-  ],
-};
-
-/** Returns a deep clone of the default layout, safe to mutate. */
-function getDefaultLayout(): LayoutConfig {
-  return structuredClone(DEFAULT_LAYOUT_DATA);
-}
-
-// ── Layout validation / migration ───────────────────────────────────────────
-
-const VALID_BLOCK_TYPES = new Set<string>(BLOCK_TYPES);
-
-const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
-const MAX_BLOCKS = 100;
-
-function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknown> {
-  const m = { ...b };
-  if (typeof m.col === 'number') { m.x = m.col - 1; }
-  if (typeof m.row === 'number') { m.y = m.row - 1; }
-  if (typeof m.colSpan === 'number') { m.w = m.colSpan; }
-  if (typeof m.rowSpan === 'number') { m.h = m.rowSpan; }
-  delete m.col;
-  delete m.row;
-  delete m.colSpan;
-  delete m.rowSpan;
-  delete m.newRow;
-  // Migrate legacy type renames
-  if (m.type === 'tag-grid') { m.type = 'button-grid'; }
-  // Migrate legacy _transparent flag to granular flags.
-  const cfg = m.config as Record<string, unknown> | undefined;
-  if (cfg && cfg._transparent === true) {
-    cfg._hideBorder = true;
-    cfg._hideBackground = true;
-    delete cfg._transparent;
-  }
-  // Migrate voice-dictation config field renames.
-  if (m.type === 'voice-dictation' && cfg) {
-    if (typeof cfg.whisperApiKey === 'string' && !cfg.apiKey) {
-      cfg.apiKey = cfg.whisperApiKey;
-    }
-    if (typeof cfg.whisperLanguage === 'string' && !cfg.language) {
-      cfg.language = cfg.whisperLanguage;
-    }
-    delete cfg.whisperApiKey;
-    delete cfg.whisperLanguage;
-  }
-  // Clamp button-grid columns to the supported range [1, 3].
-  if (m.type === 'button-grid' && cfg && typeof cfg.columns === 'number' && cfg.columns > 3) {
-    cfg.columns = 3;
-  }
-  // customCss is only meaningful for button-grid (the block's UI is gated to
-  // that type and the exposed --hp-btn-* vars only affect .grid-btn). Drop it
-  // from any other block type so an imported/hand-edited layout cannot carry
-  // hidden styles on blocks whose settings UI no longer exposes the field.
-  if (cfg && m.type !== 'button-grid' && 'customCss' in cfg) {
-    delete cfg.customCss;
-  }
-  // Migrate per-block title to shared _titleLabel system.
-  if (cfg && typeof cfg.title === 'string') {
-    if (cfg.title && !cfg._titleLabel) {
-      cfg._titleLabel = cfg.title;
-    }
-    // Blocks that previously used an empty title to hide the header
-    // (html, static-text) should set _hideTitle so they stay headerless.
-    if (!cfg.title && (m.type === 'html' || m.type === 'static-text')) {
-      if (cfg._hideTitle === undefined) cfg._hideTitle = true;
-    }
-    delete cfg.title;
-  }
-  return m;
-}
-
-function isValidBlockInstance(b: unknown): b is BlockInstance {
-  if (!b || typeof b !== 'object') return false;
-  const block = b as Record<string, unknown>;
-  return (
-    typeof block.id === 'string' && SAFE_ID_RE.test(block.id) &&
-    typeof block.type === 'string' && VALID_BLOCK_TYPES.has(block.type) &&
-    typeof block.x === 'number' && Number.isFinite(block.x) && block.x >= 0 &&
-    typeof block.y === 'number' && Number.isFinite(block.y) && block.y >= 0 &&
-    typeof block.w === 'number' && Number.isFinite(block.w) && block.w >= 1 &&
-    typeof block.h === 'number' && block.h >= 1 && Number.isFinite(block.h) &&
-    block.config !== null && typeof block.config === 'object' && !Array.isArray(block.config)
-  );
-}
-
-
-/** Validate and clamp a block array, applying migration and column clamping. */
-function validateBlocks(raw: unknown, columns: number, defaults: BlockInstance[]): BlockInstance[] {
-  if (!Array.isArray(raw)) return defaults;
-  const migrated: unknown[] = raw.map(b => migrateBlockInstance(b as Record<string, unknown>));
-  const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
-  return valid.map(b => ({
-    ...b,
-    w: Math.min(b.w, columns),
-    x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
-  }));
-}
-
-/**
- * Validate and sanitize data loaded from disk.
- * Invalid fields are replaced with defaults.
- * Invalid block entries are dropped.
- */
-function validateLayout(raw: unknown): LayoutConfig {
-  const defaults = getDefaultLayout();
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
-
-  const r = raw as Record<string, unknown>;
-  const columns = typeof r.columns === 'number' && [2, 3, 4, 5].includes(r.columns)
-    ? r.columns
-    : defaults.columns;
-  const layoutPriority = isLayoutPriority(r.layoutPriority)
-    ? r.layoutPriority
-    : defaults.layoutPriority;
-  const responsiveMode = isResponsiveMode(r.responsiveMode)
-    ? r.responsiveMode
-    : defaults.responsiveMode;
-  const mobileColumns = typeof r.mobileColumns === 'number' && [1, 2, 3].includes(r.mobileColumns)
-    ? r.mobileColumns
-    : defaults.mobileColumns;
-  const mobileLayoutPriority = isLayoutPriority(r.mobileLayoutPriority)
-    ? r.mobileLayoutPriority
-    : defaults.mobileLayoutPriority;
-  const openOnStartup = typeof r.openOnStartup === 'boolean'
-    ? r.openOnStartup
-    : defaults.openOnStartup;
-  const openMode = isOpenMode(r.openMode)
-    ? r.openMode
-    : defaults.openMode;
-  const manualOpenMode = isOpenMode(r.manualOpenMode)
-    ? r.manualOpenMode
-    : defaults.manualOpenMode;
-  const openWhenEmpty = typeof r.openWhenEmpty === 'boolean'
-    ? r.openWhenEmpty
-    : defaults.openWhenEmpty;
-  const pin = typeof r.pin === 'boolean'
-    ? r.pin
-    : defaults.pin;
-  const hideScrollbar = typeof r.hideScrollbar === 'boolean'
-    ? r.hideScrollbar
-    : defaults.hideScrollbar;
-  const compactLayout = typeof r.compactLayout === 'boolean'
-    ? r.compactLayout
-    : defaults.compactLayout;
-  const blocks = validateBlocks(r.blocks, columns, defaults.blocks);
-  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks);
-
-  return {
-    columns, layoutPriority, responsiveMode,
-    mobileColumns, mobileLayoutPriority, mobileBlocks,
-    openOnStartup, openMode, manualOpenMode, openWhenEmpty,
-    pin, hideScrollbar, compactLayout, blocks,
-  };
-}
 
 // ── Block registration ───────────────────────────────────────────────────────
 
@@ -309,6 +63,7 @@ function registerBlocks(): void {
     displayName: 'Button grid',
     defaultConfig: { _titleLabel: 'Button grid', columns: 2, items: [] },
     defaultSize: { w: 1, h: 5 },
+    autoHeight: true,
     create: (app, instance, plugin) => new ButtonGridBlock(app, instance, plugin),
   });
 
@@ -317,6 +72,7 @@ function registerBlocks(): void {
     displayName: 'Quotes',
     defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 0, quoteStyle: 'classic', fontStyle: 'default', customFont: '', dailySeed: true, showNoteTitle: true },
     defaultSize: { w: 2, h: 3 },
+    autoHeight: true,
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
   });
 
@@ -325,6 +81,7 @@ function registerBlocks(): void {
     displayName: 'Image gallery',
     defaultConfig: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 0 },
     defaultSize: { w: 3, h: 3 },
+    autoHeight: true,
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin),
   });
 
@@ -333,6 +90,7 @@ function registerBlocks(): void {
     displayName: 'Embedded note',
     defaultConfig: { filePath: '', showTitle: true },
     defaultSize: { w: 1, h: 3 },
+    autoHeight: true,
     create: (app, instance, plugin) => new EmbeddedNoteBlock(app, instance, plugin),
   });
 
@@ -341,6 +99,7 @@ function registerBlocks(): void {
     displayName: 'Static text',
     defaultConfig: { content: '' },
     defaultSize: { w: 1, h: 3 },
+    autoHeight: true,
     create: (app, instance, plugin) => new StaticTextBlock(app, instance, plugin),
   });
 
@@ -397,6 +156,7 @@ function registerBlocks(): void {
     displayName: 'Random note',
     defaultConfig: { _titleLabel: 'Random note', tag: '', dailySeed: false, imageProperty: 'cover', titleProperty: 'title', showImage: true, showPreview: true },
     defaultSize: { w: 1, h: 4 },
+    autoHeight: true,
     create: (app, instance, plugin) => new RandomNoteBlock(app, instance, plugin),
   });
   BlockRegistry.register({
@@ -425,16 +185,70 @@ function registerBlocks(): void {
 
 // ── Plugin ───────────────────────────────────────────────────────────────────
 
+// ── API key encryption helpers ──────────────────────────────────────────────
+//
+// Walked every save / load. Only block types whose defaultConfig declares `apiKey`
+// currently need this (voice-dictation today), but checking by key name makes
+// this future-proof — any new block that names its field `apiKey` gets encrypted
+// automatically.
+
+async function encryptApiKeys(layout: LayoutConfig): Promise<LayoutConfig> {
+  const encryptBlocks = async (blocks: BlockInstance[]): Promise<BlockInstance[]> =>
+    Promise.all(blocks.map(async (b) => {
+      const key = b.config.apiKey;
+      if (typeof key !== 'string' || !key || isEncrypted(key)) return b;
+      const enc = await encryptString(key);
+      return { ...b, config: { ...b.config, apiKey: enc } };
+    }));
+  const [blocks, mobileBlocks] = await Promise.all([
+    encryptBlocks(layout.blocks),
+    encryptBlocks(layout.mobileBlocks),
+  ]);
+  return { ...layout, blocks, mobileBlocks };
+}
+
+async function decryptApiKeys(layout: LayoutConfig): Promise<void> {
+  // Mutates in place — the layout was just returned from validateLayout so nobody
+  // else holds a reference, and we want to keep object identity with the in-memory
+  // `this.layout` so subsequent block reads see plaintext.
+  const decryptBlocks = async (blocks: BlockInstance[]): Promise<void> => {
+    for (const b of blocks) {
+      const key = b.config.apiKey;
+      if (typeof key !== 'string' || !key || !isEncrypted(key)) continue;
+      const pt = await decryptString(key);
+      if (pt === null) {
+        // Cross-device sync or wiped IndexedDB — the user must re-enter the key.
+        b.config.apiKey = '';
+        new Notice('Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.', 10_000);
+      } else {
+        b.config.apiKey = pt;
+      }
+    }
+  };
+  await decryptBlocks(layout.blocks);
+  await decryptBlocks(layout.mobileBlocks);
+}
+
 export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   layout: LayoutConfig = getDefaultLayout();
 
   async onload(): Promise<void> {
     registerBlocks();
 
+    // Plugin-wide tag-cache invalidation — replaces the per-block clearTagCache()
+    // dance so callers of getFilesWithTag() always see fresh data without having
+    // to remember to wire up vault listeners themselves.
+    installTagCacheListeners(this);
+
     const raw = await this.loadData() as unknown;
-    this.layout = validateLayout(raw);
-    // Persist cleaned layout to remove old-format properties and fix corruption
-    await this.saveData(this.layout);
+    const validated = validateLayout(raw);
+    // At-rest apiKey values are encrypted (AES-GCM, non-extractable device key in
+    // IndexedDB). Decrypt on load so blocks see plaintext; encrypt again on save.
+    await decryptApiKeys(validated);
+    this.layout = validated;
+    // Persist cleaned layout to remove old-format properties and fix corruption.
+    // saveLayout() handles re-encryption so on-disk never carries plaintext keys.
+    await this.saveLayout(this.layout);
 
     this.registerView(VIEW_TYPE, (leaf) => new HomepageView(leaf, this));
 
@@ -483,6 +297,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     });
 
     let emptyCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastEmptyOpen = 0;
     this.register(() => { if (emptyCheckTimer) clearTimeout(emptyCheckTimer); });
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
@@ -491,20 +306,27 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
         emptyCheckTimer = setTimeout(() => {
           emptyCheckTimer = null;
           if (this.app.workspace.getLeavesOfType(VIEW_TYPE).length > 0) return;
+          // Another plugin may briefly close all leaves before opening its own.
+          // Guard against racing it into opening a duplicate homepage.
+          if (Date.now() - lastEmptyOpen < 2000) return;
           let hasContent = false;
           this.app.workspace.iterateRootLeaves(leaf => {
             if (leaf.view.getViewType() !== 'empty') hasContent = true;
           });
           if (!hasContent) {
+            lastEmptyOpen = Date.now();
             void this.openHomepage('retain');
           }
-        }, 150);
+        }, 500);
       }),
     );
   }
 
   onunload(): void {
     imageCache.destroy();
+    clearPomodoroState();
+    closeSharedAudioCtx();
+    abortActiveLightbox();
   }
 
   // ── Platform-aware layout helpers ─────────────────────────────────
@@ -528,11 +350,37 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   // ── Persistence ───────────────────────────────────────────────────
 
   private savePromise = Promise.resolve();
+  private saveErrorNotified = false;
 
   async saveLayout(layout: LayoutConfig): Promise<void> {
     this.layout = layout;
-    this.savePromise = this.savePromise.then(() => this.saveData(layout)).catch(() => { /* disk error — in-memory state is authoritative */ });
+    // Serialize save ordering AND await the pre-save encryption inside the
+    // chain so a later-queued save sees the updated ciphertext format.
+    this.savePromise = this.savePromise.then(async () => {
+      // Clone so we don't write ciphertext back into the live layout the blocks
+      // are reading from — runtime copies always stay plaintext.
+      const persistable = await encryptApiKeys(layout);
+      await this.saveData(persistable);
+    }).then(
+      () => { this.saveErrorNotified = false; },
+      (err) => {
+        // In-memory state stays authoritative so the session keeps working.
+        // The user needs to know that the edit didn't persist though.
+        console.error('[Homepage Blocks] Failed to save layout', err);
+        if (!this.saveErrorNotified) {
+          this.saveErrorNotified = true;
+          new Notice('Homepage blocks: failed to save layout. Check disk space / permissions.', 8000);
+        }
+      },
+    );
     await this.savePromise;
+  }
+
+  async saveActiveBlocks(blocks: BlockInstance[]): Promise<void> {
+    const next = this.isMobileActive()
+      ? { ...this.layout, mobileBlocks: blocks }
+      : { ...this.layout, blocks };
+    await this.saveLayout(next);
   }
 
   async openHomepage(mode: OpenMode = 'retain'): Promise<void> {
@@ -563,301 +411,4 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
     if (this.layout.pin) leaf.setPinned(true);
   }
-}
-
-// ── Settings tab ─────────────────────────────────────────────────────────────
-
-class HomepageSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: HomepagePlugin) {
-    super(app, plugin);
-  }
-
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    const openModeOptions: Record<string, string> = {
-      'retain': 'Keep existing tabs (new tab)',
-      'replace-last': 'Replace active tab',
-      'replace-all': 'Close all tabs',
-    };
-
-    // ── Opening behavior ──────────────────────────────────────────────
-    new Setting(containerEl)
-      .setName('Open on startup')
-      .setDesc('Open the homepage when Obsidian starts.')
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.layout.openOnStartup)
-          .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
-          }),
-      );
-
-    if (this.plugin.layout.openOnStartup) {
-      new Setting(containerEl)
-        .setName('Startup open mode')
-        .setDesc('What to do with existing tabs on startup.')
-        .addDropdown(drop => {
-          for (const [value, label] of Object.entries(openModeOptions)) {
-            drop.addOption(value, label);
-          }
-          drop
-            .setValue(this.plugin.layout.openMode)
-            .onChange((value) => {
-              if (!isOpenMode(value)) return;
-              void this.plugin.saveLayout({ ...this.plugin.layout, openMode: value });
-            });
-        });
-    }
-
-    new Setting(containerEl)
-      .setName('Open when empty')
-      .setDesc('Open the homepage when all tabs are closed.')
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.layout.openWhenEmpty)
-          .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName('Manual open mode')
-      .setDesc('What to do with existing tabs when you open the homepage manually.')
-      .addDropdown(drop => {
-        for (const [value, label] of Object.entries(openModeOptions)) {
-          drop.addOption(value, label);
-        }
-        drop
-          .setValue(this.plugin.layout.manualOpenMode)
-          .onChange((value) => {
-            if (!isOpenMode(value)) return;
-            void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
-          });
-      });
-
-    new Setting(containerEl)
-      .setName('Pin homepage tab')
-      .setDesc('Prevent the homepage tab from being closed.')
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.layout.pin)
-          .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
-            // Apply pin state to any existing homepage leaves immediately
-            for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              leaf.setPinned(value);
-            }
-          }),
-      );
-
-    // ── Layout ────────────────────────────────────────────────────────
-    new Setting(containerEl).setName('Layout').setHeading();
-
-    new Setting(containerEl)
-      .setName('Responsive mode')
-      .setDesc('Unified: one layout for all screen sizes. Separate: different layouts for desktop and mobile.')
-      .addDropdown(drop =>
-        drop
-          .addOption('unified', 'Unified (adaptive)')
-          .addOption('separate', 'Separate (desktop + mobile)')
-          .setValue(this.plugin.layout.responsiveMode)
-          .onChange((value) => {
-            if (!isResponsiveMode(value)) return;
-            void this.plugin.saveLayout({ ...this.plugin.layout, responsiveMode: value }).then(() => this.display());
-          }),
-      );
-
-    if (this.plugin.layout.responsiveMode === 'separate') {
-      new Setting(containerEl).setName('Desktop layout').setHeading();
-    }
-
-    new Setting(containerEl)
-      .setName('Default columns')
-      .setDesc('Number of grid columns.')
-      .addDropdown(drop =>
-        drop
-          .addOption('2', '2 columns')
-          .addOption('3', '3 columns')
-          .addOption('4', '4 columns')
-          .addOption('5', '5 columns')
-          .setValue(String(this.plugin.layout.columns))
-          .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
-          }),
-      );
-
-    // ── Mobile layout settings (only when separate) ─────────────────
-    if (this.plugin.layout.responsiveMode === 'separate') {
-      new Setting(containerEl).setName('Mobile layout').setHeading();
-
-      new Setting(containerEl)
-        .setName('Mobile columns')
-        .setDesc('Number of grid columns on mobile.')
-        .addDropdown(drop =>
-          drop
-            .addOption('1', '1 column')
-            .addOption('2', '2 columns')
-            .addOption('3', '3 columns')
-            .setValue(String(this.plugin.layout.mobileColumns))
-            .onChange((value) => {
-              void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
-            }),
-        );
-
-      new Setting(containerEl)
-        .setName('Copy desktop layout to mobile')
-        .setDesc('Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.')
-        .addButton(btn =>
-          btn.setButtonText('Copy to mobile').onClick(() => void (async () => {
-            const desktopBlocks = structuredClone(this.plugin.layout.blocks);
-            const mobileCols = this.plugin.layout.mobileColumns;
-            const clamped = desktopBlocks.map(b => ({
-              ...b,
-              id: crypto.randomUUID(),
-              w: Math.min(b.w, mobileCols),
-              x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols))),
-            }));
-            await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: clamped });
-            for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              if (leaf.view instanceof HomepageView) {
-                await leaf.view.reload();
-              }
-            }
-            btn.setButtonText('Copied!');
-            setTimeout(() => { btn.setButtonText('Copy to mobile'); }, 2000);
-          })()),
-        );
-
-      const mobileBlockCount = this.plugin.layout.mobileBlocks.length;
-      new Setting(containerEl)
-        .setName('Mobile blocks')
-        .setDesc(mobileBlockCount + ' block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.');
-    }
-
-    new Setting(containerEl)
-      .setName('Hide scrollbar')
-      .setDesc('Hide the scrollbar on the homepage. You can still scroll.')
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.layout.hideScrollbar)
-          .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
-            for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              leaf.view.containerEl.toggleClass('homepage-no-scrollbar', value);
-            }
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName('Compact layout')
-      .setDesc('Remove vertical gaps between blocks. Turn off to allow free placement with gaps.')
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.layout.compactLayout)
-          .onChange(async (value) => {
-            await this.plugin.saveLayout({ ...this.plugin.layout, compactLayout: value });
-            for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              if (leaf.view instanceof HomepageView) {
-                await leaf.view.reload();
-              }
-            }
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName('Reset to default layout')
-      .setDesc('Restore all blocks to the default layout. This can\u2019t be undone.')
-      .addButton(btn =>
-        btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
-          await this.plugin.saveLayout(getDefaultLayout());
-          for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-            if (leaf.view instanceof HomepageView) {
-              await leaf.view.reload();
-            }
-          }
-        })()),
-      );
-
-    // ── Export / Import ──────────────────────────────────────────────
-    new Setting(containerEl).setName('Export / import').setHeading();
-
-    new Setting(containerEl)
-      .setName('Export layout')
-      .setDesc('Copy the layout to your clipboard as JSON.')
-      .addButton(btn =>
-        btn.setButtonText('Copy to clipboard').onClick(() => void (async () => {
-          try {
-            const exportLayout = structuredClone(this.plugin.layout);
-            for (const block of exportLayout.blocks) {
-              delete block.config.apiKey;
-              delete block.config.customCss;
-            }
-            for (const block of exportLayout.mobileBlocks) {
-              delete block.config.apiKey;
-              delete block.config.customCss;
-            }
-            const json = JSON.stringify(exportLayout, null, 2);
-            await navigator.clipboard.writeText(json);
-            btn.setButtonText('Copied!');
-          } catch {
-            btn.setButtonText('Copy failed');
-          }
-          setTimeout(() => { btn.setButtonText('Copy to clipboard'); }, 2000);
-        })()),
-      );
-
-    new Setting(containerEl)
-      .setName('Import layout')
-      .setDesc('Paste an exported layout JSON to restore it.')
-      .addButton(btn =>
-        btn.setButtonText('Import from clipboard').onClick(() => void (async () => {
-          try {
-            const text = await navigator.clipboard.readText();
-            const parsed = JSON.parse(text) as unknown;
-            const validated = validateLayout(parsed);
-            const blockTypes = validated.blocks.map(b => b.type);
-            const summary = `${validated.blocks.length} block(s): ${[...new Set(blockTypes)].join(', ')}`;
-            new ConfirmPresetModal(this.app, `Import (${summary})`, async () => {
-              await this.plugin.saveLayout(validated);
-              for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-                if (leaf.view instanceof HomepageView) {
-                  await leaf.view.reload();
-                }
-              }
-              btn.setButtonText('Imported!');
-              setTimeout(() => { btn.setButtonText('Import from clipboard'); }, 2000);
-            }).open();
-          } catch {
-            btn.setButtonText('Invalid JSON');
-            setTimeout(() => { btn.setButtonText('Import from clipboard'); }, 2000);
-          }
-        })()),
-      );
-  }
-}
-
-class ConfirmPresetModal extends Modal {
-  constructor(app: App, private presetName: string, private onConfirm: () => void | Promise<void>) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Load preset?').setHeading();
-    contentEl.createEl('p', { text: `This will replace your current layout with the "${this.presetName}" preset. This cannot be undone.` });
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Load preset').setWarning().onClick(() => {
-          void Promise.resolve(this.onConfirm()).catch(e => console.error('[Homepage Blocks] Preset apply failed:', e));
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
-      );
-  }
-
-  onClose(): void { this.contentEl.empty(); }
 }

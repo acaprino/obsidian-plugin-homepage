@@ -115,7 +115,8 @@
   transition:
     opacity 0.15s ease-out,
     transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.2s ease-out;
+    border-color 0.2s ease-out,
+    box-shadow 0.2s ease-out;
 }
 
 /* Staggered card entry — animation-delay set via --hp-card-anim-delay custom property */
@@ -137,6 +138,17 @@
 
 .homepage-block-wrapper:hover {
   border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+/* Hover highlight (opt-in via settings) — subtly lifts the card on mouseover. */
+.homepage-hover-highlight .homepage-block-wrapper:hover {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+/* Edit mode owns its own visual language (dashed accent border, drag handles) —
+   don't layer the passive hover shadow on top. */
+.homepage-hover-highlight .homepage-grid.edit-mode .homepage-block-wrapper:hover {
+  box-shadow: none;
 }
 
 /* ── Accent Color ────────────────────────────────────────── */
@@ -2075,6 +2087,15 @@
   line-height: 1.6;
 }
 
+.hp-html-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  overflow: hidden;
+  display: block;
+  background: transparent;
+}
+
 /* ── Settings textarea (Static Text and HTML blocks) ────── */
 .static-text-settings-textarea,
 .html-settings-textarea {
@@ -2350,6 +2371,36 @@
 .block-header-zone .block-header {
   flex: 1;
   margin-bottom: 0;
+}
+
+/* Collapse/expand chevron — hidden by default. When the hover-highlight option
+   is enabled, fades in on card hover and stays visible when the block is
+   collapsed so the state is still readable without hovering. */
+.block-collapse-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  opacity: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  display: inline-block;
+  transform: rotate(270deg);
+  transition: opacity 0.15s ease-out, transform 0.2s ease-out;
+}
+
+.block-collapse-chevron::before {
+  content: '›';
+}
+
+.block-collapse-chevron.is-collapsed {
+  transform: rotate(90deg);
+}
+
+.homepage-hover-highlight .block-collapse-chevron.is-collapsed {
+  opacity: 1;
+}
+
+.homepage-hover-highlight .homepage-block-wrapper:hover .block-collapse-chevron {
+  opacity: 1;
 }
 
 
@@ -3138,42 +3189,132 @@
   background: color-mix(in srgb, var(--_accent-bg, var(--background-secondary)) var(--hp-bg-opacity, 100%), transparent);
 }
 
-/* ── Collapsible Advanced Styling Section ──────────────── */
-.settings-collapsible-header {
+/* ── Tabbed Block Settings modal ──────────────────────────── */
+.hp-block-settings-modal .setting-item:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.hp-settings-preview-wrap {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 0;
+  justify-content: center;
+  padding: 4px 0 14px;
+  margin-bottom: 4px;
+}
+
+.hp-settings-preview-wrap .settings-preview-card {
+  width: 100%;
+  max-width: 360px;
+}
+
+.hp-settings-tabbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 6px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.hp-settings-tab {
+  flex: 1 1 auto;
+  min-width: max-content;
+  text-align: center;
+  padding: 7px 14px;
+  border-radius: 6px;
   cursor: pointer;
   color: var(--text-muted);
   font-size: var(--font-interface-size, 0.8125rem);
   font-weight: 500;
   user-select: none;
-  border-top: 1px solid var(--background-modifier-border);
-  margin-top: 8px;
+  transition: background 0.12s ease-out, color 0.12s ease-out;
+  outline: none;
 }
-.settings-collapsible-header:hover {
+
+.hp-settings-tab:hover {
   color: var(--text-normal);
+  background: var(--background-modifier-hover);
 }
-.settings-collapsible-chevron {
-  display: inline-block;
-  font-size: 0.65rem;
-  transition: transform 0.2s ease-out;
+
+.hp-settings-tab.is-active {
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
-.settings-collapsible-chevron::before {
-  content: '›';
+
+.hp-settings-tab:focus-visible {
+  box-shadow: 0 0 0 2px var(--interactive-accent);
 }
-.settings-collapsible-header.is-open .settings-collapsible-chevron {
-  transform: rotate(90deg);
+
+.hp-settings-tabbody {
+  min-height: 160px;
 }
-.settings-collapsible-body.is-collapsed {
-  display: none;
+
+.hp-settings-tabbody .setting-item:first-of-type {
+  border-top: none;
+  padding-top: 6px;
 }
-.settings-collapsible-desc {
-  color: var(--text-faint);
+
+/* Section sub-header inside a tab (e.g. "Border", "Shadow", "Background gradient") */
+.hp-settings-subhead {
+  margin: 18px 0 0;
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
   font-size: 0.75rem;
-  font-weight: 400;
-  margin-left: 2px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hp-settings-subhead-desc {
+  margin: 0 0 4px;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
+/* Content tab — CTA card linking to block-specific settings */
+.hp-settings-content-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  margin: 8px 0 4px;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+}
+
+.hp-settings-content-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  background: var(--background-primary);
+  border-radius: 10px;
+}
+
+.hp-settings-content-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.hp-settings-content-title {
+  color: var(--text-normal);
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+
+.hp-settings-content-desc {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.35;
 }
 
 /* ── Custom CSS section (Button Grid settings modal) ────── */
@@ -3638,9 +3779,6 @@
   padding: 0 0 8px 0;
   opacity: 0.7;
 }
-
-/* Gradient note label spacing (GridLayout.ts BlockSettingsModal) */
-.hp-gradient-note { margin: 12px 0 4px; }
 
 /* Full-width textarea in quotes settings */
 .hp-textarea-full {

@@ -25,6 +25,18 @@ interface TimerState {
 const timerStore = new Map<string, TimerState>();
 let sharedAudioCtx: AudioContext | null = null;
 
+/** Plugin unload cleanup: drop all per-instance timer state. */
+export function clearPomodoroState(): void {
+  timerStore.clear();
+}
+
+/** Plugin unload cleanup: close the shared AudioContext so it can be recreated after reload. */
+export function closeSharedAudioCtx(): void {
+  if (!sharedAudioCtx) return;
+  void sharedAudioCtx.close().catch(() => { /* context may already be closed */ });
+  sharedAudioCtx = null;
+}
+
 export class PomodoroBlock extends BaseBlock {
   private phase: PomodoroPhase = 'idle';
   private secondsLeft = 0;

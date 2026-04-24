@@ -1,6 +1,7 @@
 import { App, Modal, Setting, moment } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
+import { dailyIndex } from '../utils/dailySeed';
 
 type EmojiMode = 'auto' | 'custom' | 'random';
 
@@ -151,8 +152,7 @@ function pickEmoji(cfg: GreetingConfig, hour: number): string {
     const pool = parseEmojiPool(cfg.emojiPool ?? '');
     if (pool.length === 0) return DEFAULT_EMOJIS[timeSlot(hour)];
     if (cfg.emojiDailySeed) {
-      const dayOfYear = moment().dayOfYear();
-      return pool[dayOfYear % pool.length];
+      return pool[dailyIndex(pool.length)];
     }
     return pool[Math.floor(Math.random() * pool.length)];
   }

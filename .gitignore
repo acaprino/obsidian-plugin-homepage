@@ -3,5 +3,7 @@ data.json
 data.backup.json
 .frontend-review/
 .full-review/
+.team-review/
+.deep-dive/
 obsidian-simulator/
 claude_.bat

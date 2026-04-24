@@ -132,7 +132,11 @@ export class AutoHeightManager {
     const divider = wrapper?.querySelector('.block-header-divider');
     const gapCount = divider ? 2 : 1;
     const margin = typeof gridStack.opts.margin === 'number' ? gridStack.opts.margin : 8;
-    const totalH = headerH + pad + contentH + (gap * gapCount) + margin * 2;
+    // 4px safety buffer absorbs sub-pixel rounding and late-reflow growth so
+    // `.block-content > *` (overflow: hidden) never crops the last row by a
+    // hair -- seen with the button-grid's 5th implicit row.
+    const SAFETY_BUFFER = 4;
+    const totalH = headerH + pad + contentH + (gap * gapCount) + margin * 2 + SAFETY_BUFFER;
     const cell = gridStack.getCellHeight();
     const rows = Math.max(1, Math.ceil(totalH / cell));
 

@@ -10621,7 +10621,11 @@ var HtmlBlock = class extends BaseBlock {
     const VAR_RE = /var\((--[\w-]+)/g;
     let m;
     while ((m = VAR_RE.exec(safe)) !== null) varRefs.add(m[1]);
-    const bridgeParts = ["html{height:100%;margin:0;padding:0}body{margin:0;padding:0;min-height:100%}"];
+    const bridgeParts = [
+      "html{height:100%;margin:0;padding:0}",
+      "html.hp-clipped{overflow:hidden}",
+      "body{margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}"
+    ];
     if (varRefs.size > 0) {
       const rootStyle = getComputedStyle(document.body);
       const pairs = [...varRefs].map((v) => {
@@ -10652,7 +10656,7 @@ var HtmlBlock = class extends BaseBlock {
         if (contentH <= availableH || availableH <= 0) return;
         let scale = availableH / contentH;
         for (let i = 0; i < 4; i++) {
-          doc.body.style.width = `${1 / scale * 100}%`;
+          doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
           contentH = doc.documentElement.scrollHeight;
           const next = availableH / contentH;
           if (Math.abs(next - scale) < 5e-3) {
@@ -10661,10 +10665,9 @@ var HtmlBlock = class extends BaseBlock {
           }
           scale = next;
         }
-        doc.body.style.width = `${1 / scale * 100}%`;
-        doc.documentElement.style.overflow = "hidden";
-        doc.body.style.transformOrigin = "top left";
-        doc.body.style.transform = `scale(${scale})`;
+        doc.documentElement.classList.add("hp-clipped");
+        doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
+        doc.body.style.setProperty("--hp-body-scale", `${scale}`);
       } catch {
       }
     });

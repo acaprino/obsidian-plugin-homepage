@@ -19,6 +19,56 @@ interface FolderLinksConfig {
 
 const VALID_ALIGNS = new Set(['left', 'center', 'right']);
 
+// ── Glob parsing ─────────────────────────────────────────────────────────────
+
+interface ParsedFolder {
+  /** Static folder prefix to scan. Empty string means vault root. */
+  folder: string;
+  /** Whether the original input contained wildcard characters. */
+  hasPattern: boolean;
+  /** Test a path relative to `folder` against the glob pattern. */
+  matches: (relPath: string) => boolean;
+}
+
+function parseFolderPattern(input: string): ParsedFolder {
+  const trimmed = (input ?? '').trim().replace(/\/+$/, '');
+  if (!trimmed) return { folder: '', hasPattern: false, matches: () => true };
+
+  const wildcardIdx = trimmed.search(/[*?]/);
+  if (wildcardIdx === -1) {
+    return { folder: trimmed, hasPattern: false, matches: () => true };
+  }
+
+  const lastSlash = trimmed.lastIndexOf('/', wildcardIdx);
+  const folder = lastSlash === -1 ? '' : trimmed.slice(0, lastSlash);
+  const patternStr = lastSlash === -1 ? trimmed : trimmed.slice(lastSlash + 1);
+  const re = globToRegex(patternStr);
+  return { folder, hasPattern: true, matches: (p) => re.test(p) };
+}
+
+function globToRegex(glob: string): RegExp {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') {
+        re += '.*';
+        i++;
+        if (glob[i + 1] === '/') i++;
+      } else {
+        re += '[^/]*';
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+    } else if ('.+^${}()|[]\\'.includes(c)) {
+      re += '\\' + c;
+    } else {
+      re += c;
+    }
+  }
+  return new RegExp('^' + re + '$', 'i');
+}
+
 // ── Block ────────────────────────────────────────────────────────────────────
 
 export class FolderLinksBlock extends BaseBlock {
@@ -30,15 +80,17 @@ export class FolderLinksBlock extends BaseBlock {
 
     const trigger = () => this.scheduleRender(FolderLinksBlock.DEBOUNCE_MS, () => this.renderContent());
     const cfg = this.instance.config as FolderLinksConfig;
+    const scopeOf = () => parseFolderPattern(cfg.folder ?? '').folder;
     const isRelevant = (file: TAbstractFile) => {
-      const folder = (cfg.folder ?? '').trim().replace(/\/+$/, '');
-      return !!folder && file.path.startsWith(folder + '/');
+      const folder = scopeOf();
+      return folder === '' ? true : file.path.startsWith(folder + '/');
     };
     this.registerEvent(this.app.vault.on('create', (f) => { if (isRelevant(f)) trigger(); }));
     this.registerEvent(this.app.vault.on('delete', (f) => { if (isRelevant(f)) trigger(); }));
     this.registerEvent(this.app.vault.on('rename', (f, oldPath) => {
-      const folder = (cfg.folder ?? '').trim().replace(/\/+$/, '');
-      if (isRelevant(f) || (folder && oldPath.startsWith(folder + '/'))) trigger();
+      const folder = scopeOf();
+      const underFolder = folder === '' || oldPath.startsWith(folder + '/');
+      if (isRelevant(f) || underFolder) trigger();
     }));
 
     // Defer first render so vault is fully indexed
@@ -51,7 +103,7 @@ export class FolderLinksBlock extends BaseBlock {
     el.empty();
 
     const cfg = this.instance.config as FolderLinksConfig;
-    const folder = cfg.folder ?? '';
+    const folderInput = cfg.folder ?? '';
     const links = cfg.links ?? [];
     const linkAlign = VALID_ALIGNS.has(cfg.linkAlign ?? '') ? cfg.linkAlign! : 'left';
     const folderEmoji = cfg.folderEmoji ?? '';
@@ -62,18 +114,22 @@ export class FolderLinksBlock extends BaseBlock {
     list.addClass(`folder-links-align-${linkAlign}`);
 
     // Auto-list notes from selected folder (sorted alphabetically)
-    if (folder) {
-      const normalised = folder.trim().replace(/\/+$/, '');
+    if (folderInput.trim()) {
+      const parsed = parseFolderPattern(folderInput);
 
-      if (!normalised) {
+      if (!parsed.folder && !parsed.hasPattern) {
         list.createEl('p', { text: 'Vault root listing is not supported. Select a subfolder.', cls: 'block-loading' });
       } else {
-        const folderObj = this.app.vault.getAbstractFileByPath(normalised);
+        const root = parsed.folder
+          ? this.app.vault.getAbstractFileByPath(parsed.folder)
+          : this.app.vault.getRoot();
 
-        if (!(folderObj instanceof TFolder)) {
-          list.createEl('p', { text: `Folder "${normalised}" not found.`, cls: 'block-loading' });
+        if (!(root instanceof TFolder)) {
+          list.createEl('p', { text: `Folder "${parsed.folder}" not found.`, cls: 'block-loading' });
         } else {
-          const notes = this.getNotesInFolder(folderObj)
+          const prefix = parsed.folder ? parsed.folder + '/' : '';
+          const notes = this.getNotesInFolder(root)
+            .filter(f => parsed.matches(prefix ? f.path.slice(prefix.length) : f.path))
             .sort((a, b) => a.basename.localeCompare(b.basename));
 
           for (const file of notes) {
@@ -89,7 +145,8 @@ export class FolderLinksBlock extends BaseBlock {
           }
 
           if (notes.length === 0) {
-            list.createEl('p', { text: `No notes in "${folderObj.path}".`, cls: 'block-loading' });
+            const label = parsed.hasPattern ? `matching "${folderInput}"` : `in "${root.path}"`;
+            list.createEl('p', { text: `No notes ${label}.`, cls: 'block-loading' });
           }
         }
       }
@@ -108,7 +165,7 @@ export class FolderLinksBlock extends BaseBlock {
       });
     }
 
-    if (!folder && links.length === 0) {
+    if (!folderInput.trim() && links.length === 0) {
       const hint = list.createDiv({ cls: 'block-empty-hint' });
       hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F517}' });
       hint.createDiv({ cls: 'block-empty-hint-text', text: 'No links yet. Add manual links or pick a folder in settings.' });
@@ -173,11 +230,11 @@ class FolderLinksSettingsModal extends Modal {
     let folderText: import('obsidian').TextComponent;
     new Setting(contentEl)
       .setName('Auto-list folder')
-      .setDesc('Auto-list all notes from a folder.')
+      .setDesc('Folder path, with optional wildcards. Examples: Projects, Projects/*.md, Projects/**/*-draft.md')
       .addText(t => {
         folderText = t;
         t.setValue(draft.folder ?? '')
-         .setPlaceholder('Projects')
+         .setPlaceholder('Projects/*.md')
          .onChange(v => { draft.folder = v; });
       })
       .addButton(btn =>

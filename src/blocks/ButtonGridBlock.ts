@@ -71,6 +71,7 @@ class ButtonGridSettingsModal extends Modal {
     const draft = structuredClone(this.config) as {
       columns?: number;
       items?: ButtonItem[];
+      customCss?: string;
     };
     if (!Array.isArray(draft.items)) draft.items = [];
 
@@ -79,6 +80,28 @@ class ButtonGridSettingsModal extends Modal {
        .setValue(String(draft.columns ?? 2))
        .onChange(v => { draft.columns = Number(v); }),
     );
+
+    // ── Custom CSS ──────────────────────────────────────────────────────
+    // Only --hp-btn-* declarations survive the allowlist in blockStyling.ts;
+    // any other property or url()/image() value is ignored. Not using
+    // `new Setting().addTextArea()` here because Obsidian's Setting flex
+    // row forces controls into a narrow right column, which squeezes the
+    // textarea into a few unusable pixels. A manual block layout lets the
+    // textarea span full width.
+    const cssSection = contentEl.createDiv({ cls: 'hp-custom-css-section' });
+    cssSection.createDiv({ cls: 'setting-item-name', text: 'Custom CSS' });
+    const cssTextarea = cssSection.createEl('textarea', { cls: 'hp-custom-css-textarea' });
+    cssTextarea.placeholder =
+      '--hp-btn-bg: transparent;\n' +
+      '--hp-btn-border: none;\n' +
+      '--hp-btn-shadow: none;\n' +
+      '--hp-btn-hover-bg: var(--background-modifier-hover);\n' +
+      '--hp-btn-hover-border-color: transparent;\n' +
+      '--hp-btn-hover-transform: none;\n' +
+      '--hp-btn-hover-shadow: none;';
+    cssTextarea.maxLength = 4096;
+    cssTextarea.value = typeof draft.customCss === 'string' ? draft.customCss : '';
+    cssTextarea.addEventListener('input', () => { draft.customCss = cssTextarea.value; });
 
     contentEl.createEl('p', { text: 'Items', cls: 'setting-item-name' });
 

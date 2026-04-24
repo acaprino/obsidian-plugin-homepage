@@ -19,7 +19,67 @@ function getRelativeLuminance(hex: string): number {
 
 const VALID_BORDER_STYLES = ['solid', 'dashed', 'dotted'];
 
+// ── Custom CSS allowlist ──────────────────────────────────────────────
+// Only custom properties matching this pattern are accepted from user input.
+// Keeping the scope to --hp-btn-* means a poisoned customCss (e.g. from an
+// imported layout) cannot escape the block bounds via `position: fixed`,
+// overlay the UI via `z-index`, or affect anything outside .grid-btn.
+const HP_BTN_KEY_RE = /^--hp-btn-[a-z0-9-]+$/;
+
+// Reject any value that can fetch or reference external resources. These
+// functions can leak the user's IP and vault-open telemetry to a remote
+// attacker through inline styles on render. `var()` and `calc()` are safe
+// and not listed here.
+const UNSAFE_VALUE_RE = /\b(?:url|image|image-set|cross-fade|element|paint)\s*\(/i;
+
+// Parse a user-supplied declaration string into an allowlisted [key, value]
+// array. Strips CSS comments, splits on `;`, keeps only --hp-btn-* keys with
+// values free of external-resource functions and control characters.
+function parseAllowlistedCustomCss(input: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  const stripped = input.replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const raw of stripped.split(';')) {
+    const idx = raw.indexOf(':');
+    if (idx < 0) continue;
+    const key = raw.slice(0, idx).trim();
+    const value = raw.slice(idx + 1).trim();
+    if (!key || !value) continue;
+    if (!HP_BTN_KEY_RE.test(key)) continue;
+    if (UNSAFE_VALUE_RE.test(value)) continue;
+    // Reject any Unicode "Control" category character (C0 + C1). Uses
+    // \p{Cc} instead of a literal character range so the regex doesn't
+    // trip ESLint's no-control-regex rule.
+    if (/\p{Cc}/u.test(value)) continue;
+    out.push([key, value]);
+  }
+  return out;
+}
+
 export function applyBlockStyling(el: HTMLElement, config: Record<string, unknown>): void {
+  // ── Custom CSS ─────────────────────────────────────────────────────
+  // `customCss` is a block-specific field owned by ButtonGridSettingsModal
+  // (not a shared `_`-prefixed key). Only --hp-btn-* custom properties are
+  // applied; anything else is rejected by parseAllowlistedCustomCss.
+  // Declarations go through setProperty (not cssText) so caller-set inline
+  // styles on the wrapper (e.g. --hp-card-anim-delay at GridLayout.ts:415)
+  // survive. Previous keys are tracked via data-hp-custom-css-keys and
+  // removed before the new set is applied, so edits fully replace the
+  // prior style.
+  const prevKeys = el.getAttribute('data-hp-custom-css-keys');
+  if (prevKeys) {
+    for (const k of prevKeys.split(',')) {
+      if (k) el.style.removeProperty(k);
+    }
+  }
+  const rawCustomCss = typeof config.customCss === 'string' ? config.customCss : '';
+  const safeDecls = parseAllowlistedCustomCss(rawCustomCss);
+  for (const [k, v] of safeDecls) el.style.setProperty(k, v);
+  if (safeDecls.length > 0) {
+    el.setAttribute('data-hp-custom-css-keys', safeDecls.map(([k]) => k).join(','));
+  } else {
+    el.removeAttribute('data-hp-custom-css-keys');
+  }
+
   // ── Accent color ───────────────────────────────────────────────────
   const accentColor = typeof config._accentColor === 'string'
     && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : '';

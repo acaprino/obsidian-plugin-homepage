@@ -1,6 +1,36 @@
-import { App, Modal, Notice, Setting, TFolder, moment, setIcon, requestUrl } from 'obsidian';
+import { App, Modal, Notice, Setting, TFolder, moment, normalizePath, setIcon, requestUrl } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
+
+const CONSENT_STORAGE_KEY = 'hp-voice-consent';
+
+function hasMediaRecorderSupport(): boolean {
+  if (typeof MediaRecorder === 'undefined') return false;
+  const md = (navigator as unknown as { mediaDevices?: { getUserMedia?: unknown } }).mediaDevices;
+  return typeof md?.getUserMedia === 'function';
+}
+
+function hasConsent(provider: TranscriptionProvider): boolean {
+  try {
+    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as Record<string, boolean>;
+    return parsed[provider] === true;
+  } catch {
+    return false;
+  }
+}
+
+function setConsent(provider: TranscriptionProvider): void {
+  try {
+    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as Record<string, boolean> : {};
+    parsed[provider] = true;
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    /* localStorage may be unavailable — the user will re-consent next time */
+  }
+}
 
 type TranscriptionProvider = 'whisper' | 'gemini';
 
@@ -37,9 +67,11 @@ export class VoiceDictationBlock extends BaseBlock {
 
   // Cloud transcription (Whisper / Gemini)
   private mediaRecorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
-  private recordedMimeType = 'audio/webm';
   private activeStream: MediaStream | null = null;
+  // Generation counter: invalidates stale async callbacks (onstop, transcription result) after
+  // a re-render, plugin unload, or a rapid stop→start sequence. Every recording captures the
+  // generation it started with and checks it before touching DOM / calling saveNote.
+  private recordingGen = 0;
 
   // Elapsed timer handle
   private elapsedSeconds = 0;
@@ -81,8 +113,8 @@ export class VoiceDictationBlock extends BaseBlock {
       this.micBtn.addClass('voice-mic--unavailable');
       return;
     }
-    if (typeof MediaRecorder === 'undefined') {
-      new Notice('Audio recording is not supported on this platform');
+    if (!hasMediaRecorderSupport()) {
+      if (this.statusEl) this.statusEl.setText('Not available on this platform');
       this.micBtn.disabled = true;
       this.micBtn.addClass('voice-mic--unavailable');
       return;
@@ -107,10 +139,15 @@ export class VoiceDictationBlock extends BaseBlock {
 
     // Cleanup on unload
     this.register(() => {
-      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      // Invalidate any in-flight transcription so its result is discarded instead
+      // of hitting a detached DOM or creating a ghost saved-note.
+      this.recordingGen++;
+      if (this.mediaRecorder) {
+        // Detach callbacks first so the stop event can't re-enter handleCloudStop.
         this.mediaRecorder.ondataavailable = null;
         this.mediaRecorder.onstop = null;
-        this.mediaRecorder.stop();
+        if (this.mediaRecorder.state !== 'inactive') this.mediaRecorder.stop();
+        this.mediaRecorder = null;
       }
       this.stopActiveStream();
       if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
@@ -170,7 +207,9 @@ export class VoiceDictationBlock extends BaseBlock {
 
   private showSavedFlash(el: HTMLElement): void {
     this.setState(el, 'saved');
-    const id = window.setTimeout(() => { this.setState(el, 'idle'); }, 1500);
+    const id = window.setTimeout(() => {
+      if (el.isConnected) this.setState(el, 'idle');
+    }, 1500);
     this.register(() => window.clearTimeout(id));
   }
 
@@ -179,18 +218,26 @@ export class VoiceDictationBlock extends BaseBlock {
   private async saveNote(transcript: string, cfg: VoiceDictationConfig): Promise<void> {
     if (!transcript.trim()) return;
 
-    const folder = (cfg.folder ?? '').trim();
-    // Reject path traversal attempts
-    const segments = folder.split(/[/\\]/).filter(Boolean);
+    // Defence in depth — strip anything that could escape the vault:
+    //   leading slashes, tilde, Windows drive prefix (C:), NUL, backslashes.
+    const rawFolder = (cfg.folder ?? '')
+      .replace(/^[/\\~]+/, '')
+      .replace(/^[A-Za-z]:/, '')
+      // NUL in a path is a classic escape trick on some filesystems; strip it intentionally.
+      // eslint-disable-next-line no-control-regex
+      .replace(/\x00/g, '')
+      .replace(/\\/g, '/')
+      .trim();
+    const segments = rawFolder.split('/').filter(Boolean);
     if (segments.some(s => s === '..')) return;
-    const safePath = segments.join('/');
+    const safePath = normalizePath(segments.join('/'));
     const timestamp = moment().format('YYYY-MM-DD HH-mm-ss');
-    const notePath = safePath ? `${safePath}/${timestamp}.md` : `${timestamp}.md`;
+    const notePath = safePath && safePath !== '/' ? `${safePath}/${timestamp}.md` : `${timestamp}.md`;
 
     // Recursive folder creation
-    if (safePath) {
+    if (safePath && safePath !== '/') {
       let accumulated = '';
-      for (const seg of segments) {
+      for (const seg of safePath.split('/')) {
         accumulated = accumulated ? `${accumulated}/${seg}` : seg;
         if (!this.app.vault.getAbstractFileByPath(accumulated)) {
           await this.app.vault.createFolder(accumulated);
@@ -216,44 +263,67 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
+    const provider = cfg.provider ?? 'whisper';
+    if (!hasConsent(provider)) {
+      const confirmed = await confirmVoiceConsent(this.app, provider);
+      if (!confirmed) return;
+      setConsent(provider);
+    }
+
     // Stop any previous stream before acquiring a new one
     this.stopActiveStream();
 
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      new Notice('Microphone access denied');
+    } catch (err: unknown) {
+      const name = (err as { name?: string })?.name ?? '';
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        new Notice('No microphone found on this device');
+      } else if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        new Notice('Microphone access denied');
+      } else {
+        new Notice('Microphone unavailable');
+      }
       return;
     }
-    this.activeStream = stream;
 
     // Pick a supported mime type — webm on desktop/Android, mp4 on iOS
-    this.recordedMimeType = 'audio/webm';
+    let recordedMimeType = 'audio/webm';
     const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
     for (const mt of candidates) {
       if (MediaRecorder.isTypeSupported(mt)) {
-        this.recordedMimeType = mt.split(';')[0];
+        recordedMimeType = mt.split(';')[0];
         break;
       }
     }
 
-    this.audioChunks = [];
-    this.mediaRecorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported(this.recordedMimeType)
-        ? this.recordedMimeType
-        : undefined,
+    // Per-recording state — bound into the onstop closure so a rapid stop→start
+    // can't make the previous recorder's onstop clobber the new recording's chunks.
+    const chunks: Blob[] = [];
+    const gen = ++this.recordingGen;
+    const recorder = new MediaRecorder(stream, {
+      mimeType: MediaRecorder.isTypeSupported(recordedMimeType) ? recordedMimeType : undefined,
     });
 
-    this.mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) this.audioChunks.push(e.data);
+    this.activeStream = stream;
+    this.mediaRecorder = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
     };
 
-    this.mediaRecorder.onstop = () => {
-      void this.handleCloudStop(el);
+    recorder.onstop = () => {
+      // Stale recorder from a previous tap: the block has already started a
+      // new recording or was unloaded. Drop these chunks, don't touch DOM.
+      if (gen !== this.recordingGen) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+      void this.handleCloudStop(el, gen, chunks, recordedMimeType);
     };
 
-    this.mediaRecorder.start();
+    recorder.start();
     this.setState(el, 'recording');
   }
 
@@ -271,31 +341,45 @@ export class VoiceDictationBlock extends BaseBlock {
     }
   }
 
-  private async handleCloudStop(el: HTMLElement): Promise<void> {
+  private async handleCloudStop(
+    el: HTMLElement,
+    gen: number,
+    chunks: Blob[],
+    mimeType: string,
+  ): Promise<void> {
     const cfg = this.instance.config as VoiceDictationConfig;
-
-    const blob = new Blob(this.audioChunks, { type: this.recordedMimeType });
-    this.audioChunks = [];
+    const blob = new Blob(chunks, { type: mimeType });
 
     this.stopActiveStream();
 
     if (blob.size === 0) {
-      new Notice('No audio captured');
-      this.setState(el, 'idle');
+      if (gen === this.recordingGen && el.isConnected) {
+        new Notice('No audio captured');
+        this.setState(el, 'idle');
+      }
       return;
     }
 
     let transcript = '';
     try {
       transcript = (cfg.provider ?? 'whisper') === 'gemini'
-        ? await this.transcribeWithGemini(blob, cfg)
-        : await this.transcribeWithWhisper(blob, cfg);
+        ? await this.transcribeWithGemini(blob, cfg, mimeType)
+        : await this.transcribeWithWhisper(blob, cfg, mimeType);
     } catch (err: unknown) {
-      console.error('[VoiceDictation] transcription error', err);
-      new Notice('Transcription failed');
-      this.setState(el, 'idle');
+      // Log only the status / message — the raw body may contain user-supplied text.
+      const safe = err instanceof Error ? err.message : 'unknown error';
+      console.error('[Homepage Blocks] VoiceDictation transcription failed:', safe);
+      if (gen === this.recordingGen && el.isConnected) {
+        new Notice('Transcription failed');
+        this.setState(el, 'idle');
+      }
       return;
     }
+
+    // Bail if the recording was superseded OR the block was unloaded while we were
+    // waiting on the API. Without this, the transcript would be persisted anyway
+    // and surface as a ghost note the user didn't expect.
+    if (gen !== this.recordingGen || !el.isConnected) return;
 
     if (!transcript) {
       this.setState(el, 'idle');
@@ -304,20 +388,23 @@ export class VoiceDictationBlock extends BaseBlock {
 
     try {
       await this.saveNote(transcript, cfg);
-      this.showSavedFlash(el);
+      if (gen === this.recordingGen && el.isConnected) this.showSavedFlash(el);
     } catch (e: unknown) {
-      console.error('[VoiceDictation] save failed', e);
-      new Notice('Failed to save note');
-      this.setState(el, 'idle');
+      const safe = e instanceof Error ? e.message : 'unknown error';
+      console.error('[Homepage Blocks] VoiceDictation save failed:', safe);
+      if (gen === this.recordingGen && el.isConnected) {
+        new Notice('Failed to save note');
+        this.setState(el, 'idle');
+      }
     }
   }
 
   // ── Whisper transcription ───────────────────────────────────────────────
 
-  private async transcribeWithWhisper(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
-    const ext = this.recordedMimeType.includes('mp4') ? 'mp4'
-      : this.recordedMimeType.includes('ogg') ? 'ogg'
-      : this.recordedMimeType.includes('aac') ? 'aac'
+  private async transcribeWithWhisper(blob: Blob, cfg: VoiceDictationConfig, mimeType: string): Promise<string> {
+    const ext = mimeType.includes('mp4') ? 'mp4'
+      : mimeType.includes('ogg') ? 'ogg'
+      : mimeType.includes('aac') ? 'aac'
       : 'webm';
 
     const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);
@@ -330,7 +417,7 @@ export class VoiceDictationBlock extends BaseBlock {
     for (const [key, value] of Object.entries(textFields)) {
       preamble += `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`;
     }
-    preamble += `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.${ext}"\r\nContent-Type: ${this.recordedMimeType}\r\n\r\n`;
+    preamble += `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.${ext}"\r\nContent-Type: ${mimeType}\r\n\r\n`;
 
     const prefix = encoder.encode(preamble);
     const suffix = encoder.encode(`\r\n--${boundary}--\r\n`);
@@ -352,7 +439,8 @@ export class VoiceDictationBlock extends BaseBlock {
     });
 
     if (res.status !== 200) {
-      throw new Error('Whisper API error: ' + (res.text || String(res.status)));
+      // Don't include the raw body — it may echo user-supplied content or bits of the audio filename.
+      throw new Error(`Whisper API error ${res.status}`);
     }
 
     const json = res.json as { text?: string };
@@ -361,7 +449,7 @@ export class VoiceDictationBlock extends BaseBlock {
 
   // ── Gemini transcription ────────────────────────────────────────────────
 
-  private async transcribeWithGemini(blob: Blob, cfg: VoiceDictationConfig): Promise<string> {
+  private async transcribeWithGemini(blob: Blob, cfg: VoiceDictationConfig, mimeType: string): Promise<string> {
     const base64Audio = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -394,7 +482,7 @@ export class VoiceDictationBlock extends BaseBlock {
         contents: [{
           parts: [
             { text: `Transcribe this audio exactly. Output only the transcription, nothing else.${langHint}` },
-            { inlineData: { mimeType: this.recordedMimeType, data: base64Audio } },
+            { inlineData: { mimeType, data: base64Audio } },
           ],
         }],
       }),
@@ -402,7 +490,7 @@ export class VoiceDictationBlock extends BaseBlock {
     });
 
     if (res.status !== 200) {
-      throw new Error('Gemini API error: ' + (res.text || String(res.status)));
+      throw new Error(`Gemini API error ${res.status}`);
     }
 
     interface GeminiResponse {
@@ -550,4 +638,58 @@ class VoiceDictationSettingsModal extends Modal {
   onClose(): void {
     this.contentEl.empty();
   }
+}
+
+/**
+ * Shows a one-time consent modal before the first transcription with a given provider.
+ * Users need to explicitly acknowledge that audio will be uploaded to a third party.
+ */
+class VoiceConsentModal extends Modal {
+  private confirmed = false;
+  constructor(
+    app: App,
+    private provider: TranscriptionProvider,
+    private onResult: (confirmed: boolean) => void,
+  ) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    new Setting(contentEl).setName('Voice dictation consent').setHeading();
+    const providerName = this.provider === 'gemini' ? 'Google Gemini' : 'OpenAI Whisper';
+    const endpoint = this.provider === 'gemini'
+      ? 'generativelanguage.googleapis.com'
+      : 'api.openai.com';
+    contentEl.createEl('p', {
+      text: `Recording voice notes sends the captured audio to ${providerName} (${endpoint}) for transcription. Your API key is attached to the request.`,
+    });
+    contentEl.createEl('p', {
+      text: `Do not record sensitive information unless you trust ${providerName}'s data handling.`,
+    });
+    contentEl.createEl('p', {
+      text: 'This confirmation is remembered per provider — you will not see it again for this provider.',
+      cls: 'setting-item-description',
+    });
+    const buttons = contentEl.createDiv({ cls: 'modal-button-container' });
+    const cancel = buttons.createEl('button', { text: 'Cancel' });
+    cancel.addEventListener('click', () => this.close());
+    const confirm = buttons.createEl('button', { text: 'Upload audio to ' + providerName, cls: 'mod-cta' });
+    confirm.addEventListener('click', () => {
+      this.confirmed = true;
+      this.close();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    this.onResult(this.confirmed);
+  }
+}
+
+function confirmVoiceConsent(app: App, provider: TranscriptionProvider): Promise<boolean> {
+  return new Promise(resolve => {
+    new VoiceConsentModal(app, provider, resolve).open();
+  });
 }

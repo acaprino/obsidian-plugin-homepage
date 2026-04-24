@@ -13,7 +13,9 @@ const context = await esbuild.context({
   sourcemap: watch ? 'inline' : false,
   treeShaking: true,
   drop: watch ? [] : ['debugger'],
-  pure: watch ? [] : ['console.debug'],
+  // Mark verbose console calls as pure so esbuild can tree-shake them out of production.
+  // Keep console.error and console.warn — those surface genuine problems the user needs to see in devtools.
+  pure: watch ? [] : ['console.debug', 'console.log', 'console.info', 'console.trace'],
   outfile: 'main.js',
 });
 

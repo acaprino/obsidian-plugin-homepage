@@ -80,12 +80,13 @@ export class StaticTextBlock extends BaseBlock {
     setIcon(cancelBtn, 'x');
 
     const save = (): void => {
-      const currentConfig = this.plugin.layout.blocks.find(b => b.id === this.instance.id)?.config ?? this.instance.config;
+      const active = this.plugin.activeBlocks();
+      const currentConfig = active.find(b => b.id === this.instance.id)?.config ?? this.instance.config;
       const newConfig = { ...currentConfig, content: textarea.value };
-      const newBlocks = this.plugin.layout.blocks.map(b =>
+      const newBlocks = active.map(b =>
         b.id === this.instance.id ? { ...b, config: newConfig } : b,
       );
-      void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks });
+      void this.plugin.saveActiveBlocks(newBlocks);
       // Re-render from the updated layout — do NOT reassign this.instance directly
       this.renderContent(el)
         .then(() => this.requestAutoHeight())

@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TFile } from 'obsidian';
+import { Setting, TFile } from 'obsidian';
 import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { dailyEpochDay } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
@@ -222,26 +222,8 @@ export class RandomNoteBlock extends BaseBlock {
     return '';
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new RandomNoteSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class RandomNoteSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Random note settings').setHeading();
-
-    const draft = structuredClone(this.config) as {
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as {
       tag?: string;
       dailySeed?: boolean;
       imageProperty?: string;
@@ -250,67 +232,54 @@ class RandomNoteSettingsModal extends Modal {
       showPreview?: boolean;
     };
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Tag filter')
       .setDesc('Only notes with this tag will appear.')
       .addText(t =>
         t.setPlaceholder('#tag or tag')
-         .setValue(draft.tag ?? '')
-         .onChange(v => { draft.tag = v.trim(); }),
+         .setValue(cfg.tag ?? '')
+         .onChange(v => { cfg.tag = v.trim(); }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Daily seed')
       .setDesc('Same note all day, changes at midnight.')
       .addToggle(t =>
-        t.setValue(draft.dailySeed ?? false)
-         .onChange(v => { draft.dailySeed = v; }),
+        t.setValue(cfg.dailySeed ?? false)
+         .onChange(v => { cfg.dailySeed = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Show cover image')
       .addToggle(t =>
-        t.setValue(draft.showImage ?? true)
-         .onChange(v => { draft.showImage = v; }),
+        t.setValue(cfg.showImage ?? true)
+         .onChange(v => { cfg.showImage = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Cover image property')
       .setDesc('Frontmatter property with the image path.')
       .addText(t =>
         t.setPlaceholder('Cover')
-         .setValue(draft.imageProperty ?? '')
-         .onChange(v => { draft.imageProperty = v.trim() || 'cover'; }),
+         .setValue(cfg.imageProperty ?? '')
+         .onChange(v => { cfg.imageProperty = v.trim() || 'cover'; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Title property')
       .setDesc('Frontmatter property for the title. Falls back to filename.')
       .addText(t =>
         t.setPlaceholder('Title')
-         .setValue(draft.titleProperty ?? 'title')
-         .onChange(v => { draft.titleProperty = v.trim() || 'title'; }),
+         .setValue(cfg.titleProperty ?? 'title')
+         .onChange(v => { cfg.titleProperty = v.trim() || 'title'; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Show content preview')
       .setDesc('Show the first paragraph or frontmatter description.')
       .addToggle(t =>
-        t.setValue(draft.showPreview ?? true)
-         .onChange(v => { draft.showPreview = v; }),
-      );
-
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Save').setCta().onClick(() => {
-          this.onSave(draft as Record<string, unknown>);
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
+        t.setValue(cfg.showPreview ?? true)
+         .onChange(v => { cfg.showPreview = v; }),
       );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

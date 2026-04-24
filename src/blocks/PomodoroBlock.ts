@@ -1,4 +1,4 @@
-import { App, Modal, Setting, setIcon } from 'obsidian';
+import { Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 type PomodoroPhase = 'idle' | 'work' | 'break' | 'longBreak';
@@ -390,28 +390,8 @@ export class PomodoroBlock extends BaseBlock {
 
   // ── Settings ───────────────────────────────────────────────────────────
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new PomodoroSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class PomodoroSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (config: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Pomodoro settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
-    new Setting(contentEl)
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    new Setting(body)
       .setName('Work duration')
       .setDesc('Minutes per work session.')
       .addSlider(s =>
@@ -421,7 +401,7 @@ class PomodoroSettingsModal extends Modal {
          .onChange(v => { draft.workMinutes = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Break duration')
       .setDesc('Minutes per short break.')
       .addSlider(s =>
@@ -431,7 +411,7 @@ class PomodoroSettingsModal extends Modal {
          .onChange(v => { draft.breakMinutes = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Long break duration')
       .setDesc('Minutes per long break.')
       .addSlider(s =>
@@ -441,7 +421,7 @@ class PomodoroSettingsModal extends Modal {
          .onChange(v => { draft.longBreakMinutes = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Sessions before long break')
       .setDesc('Work sessions before a long break.')
       .addSlider(s =>
@@ -451,7 +431,7 @@ class PomodoroSettingsModal extends Modal {
          .onChange(v => { draft.sessionsBeforeLong = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Notification sound')
       .setDesc('Play a sound when a phase ends.')
       .addDropdown(d => {
@@ -468,25 +448,12 @@ class PomodoroSettingsModal extends Modal {
          });
       });
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Auto-start next session')
       .setDesc('Start the next phase automatically.')
       .addToggle(t =>
         t.setValue((draft as PomodoroConfig).autoStartCycle ?? false)
          .onChange(v => { (draft as PomodoroConfig).autoStartCycle = v; }),
       );
-
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Save').setCta().onClick(() => {
-          this.onSave(draft);
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
-      );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

@@ -1,4 +1,4 @@
-import { App, Modal, Setting, setIcon } from 'obsidian';
+import { Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 interface VaultSearchConfig {
@@ -204,43 +204,15 @@ export class VaultSearchBlock extends BaseBlock {
     this.results = [];
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new VaultSearchSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class VaultSearchSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Vault search settings').setHeading();
-
-    const draft = { ...this.config } as VaultSearchConfig;
-
-    new Setting(contentEl)
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as VaultSearchConfig;
+    new Setting(body)
       .setName('Placeholder text')
       .setDesc('Text shown when the search field is empty.')
       .addText(t =>
         t.setPlaceholder('Search vault...')
-         .setValue(draft.placeholder ?? '')
-         .onChange(v => { draft.placeholder = v; }),
+         .setValue(cfg.placeholder ?? '')
+         .onChange(v => { cfg.placeholder = v; }),
       );
-
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft as Record<string, unknown>);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

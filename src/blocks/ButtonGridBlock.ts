@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
@@ -28,7 +28,7 @@ export class ButtonGridBlock extends BaseBlock {
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });
-      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F532}' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '🔲' });
       hint.createDiv({ cls: 'block-empty-hint-text', text: 'No items yet. Add buttons with emojis and labels in settings.' });
       return;
     }
@@ -49,46 +49,27 @@ export class ButtonGridBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new ButtonGridSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class ButtonGridSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Button grid settings').setHeading();
-
-    const draft = structuredClone(this.config) as {
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as {
       columns?: number;
       items?: ButtonItem[];
       customCss?: string;
     };
-    if (!Array.isArray(draft.items)) draft.items = [];
+    if (!Array.isArray(cfg.items)) cfg.items = [];
 
-    new Setting(contentEl).setName('Columns').addDropdown(d =>
+    new Setting(body).setName('Columns').addDropdown(d =>
       d.addOption('1', '1').addOption('2', '2').addOption('3', '3')
-       .setValue(String(draft.columns ?? 2))
-       .onChange(v => { draft.columns = Number(v); }),
+       .setValue(String(cfg.columns ?? 2))
+       .onChange(v => { cfg.columns = Number(v); }),
     );
 
-    // ── Custom CSS ──────────────────────────────────────────────────────
     // Only --hp-btn-* declarations survive the allowlist in blockStyling.ts;
     // any other property or url()/image() value is ignored. Not using
     // `new Setting().addTextArea()` here because Obsidian's Setting flex
     // row forces controls into a narrow right column, which squeezes the
     // textarea into a few unusable pixels. A manual block layout lets the
     // textarea span full width.
-    const cssSection = contentEl.createDiv({ cls: 'hp-custom-css-section' });
+    const cssSection = body.createDiv({ cls: 'hp-custom-css-section' });
     cssSection.createDiv({ cls: 'setting-item-name', text: 'Custom CSS' });
     const cssTextarea = cssSection.createEl('textarea', { cls: 'hp-custom-css-textarea' });
     cssTextarea.placeholder =
@@ -100,21 +81,21 @@ class ButtonGridSettingsModal extends Modal {
       '--hp-btn-hover-transform: none;\n' +
       '--hp-btn-hover-shadow: none;';
     cssTextarea.maxLength = 4096;
-    cssTextarea.value = typeof draft.customCss === 'string' ? draft.customCss : '';
-    cssTextarea.addEventListener('input', () => { draft.customCss = cssTextarea.value; });
+    cssTextarea.value = typeof cfg.customCss === 'string' ? cfg.customCss : '';
+    cssTextarea.addEventListener('input', () => { cfg.customCss = cssTextarea.value; });
 
-    contentEl.createEl('p', { text: 'Items', cls: 'setting-item-name' });
+    body.createEl('p', { text: 'Items', cls: 'setting-item-name' });
 
-    const listEl = contentEl.createDiv({ cls: 'btn-grid-item-list' });
+    const listEl = body.createDiv({ cls: 'btn-grid-item-list' });
     const dragState = { dragIdx: -1 };
     let pickers: EmojiPickerInstance[] = [];
     const renderList = () => {
       pickers.forEach(p => p.destroy());
       pickers = [];
       listEl.empty();
-      draft.items!.forEach((item, i) => {
+      cfg.items!.forEach((item, i) => {
         const row = listEl.createDiv({ cls: 'btn-grid-item-row' });
-        enableDragReorder(row, i, draft.items!, dragState, renderList);
+        enableDragReorder(row, i, cfg.items!, dragState, renderList);
 
         const picker = createEmojiPicker({
           container: row,
@@ -140,31 +121,18 @@ class ButtonGridSettingsModal extends Modal {
 
         const delBtn = row.createEl('button', { cls: 'btn-grid-item-del', text: '✕' });
         delBtn.addEventListener('click', () => {
-          draft.items!.splice(i, 1);
+          cfg.items!.splice(i, 1);
           renderList();
         });
       });
     };
     renderList();
 
-    new Setting(contentEl).addButton(btn =>
+    new Setting(body).addButton(btn =>
       btn.setButtonText('+ add item').onClick(() => {
-        draft.items!.push({ emoji: '', label: '' });
+        cfg.items!.push({ emoji: '', label: '' });
         renderList();
       }),
     );
-
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Save').setCta().onClick(() => {
-          this.onSave(draft as Record<string, unknown>);
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
-      );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

@@ -1,4 +1,4 @@
-import { App, Modal, setIcon, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { setIcon, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
@@ -373,29 +373,9 @@ export class ImageGalleryBlock extends BaseBlock {
     return files;
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new ImageGallerySettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class ImageGallerySettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Image gallery settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
     let folderText: import('obsidian').TextComponent;
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Folder')
       .setDesc('Pick a vault folder.')
       .addText(t => {
@@ -413,7 +393,7 @@ class ImageGallerySettingsModal extends Modal {
           }).open();
         }),
       );
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Height')
       .setDesc('Auto: expands to fit all images. Fixed: uses the block\'s row height and scrolls.')
       .addDropdown(d =>
@@ -422,31 +402,23 @@ class ImageGallerySettingsModal extends Modal {
          .setValue(typeof draft.heightMode === 'string' ? draft.heightMode : 'auto')
          .onChange(v => { draft.heightMode = v === 'fixed' ? 'fixed' : 'auto'; }),
       );
-    new Setting(contentEl).setName('Layout').addDropdown(d =>
+    new Setting(body).setName('Layout').addDropdown(d =>
       d.addOption('grid', 'Grid').addOption('masonry', 'Masonry')
        .setValue(typeof draft.layout === 'string' ? draft.layout : 'grid')
        .onChange(v => { draft.layout = v; }),
     );
-    new Setting(contentEl).setName('Columns').addDropdown(d =>
+    new Setting(body).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
        .addOption('5', '5').addOption('6', '6').addOption('7', '7')
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 3))
        .onChange(v => { draft.columns = Number(v); }),
     );
-    new Setting(contentEl).setName('Max items').setDesc('0 = show all files.').addText(t =>
+    new Setting(body).setName('Max items').setDesc('0 = show all files.').addText(t =>
       t.setValue(String(typeof draft.maxItems === 'number' ? draft.maxItems : 0))
        .onChange(v => {
          const n = parseInt(v) || 0;
          draft.maxItems = Math.min(Math.max(0, n), 500);
        }),
     );
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

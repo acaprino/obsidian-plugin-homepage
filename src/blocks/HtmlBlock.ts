@@ -1,4 +1,4 @@
-import { App, Modal, Setting, sanitizeHTMLToDom } from 'obsidian';
+import { Setting, sanitizeHTMLToDom } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 export class HtmlBlock extends BaseBlock {
@@ -116,41 +116,12 @@ export class HtmlBlock extends BaseBlock {
     });
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new HtmlBlockSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class HtmlBlockSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('HTML block settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
-    new Setting(contentEl).setName('HTML').setDesc('Supports full HTML documents with <style> blocks.');
-    const textarea = contentEl.createEl('textarea', { cls: 'html-settings-textarea' });
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    new Setting(body).setName('HTML').setDesc('Supports full HTML documents with <style> blocks.');
+    const textarea = body.createEl('textarea', { cls: 'html-settings-textarea' });
     textarea.value = draft.html as string ?? '';
     textarea.rows = 12;
     textarea.setAttribute('spellcheck', 'false');
     textarea.addEventListener('input', () => { draft.html = textarea.value; });
-
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

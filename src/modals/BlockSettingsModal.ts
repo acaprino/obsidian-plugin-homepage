@@ -4,12 +4,11 @@ import { BlockRegistry } from '../BlockRegistry';
 import { BaseBlock, TITLE_SIZE_RE } from '../blocks/BaseBlock';
 import { applyBlockStyling, HEX_COLOR_RE } from '../utils/blockStyling';
 import { createEmojiPicker } from '../utils/emojiPicker';
-import { BLOCK_META } from '../blockMeta';
 
 /**
  * Tabbed settings modal shared by every block. Holds the generic `_`-prefixed card styling
- * controls (Header · Body · Card) plus a Content tab that delegates to the block's own
- * `openSettings` for type-specific options.
+ * controls (Header · Body · Card) plus a Content tab that renders each block's type-specific
+ * controls inline via `renderContentSettings`.
  */
 
 type BlockSettingsTab = 'header' | 'body' | 'card' | 'content';
@@ -397,30 +396,16 @@ export class BlockSettingsModal extends Modal {
   }
 
   private renderContentTab(body: HTMLElement): void {
-    const meta = BLOCK_META[this.instance.type];
-    const card = body.createDiv({ cls: 'hp-settings-content-cta' });
-    const iconEl = card.createDiv({ cls: 'hp-settings-content-icon' });
-    iconEl.setText(meta?.icon ?? '⚙');
-    const textWrap = card.createDiv({ cls: 'hp-settings-content-text' });
-    textWrap.createDiv({ cls: 'hp-settings-content-title', text: this.defaultTitle });
-    textWrap.createDiv({
-      cls: 'hp-settings-content-desc',
-      text: meta?.desc ?? 'Configure the content and behavior of this block.',
-    });
-
-    new Setting(body)
-      .addButton(btn =>
-        btn.setButtonText('Edit content settings →').setCta().onClick(() => {
-          this.block.openSettings((blockConfig) => {
-            // Preserve shared _-prefixed keys from the current draft
-            const shared = Object.fromEntries(
-              Object.entries(this.draft).filter(([k]) => k.startsWith('_')),
-            );
-            this.draft = { ...blockConfig, ...shared };
-            this.refreshPreview();
-          });
-        }),
-      );
+    // Block writes its controls directly into `body` and mutates `this.draft` in place.
+    // Shared `_`-prefixed keys coexist with block-specific keys in the same draft,
+    // so the outer Save button commits everything at once.
+    this.block.renderContentSettings(body, this.draft);
+    if (!body.children.length) {
+      body.createEl('p', {
+        cls: 'hp-settings-empty',
+        text: 'This block has no content settings.',
+      });
+    }
   }
 
   private commit(): void {

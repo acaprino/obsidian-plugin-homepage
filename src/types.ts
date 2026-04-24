@@ -31,6 +31,11 @@ export interface BlockInstance {
   collapsed?: boolean;
   /** Stored expanded height when block is collapsed, so it can be restored */
   _expandedH?: number;
+  /**
+   * Per-block config. Any key that starts with `_` is reserved for shared card/header/body styling
+   * (e.g. `_titleLabel`, `_titleEmoji`, `_hideBorder`, `_accentColor`, ...) and is merged into the
+   * block's config by the shared settings modal -- block-specific keys MUST NOT start with `_`.
+   */
   config: Record<string, unknown>;
 }
 
@@ -51,6 +56,8 @@ export interface LayoutConfig {
   pin: boolean;
   hideScrollbar: boolean;
   compactLayout: boolean;
+  /** Show a subtle hover lift on blocks and reveal the collapse chevron on hover. */
+  hoverHighlight: boolean;
   blocks: BlockInstance[];
 }
 
@@ -59,6 +66,8 @@ export interface BlockFactory {
   displayName: string;
   defaultConfig: Record<string, unknown>;
   defaultSize: { w: number; h: number };
+  /** Block reports content height dynamically. GridLayout persists height specially for these. */
+  autoHeight?: boolean;
   create(app: App, instance: BlockInstance, plugin: IHomepagePlugin): BaseBlock;
 }
 
@@ -66,6 +75,8 @@ export interface IHomepagePlugin {
   app: App;
   layout: LayoutConfig;
   saveLayout(layout: LayoutConfig): Promise<void>;
+  /** Save a new blocks array into the active field (mobileBlocks on mobile+separate, blocks otherwise). */
+  saveActiveBlocks(blocks: BlockInstance[]): Promise<void>;
   /** True when running on a mobile device AND responsiveMode is 'separate'. */
   isMobileActive(): boolean;
   /** Resolved blocks for the current platform (desktop blocks or mobile blocks). */

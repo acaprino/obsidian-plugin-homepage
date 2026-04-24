@@ -40,11 +40,13 @@ export class HtmlBlock extends BaseBlock {
 
   /** Render full HTML documents inside a sandboxed iframe with Obsidian CSS variable bridging. */
   private renderIframe(contentEl: HTMLElement, html: string): void {
-    // Strip script tags for defense-in-depth (sandbox also blocks execution)
-    const SCRIPT_RE = /<\/?\s*script\b[^>]*>/gi;
+    // Strip script tags AND other navigation/exfil vectors for defense-in-depth
+    // (sandbox also blocks execution, but <meta refresh> / <base> / <link> can still
+    // leak requests or redirect even without scripts).
+    const DANGEROUS_IFRAME_TAGS_RE = /<\/?\s*(script|iframe|object|embed|form|meta|link|base)\b[^>]*>/gi;
     let safe = html;
     let prev: string;
-    do { prev = safe; safe = safe.replace(SCRIPT_RE, ''); } while (safe !== prev);
+    do { prev = safe; safe = safe.replace(DANGEROUS_IFRAME_TAGS_RE, ''); } while (safe !== prev);
 
     // Collect var(--...) references used in the HTML/CSS
     const varRefs = new Set<string>();
@@ -76,7 +78,7 @@ export class HtmlBlock extends BaseBlock {
     const iframe = document.createElement('iframe');
     iframe.setAttribute('sandbox', 'allow-same-origin');
     iframe.srcdoc = safe;
-    iframe.style.cssText = 'width:100%;height:100%;border:none;overflow:hidden;display:block;background:transparent;';
+    iframe.addClass('hp-html-iframe');
 
     contentEl.appendChild(iframe);
 
@@ -100,8 +102,14 @@ export class HtmlBlock extends BaseBlock {
           scale = next;
         }
 
+        // NOTE: these style assignments target the iframe's contentDocument (the user's
+        // sandboxed HTML), not plugin-owned DOM. The values are per-render-computed scale
+        // transforms that can't live in a static CSS class. The Obsidian rule targets
+        // plugin-UI theming; iframe content is out of scope.
         doc.body.style.width = `${(1 / scale) * 100}%`;
+        // eslint-disable-next-line obsidianmd/no-static-styles-assignment
         doc.documentElement.style.overflow = 'hidden';
+        // eslint-disable-next-line obsidianmd/no-static-styles-assignment
         doc.body.style.transformOrigin = 'top left';
         doc.body.style.transform = `scale(${scale})`;
       } catch { /* cross-origin fallback */ }

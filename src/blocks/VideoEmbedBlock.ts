@@ -133,7 +133,9 @@ export class VideoEmbedBlock extends BaseBlock {
         src,
         title: 'Embedded video',
         frameborder: '0',
-        allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
+        // Keep this minimal — only what YouTube/Vimeo/Dailymotion actually need to play.
+        // Notably omitting clipboard-write so the embedded page can't silently overwrite the clipboard.
+        allow: 'autoplay; encrypted-media; picture-in-picture',
         allowfullscreen: '',
         loading: 'lazy',
         referrerpolicy: 'no-referrer',

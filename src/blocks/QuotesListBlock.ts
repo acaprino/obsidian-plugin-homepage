@@ -1,6 +1,7 @@
-import { App, CachedMetadata, Modal, Setting, moment } from 'obsidian';
-import { cacheHasTag, clearTagCache, getFilesWithTag } from '../utils/tags';
+import { App, CachedMetadata, Modal, Setting } from 'obsidian';
+import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { parseNoteInsight } from '../utils/noteContent';
+import { dailyIndex } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 
 // Only assign safe CSS color values; reject potentially malicious strings.
@@ -9,7 +10,6 @@ import { BaseBlock } from './BaseBlock';
 const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\))$/;
 
 const DEBOUNCE_MS = 500;
-const MS_PER_DAY = 86_400_000;
 
 // Allow letters, numbers, spaces, commas, single-quotes, hyphens — blocks CSS injection.
 // Double-quotes excluded: single quotes suffice for multi-word font names in CSS.
@@ -73,13 +73,13 @@ export class QuotesListBlock extends BaseBlock {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
       const tagSearch = cfg.tag.startsWith('#') ? cfg.tag : `#${cfg.tag}`;
-      if (cacheHasTag(cache, tagSearch)) { clearTagCache(); trigger(); }
+      if (cacheHasTag(cache, tagSearch)) trigger();
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
-      if (file.path.endsWith('.md')) { clearTagCache(); trigger(); }
+      if (file.path.endsWith('.md')) trigger();
     }));
 
     return this.loadAndRender(el).catch(e => {
@@ -149,10 +149,8 @@ export class QuotesListBlock extends BaseBlock {
         return;
       }
 
-      // Use local midnight as the day index so it changes at local midnight, not UTC
-      const dayIndex = Math.floor(moment().startOf('day').valueOf() / MS_PER_DAY);
       const index = dailySeed
-        ? dayIndex % files.length
+        ? dailyIndex(files.length)
         : Math.floor(Math.random() * files.length);
 
       const file = files[index];
@@ -281,9 +279,9 @@ export class QuotesListBlock extends BaseBlock {
     }
 
     const blocks = raw.split(/\n---\n/).map(b => b.trim()).filter(Boolean);
-    const dayIndex = Math.floor(moment().startOf('day').valueOf() / MS_PER_DAY);
+    if (blocks.length === 0) return;
     const index = dailySeed
-      ? dayIndex % blocks.length
+      ? dailyIndex(blocks.length)
       : Math.floor(Math.random() * blocks.length);
 
     const block = blocks[index];

@@ -6,7 +6,7 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 
 ## Features
 
-- **15 block types** -- greeting, clock, quotes, quick links, button grid, image gallery, video embed, embedded note, static text, HTML, bookmarks, recent files, pomodoro timer, spacer, random note
+- **17 block types** -- greeting, clock, quotes, quick links, button grid, image gallery, video embed, embedded note, static text, HTML, bookmarks, recent files, pomodoro timer, spacer, random note, voice notes, vault search
 - **Drag-and-drop layout** with 2D resize (column span + row height)
 - **Accent colors** with adjustable intensity (5--100%) that tint the entire card, including interactive controls
 - **Per-block styling** -- title, emoji, divider, padding, elevation, border, opacity, backdrop blur, gradients
@@ -57,8 +57,29 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 | **Pomodoro** | Configurable work/break timer |
 | **Spacer** | Empty space for layout gaps |
 | **Random Note** | Surfaces a random note from a tag filter, with excerpt preview |
+| **Voice Notes** | Tap-to-record voice transcription via OpenAI Whisper or Google Gemini -- see [Voice Notes & privacy](#voice-notes--privacy) below |
+| **Vault Search** | In-block search over the vault's markdown files |
 
 ![Masonry gallery with video thumbnails](screenshots/gallery-masonry.png)
+
+## Voice Notes & privacy
+
+The **Voice Notes** block records audio in your browser and uploads it to a third-party transcription service. Before you record for the first time, the plugin asks you to confirm the upload per provider.
+
+**What is sent and where:**
+
+| Provider | Endpoint | Data sent | Authentication |
+|----------|----------|-----------|----------------|
+| **OpenAI Whisper** | `api.openai.com/v1/audio/transcriptions` | Raw audio blob + model + optional language hint | Your OpenAI API key in the `Authorization: Bearer ...` header |
+| **Google Gemini** | `generativelanguage.googleapis.com/v1beta/models/...:generateContent` | Base64-encoded audio + a transcription prompt + optional language hint | Your Google AI API key in the `x-goog-api-key` header |
+
+**API key storage:** the key is persisted in **cleartext** in `<vault>/.obsidian/plugins/homepage-blocks/data.json`. If your vault is synced (Obsidian Sync, iCloud, Dropbox, git, ...) the key is synced too. Treat it like any other secret in your vault. When you **Export layout** the key is stripped from the exported JSON, but the on-disk copy is untouched.
+
+**Revoking access:** delete the key from the provider's dashboard ([OpenAI](https://platform.openai.com/api-keys), [Google AI Studio](https://aistudio.google.com/app/apikey)) and clear the API key field in block settings.
+
+**Mobile:** voice recording requires the platform's `MediaRecorder` + `navigator.mediaDevices` APIs. On platforms that don't expose them, the block is automatically disabled with an "Not available on this platform" message.
+
+If you do not want the Voice Notes feature, simply don't add a Voice Notes block -- no code runs and no network calls happen.
 
 ## Card styling
 

@@ -1,4 +1,4 @@
-import { App, CachedMetadata, TFile } from 'obsidian';
+import { App, CachedMetadata, Plugin, TFile } from 'obsidian';
 
 /**
  * Check whether a metadata cache entry contains the given tag.
@@ -18,27 +18,54 @@ export function cacheHasTag(cache: CachedMetadata | null, tag: string): boolean 
 }
 
 /**
+ * Cache of tag -> files keyed by the tag string (including `#`). Entries live
+ * until a vault or metadataCache event invalidates them — see
+ * installTagCacheListeners. Previously keyed by a 5s TTL, which could serve
+ * stale data after a rename or tag edit; now staleness is event-driven.
+ */
+const tagCache = new Map<string, TFile[]>();
+let listenersInstalled = false;
+
+/**
+ * Register a plugin-wide invalidator so every caller of getFilesWithTag sees
+ * fresh data without having to clear the cache themselves. Idempotent — safe
+ * to call from both onload and unit tests.
+ */
+export function installTagCacheListeners(plugin: Plugin): void {
+  if (listenersInstalled) return;
+  listenersInstalled = true;
+  plugin.register(() => {
+    // Plugin unload: reset state so a fresh install after reload doesn't skip registration.
+    listenersInstalled = false;
+    tagCache.clear();
+  });
+  plugin.registerEvent(plugin.app.vault.on('delete', () => { tagCache.clear(); }));
+  plugin.registerEvent(plugin.app.vault.on('rename', () => { tagCache.clear(); }));
+  plugin.registerEvent(plugin.app.metadataCache.on('changed', () => { tagCache.clear(); }));
+  plugin.registerEvent(plugin.app.metadataCache.on('resolved', () => { tagCache.clear(); }));
+}
+
+/**
  * Returns all markdown files in the vault that have the given tag.
  * `tag` must include the leading `#` (e.g. `#values`).
  * Handles both inline tags and YAML frontmatter tags (with or without `#`),
  * and frontmatter tags that are a plain string instead of an array.
  */
-const tagCache = new Map<string, { files: TFile[]; timestamp: number }>();
-const TAG_CACHE_TTL = 5000; // 5 seconds
-
 export function getFilesWithTag(app: App, tag: string): TFile[] {
   const cached = tagCache.get(tag);
-  if (cached && Date.now() - cached.timestamp < TAG_CACHE_TTL) {
-    return cached.files;
-  }
+  if (cached) return cached;
   const files = app.vault.getMarkdownFiles().filter(file =>
     cacheHasTag(app.metadataCache.getFileCache(file), tag),
   );
-  tagCache.set(tag, { files, timestamp: Date.now() });
+  tagCache.set(tag, files);
   return files;
 }
 
-/** Clear the tag cache. Call when metadata changes to ensure freshness. */
+/**
+ * Clear the tag cache manually. Normal invalidation happens through the listeners
+ * installed by installTagCacheListeners; this is kept for tests and for callers
+ * that want to force a refresh without waiting for the next vault event.
+ */
 export function clearTagCache(): void {
   tagCache.clear();
 }

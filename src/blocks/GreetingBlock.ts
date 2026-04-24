@@ -1,4 +1,4 @@
-import { App, Modal, Setting, moment } from 'obsidian';
+import { Setting, moment } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { dailyIndex } from '../utils/dailySeed';
@@ -210,46 +210,26 @@ export class GreetingBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new GreetingSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-// ── Settings Modal ─────────────────────────────────────────────────────
-
-class GreetingSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (config: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Greeting settings').setHeading();
-
-    const draft = structuredClone(this.config) as GreetingConfig & Record<string, unknown>;
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as GreetingConfig & Record<string, unknown>;
 
     // ── General ────────────────────────────────
-    new Setting(contentEl).setName('Name').addText(t =>
-      t.setValue(draft.name ?? 'bentornato')
-       .onChange(v => { draft.name = v; }),
+    new Setting(body).setName('Name').addText(t =>
+      t.setValue(cfg.name ?? 'bentornato')
+       .onChange(v => { cfg.name = v; }),
     );
-    new Setting(contentEl).setName('Show time').addToggle(t =>
-      t.setValue(draft.showTime ?? true)
-       .onChange(v => { draft.showTime = v; }),
+    new Setting(body).setName('Show time').addToggle(t =>
+      t.setValue(cfg.showTime ?? true)
+       .onChange(v => { cfg.showTime = v; }),
     );
 
     // ── Salutation ─────────────────────────────
-    new Setting(contentEl).setName('Salutation').setHeading();
+    new Setting(body).setName('Salutation').setHeading();
 
-    const salutSection = contentEl.createDiv();
+    const salutSection = body.createDiv();
     const buildSalutSettings = () => {
       salutSection.empty();
-      const mode = draft.salutationMode ?? 'auto';
+      const mode = cfg.salutationMode ?? 'auto';
 
       new Setting(salutSection)
         .setName('Salutation mode')
@@ -258,7 +238,7 @@ class GreetingSettingsModal extends Modal {
           d.addOption('auto', 'Language preset')
            .addOption('custom', 'Custom text')
            .setValue(mode)
-           .onChange(v => { draft.salutationMode = v === 'custom' ? 'custom' : 'auto'; buildSalutSettings(); }),
+           .onChange(v => { cfg.salutationMode = v === 'custom' ? 'custom' : 'auto'; buildSalutSettings(); }),
         );
 
       if (mode === 'auto') {
@@ -268,11 +248,11 @@ class GreetingSettingsModal extends Modal {
             for (const key of PRESET_KEYS) {
               d.addOption(key, LANG_PRESETS[key].label);
             }
-            d.setValue(draft.salutationPreset ?? 'it')
-             .onChange(v => { draft.salutationPreset = v; });
+            d.setValue(cfg.salutationPreset ?? 'it')
+             .onChange(v => { cfg.salutationPreset = v; });
           });
         // Show preview of current preset
-        const preset = LANG_PRESETS[draft.salutationPreset ?? 'it'] ?? DEFAULT_SALUT;
+        const preset = LANG_PRESETS[cfg.salutationPreset ?? 'it'] ?? DEFAULT_SALUT;
         const preview = salutSection.createDiv({ cls: 'setting-item-description' });
         preview.addClass('hp-preview-hint');
         preview.setText(`${preset.morning} / ${preset.afternoon} / ${preset.evening}`);
@@ -289,9 +269,9 @@ class GreetingSettingsModal extends Modal {
             .setName(`${slot.label} greeting`)
             .setDesc(slot.time)
             .addText(t =>
-              t.setValue((draft[slot.key] as string) ?? slot.fallback)
+              t.setValue((cfg[slot.key] as string) ?? slot.fallback)
                .setPlaceholder(slot.fallback)
-               .onChange(v => { (draft as Record<string, unknown>)[slot.key] = v; }),
+               .onChange(v => { (cfg as Record<string, unknown>)[slot.key] = v; }),
             );
         }
       }
@@ -299,20 +279,20 @@ class GreetingSettingsModal extends Modal {
     buildSalutSettings();
 
     // ── Emoji ──────────────────────────────────
-    new Setting(contentEl).setName('Emoji').setHeading();
+    new Setting(body).setName('Emoji').setHeading();
 
-    new Setting(contentEl).setName('Show emoji').addToggle(t =>
-      t.setValue(draft.showEmoji ?? true)
-       .onChange(v => { draft.showEmoji = v; buildEmojiSettings(); }),
+    new Setting(body).setName('Show emoji').addToggle(t =>
+      t.setValue(cfg.showEmoji ?? true)
+       .onChange(v => { cfg.showEmoji = v; buildEmojiSettings(); }),
     );
 
-    const emojiSection = contentEl.createDiv();
+    const emojiSection = body.createDiv();
     let slotPickers: EmojiPickerInstance[] = [];
     const buildEmojiSettings = () => {
       for (const p of slotPickers) p.destroy();
       slotPickers = [];
       emojiSection.empty();
-      if (draft.showEmoji === false) return;
+      if (cfg.showEmoji === false) return;
 
       new Setting(emojiSection)
         .setName('Emoji mode')
@@ -321,11 +301,11 @@ class GreetingSettingsModal extends Modal {
           d.addOption('auto', 'Auto (time of day)')
            .addOption('custom', 'Custom per slot')
            .addOption('random', 'Random pool')
-           .setValue(draft.emojiMode ?? 'auto')
-           .onChange(v => { draft.emojiMode = (v === 'custom' || v === 'random') ? v : 'auto'; buildEmojiSettings(); }),
+           .setValue(cfg.emojiMode ?? 'auto')
+           .onChange(v => { cfg.emojiMode = (v === 'custom' || v === 'random') ? v : 'auto'; buildEmojiSettings(); }),
         );
 
-      const mode = draft.emojiMode ?? 'auto';
+      const mode = cfg.emojiMode ?? 'auto';
 
       if (mode === 'custom') {
         const slots: { key: keyof GreetingConfig; label: string; default: string; time: string }[] = [
@@ -341,10 +321,10 @@ class GreetingSettingsModal extends Modal {
           const closePickers = () => { for (const p of slotPickers) p.close(); };
           const picker = createEmojiPicker({
             container: control,
-            value: (draft[slot.key] as string) ?? slot.default,
+            value: (cfg[slot.key] as string) ?? slot.default,
             placeholder: slot.default,
-            onSelect: (emoji) => { (draft as Record<string, unknown>)[slot.key] = emoji; },
-            onClear: () => { (draft as Record<string, unknown>)[slot.key] = ''; },
+            onSelect: (emoji) => { (cfg as Record<string, unknown>)[slot.key] = emoji; },
+            onClear: () => { (cfg as Record<string, unknown>)[slot.key] = ''; },
             onBeforeOpen: closePickers,
           });
           slotPickers.push(picker);
@@ -360,7 +340,7 @@ class GreetingSettingsModal extends Modal {
         const poolControl = poolRow.createDiv({ cls: 'setting-item-control' });
         const poolContainer = poolControl.createDiv({ cls: 'greeting-emoji-pool' });
 
-        const currentPool = parseEmojiPool(draft.emojiPool ?? '');
+        const currentPool = parseEmojiPool(cfg.emojiPool ?? '');
         const renderPool = () => {
           poolContainer.empty();
           for (let i = 0; i < currentPool.length; i++) {
@@ -369,7 +349,7 @@ class GreetingSettingsModal extends Modal {
             const del = chip.createEl('button', { cls: 'greeting-emoji-chip-del', text: '✕' });
             del.addEventListener('click', () => {
               currentPool.splice(i, 1);
-              draft.emojiPool = currentPool.join(' ');
+              cfg.emojiPool = currentPool.join(' ');
               renderPool();
             });
           }
@@ -382,7 +362,7 @@ class GreetingSettingsModal extends Modal {
             placeholder: '＋',
             onSelect: (emoji) => {
               currentPool.push(emoji);
-              draft.emojiPool = currentPool.join(' ');
+              cfg.emojiPool = currentPool.join(' ');
               renderPool();
             },
             onClear: () => {},
@@ -396,21 +376,11 @@ class GreetingSettingsModal extends Modal {
           .setName('Same emoji all day')
           .setDesc('Pick one at midnight, keep it all day.')
           .addToggle(t =>
-            t.setValue(draft.emojiDailySeed ?? false)
-             .onChange(v => { draft.emojiDailySeed = v; }),
+            t.setValue(cfg.emojiDailySeed ?? false)
+             .onChange(v => { cfg.emojiDailySeed = v; }),
           );
       }
     };
     buildEmojiSettings();
-
-    // ── Save ───────────────────────────────────
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft as Record<string, unknown>);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

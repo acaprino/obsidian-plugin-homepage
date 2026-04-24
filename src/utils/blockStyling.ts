@@ -57,7 +57,7 @@ function parseAllowlistedCustomCss(input: string): Array<[string, string]> {
 
 export function applyBlockStyling(el: HTMLElement, config: Record<string, unknown>): void {
   // ── Custom CSS ─────────────────────────────────────────────────────
-  // `customCss` is a block-specific field owned by ButtonGridSettingsModal
+  // `customCss` is a block-specific field owned by ButtonGridBlock
   // (not a shared `_`-prefixed key). Only --hp-btn-* custom properties are
   // applied; anything else is rejected by parseAllowlistedCustomCss.
   // Declarations go through setProperty (not cssText) so caller-set inline

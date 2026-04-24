@@ -500,143 +500,107 @@ export class VoiceDictationBlock extends BaseBlock {
     return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
   }
 
-  // ── Settings modal ─────────────────────────────────────────────────────────
+  override renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as VoiceDictationConfig;
+    const renderSettings = () => {
+      body.empty();
 
-  override openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new VoiceDictationSettingsModal(this.app, this.instance.config as VoiceDictationConfig, onSave).open();
-  }
-}
-
-// ── Settings Modal ─────────────────────────────────────────────────────────────
-
-class VoiceDictationSettingsModal extends Modal {
-  private draft: VoiceDictationConfig;
-
-  constructor(
-    app: App,
-    config: VoiceDictationConfig,
-    private onSave: (config: Record<string, unknown>) => void,
-  ) {
-    super(app);
-    this.draft = { ...config };
-  }
-
-  onOpen(): void {
-    this.renderSettings();
-  }
-
-  private renderSettings(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-
-    new Setting(contentEl).setName('Voice notes settings').setHeading();
-
-    // Folder
-    new Setting(contentEl)
-      .setName('Destination folder')
-      .setDesc('Where new voice notes go. Leave blank for vault root.')
-      .addText(t => {
-        t.setPlaceholder('Voice notes')
-         .setValue(this.draft.folder ?? '')
-         .onChange(v => { this.draft.folder = v.trim(); });
-        t.inputEl.addEventListener('click', () => {
-          new FolderSuggestModal(this.app, (folder: TFolder) => {
-            this.draft.folder = folder.path;
-            t.setValue(folder.path);
-          }).open();
+      // Folder
+      new Setting(body)
+        .setName('Destination folder')
+        .setDesc('Where new voice notes go. Leave blank for vault root.')
+        .addText(t => {
+          t.setPlaceholder('Voice notes')
+           .setValue(cfg.folder ?? '')
+           .onChange(v => { cfg.folder = v.trim(); });
+          t.inputEl.addEventListener('click', () => {
+            new FolderSuggestModal(this.app, (folder: TFolder) => {
+              cfg.folder = folder.path;
+              t.setValue(folder.path);
+            }).open();
+          });
         });
-      });
 
-    // Trigger mode
-    new Setting(contentEl)
-      .setName('Trigger mode')
-      .setDesc('How the mic button starts recording.')
-      .addDropdown(d => {
-        d.addOption('tap', 'Tap to record')
-         .addOption('push', 'Push to talk')
-         .setValue(this.draft.triggerMode ?? 'tap')
-         .onChange(v => { this.draft.triggerMode = v as 'tap' | 'push'; });
-      });
+      // Trigger mode
+      new Setting(body)
+        .setName('Trigger mode')
+        .setDesc('How the mic button starts recording.')
+        .addDropdown(d => {
+          d.addOption('tap', 'Tap to record')
+           .addOption('push', 'Push to talk')
+           .setValue(cfg.triggerMode ?? 'tap')
+           .onChange(v => { cfg.triggerMode = v as 'tap' | 'push'; });
+        });
 
-    // Provider
-    new Setting(contentEl)
-      .setName('Transcription provider')
-      .setDesc('Service used for transcription.')
-      .addDropdown(d => {
-        d.addOption('whisper', 'Whisper')
-         .addOption('gemini', 'Gemini')
-         .setValue(this.draft.provider ?? 'whisper')
-         .onChange(v => {
-           this.draft.provider = v as TranscriptionProvider;
-           // Reset model to default for new provider
-           this.draft.model = v === 'gemini' ? 'gemini-2.0-flash' : 'whisper-1';
-           // Re-render modal to update model dropdown and API key placeholder
-           this.renderSettings();
-         });
-      });
+      // Provider
+      new Setting(body)
+        .setName('Transcription provider')
+        .setDesc('Service used for transcription.')
+        .addDropdown(d => {
+          d.addOption('whisper', 'Whisper')
+           .addOption('gemini', 'Gemini')
+           .setValue(cfg.provider ?? 'whisper')
+           .onChange(v => {
+             cfg.provider = v as TranscriptionProvider;
+             // Reset model to default for new provider
+             cfg.model = v === 'gemini' ? 'gemini-2.0-flash' : 'whisper-1';
+             // Re-render body to update model dropdown and API key placeholder
+             renderSettings();
+           });
+        });
 
-    // API key (label + placeholder change based on provider)
-    const isGemini = (this.draft.provider ?? 'whisper') === 'gemini';
-    new Setting(contentEl)
-      .setName('API key')
-      .setDesc(isGemini
-        ? 'Google AI API key for Gemini. Stored in plaintext in your vault data folder.'
-        : 'OpenAI API key for Whisper. Stored in plaintext in your vault data folder.')
-      .addText(t => {
-        t.inputEl.type = 'password';
-        t.setPlaceholder(isGemini ? 'AIza...' : 'sk-...')
-         .setValue(this.draft.apiKey ?? '')
-         .onChange(v => { this.draft.apiKey = v.trim(); });
-      });
+      // API key (label + placeholder change based on provider)
+      const isGemini = (cfg.provider ?? 'whisper') === 'gemini';
+      new Setting(body)
+        .setName('API key')
+        .setDesc(isGemini
+          ? 'Google AI API key for Gemini. Stored in plaintext in your vault data folder.'
+          : 'OpenAI API key for Whisper. Stored in plaintext in your vault data folder.')
+        .addText(t => {
+          t.inputEl.type = 'password';
+          t.setPlaceholder(isGemini ? 'AIza...' : 'sk-...')
+           .setValue(cfg.apiKey ?? '')
+           .onChange(v => { cfg.apiKey = v.trim(); });
+        });
 
-    // Model (options change based on provider)
-    const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
-    const defaultModel = isGemini ? 'gemini-2.0-flash' : 'whisper-1';
-    new Setting(contentEl)
-      .setName('Model')
-      .setDesc('Transcription model.')
-      .addDropdown(d => {
-        for (const [value, label] of Object.entries(models)) {
-          d.addOption(value, label);
-        }
-        d.setValue(this.draft.model && this.draft.model in models
-          ? this.draft.model
-          : defaultModel);
-        d.onChange(v => { this.draft.model = v; });
-      });
+      // Model (options change based on provider)
+      const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
+      const defaultModel = isGemini ? 'gemini-2.0-flash' : 'whisper-1';
+      new Setting(body)
+        .setName('Model')
+        .setDesc('Transcription model.')
+        .addDropdown(d => {
+          for (const [value, label] of Object.entries(models)) {
+            d.addOption(value, label);
+          }
+          d.setValue(cfg.model && cfg.model in models
+            ? cfg.model
+            : defaultModel);
+          d.onChange(v => { cfg.model = v; });
+        });
 
-    // Language
-    new Setting(contentEl)
-      .setName('Language')
-      .setDesc('Language code (en, it, fr). Leave blank to auto-detect.')
-      .addText(t => {
-        t.setPlaceholder('Auto')
-         .setValue(this.draft.language ?? '')
-         .onChange(v => { this.draft.language = v.trim(); });
-      });
+      // Language
+      new Setting(body)
+        .setName('Language')
+        .setDesc('Language code (en, it, fr). Leave blank to auto-detect.')
+        .addText(t => {
+          t.setPlaceholder('Auto')
+           .setValue(cfg.language ?? '')
+           .onChange(v => { cfg.language = v.trim(); });
+        });
 
-    // Note template
-    new Setting(contentEl)
-      .setName('Note template')
-      .setDesc('Optional. Use {{transcript}} where the text should appear.')
-      .addTextArea(t => {
-        t.setPlaceholder('{{transcript}}')
-         .setValue(this.draft.noteTemplate ?? '')
-         .onChange(v => { this.draft.noteTemplate = v; });
-        t.inputEl.rows = 4;
-      });
-
-    // Save button
-    new Setting(contentEl).addButton(b => {
-      b.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(this.draft as Record<string, unknown>);
-        this.close();
-      });
-    });
-  }
-
-  onClose(): void {
-    this.contentEl.empty();
+      // Note template
+      new Setting(body)
+        .setName('Note template')
+        .setDesc('Optional. Use {{transcript}} where the text should appear.')
+        .addTextArea(t => {
+          t.setPlaceholder('{{transcript}}')
+           .setValue(cfg.noteTemplate ?? '')
+           .onChange(v => { cfg.noteTemplate = v; });
+          t.inputEl.rows = 4;
+        });
+    };
+    renderSettings();
   }
 }
 

@@ -1,4 +1,4 @@
-import { App, CachedMetadata, Modal, Setting } from 'obsidian';
+import { CachedMetadata, Setting } from 'obsidian';
 import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { parseNoteInsight } from '../utils/noteContent';
 import { dailyIndex } from '../utils/dailySeed';
@@ -348,178 +348,147 @@ export class QuotesListBlock extends BaseBlock {
     return lines.slice(0, 3).join(' ');
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new QuotesSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as QuotesConfig;
+    cfg.source ??= 'tag';
 
-class QuotesSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Quotes settings').setHeading();
-
-    const draft = structuredClone(this.config) as QuotesConfig;
-    draft.source ??= 'tag';
-
-    // Source toggle — shows/hides the relevant section
     let tagSection: HTMLElement;
     let textSection: HTMLElement;
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Source')
       .setDesc('From tagged notes, or entered manually.')
       .addDropdown(d =>
         d.addOption('tag', 'Notes with tag')
          .addOption('text', 'Manual text')
-         .setValue(draft.source ?? 'tag')
+         .setValue(cfg.source ?? 'tag')
          .onChange(v => {
-           draft.source = v === 'text' ? 'text' : 'tag';
+           cfg.source = v === 'text' ? 'text' : 'tag';
            tagSection.toggleClass('hp-hidden', v !== 'tag');
            textSection.toggleClass('hp-hidden', v !== 'text');
          }),
       );
 
-    // Tag section
-    tagSection = contentEl.createDiv();
-    tagSection.toggleClass('hp-hidden', draft.source !== 'tag');
+    tagSection = body.createDiv();
+    tagSection.toggleClass('hp-hidden', cfg.source !== 'tag');
     new Setting(tagSection).setName('Tag').setDesc('Without # prefix').addText(t =>
-      t.setValue(draft.tag ?? '')
-       .onChange(v => { draft.tag = v; }),
+      t.setValue(cfg.tag ?? '')
+       .onChange(v => { cfg.tag = v; }),
     );
     new Setting(tagSection)
       .setName('Show note title')
       .setDesc('Display the note filename as the quote attribution.')
       .addToggle(t =>
-        t.setValue(draft.showNoteTitle !== false)
-         .onChange(v => { draft.showNoteTitle = v; }),
+        t.setValue(cfg.showNoteTitle !== false)
+         .onChange(v => { cfg.showNoteTitle = v; }),
       );
 
-    // Text section
-    textSection = contentEl.createDiv();
-    textSection.toggleClass('hp-hidden', draft.source !== 'text');
+    textSection = body.createDiv();
+    textSection.toggleClass('hp-hidden', cfg.source !== 'text');
     const textSetting = new Setting(textSection)
       .setName('Quotes')
-      .setDesc('Separate quotes with --- on its own line, then add a source with \u2014 (e.g. \u2014 author).');
+      .setDesc('Separate quotes with --- on its own line, then add a source with — (e.g. — author).');
     textSetting.settingEl.addClass('hp-setting-column');
     const textarea = textSetting.settingEl.createEl('textarea');
     textarea.rows = 8;
     textarea.addClass('hp-textarea-full');
-    textarea.value = draft.quotes ?? '';
-    textarea.addEventListener('input', () => { draft.quotes = textarea.value; });
+    textarea.value = cfg.quotes ?? '';
+    textarea.addEventListener('input', () => { cfg.quotes = textarea.value; });
 
-    // ── Display settings (always visible) ──────────────────
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Max quotes')
       .setDesc('Leave empty for all. Set to 1 for a daily rotating quote.')
       .addText(t =>
         t.setPlaceholder('All')
-         .setValue(typeof draft.maxItems === 'number' && draft.maxItems > 0 ? String(draft.maxItems) : '')
+         .setValue(typeof cfg.maxItems === 'number' && cfg.maxItems > 0 ? String(cfg.maxItems) : '')
          .onChange(v => {
            const n = parseInt(v);
-           draft.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
-           dailySeedSetting.toggleClass('hp-hidden', draft.maxItems !== 1);
+           cfg.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
+           dailySeedSetting.toggleClass('hp-hidden', cfg.maxItems !== 1);
          }),
       );
 
-    const dailySeedSetting = contentEl.createDiv();
-    dailySeedSetting.toggleClass('hp-hidden', (draft.maxItems ?? 0) !== 1);
+    const dailySeedSetting = body.createDiv();
+    dailySeedSetting.toggleClass('hp-hidden', (cfg.maxItems ?? 0) !== 1);
     new Setting(dailySeedSetting)
       .setName('Daily seed')
       .setDesc('Same quote all day, changes at midnight.')
       .addToggle(t =>
-        t.setValue(draft.dailySeed !== false)
-         .onChange(v => { draft.dailySeed = v; }),
+        t.setValue(cfg.dailySeed !== false)
+         .onChange(v => { cfg.dailySeed = v; }),
       );
 
-    new Setting(contentEl).setName('Columns').addDropdown(d =>
+    new Setting(body).setName('Columns').addDropdown(d =>
       d.addOption('1', '1').addOption('2', '2').addOption('3', '3')
-       .setValue(String(typeof draft.columns === 'number' ? draft.columns : 2))
-       .onChange(v => { draft.columns = Number(v); }),
+       .setValue(String(typeof cfg.columns === 'number' ? cfg.columns : 2))
+       .onChange(v => { cfg.columns = Number(v); }),
     );
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Height mode')
       .setDesc('Scroll keeps the block compact. Grow to fit expands to show all quotes.')
       .addDropdown(d =>
         d.addOption('wrap', 'Scroll (fixed height)')
          .addOption('extend', 'Grow to fit all')
-         .setValue(typeof draft.heightMode === 'string' ? draft.heightMode : 'extend')
-         .onChange(v => { draft.heightMode = v === 'wrap' ? 'wrap' : 'extend'; }),
+         .setValue(typeof cfg.heightMode === 'string' ? cfg.heightMode : 'extend')
+         .onChange(v => { cfg.heightMode = v === 'wrap' ? 'wrap' : 'extend'; }),
       );
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Quote style')
       .setDesc('Classic: left accent bar. Centered: single column. Card: each quote in its own box.')
       .addDropdown(d =>
         d.addOption('classic', 'Classic')
          .addOption('centered', 'Centered')
          .addOption('card', 'Card')
-         .setValue(typeof draft.quoteStyle === 'string' ? draft.quoteStyle : 'classic')
-         .onChange(v => { draft.quoteStyle = v === 'centered' || v === 'card' ? v : 'classic'; }),
+         .setValue(typeof cfg.quoteStyle === 'string' ? cfg.quoteStyle : 'classic')
+         .onChange(v => { cfg.quoteStyle = v === 'centered' || v === 'card' ? v : 'classic'; }),
       );
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Hide accent bar')
       .setDesc('Remove the vertical line next to each quote.')
       .addToggle(t =>
-        t.setValue(draft.hideAccentBar === true)
-         .onChange(v => { draft.hideAccentBar = v; }),
+        t.setValue(cfg.hideAccentBar === true)
+         .onChange(v => { cfg.hideAccentBar = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Text alignment')
       .setDesc('Left, center, or right.')
       .addDropdown(d =>
         d.addOption('left', 'Left')
          .addOption('center', 'Center')
          .addOption('right', 'Right')
-         .setValue(typeof draft.textAlign === 'string' ? draft.textAlign : 'left')
-         .onChange(v => { draft.textAlign = v as 'left' | 'center' | 'right'; }),
+         .setValue(typeof cfg.textAlign === 'string' ? cfg.textAlign : 'left')
+         .onChange(v => { cfg.textAlign = v as 'left' | 'center' | 'right'; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Vertical alignment')
       .setDesc('Vertical alignment within the block.')
       .addDropdown(d =>
         d.addOption('top', 'Top')
          .addOption('middle', 'Middle')
          .addOption('bottom', 'Bottom')
-         .setValue(typeof draft.verticalAlign === 'string' ? draft.verticalAlign : 'top')
-         .onChange(v => { draft.verticalAlign = v as 'top' | 'middle' | 'bottom'; }),
+         .setValue(typeof cfg.verticalAlign === 'string' ? cfg.verticalAlign : 'top')
+         .onChange(v => { cfg.verticalAlign = v as 'top' | 'middle' | 'bottom'; }),
       );
 
-    // Font settings apply in both modes
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Font style')
       .setDesc('Font preset. A custom font below will override this (line-height still applies).')
       .addDropdown(d =>
         d.addOption('default', 'Default')
          .addOption('serif', 'Serif')
          .addOption('handwriting', 'Handwriting')
-         .setValue(typeof draft.fontStyle === 'string' ? draft.fontStyle : 'default')
-         .onChange(v => { draft.fontStyle = v === 'serif' || v === 'handwriting' ? v : 'default'; }),
+         .setValue(typeof cfg.fontStyle === 'string' ? cfg.fontStyle : 'default')
+         .onChange(v => { cfg.fontStyle = v === 'serif' || v === 'handwriting' ? v : 'default'; }),
       );
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Custom font')
       .setDesc('Any installed font. Overrides the preset above.')
       .addText(t =>
         t.setPlaceholder('Georgia')
-         .setValue(typeof draft.customFont === 'string' ? draft.customFont : '')
-         .onChange(v => { draft.customFont = v; }),
+         .setValue(typeof cfg.customFont === 'string' ? cfg.customFont : '')
+         .onChange(v => { cfg.customFont = v; }),
       );
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft as Record<string, unknown>);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

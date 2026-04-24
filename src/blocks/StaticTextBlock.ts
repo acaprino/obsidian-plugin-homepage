@@ -1,4 +1,4 @@
-import { App, MarkdownRenderer, Modal, Setting, setIcon } from 'obsidian';
+import { MarkdownRenderer, Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 export class StaticTextBlock extends BaseBlock {
@@ -112,28 +112,8 @@ export class StaticTextBlock extends BaseBlock {
     textarea.focus();
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new StaticTextSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class StaticTextSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Static text settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
-    new Setting(contentEl)
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    new Setting(body)
       .setName('Height')
       .setDesc('Auto: expands to fit content. Fixed: uses grid cell height with scrollbar.')
       .addDropdown(d =>
@@ -143,19 +123,10 @@ class StaticTextSettingsModal extends Modal {
          .onChange(v => { draft.heightMode = v; }),
       );
 
-    new Setting(contentEl).setName('Content').setDesc('Supports Markdown.');
-    const textarea = contentEl.createEl('textarea', { cls: 'static-text-settings-textarea' });
+    new Setting(body).setName('Content').setDesc('Supports Markdown.');
+    const textarea = body.createEl('textarea', { cls: 'static-text-settings-textarea' });
     textarea.value = draft.content as string ?? '';
     textarea.rows = 10;
     textarea.addEventListener('input', () => { draft.content = textarea.value; });
-
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

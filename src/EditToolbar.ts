@@ -1,7 +1,9 @@
 import { App, Modal, Setting } from 'obsidian';
 import { BlockInstance, BlockType, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
-import { GridLayout } from './GridLayout';
+import { GridLayout, APPEND_AT_BOTTOM } from './GridLayout';
+import { BLOCK_META } from './blockMeta';
+import { newId } from './utils/ids';
 
 export class EditToolbar {
   private toolbarEl: HTMLElement;
@@ -148,12 +150,13 @@ export class EditToolbar {
       const factory = BlockRegistry.get(type);
       if (!factory) return;
 
-      // Place new block at the bottom (y = high number, GridStack will compact)
       const instance: BlockInstance = {
-        id: crypto.randomUUID(),
+        id: newId(),
         type,
         x: 0,
-        y: 1000,
+        // APPEND_AT_BOTTOM is a sentinel recognized by GridLayout.addBlock — the
+        // block is placed below every existing block so GridStack compacts cleanly.
+        y: APPEND_AT_BOTTOM,
         w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
         config: { ...factory.defaultConfig },
@@ -182,25 +185,6 @@ export class EditToolbar {
   }
 }
 
-const BLOCK_META: Record<BlockType, { icon: string; desc: string }> = {
-  'greeting':      { icon: '\u{1F44B}', desc: 'Personalized greeting with time of day' },
-  'clock':         { icon: '\u{1F550}', desc: 'Live clock with date display' },
-  'folder-links':  { icon: '\u{1F517}', desc: 'Quick links to notes and folders' },
-  'button-grid':   { icon: '\u{1F532}', desc: 'Grid of emoji-labeled buttons' },
-  'quotes-list':   { icon: '\u{1F4AC}', desc: 'Collection of quotes from notes' },
-  'image-gallery': { icon: '\u{1F5BC}\uFE0F', desc: 'Photo grid from a vault folder' },
-  'embedded-note': { icon: '\u{1F4C4}', desc: 'Render a note inline on the page' },
-  'static-text':   { icon: '\u{1F4DD}', desc: 'Markdown text block you write directly' },
-  'html':          { icon: '</>', desc: 'Custom HTML content (sanitized)' },
-  'video-embed':   { icon: '\u{1F3AC}', desc: 'Embed YouTube, Vimeo, or other videos' },
-  'bookmarks':     { icon: '\u{1F516}', desc: 'Web links and vault bookmarks grid' },
-  'recent-files':  { icon: '\u{1F4C2}', desc: 'Recently modified notes in your vault' },
-  'pomodoro':      { icon: '\u{1F345}', desc: 'Pomodoro timer with work/break cycles' },
-  'spacer':        { icon: '\u2B1C', desc: 'Empty space for layout spacing' },
-  'random-note':   { icon: '\u{1F3B2}', desc: 'Random note card with cover image and preview' },
-  'voice-dictation': { icon: '🎙️', desc: 'Record voice notes saved automatically to a folder' },
-  'vault-search':  { icon: '\u{1F50D}', desc: 'Search notes by name with live results' },
-};
 
 class AddBlockModal extends Modal {
   constructor(

@@ -13,23 +13,30 @@ const SWIPE_THRESHOLD_PX = 50;
 const SWIPE_DIRECTION_RATIO = 1.5;
 
 /** Tracks the currently open lightbox so only one can exist at a time. */
-let activeLightboxAc: AbortController | null = null;
+let activeLightbox: { ac: AbortController; overlay: HTMLElement } | null = null;
 
 /** Returns true when a lightbox is currently visible. */
-function isLightboxOpen(): boolean { return activeLightboxAc !== null; }
+function isLightboxOpen(): boolean { return activeLightbox !== null; }
 
-function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
-  if (items.length === 0) return;
-  // Abort previous lightbox listeners and remove its overlay
-  activeLightboxAc?.abort();
-  document.querySelector('.gallery-lightbox')?.remove();
+/** Called by the plugin on unload to clean up any stuck lightbox from a previous session. */
+export function abortActiveLightbox(): void {
+  if (!activeLightbox) return;
+  activeLightbox.ac.abort();
+  activeLightbox.overlay.remove();
+  activeLightbox = null;
+}
+
+function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortController | null {
+  if (items.length === 0) return null;
+  // Abort previous lightbox listeners and remove ONLY the overlay we own
+  abortActiveLightbox();
 
   const ac = new AbortController();
-  activeLightboxAc = ac;
   const { signal } = ac;
 
   let current = startIndex;
   const overlay = document.body.createDiv({ cls: 'gallery-lightbox' });
+  activeLightbox = { ac, overlay };
 
   const prevBtn = overlay.createEl('button', { cls: 'gallery-lightbox-prev', attr: { 'aria-label': 'Previous' } });
   setIcon(prevBtn, 'chevron-left');
@@ -78,17 +85,27 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
     pauseCurrentVideo();
     overlay.remove();
     ac.abort();
-    activeLightboxAc = null;
+    if (activeLightbox?.ac === ac) activeLightbox = null;
   };
 
   prevBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current - 1); }, { signal });
   nextBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current + 1); }, { signal });
-  overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target === mediaContainer) close(); }, { signal });
+
+  // Click-to-close with a short guard after a touch swipe to suppress synthesized clicks.
+  let swipedAt = 0;
+  overlay.addEventListener('click', (e) => {
+    if (Date.now() - swipedAt < 300) return;
+    if (e.target === overlay || e.target === mediaContainer) close();
+  }, { signal });
+
   document.addEventListener('keydown', (e: KeyboardEvent) => {
-    // Ignore when focus is in an input/textarea (e.g. another modal)
-    const tag = document.activeElement?.tagName;
+    // Ignore when focus is in an input/textarea/contenteditable or when a modal is open.
+    const active = document.activeElement as HTMLElement | null;
+    const tag = active?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    if (active?.isContentEditable) return;
+    if (document.querySelector('.modal-container')) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); showItem(current - 1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); showItem(current + 1); }
   }, { signal });
@@ -109,12 +126,14 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): void {
     // Only trigger swipe if horizontal movement exceeds threshold and dominates vertical
     if (Math.abs(dx) > SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy) * SWIPE_DIRECTION_RATIO) {
       e.preventDefault(); // suppress synthesized click that would close the lightbox
+      swipedAt = Date.now();
       if (dx < 0) showItem(current + 1);
       else showItem(current - 1);
     }
   }, { signal });
 
   showItem(current);
+  return ac;
 }
 
 /** Resolve when an <img> finishes loading (or has already loaded). */
@@ -136,11 +155,9 @@ export class ImageGalleryBlock extends BaseBlock {
 
   onunload(): void {
     super.onunload();
-    // Only clean up the lightbox if THIS block instance owns it
-    if (this.myLightboxAc && this.myLightboxAc === activeLightboxAc) {
-      this.myLightboxAc.abort();
-      document.querySelector('.gallery-lightbox')?.remove();
-      activeLightboxAc = null;
+    // Only clean up the lightbox if THIS block instance owns it.
+    if (this.myLightboxAc && activeLightbox?.ac === this.myLightboxAc) {
+      abortActiveLightbox();
     }
     this.myLightboxAc = null;
   }
@@ -196,7 +213,7 @@ export class ImageGalleryBlock extends BaseBlock {
       heightMode?: 'auto' | 'fixed';
     };
     const folder = cfg.folder ?? '';
-    const columns = Math.max(1, Math.min(6, Math.floor(Number(cfg.columns) || 3)));
+    const columns = Math.max(1, Math.min(7, Math.floor(Number(cfg.columns) || 3)));
     const rawMax = Number(cfg.maxItems);
     const maxItems = rawMax > 0 ? Math.max(1, Math.min(500, Math.floor(rawMax))) : 0;
     const layout = cfg.layout ?? 'grid';
@@ -273,7 +290,7 @@ export class ImageGalleryBlock extends BaseBlock {
       wrapper.setAttribute('aria-label', file.basename);
 
       const index = i;
-      const action = () => { openMediaLightbox(lightboxItems, index); this.myLightboxAc = activeLightboxAc; };
+      const action = () => { this.myLightboxAc = openMediaLightbox(lightboxItems, index); };
       wrapper.addEventListener('click', action);
       wrapper.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); action(); }
@@ -412,7 +429,7 @@ class ImageGallerySettingsModal extends Modal {
     );
     new Setting(contentEl).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
-       .addOption('5', '5').addOption('6', '6')
+       .addOption('5', '5').addOption('6', '6').addOption('7', '7')
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 3))
        .onChange(v => { draft.columns = Number(v); }),
     );

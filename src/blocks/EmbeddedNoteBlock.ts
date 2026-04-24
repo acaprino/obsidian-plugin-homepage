@@ -28,13 +28,14 @@ export class EmbeddedNoteBlock extends BaseBlock {
     // Read filePath from the live layout (not this.instance) to avoid stale refs
     // after a prior rename already updated the persisted config.
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-      const current = this.plugin.layout.blocks.find(b => b.id === this.instance.id);
+      const active = this.plugin.activeBlocks();
+      const current = active.find(b => b.id === this.instance.id);
       const filePath = (current?.config.filePath as string) ?? '';
       if (oldPath === filePath) {
-        const newBlocks = this.plugin.layout.blocks.map(b =>
+        const newBlocks = active.map(b =>
           b.id === this.instance.id ? { ...b, config: { ...b.config, filePath: file.path } } : b,
         );
-        void this.plugin.saveLayout({ ...this.plugin.layout, blocks: newBlocks }).then(trigger);
+        void this.plugin.saveActiveBlocks(newBlocks).then(trigger);
         return;
       }
       if (file.path === filePath) trigger();
@@ -49,7 +50,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
   private async renderContent(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
     // Read from the live layout to pick up rename-updated filePath
-    const liveConfig = this.plugin.layout.blocks.find(b => b.id === this.instance.id)?.config ?? this.instance.config;
+    const liveConfig = this.plugin.activeBlocks().find(b => b.id === this.instance.id)?.config ?? this.instance.config;
     const { filePath = '', showTitle = true, heightMode = 'scroll' } = liveConfig as {
       filePath?: string;
       showTitle?: boolean;

@@ -1,90 +1,95 @@
-import { App, ColorComponent, Modal, Setting, setIcon } from 'obsidian';
+import { App, setIcon } from 'obsidian';
 import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
 import { BlockInstance, LayoutConfig, LayoutPriority, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
-import { createEmojiPicker } from './utils/emojiPicker';
-import { applyBlockStyling, HEX_COLOR_RE } from './utils/blockStyling';
+import { applyBlockStyling } from './utils/blockStyling';
+import { newId } from './utils/ids';
+import { Scheduler } from './utils/Scheduler';
+import { Phase } from './grid/phase';
+import { AutoHeightManager } from './grid/AutoHeight';
+import { ResponsiveColumnsManager } from './grid/ResponsiveColumns';
+import { BlockSettingsModal } from './modals/BlockSettingsModal';
+import { RemoveBlockConfirmModal } from './modals/RemoveBlockConfirmModal';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
 /** Compact grid-row height for edit-mode placeholders (cellHeight = 80px). */
 const COMPACT_EDIT_H = 2;
 
-const ACCENT_PRESETS = [
-  '#c0392b', '#e67e22', '#f1c40f', '#ffef3a', '#27ae60', '#16a085',
-  '#2980b9', '#8e44ad', '#e84393', '#6c5ce7', '#636e72',
-];
-
-/** Centralized named timer/RAF manager. Re-scheduling the same name auto-cancels the previous one. */
-class Scheduler {
-  private timers = new Map<string, ReturnType<typeof setTimeout>>();
-  private rafs = new Map<string, number>();
-
-  timeout(name: string, ms: number, fn: () => void): void {
-    this.cancelTimeout(name);
-    this.timers.set(name, setTimeout(() => { this.timers.delete(name); fn(); }, ms));
-  }
-
-  raf(name: string, fn: () => void): void {
-    this.cancelRaf(name);
-    const id = requestAnimationFrame(() => { this.rafs.delete(name); fn(); });
-    this.rafs.set(name, id);
-  }
-
-  cancelTimeout(name: string): void {
-    const id = this.timers.get(name);
-    if (id !== undefined) { clearTimeout(id); this.timers.delete(name); }
-  }
-
-  cancelRaf(name: string): void {
-    const id = this.rafs.get(name);
-    if (id !== undefined) { cancelAnimationFrame(id); this.rafs.delete(name); }
-  }
-
-  cancelAll(): void {
-    for (const id of this.timers.values()) clearTimeout(id);
-    this.timers.clear();
-    for (const id of this.rafs.values()) cancelAnimationFrame(id);
-    this.rafs.clear();
-  }
-}
-
-/** Grid lifecycle phases — controls which operations are allowed. */
-const enum Phase {
-  /** Grid is torn down. No operations allowed. */
-  Destroyed = 0,
-  /** GridStack is loading — suppress drag/resize sync events. */
-  Initializing = 1,
-  /** Grid is live and interactive. */
-  Ready = 2,
-}
+/** Sentinel y-coordinate passed to GridLayout.addBlock to mean "place below every existing block". */
+export const APPEND_AT_BOTTOM = 1000;
 
 export class GridLayout {
-  private gridEl: HTMLElement;
-  private gridStack: GridStack | null = null;
+  // NOTE: several fields below are intentionally non-private (package-visible). AutoHeightManager
+  // and ResponsiveColumnsManager access them through their narrow Host interfaces (declared in
+  // grid/AutoHeight.ts and grid/ResponsiveColumns.ts) which this class structurally satisfies.
+  /** The grid DOM element owned by this layout. Used by ResponsiveColumnsManager for flex reordering. */
+  gridEl: HTMLElement;
+  gridStack: GridStack | null = null;
   private blocks = new Map<string, { block: BaseBlock | null; wrapper: HTMLElement }>();
-  private scheduler = new Scheduler();
-  private editMode = false;
-  private resizeObserver: ResizeObserver | null = null;
-  private effectiveColumns: number;
-  private canonicalColumns = 3;
-  private phase: Phase = Phase.Destroyed;
+  readonly scheduler = new Scheduler();
+  editMode = false;
+  effectiveColumns: number;
+  canonicalColumns = 3;
+  phase: Phase = Phase.Destroyed;
   /** Callback to trigger the Add Block modal from the empty state CTA. */
   onRequestAddBlock: (() => void) | null = null;
   /** ID of the most recently added block — used for scroll-into-view. */
   private lastAddedBlockId: string | null = null;
+
+  private autoHeight: AutoHeightManager;
+  private responsiveColumns: ResponsiveColumnsManager;
 
   // ── Public API ─────────────────────────────────────────────────────────
 
   constructor(
     containerEl: HTMLElement,
     private app: App,
-    private plugin: IHomepagePlugin,
+    readonly plugin: IHomepagePlugin,
     private onLayoutChange: LayoutChangeCallback,
   ) {
     this.gridEl = containerEl.createDiv({ cls: 'homepage-grid grid-stack' });
     this.effectiveColumns = plugin.layout.columns;
+    this.autoHeight = new AutoHeightManager(this);
+    this.responsiveColumns = new ResponsiveColumnsManager(this);
+  }
+
+  /**
+   * Clear any queued auto-height measurements. Called by ResponsiveColumnsManager
+   * before a column change so stale measurements against the old column count are discarded.
+   */
+  clearPendingResizes(): void {
+    this.autoHeight.clearPending();
+  }
+
+  /** Enqueue a block for auto-height measurement in the next animation frame. */
+  requestAutoHeight(gsEl: HTMLElement, instance: BlockInstance): void {
+    this.autoHeight.request(gsEl, instance);
+  }
+
+  /** Expose packRows as an instance method so ResponsiveColumnsManager can call it. */
+  packRows(
+    items: { el?: HTMLElement; x?: number; y?: number; w?: number; h?: number }[],
+    columns: number,
+    priority: LayoutPriority,
+    reflow: boolean,
+  ): void {
+    GridLayout.packRows(items, columns, priority, reflow);
+  }
+
+  /** Determine if a block should auto-expand beyond its grid cell height. */
+  shouldAutoHeight(instance: BlockInstance): boolean {
+    const factory = BlockRegistry.get(instance.type);
+    if (!factory?.autoHeight) return false;
+    const hm = instance.config.heightMode;
+    const heightMode = typeof hm === 'string' ? hm : '';
+    // Per-type opt-out: some auto-height blocks have a 'fixed'/'wrap'/'scroll' mode that disables it.
+    if (instance.type === 'image-gallery') return heightMode !== 'fixed';
+    if (instance.type === 'quotes-list') return heightMode !== 'wrap';
+    if (instance.type === 'static-text') return heightMode !== 'fixed';
+    if (instance.type === 'embedded-note') return heightMode === 'grow';
+    return true;
   }
 
   /** Expose the root grid element so HomepageView can reorder it in the DOM. */
@@ -122,8 +127,7 @@ export class GridLayout {
 
   /** Full teardown: unload blocks and remove the grid element from the DOM. */
   destroy(): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
+    this.responsiveColumns.destroy();
     this.teardown();
     this.gridEl.remove();
   }
@@ -210,9 +214,15 @@ export class GridLayout {
 
   /** Unload all blocks and destroy GridStack instance. */
   private teardown(): void {
+    // Flush any pending debounced persist before we cancel timers, so a drag
+    // followed immediately by a tab close doesn't silently drop the write.
+    if (this.scheduler.hasTimeout('sync')) {
+      this.scheduler.cancelTimeout('sync');
+      try { this.persistLayout(); } catch { /* non-fatal */ }
+    }
     this.phase = Phase.Destroyed;
     this.scheduler.cancelAll();
-    this.pendingResizes.clear();
+    this.autoHeight.clearPending();
     for (const { block } of this.blocks.values()) {
       block?.unload();
     }
@@ -381,7 +391,7 @@ export class GridLayout {
     });
 
     const viewEl = this.gridEl.closest('.homepage-view');
-    this.setupResponsiveColumns(viewEl instanceof HTMLElement ? viewEl : null, columns);
+    this.responsiveColumns.setup(viewEl instanceof HTMLElement ? viewEl : null, columns);
 
     // Scroll to newly added block
     if (this.lastAddedBlockId) {
@@ -447,7 +457,10 @@ export class GridLayout {
   private removeSkeleton(el: HTMLElement | null): void {
     if (!el?.isConnected) return;
     el.classList.add('hp-skeleton-overlay--out');
-    window.setTimeout(() => el.remove(), 200);
+    // Short-lived timer; cleanup binds to GridLayout's scheduler so a teardown
+    // mid-fade doesn't leak a pending el.remove() on a detached node.
+    const token = `skeleton-${Math.random()}`;
+    this.scheduler.timeout(token, 200, () => el.remove());
   }
 
   /** Render a lightweight symbolic placeholder for edit mode (no real block content). */
@@ -499,137 +512,6 @@ export class GridLayout {
         label.textContent = `${node.w ?? 1}\u00D7${node.h ?? 1}`;
       }
     }
-  }
-
-  // ── Auto-Height ────────────────────────────────────────────────────────
-
-  /** Determine if a block should auto-expand beyond its grid cell height. */
-  private shouldAutoHeight(instance: BlockInstance): boolean {
-    const hm = instance.config.heightMode;
-    const heightMode = typeof hm === 'string' ? hm : '';
-    if (instance.type === 'image-gallery') return heightMode !== 'fixed';
-    if (instance.type === 'quotes-list') return heightMode !== 'wrap';
-    if (instance.type === 'button-grid') return true;
-    if (instance.type === 'embedded-note' && heightMode === 'grow') return true;
-    if (instance.type === 'static-text') return heightMode !== 'fixed';
-    if (instance.type === 'random-note') return true;
-    return false;
-  }
-
-  /**
-   * Resize a block's grid row to fit its natural content height.
-   *
-   * GridStack's built-in resizeToContent() measures .homepage-block-wrapper which has
-   * height:100%, so it always returns the current cell height — never growing.
-   * Instead we look for a [data-auto-height-content] element placed by the block,
-   * which has height:auto and reports its true rendered height via offsetHeight.
-   */
-  /**
-   * Schedule a measureAndResize call.  All requests within the same frame
-   * are coalesced into a single batch to prevent cross-block resize cascading
-   * (Block A resize → column reflow → Block B width change → Block B resize → …).
-   */
-  private pendingResizes = new Map<string, { gsEl: HTMLElement; instance: BlockInstance }>();
-
-  private requestAutoHeight(gsEl: HTMLElement, instance: BlockInstance): void {
-    this.pendingResizes.set(instance.id, { gsEl, instance });
-    this.scheduler.raf('autoHeight', () => {
-      if (this.phase === Phase.Destroyed || !this.gridStack) return;
-
-      // Single-column flex mode: CSS height:auto handles all sizing.
-      // GridStack row calculations (80px cells) are meaningless here and
-      // cause infinite resize oscillation as content reflows.
-      if (this.effectiveColumns === 1) {
-        this.pendingResizes.clear();
-        return;
-      }
-
-      const batch = Array.from(this.pendingResizes.values());
-      this.pendingResizes.clear();
-
-      // Lift static grid for the entire batch so updates + compaction work.
-      const isStatic = !!this.gridStack.opts.staticGrid;
-      if (isStatic) this.gridStack.setStatic(false);
-
-      let anyResized = false;
-      for (const { gsEl: el, instance: inst } of batch) {
-        if (this.measureAndResize(el, inst)) anyResized = true;
-      }
-
-      // After auto-height changes, repack ALL blocks so those below shift up
-      // to fill gaps left by blocks that shrank.  GridStack's compact() and
-      // float toggle are unreliable, so we compute positions ourselves.
-      // Always repack (regardless of compactLayout) because auto-height
-      // blocks never persist h, so the saved h is stale and initial placement
-      // is always wrong until we repack with measured heights.  packRows is
-      // row-group-aware, so the user's visual row grouping is preserved.
-      if (anyResized) {
-        this.repackGridNodes();
-        this.persistLayoutDebounced();
-      }
-
-      if (isStatic) this.gridStack.setStatic(true);
-    });
-  }
-
-  /** Measure a block's natural content height and update its GridStack row count.
-   *  Returns true if the height was changed. */
-  private measureAndResize(gsEl: HTMLElement, instance: BlockInstance): boolean {
-    if (!this.gridStack || !gsEl.isConnected) {
-      return false;
-    }
-
-    const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
-    const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
-    if (!contentEl || !headerZone) return false;
-
-    // grid-template-rows: 1fr constrains the gallery to the available flex space.
-    // Temporarily switch to max-content so the gallery reports its natural height.
-    // Disable the CSS transition first — otherwise the discrete 1fr→max-content
-    // transition keeps the computed value as 1fr at t=0 and offsetHeight returns
-    // the constrained height instead of the natural content height.
-    const blockContent = gsEl.querySelector<HTMLElement>('.block-content');
-    if (blockContent) {
-      blockContent.addClass('hp-no-transition');
-      blockContent.addClass('hp-auto-rows');
-    }
-
-    // Batch all DOM reads before writes to avoid layout thrashing.
-    // Read natural content height and header height while hp-auto-rows is active.
-    const contentH = contentEl.offsetHeight;
-    const headerH = headerZone.offsetHeight;
-
-    // Restore classes (write phase)
-    if (blockContent) {
-      blockContent.removeClass('hp-auto-rows');
-      void blockContent.offsetHeight; // force reflow to prevent transition animation
-      blockContent.removeClass('hp-no-transition');
-    }
-
-    if (contentH <= 0) return false;
-
-    const wrapper = gsEl.querySelector<HTMLElement>('.homepage-block-wrapper');
-    const wrapperStyle = wrapper ? window.getComputedStyle(wrapper) : null;
-    const pad = wrapperStyle
-      ? parseFloat(wrapperStyle.paddingTop) + parseFloat(wrapperStyle.paddingBottom)
-      : 24;
-    const gap = wrapperStyle ? parseFloat(wrapperStyle.gap) || 0 : 0;
-    // Count gaps: header-zone + optional divider + block-content = 2-3 children
-    const divider = wrapper?.querySelector('.block-header-divider');
-    const gapCount = divider ? 2 : 1;
-    const margin = typeof this.gridStack.opts.margin === 'number' ? this.gridStack.opts.margin : 8;
-    const totalH = headerH + pad + contentH + (gap * gapCount) + margin * 2;
-    const cell = this.gridStack.getCellHeight();
-    const rows = Math.max(1, Math.ceil(totalH / cell));
-
-    const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
-    const currentH = node?.h ?? instance.h;
-    if (rows !== currentH) {
-      // Static grid is already lifted by the caller (requestAutoHeight batch).
-      this.gridStack.update(gsEl, { h: rows });
-      return true;
-    }
-    return false;
   }
 
   // ── Layout Persistence ─────────────────────────────────────────────────
@@ -727,7 +609,7 @@ export class GridLayout {
 
   /** Read current positions from GridStack nodes and persist to layout. */
   /** Debounced persistLayout — coalesces rapid auto-height resize saves into one write. */
-  private persistLayoutDebounced(): void {
+  persistLayoutDebounced(): void {
     this.scheduler.timeout('sync', 50, () => {
       if (this.phase !== Phase.Destroyed) this.persistLayout();
     });
@@ -736,132 +618,6 @@ export class GridLayout {
   /** True when the grid is showing a responsive (narrowed) layout — persistence should be restricted. */
   private get isResponsive(): boolean {
     return this.effectiveColumns !== this.canonicalColumns;
-  }
-
-  // ── Responsive Columns ─────────────────────────────────────────────────
-
-  /**
-   * Compute effective columns from container width and user's desired max.
-   * Breakpoints: 480 / 768 / 1024 (column reduction).
-   * See also styles.css container queries: 380 / 540 / 768 (CSS adaptation).
-   */
-  private computeEffective(width: number): number {
-    const max = this.canonicalColumns;
-    if (width < 480) return 1;
-    if (width < 768) return Math.min(2, max);
-    if (width < 1024) return Math.min(3, max);
-    return max;
-  }
-
-  /**
-   * Apply a column count change: clamp block widths (keep original proportions,
-   * don't scale down), then repack so blocks stack vertically at narrower widths
-   * instead of sitting side-by-side with huge height mismatches.
-   */
-  private applyColumnChange(next: number): void {
-    if (!this.gridStack) return;
-    this.effectiveColumns = next;
-
-    // Cancel any pending auto-height RAF from a previous column state.
-    // Without this, a stale resize batch could fire after a rapid
-    // narrow→canonical→narrow oscillation and persist mixed positions.
-    this.scheduler.cancelRaf('autoHeight');
-    this.pendingResizes.clear();
-
-    // Single-column mode: switch to CSS flex layout so blocks shrink-wrap
-    // their content instead of using GridStack's fixed row heights.
-    this.gridEl.classList.toggle('hp-single-column', next === 1);
-
-    // Use 'none' so GridStack doesn't auto-scale widths, then manually
-    // clamp each block's w to the new column count and repack.
-    this.gridStack.column(next, 'none');
-
-    // When returning to the user's canonical column count, restore saved
-    // positions exactly.  The responsive repacking is a lossy transform
-    // (multiple source positions map to the same packed output), so we
-    // cannot invert it — we must read from the persisted layout instead.
-    if (next === this.canonicalColumns) {
-      const saved = this.plugin.activeBlocks();
-      const lookup = new Map(saved.map(b => [b.id, b]));
-      const autoHeightItems: Array<{ gsEl: HTMLElement; b: BlockInstance }> = [];
-      this.gridStack.batchUpdate();
-      for (const gsEl of this.gridStack.getGridItems()) {
-        const id = gsEl.getAttribute('gs-id');
-        const b = id ? lookup.get(id) : undefined;
-        if (!b) continue;
-        const isAuto = this.shouldAutoHeight(b);
-        this.gridStack.update(gsEl as HTMLElement, {
-          x: b.x, y: b.y, w: Math.min(b.w, next),
-          ...(isAuto ? {} : { h: b.h }),
-          maxW: next,
-        });
-        if (isAuto) autoHeightItems.push({ gsEl: gsEl as HTMLElement, b });
-      }
-      this.gridStack.batchUpdate(false);
-      for (const { gsEl, b } of autoHeightItems) this.requestAutoHeight(gsEl, b);
-      return;
-    }
-
-    // Collect current nodes, clamp widths, and pack rows ourselves
-    // (GridStack's compact() is unreliable with float:true / static grids).
-    const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
-    for (const gsEl of this.gridStack.getGridItems()) {
-      const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
-      if (!node) continue;
-      const w = Math.min(node.w ?? 1, next);
-      const x = Math.min(node.x ?? 0, Math.max(0, next - w));
-      nodeItems.push({ el: gsEl as HTMLElement, x, y: node.y ?? 0, w, h: node.h ?? 1 });
-    }
-    GridLayout.packRows(nodeItems, next, this.plugin.activeLayoutPriority(), true);
-
-    this.gridStack.batchUpdate();
-    for (const item of nodeItems) {
-      this.gridStack.update(item.el, { w: item.w, x: item.x, y: item.y, maxW: next });
-    }
-    this.gridStack.batchUpdate(false);
-
-    // In single-column flex mode, DOM order determines visual order.
-    // Reorder DOM elements by packed position using the user's priority.
-    if (next === 1) {
-      const sorted = nodeItems.slice().sort((a, b) => (a.y - b.y || a.x - b.x));
-      for (const item of sorted) {
-        this.gridEl.appendChild(item.el);
-      }
-    }
-  }
-
-  /**
-   * Observe container width and dynamically adjust GridStack column count.
-   * The user's saved column count (`this.canonicalColumns`) acts as the desired maximum.
-   * The observer persists across rerenders — only created once, disconnected in destroy().
-   */
-  private setupResponsiveColumns(viewEl: HTMLElement | null, userCols: number): void {
-    this.canonicalColumns = userCols;
-
-    if (!viewEl) return;
-
-    // Only create the observer once — it survives teardown/rerender cycles
-    if (!this.resizeObserver) {
-      this.resizeObserver = new ResizeObserver((entries) => {
-        if (this.phase === Phase.Destroyed || !this.gridStack) return;
-        if (this.editMode) return; // Don't remap while editing — preserve canonical layout
-        const entry = entries[0];
-        if (!entry) return;
-        const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
-        const next = this.computeEffective(width);
-        if (next !== this.effectiveColumns) {
-          this.applyColumnChange(next);
-        }
-      });
-      this.resizeObserver.observe(viewEl);
-    }
-
-    // Set initial value synchronously (also handles userCols changes).
-    // Skip remapping while in edit mode — canonical layout must be preserved.
-    this.effectiveColumns = this.computeEffective(viewEl.clientWidth);
-    if (this.effectiveColumns !== userCols && this.gridStack && !this.editMode) {
-      this.applyColumnChange(this.effectiveColumns);
-    }
   }
 
   // ── Layout Utilities ───────────────────────────────────────────────────
@@ -972,7 +728,7 @@ export class GridLayout {
   }
 
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */
-  private repackGridNodes(): void {
+  repackGridNodes(): void {
     if (!this.gridStack) return;
     const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
     for (const gsEl of this.gridStack.getGridItems()) {
@@ -992,15 +748,15 @@ export class GridLayout {
 
   private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {
     const wrapper = gsEl.querySelector('.homepage-block-wrapper') as HTMLElement;
-    const chevron = headerZone.querySelector('.block-collapse-chevron') as HTMLElement;
-    if (!wrapper || !chevron) return;
+    const chevron = headerZone.querySelector<HTMLElement>('.block-collapse-chevron');
+    if (!wrapper) return;
 
     const toggleCollapse = (e: Event) => {
       e.stopPropagation();
       if (this.editMode) return;
       const isNowCollapsed = !wrapper.hasClass('block-collapsed');
       wrapper.toggleClass('block-collapsed', isNowCollapsed);
-      chevron.toggleClass('is-collapsed', isNowCollapsed);
+      chevron?.toggleClass('is-collapsed', isNowCollapsed);
       headerZone.setAttribute('aria-expanded', String(!isNowCollapsed));
 
       // Tell GridStack to resize the cell so the grid reflows, and persist the height
@@ -1070,7 +826,7 @@ export class GridLayout {
       if (!current) return;
       const clone: BlockInstance = {
         ...structuredClone(current),
-        id: crypto.randomUUID(),
+        id: newId(),
         y: current.y + current.h,
       };
       const newBlocks = [...this.plugin.activeBlocks(), clone];
@@ -1196,383 +952,4 @@ export class GridLayout {
     this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
     this.rerender();
   }
-}
-
-// ── Block settings modal (title section + block-specific settings) ────────────
-
-class BlockSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private instance: BlockInstance,
-    private block: BaseBlock,
-    private onSave: (config: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  /** Create a collapsible section and return its body container. */
-  private createSection(parent: HTMLElement, title: string, desc?: string): HTMLElement {
-    const header = parent.createDiv({ cls: 'settings-collapsible-header' });
-    header.createSpan({ cls: 'settings-collapsible-chevron' });
-    header.createSpan({ text: title });
-    if (desc) header.createSpan({ cls: 'settings-collapsible-desc', text: ` — ${desc}` });
-    const body = parent.createDiv({ cls: 'settings-collapsible-body is-collapsed' });
-    header.addEventListener('click', () => {
-      const collapsed = body.hasClass('is-collapsed');
-      body.toggleClass('is-collapsed', !collapsed);
-      header.toggleClass('is-open', collapsed);
-    });
-    return body;
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Block settings').setHeading();
-
-    const draft = structuredClone(this.instance.config);
-    const factory = BlockRegistry.get(this.instance.type);
-    const defaultTitle = factory?.displayName ?? this.instance.type;
-
-    // ── Live card preview ──────────────────────────────────────────────────
-    const previewCard = contentEl.createDiv({ cls: 'settings-preview-card homepage-block-wrapper' });
-    const previewHeaderZone = previewCard.createDiv({ cls: 'block-header-zone' });
-    const previewHeader = previewHeaderZone.createDiv({ cls: 'block-header' });
-    const previewEmoji = previewHeader.createSpan({ cls: 'block-header-emoji' });
-    const previewTitle = previewHeader.createSpan();
-    const previewDivider = previewCard.createDiv({ cls: 'block-header-divider' });
-    const previewBody = previewCard.createDiv({ cls: 'settings-preview-body' });
-    previewBody.createSpan({ cls: 'settings-preview-body-text', text: 'Block content area' });
-
-    let accentDirty = !!(typeof draft._accentColor === 'string' && draft._accentColor);
-    const hasGradStart = typeof draft._gradientStart === 'string' && HEX_COLOR_RE.test(draft._gradientStart);
-    const hasGradEnd = typeof draft._gradientEnd === 'string' && HEX_COLOR_RE.test(draft._gradientEnd);
-    let gradDirty = hasGradStart && hasGradEnd;
-
-    const refreshPreview = () => {
-      const label = (typeof draft._titleLabel === 'string' && draft._titleLabel) || defaultTitle;
-      const emoji = typeof draft._titleEmoji === 'string' ? draft._titleEmoji : '';
-      previewEmoji.setText(emoji);
-      previewEmoji.toggleClass('hp-hidden', !emoji);
-      previewTitle.setText(label);
-      previewHeader.className = 'block-header';
-      const sz = typeof draft._titleSize === 'string' && /^h[1-6]$/.test(draft._titleSize) ? draft._titleSize : '';
-      if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.toggleClass('hp-hidden', draft._hideTitle === true);
-      previewDivider.toggleClass('hp-hidden', draft._showDivider !== true);
-      applyBlockStyling(previewCard, draft);
-    };
-    refreshPreview();
-
-    // ── Configure block CTA ────────────────────────────────────────────────
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText(`Configure ${defaultTitle}...`).setCta().onClick(() => {
-          this.close();
-          this.block.openSettings((blockConfig) => {
-            const shared = Object.fromEntries(
-              Object.entries(draft).filter(([k]) => k.startsWith('_')),
-            );
-            this.onSave({ ...blockConfig, ...shared });
-          });
-        }),
-      );
-
-    // ── Title & Header (collapsible) ───────────────────────────────────────
-    const titleBody = this.createSection(contentEl, 'Title & header', 'Label, emoji, size, divider');
-
-    new Setting(titleBody)
-      .setName('Title label')
-      .setDesc('Leave blank for the default.')
-      .addText(t =>
-        t.setValue(typeof draft._titleLabel === 'string' ? draft._titleLabel : '')
-         .setPlaceholder('Default title')
-         .onChange(v => { draft._titleLabel = v; refreshPreview(); }),
-      );
-
-    createEmojiPicker({
-      container: titleBody,
-      label: 'Title emoji',
-      value: typeof draft._titleEmoji === 'string' ? draft._titleEmoji : '',
-      placeholder: '＋',
-      onSelect: (emoji) => { draft._titleEmoji = emoji; refreshPreview(); },
-      onClear: () => { draft._titleEmoji = ''; refreshPreview(); },
-    });
-
-    new Setting(titleBody)
-      .setName('Hide title')
-      .addToggle(t =>
-        t.setValue(draft._hideTitle === true)
-         .onChange(v => { draft._hideTitle = v; refreshPreview(); }),
-      );
-
-    new Setting(titleBody)
-      .setName('Title size')
-      .addDropdown(d =>
-        d.addOption('', 'Default')
-         .addOption('h1', 'H1').addOption('h2', 'H2').addOption('h3', 'H3')
-         .addOption('h4', 'H4').addOption('h5', 'H5').addOption('h6', 'H6')
-         .setValue(typeof draft._titleSize === 'string' ? draft._titleSize : '')
-         .onChange(v => { draft._titleSize = /^h[1-6]$/.test(v) ? v : ''; refreshPreview(); }),
-      );
-
-    new Setting(titleBody)
-      .setName('Show divider after title')
-      .setDesc('Show a thin line between the title and content.')
-      .addToggle(t =>
-        t.setValue(draft._showDivider === true)
-         .onChange(v => { draft._showDivider = v; refreshPreview(); }),
-      );
-
-    new Setting(titleBody)
-      .setName('Title gap')
-      .setDesc('Gap between title and content in pixels (0 = default).')
-      .addSlider(s =>
-        s.setLimits(0, 48, 2)
-         .setValue(typeof draft._titleGap === 'number' ? draft._titleGap : 0)
-         .setDynamicTooltip()
-         .onChange(v => { draft._titleGap = v; refreshPreview(); }),
-      );
-
-    // ── Card Appearance (collapsible) ──────────────────────────────────────
-    const cardBody = this.createSection(contentEl, 'Card appearance', 'Colors, borders, padding');
-
-    let cpRef: ColorComponent | null = null;
-
-    const accentRow = new Setting(cardBody)
-      .setName('Accent color')
-      .setDesc('Tints the card header, background, and border.');
-
-    const currentColor = typeof draft._accentColor === 'string' ? draft._accentColor : '';
-
-    accentRow.addColorPicker(cp => {
-      cpRef = cp;
-      cp.setValue(currentColor || '#888888')
-        .onChange(v => { draft._accentColor = v; accentDirty = true; refreshPreview(); });
-    });
-
-    accentRow.addExtraButton(btn =>
-      btn.setIcon('x').setTooltip('Clear accent color').onClick(() => {
-        draft._accentColor = '';
-        accentDirty = false;
-        cpRef?.setValue('#888888');
-        refreshPreview();
-      }),
-    );
-
-    const swatchRow = cardBody.createDiv({ cls: 'accent-preset-row' });
-    for (const hex of ACCENT_PRESETS) {
-      const swatch = swatchRow.createDiv({ cls: 'accent-preset-swatch' });
-      swatch.style.setProperty('--hp-swatch-bg', hex);
-      swatch.setAttribute('aria-label', hex);
-      swatch.addEventListener('click', () => {
-        draft._accentColor = hex;
-        accentDirty = true;
-        cpRef?.setValue(hex);
-        refreshPreview();
-      });
-    }
-
-    new Setting(cardBody)
-      .setName('Accent intensity')
-      .setDesc('Strength of the accent tint on the card background (5–100%).')
-      .addSlider(s => {
-        s.setLimits(5, 100, 5)
-         .setValue(typeof draft._accentIntensity === 'number' ? draft._accentIntensity : 15)
-         .setDynamicTooltip()
-         .onChange(v => { draft._accentIntensity = v; refreshPreview(); });
-        // Live preview while dragging — sliderEl is Obsidian's public API
-        s.sliderEl.addEventListener('input', () => {
-          draft._accentIntensity = s.getValue();
-          refreshPreview();
-        });
-      });
-
-    new Setting(cardBody)
-      .setName('Hide border')
-      .setDesc('Remove the border and hover highlight.')
-      .addToggle(t =>
-        t.setValue(draft._hideBorder === true)
-         .onChange(v => { draft._hideBorder = v; refreshPreview(); }),
-      );
-
-    new Setting(cardBody)
-      .setName('Hide background')
-      .setDesc('Remove the card background so the block blends into the page.')
-      .addToggle(t =>
-        t.setValue(draft._hideBackground === true)
-         .onChange(v => { draft._hideBackground = v; refreshPreview(); }),
-      );
-
-    new Setting(cardBody)
-      .setName('Hide header background')
-      .setDesc('Remove the colored header bar but keep the border and background tint.')
-      .addToggle(t =>
-        t.setValue(draft._hideHeaderAccent === true)
-         .onChange(v => { draft._hideHeaderAccent = v; refreshPreview(); }),
-      );
-
-    new Setting(cardBody)
-      .setName('Card padding')
-      .setDesc('Inner padding in pixels (0 = default). Negative values allowed.')
-      .addSlider(s =>
-        s.setLimits(-48, 48, 4)
-         .setValue(typeof draft._cardPadding === 'number' ? draft._cardPadding : 0)
-         .setDynamicTooltip()
-         .onChange(v => { draft._cardPadding = v; refreshPreview(); }),
-      );
-
-    // ── Advanced Styling (collapsible) ─────────────────────────────────────
-    const advancedBody = this.createSection(contentEl, 'Advanced styling', 'Shadow, blur, gradients');
-
-    new Setting(advancedBody)
-      .setName('Shadow / elevation')
-      .setDesc('Card shadow depth (0 = none).')
-      .addDropdown(d =>
-        d.addOption('0', 'None')
-         .addOption('1', 'Subtle')
-         .addOption('2', 'Medium')
-         .addOption('3', 'Elevated')
-         .setValue(String(typeof draft._elevation === 'number' ? draft._elevation : 0))
-         .onChange(v => { draft._elevation = Number(v); refreshPreview(); }),
-      );
-
-    new Setting(advancedBody)
-      .setName('Border radius')
-      .setDesc('Corner rounding in pixels (0 = theme default).')
-      .addSlider(s =>
-        s.setLimits(0, 24, 2)
-         .setValue(typeof draft._borderRadius === 'number' ? draft._borderRadius : 0)
-         .setDynamicTooltip()
-         .onChange(v => { draft._borderRadius = v; refreshPreview(); }),
-      );
-
-    new Setting(advancedBody)
-      .setName('Background opacity')
-      .setDesc('Background transparency (100 = fully opaque).')
-      .addSlider(s =>
-        s.setLimits(0, 100, 5)
-         .setValue(typeof draft._bgOpacity === 'number' ? draft._bgOpacity : 100)
-         .setDynamicTooltip()
-         .onChange(v => { draft._bgOpacity = v; refreshPreview(); }),
-      );
-
-    new Setting(advancedBody)
-      .setName('Backdrop blur')
-      .setDesc('Blur behind the card (only visible when opacity < 100).')
-      .addSlider(s =>
-        s.setLimits(0, 20, 1)
-         .setValue(typeof draft._backdropBlur === 'number' ? draft._backdropBlur : 0)
-         .setDynamicTooltip()
-         .onChange(v => { draft._backdropBlur = v; refreshPreview(); }),
-      );
-
-    new Setting(advancedBody)
-      .setName('Border width')
-      .setDesc('Border thickness in pixels (0 = default).')
-      .addSlider(s =>
-        s.setLimits(0, 4, 1)
-         .setValue(typeof draft._borderWidth === 'number' ? draft._borderWidth : 0)
-         .setDynamicTooltip()
-         .onChange(v => { draft._borderWidth = v; refreshPreview(); }),
-      );
-
-    new Setting(advancedBody)
-      .setName('Border style')
-      .addDropdown(d =>
-        d.addOption('', 'Default')
-         .addOption('solid', 'Solid')
-         .addOption('dashed', 'Dashed')
-         .addOption('dotted', 'Dotted')
-         .setValue(typeof draft._borderStyle === 'string' ? draft._borderStyle : '')
-         .onChange(v => { draft._borderStyle = v; refreshPreview(); }),
-      );
-
-    const gradientNote = advancedBody.createEl('p', {
-      text: 'Background gradient (overrides background color when both colors are set):',
-      cls: 'setting-item-name',
-    });
-    gradientNote.addClass('hp-gradient-note');
-
-    let gradStartRef: ColorComponent | null = null;
-    let gradEndRef: ColorComponent | null = null;
-
-    const gradStartRow = new Setting(advancedBody).setName('Gradient start');
-    gradStartRow.addColorPicker(cp => {
-      gradStartRef = cp;
-      cp.setValue(typeof draft._gradientStart === 'string' ? draft._gradientStart : '#667eea')
-        .onChange(v => { draft._gradientStart = v; gradDirty = true; refreshPreview(); });
-    });
-
-    const gradEndRow = new Setting(advancedBody).setName('Gradient end');
-    gradEndRow.addColorPicker(cp => {
-      gradEndRef = cp;
-      cp.setValue(typeof draft._gradientEnd === 'string' ? draft._gradientEnd : '#764ba2')
-        .onChange(v => { draft._gradientEnd = v; gradDirty = true; refreshPreview(); });
-    });
-
-    new Setting(advancedBody)
-      .setName('Gradient angle')
-      .addSlider(s =>
-        s.setLimits(0, 360, 15)
-         .setValue(typeof draft._gradientAngle === 'number' ? draft._gradientAngle : 135)
-         .setDynamicTooltip()
-         .onChange(v => { draft._gradientAngle = v; refreshPreview(); }),
-      );
-
-    new Setting(advancedBody)
-      .addButton(btn =>
-        btn.setButtonText('Clear gradient').onClick(() => {
-          draft._gradientStart = '';
-          draft._gradientEnd = '';
-          gradDirty = false;
-          gradStartRef?.setValue('#667eea');
-          gradEndRef?.setValue('#764ba2');
-          refreshPreview();
-        }),
-      );
-
-    // ── Save / Cancel ──────────────────────────────────────────────────────
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Save').setCta().onClick(() => {
-          if (!accentDirty) draft._accentColor = '';
-          if (!gradDirty) { draft._gradientStart = ''; draft._gradientEnd = ''; }
-          this.onSave(draft);
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
-      );
-  }
-
-  onClose(): void { this.contentEl.empty(); }
-}
-
-// ── Remove confirmation modal ────────────────────────────────────────────────
-
-class RemoveBlockConfirmModal extends Modal {
-  constructor(app: App, private onConfirm: () => void) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Remove block?').setHeading();
-    contentEl.createEl('p', { text: 'This will remove the block from your homepage.' });
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Remove').setWarning().onClick(() => {
-          this.onConfirm();
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
-      );
-  }
-
-  onClose(): void { this.contentEl.empty(); }
 }

@@ -1,6 +1,9 @@
 import { App, Component } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 
+/** Regex for the shared `_titleSize` config key — h1 through h6. */
+export const TITLE_SIZE_RE = /^h[1-6]$/;
+
 export abstract class BaseBlock extends Component {
   private _headerContainer: HTMLElement | null = null;
   private _scheduleTimer: number | null = null;
@@ -44,7 +47,7 @@ export abstract class BaseBlock extends Component {
     // Remove stale header from a previous render cycle (header zone is NOT
     // emptied when block-content is cleared via el.empty()).
     container.querySelector('.block-header')?.remove();
-    const sizeClass = typeof cfg._titleSize === 'string' && /^h[1-6]$/.test(cfg._titleSize)
+    const sizeClass = typeof cfg._titleSize === 'string' && TITLE_SIZE_RE.test(cfg._titleSize)
       ? `block-header-${cfg._titleSize}` : '';
     const header = container.createDiv({ cls: `block-header${sizeClass ? ' ' + sizeClass : ''}` });
     if (typeof cfg._titleEmoji === 'string' && cfg._titleEmoji) {

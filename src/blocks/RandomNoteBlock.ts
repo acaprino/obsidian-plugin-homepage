@@ -1,8 +1,8 @@
-import { App, Modal, Setting, TFile, moment } from 'obsidian';
-import { cacheHasTag, clearTagCache, getFilesWithTag } from '../utils/tags';
+import { App, Modal, Setting, TFile } from 'obsidian';
+import { cacheHasTag, getFilesWithTag } from '../utils/tags';
+import { dailyEpochDay } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 
-const MS_PER_DAY = 86_400_000;
 const DEBOUNCE_MS = 500;
 const DELETE_RENAME_DEBOUNCE_MS = 2000;
 
@@ -32,17 +32,17 @@ export class RandomNoteBlock extends BaseBlock {
       const tag = this.getTag();
       if (!tag) return;
       const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
-      if (cacheHasTag(cache, tagSearch)) { clearTagCache(); trigger(); }
+      if (cacheHasTag(cache, tagSearch)) trigger();
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
       if (!this.getTag() || !file.path.endsWith('.md')) return;
-      clearTagCache(); slowTrigger();
+      slowTrigger();
     }));
 
     this.registerEvent(this.app.vault.on('rename', (file) => {
       if (!this.getTag() || !file.path.endsWith('.md')) return;
-      clearTagCache(); slowTrigger();
+      slowTrigger();
     }));
 
     this.loadAndRender(el).catch(e => {
@@ -186,7 +186,7 @@ export class RandomNoteBlock extends BaseBlock {
   private pickFile(files: TFile[], dailySeed: boolean): TFile {
     if (!dailySeed) return files[Math.floor(Math.random() * files.length)];
 
-    const dayIndex = Math.floor(moment().startOf('day').valueOf() / MS_PER_DAY);
+    const dayIndex = dailyEpochDay();
     // Return cached pick if it's still valid for today
     if (this.dailyCache?.dayIndex === dayIndex) {
       const cached = files.find(f => f.path === this.dailyCache!.path);

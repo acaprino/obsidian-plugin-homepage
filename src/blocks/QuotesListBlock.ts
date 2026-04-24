@@ -1,6 +1,7 @@
-import { App, CachedMetadata, Modal, Setting, moment } from 'obsidian';
-import { cacheHasTag, clearTagCache, getFilesWithTag } from '../utils/tags';
+import { App, CachedMetadata, Modal, Setting } from 'obsidian';
+import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { parseNoteInsight } from '../utils/noteContent';
+import { dailyIndex } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 
 // Only assign safe CSS color values; reject potentially malicious strings.
@@ -9,11 +10,36 @@ import { BaseBlock } from './BaseBlock';
 const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\)|hsla?\(\s*\d{1,3}\s*,\s*\d{1,3}%?\s*,\s*\d{1,3}%?\s*(,\s*[\d.]+\s*)?\))$/;
 
 const DEBOUNCE_MS = 500;
-const MS_PER_DAY = 86_400_000;
 
 // Allow letters, numbers, spaces, commas, single-quotes, hyphens — blocks CSS injection.
 // Double-quotes excluded: single quotes suffice for multi-word font names in CSS.
 const SAFE_FONT_RE = /^[a-zA-Z0-9\s,'\-_]+$/;
+
+// Inline formatting tokenizer: matches **bold** (non-greedy, non-empty)
+// or a #hashtag at start-of-string or after whitespace. Group 3 captures the
+// leading whitespace so we can re-emit it as plain text before the chip.
+const INLINE_FMT_RE = /\*\*([^*\n]+?)\*\*|(^|\s)(#[\p{L}0-9_\-/]+)/gu;
+
+/**
+ * Render text into `el` with inline `**bold**` and `#hashtag` formatting.
+ * Uses Obsidian DOM API (no innerHTML). Unmatched text is appended verbatim.
+ */
+function renderFormatted(el: HTMLElement, text: string): void {
+  INLINE_FMT_RE.lastIndex = 0;
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = INLINE_FMT_RE.exec(text)) !== null) {
+    if (m.index > lastIndex) el.appendText(text.slice(lastIndex, m.index));
+    if (m[1] !== undefined) {
+      el.createEl('strong', { text: m[1] });
+    } else {
+      if (m[2]) el.appendText(m[2]);
+      el.createSpan({ cls: 'quote-hashtag', text: m[3] });
+    }
+    lastIndex = INLINE_FMT_RE.lastIndex;
+  }
+  if (lastIndex < text.length) el.appendText(text.slice(lastIndex));
+}
 
 type QuotesConfig = {
   source?: 'tag' | 'text';
@@ -47,13 +73,13 @@ export class QuotesListBlock extends BaseBlock {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
       const tagSearch = cfg.tag.startsWith('#') ? cfg.tag : `#${cfg.tag}`;
-      if (cacheHasTag(cache, tagSearch)) { clearTagCache(); trigger(); }
+      if (cacheHasTag(cache, tagSearch)) trigger();
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
-      if (file.path.endsWith('.md')) { clearTagCache(); trigger(); }
+      if (file.path.endsWith('.md')) trigger();
     }));
 
     return this.loadAndRender(el).catch(e => {
@@ -123,10 +149,8 @@ export class QuotesListBlock extends BaseBlock {
         return;
       }
 
-      // Use local midnight as the day index so it changes at local midnight, not UTC
-      const dayIndex = Math.floor(moment().startOf('day').valueOf() / MS_PER_DAY);
       const index = dailySeed
-        ? dayIndex % files.length
+        ? dailyIndex(files.length)
         : Math.floor(Math.random() * files.length);
 
       const file = files[index];
@@ -138,7 +162,8 @@ export class QuotesListBlock extends BaseBlock {
         const card = el.createDiv({ cls: 'insight-card' });
         const showTitle = (this.instance.config as QuotesConfig).showNoteTitle !== false;
         if (showTitle) card.createDiv({ cls: 'insight-title', text: heading || file.basename });
-        card.createDiv({ cls: 'insight-body', text: body });
+        const bodyEl = card.createDiv({ cls: 'insight-body' });
+        renderFormatted(bodyEl, body);
       } catch (e) {
         console.error('[Homepage Blocks] QuotesListBlock single mode failed to read file:', e);
         el.createDiv({ cls: 'insight-card' }).setText('Error reading file.');
@@ -230,7 +255,8 @@ export class QuotesListBlock extends BaseBlock {
       if (!body) continue;
 
       const item = colsEl.createDiv({ cls: 'quote-item' });
-      const quote = item.createEl('blockquote', { cls: 'quote-content', text: body });
+      const quote = item.createEl('blockquote', { cls: 'quote-content' });
+      renderFormatted(quote, body);
 
       // Validate color before applying to prevent CSS injection
       if (color && COLOR_RE.test(color)) {
@@ -253,9 +279,9 @@ export class QuotesListBlock extends BaseBlock {
     }
 
     const blocks = raw.split(/\n---\n/).map(b => b.trim()).filter(Boolean);
-    const dayIndex = Math.floor(moment().startOf('day').valueOf() / MS_PER_DAY);
+    if (blocks.length === 0) return;
     const index = dailySeed
-      ? dayIndex % blocks.length
+      ? dailyIndex(blocks.length)
       : Math.floor(Math.random() * blocks.length);
 
     const block = blocks[index];
@@ -269,7 +295,8 @@ export class QuotesListBlock extends BaseBlock {
 
     const card = el.createDiv({ cls: 'insight-card' });
     if (sourceText) card.createDiv({ cls: 'insight-title', text: sourceText });
-    card.createDiv({ cls: 'insight-body', text: body });
+    const bodyEl = card.createDiv({ cls: 'insight-body' });
+    renderFormatted(bodyEl, body);
   }
 
   /**
@@ -304,7 +331,8 @@ export class QuotesListBlock extends BaseBlock {
       if (!body) continue;
 
       const item = colsEl.createDiv({ cls: 'quote-item' });
-      item.createEl('blockquote', { cls: 'quote-content', text: body });
+      const quote = item.createEl('blockquote', { cls: 'quote-content' });
+      renderFormatted(quote, body);
       if (sourceText) item.createDiv({ cls: 'quote-source', text: sourceText });
     }
   }

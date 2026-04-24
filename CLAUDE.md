@@ -16,11 +16,13 @@ TypeScript + Obsidian DOM API. GridStack for layout. No Dataview.
 - `src/blocks/` -- one file per block type (16 total)
 - `styles.css` -- all styles at repo root
 
-## Block Types (16)
+## Block Types (17)
 
-`greeting`, `clock`, `folder-links`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`, `spacer`, `random-note`, `voice-dictation`
+`greeting`, `clock`, `folder-links`, `button-grid`, `quotes-list`, `image-gallery`, `embedded-note`, `static-text`, `html`, `video-embed`, `bookmarks`, `recent-files`, `pomodoro`, `spacer`, `random-note`, `voice-dictation`, `vault-search`
 
 Each defined in `BLOCK_TYPES` array in `src/types.ts` and registered in `registerBlocks()` in `src/main.ts`.
+
+Blocks whose content reflows beyond their grid cell (auto-height) set `autoHeight: true` on their `BlockFactory` in `registerBlocks()` AND set `data-auto-height-content` on the measurement element inside `render(el)`. `GridLayout.shouldAutoHeight` reads the factory flag.
 
 ## Build
 
@@ -180,5 +182,5 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 - Do not inline block headers -- use `this.renderHeader(el, title)` from BaseBlock
 - Do not use raw `setInterval`/`vault.on` -- use `this.registerInterval()` / `this.registerEvent()`
 - Do not add unnecessary runtime npm dependencies
-- Do not leave `console.debug` statements in production code -- esbuild strips them via `pure` but they add noise and forced reflows if the build config is bypassed
+- esbuild marks `console.debug`, `console.log`, `console.info`, and `console.trace` as `pure` in production builds and removes them. `console.warn` and `console.error` are retained; prefix their messages with `[Homepage Blocks]` and do NOT include raw third-party response bodies that may echo user content
 - Do not store secrets in block config -- API keys in `data.json` are plaintext. Layout export strips `apiKey` fields but the on-disk storage is unencrypted

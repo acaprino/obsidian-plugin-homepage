@@ -33,7 +33,7 @@ export const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   manualOpenMode: 'retain',
   openWhenEmpty: false,
   pin: false,
-  hideScrollbar: false,
+  showScrollbar: true,
   compactLayout: true,
   hoverHighlight: true,
   blocks: [
@@ -138,9 +138,35 @@ export function migrateBlockInstance(b: Record<string, unknown>): Record<string,
   // Migrate legacy _transparent flag to granular flags.
   const cfg = m.config as Record<string, unknown> | undefined;
   if (cfg && cfg._transparent === true) {
-    cfg._hideBorder = true;
-    cfg._hideBackground = true;
+    if (cfg._showBorder === undefined) cfg._showBorder = false;
+    if (cfg._showBackground === undefined) cfg._showBackground = false;
     delete cfg._transparent;
+  }
+  // Migrate legacy `_hideX: true` flags to their `_showX: false` inverse.
+  // Only writes the new key when it is undefined, so an explicit user-set
+  // `_showX` overrides the legacy value without being silently overwritten.
+  if (cfg) {
+    const HIDE_TO_SHOW: Array<[string, string]> = [
+      ['_hideTitle', '_showTitle'],
+      ['_hideBorder', '_showBorder'],
+      ['_hideBackground', '_showBackground'],
+      ['_hideHeaderAccent', '_showHeaderAccent'],
+    ];
+    for (const [hideKey, showKey] of HIDE_TO_SHOW) {
+      if (hideKey in cfg) {
+        if (cfg[hideKey] === true && cfg[showKey] === undefined) {
+          cfg[showKey] = false;
+        }
+        delete cfg[hideKey];
+      }
+    }
+    // quotes-list specific: hideAccentBar -> showAccentBar
+    if (m.type === 'quotes-list' && 'hideAccentBar' in cfg) {
+      if (cfg.hideAccentBar === true && cfg.showAccentBar === undefined) {
+        cfg.showAccentBar = false;
+      }
+      delete cfg.hideAccentBar;
+    }
   }
   // Migrate voice-dictation config field renames.
   if (m.type === 'voice-dictation' && cfg) {
@@ -170,9 +196,9 @@ export function migrateBlockInstance(b: Record<string, unknown>): Record<string,
       cfg._titleLabel = cfg.title;
     }
     // Blocks that previously used an empty title to hide the header
-    // (html, static-text) should set _hideTitle so they stay headerless.
+    // (html, static-text) should set _showTitle: false so they stay headerless.
     if (!cfg.title && (m.type === 'html' || m.type === 'static-text')) {
-      if (cfg._hideTitle === undefined) cfg._hideTitle = true;
+      if (cfg._showTitle === undefined) cfg._showTitle = false;
     }
     delete cfg.title;
   }
@@ -249,9 +275,14 @@ export function validateLayout(raw: unknown): LayoutConfig {
   const pin = typeof r.pin === 'boolean'
     ? r.pin
     : defaults.pin;
-  const hideScrollbar = typeof r.hideScrollbar === 'boolean'
-    ? r.hideScrollbar
-    : defaults.hideScrollbar;
+  // Migrate legacy `hideScrollbar` to its `showScrollbar` inverse. A
+  // new `showScrollbar` value on disk always wins; otherwise fall back to
+  // the inverted legacy key, otherwise the default.
+  const showScrollbar = typeof r.showScrollbar === 'boolean'
+    ? r.showScrollbar
+    : typeof r.hideScrollbar === 'boolean'
+      ? !r.hideScrollbar
+      : defaults.showScrollbar;
   const compactLayout = typeof r.compactLayout === 'boolean'
     ? r.compactLayout
     : defaults.compactLayout;
@@ -265,6 +296,6 @@ export function validateLayout(raw: unknown): LayoutConfig {
     columns, layoutPriority, responsiveMode,
     mobileColumns, mobileLayoutPriority, mobileBlocks,
     openOnStartup, openMode, manualOpenMode, openWhenEmpty,
-    pin, hideScrollbar, compactLayout, hoverHighlight, blocks,
+    pin, showScrollbar, compactLayout, hoverHighlight, blocks,
   };
 }

@@ -33,7 +33,7 @@ export interface BlockInstance {
   _expandedH?: number;
   /**
    * Per-block config. Any key that starts with `_` is reserved for shared card/header/body styling
-   * (e.g. `_titleLabel`, `_titleEmoji`, `_hideBorder`, `_accentColor`, ...) and is merged into the
+   * (e.g. `_titleLabel`, `_titleEmoji`, `_showBorder`, `_accentColor`, ...) and is merged into the
    * block's config by the shared settings modal -- block-specific keys MUST NOT start with `_`.
    */
   config: Record<string, unknown>;
@@ -54,7 +54,7 @@ export interface LayoutConfig {
   manualOpenMode: OpenMode;
   openWhenEmpty: boolean;
   pin: boolean;
-  hideScrollbar: boolean;
+  showScrollbar: boolean;
   compactLayout: boolean;
   /** Show a subtle hover lift on blocks and reveal the collapse chevron on hover. */
   hoverHighlight: boolean;

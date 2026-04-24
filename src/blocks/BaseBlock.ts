@@ -35,11 +35,11 @@ export abstract class BaseBlock extends Component {
   }
 
   // Render the muted uppercase block header label.
-  // Respects _hideTitle, _titleLabel, and _titleEmoji from instance.config.
+  // Respects _showTitle, _titleLabel, and _titleEmoji from instance.config.
   // Renders into the header container set by GridLayout (if any), else falls back to el.
   protected renderHeader(el: HTMLElement, title: string): void {
     const cfg = this.instance.config;
-    if (cfg._hideTitle === true) return;
+    if (cfg._showTitle === false) return;
     const label = (typeof cfg._titleLabel === 'string' && cfg._titleLabel.trim())
       ? cfg._titleLabel.trim()
       : title;

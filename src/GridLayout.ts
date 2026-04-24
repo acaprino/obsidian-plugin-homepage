@@ -419,7 +419,7 @@ export class GridLayout {
     const classes = ['homepage-block-wrapper'];
     // Don't collapse blocks with hidden titles — there's no visible header
     // to click for re-expansion, making them appear completely invisible.
-    const effectiveCollapsed = instance.collapsed && instance.config._hideTitle !== true;
+    const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
     if (effectiveCollapsed) classes.push('block-collapsed');
     const wrapper = container.createDiv({
       cls: classes.join(' '),

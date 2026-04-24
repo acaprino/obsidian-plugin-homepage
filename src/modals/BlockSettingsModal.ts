@@ -81,7 +81,7 @@ export class BlockSettingsModal extends Modal {
       previewHeader.className = 'block-header';
       const sz = typeof d._titleSize === 'string' && TITLE_SIZE_RE.test(d._titleSize) ? d._titleSize : '';
       if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.toggleClass('hp-hidden', d._hideTitle === true);
+      previewHeaderZone.toggleClass('hp-hidden', d._showTitle === false);
       previewDivider.toggleClass('hp-hidden', d._showDivider !== true);
       applyBlockStyling(previewCard, d);
     };
@@ -155,10 +155,10 @@ export class BlockSettingsModal extends Modal {
     });
 
     new Setting(body)
-      .setName('Hide title')
+      .setName('Show title')
       .addToggle(t =>
-        t.setValue(this.draft._hideTitle === true)
-         .onChange(v => { this.draft._hideTitle = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showTitle !== false)
+         .onChange(v => { this.draft._showTitle = v; this.refreshPreview(); }),
       );
 
     new Setting(body)
@@ -190,11 +190,11 @@ export class BlockSettingsModal extends Modal {
       );
 
     new Setting(body)
-      .setName('Hide header bar')
-      .setDesc('Remove the colored header accent while keeping the title text.')
+      .setName('Show header bar')
+      .setDesc('Show the colored header accent behind the title.')
       .addToggle(t =>
-        t.setValue(this.draft._hideHeaderAccent === true)
-         .onChange(v => { this.draft._hideHeaderAccent = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showHeaderAccent !== false)
+         .onChange(v => { this.draft._showHeaderAccent = v; this.refreshPreview(); }),
       );
   }
 
@@ -210,11 +210,11 @@ export class BlockSettingsModal extends Modal {
       );
 
     new Setting(body)
-      .setName('Hide background')
-      .setDesc('Remove the body background so the block blends into the page.')
+      .setName('Show background')
+      .setDesc('Show the body background. Turn off to let the block blend into the page.')
       .addToggle(t =>
-        t.setValue(this.draft._hideBackground === true)
-         .onChange(v => { this.draft._hideBackground = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showBackground !== false)
+         .onChange(v => { this.draft._showBackground = v; this.refreshPreview(); }),
       );
 
     new Setting(body)
@@ -342,11 +342,11 @@ export class BlockSettingsModal extends Modal {
     body.createDiv({ cls: 'hp-settings-subhead', text: 'Border' });
 
     new Setting(body)
-      .setName('Hide border')
-      .setDesc('Remove the border and hover highlight.')
+      .setName('Show border')
+      .setDesc('Show the border and hover highlight.')
       .addToggle(t =>
-        t.setValue(this.draft._hideBorder === true)
-         .onChange(v => { this.draft._hideBorder = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showBorder !== false)
+         .onChange(v => { this.draft._showBorder = v; this.refreshPreview(); }),
       );
 
     new Setting(body)

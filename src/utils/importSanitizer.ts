@@ -9,9 +9,9 @@ import { BlockRegistry } from '../BlockRegistry';
 const SHARED_CONFIG_KEYS = new Set([
   // Every `_`-prefixed key is shared styling — handled specially below, but listing
   // the well-known ones here documents the contract.
-  '_titleLabel', '_titleEmoji', '_hideTitle', '_titleSize', '_titleGap',
-  '_showDivider', '_hideHeaderAccent', '_hideBorder', '_borderWidth', '_borderStyle',
-  '_borderRadius', '_hideBackground', '_bgOpacity', '_backdropBlur', '_cardPadding',
+  '_titleLabel', '_titleEmoji', '_showTitle', '_titleSize', '_titleGap',
+  '_showDivider', '_showHeaderAccent', '_showBorder', '_borderWidth', '_borderStyle',
+  '_borderRadius', '_showBackground', '_bgOpacity', '_backdropBlur', '_cardPadding',
   '_elevation', '_accentColor', '_accentIntensity', '_gradientStart', '_gradientEnd',
   '_gradientAngle',
 ]);

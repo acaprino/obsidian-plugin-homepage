@@ -25,7 +25,7 @@ export class HomepageView extends ItemView {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('homepage-view');
-    contentEl.toggleClass('homepage-no-scrollbar', !!this.plugin.layout.hideScrollbar);
+    contentEl.toggleClass('homepage-no-scrollbar', this.plugin.layout.showScrollbar === false);
     contentEl.toggleClass('homepage-hover-highlight', !!this.plugin.layout.hoverHighlight);
 
     const onLayoutChange = (newLayout: LayoutConfig) => {

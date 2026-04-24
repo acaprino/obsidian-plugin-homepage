@@ -5729,7 +5729,7 @@ function applyBlockStyling(el, config) {
   }
   const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
   el.toggleClass("block-accented", !!accentColor);
-  el.toggleClass("block-no-header-accent", config._hideHeaderAccent === true);
+  el.toggleClass("block-no-header-accent", config._showHeaderAccent === false);
   if (accentColor) {
     el.style.setProperty("--block-accent", accentColor);
     const intensity = typeof config._accentIntensity === "number" ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
@@ -5750,8 +5750,8 @@ function applyBlockStyling(el, config) {
     el.style.removeProperty("--block-accent-pct");
     el.toggleClass("block-bright-accent", false);
   }
-  el.toggleClass("block-no-border", config._hideBorder === true);
-  el.toggleClass("block-no-background", config._hideBackground === true);
+  el.toggleClass("block-no-border", config._showBorder === false);
+  el.toggleClass("block-no-background", config._showBackground === false);
   const pad = typeof config._cardPadding === "number" ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
   if (pad) el.style.setProperty("--hp-card-padding", `${pad}px`);
   else el.style.removeProperty("--hp-card-padding");
@@ -5777,7 +5777,7 @@ function applyBlockStyling(el, config) {
   const gradStart = typeof config._gradientStart === "string" && HEX_COLOR_RE.test(config._gradientStart) ? config._gradientStart : "";
   const gradEnd = typeof config._gradientEnd === "string" && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : "";
   const gradAngle = typeof config._gradientAngle === "number" ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
-  if (gradStart && gradEnd && config._hideBackground !== true) {
+  if (gradStart && gradEnd && config._showBackground !== false) {
     el.style.setProperty("--hp-bg-gradient", `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
     el.toggleClass("block-has-gradient", true);
   } else {
@@ -6079,11 +6079,11 @@ var BaseBlock = class extends import_obsidian.Component {
     this._headerContainer = el;
   }
   // Render the muted uppercase block header label.
-  // Respects _hideTitle, _titleLabel, and _titleEmoji from instance.config.
+  // Respects _showTitle, _titleLabel, and _titleEmoji from instance.config.
   // Renders into the header container set by GridLayout (if any), else falls back to el.
   renderHeader(el, title) {
     const cfg = this.instance.config;
-    if (cfg._hideTitle === true) return;
+    if (cfg._showTitle === false) return;
     const label = typeof cfg._titleLabel === "string" && cfg._titleLabel.trim() ? cfg._titleLabel.trim() : title;
     if (!label) return;
     const container = this._headerContainer ?? el;
@@ -6680,7 +6680,7 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
       previewHeader.className = "block-header";
       const sz = typeof d._titleSize === "string" && TITLE_SIZE_RE.test(d._titleSize) ? d._titleSize : "";
       if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.toggleClass("hp-hidden", d._hideTitle === true);
+      previewHeaderZone.toggleClass("hp-hidden", d._showTitle === false);
       previewDivider.toggleClass("hp-hidden", d._showDivider !== true);
       applyBlockStyling(previewCard, d);
     };
@@ -6755,9 +6755,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
         this.refreshPreview();
       }
     });
-    new import_obsidian2.Setting(body).setName("Hide title").addToggle(
-      (t) => t.setValue(this.draft._hideTitle === true).onChange((v) => {
-        this.draft._hideTitle = v;
+    new import_obsidian2.Setting(body).setName("Show title").addToggle(
+      (t) => t.setValue(this.draft._showTitle !== false).onChange((v) => {
+        this.draft._showTitle = v;
         this.refreshPreview();
       })
     );
@@ -6779,9 +6779,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Hide header bar").setDesc("Remove the colored header accent while keeping the title text.").addToggle(
-      (t) => t.setValue(this.draft._hideHeaderAccent === true).onChange((v) => {
-        this.draft._hideHeaderAccent = v;
+    new import_obsidian2.Setting(body).setName("Show header bar").setDesc("Show the colored header accent behind the title.").addToggle(
+      (t) => t.setValue(this.draft._showHeaderAccent !== false).onChange((v) => {
+        this.draft._showHeaderAccent = v;
         this.refreshPreview();
       })
     );
@@ -6793,9 +6793,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Hide background").setDesc("Remove the body background so the block blends into the page.").addToggle(
-      (t) => t.setValue(this.draft._hideBackground === true).onChange((v) => {
-        this.draft._hideBackground = v;
+    new import_obsidian2.Setting(body).setName("Show background").setDesc("Show the body background. Turn off to let the block blend into the page.").addToggle(
+      (t) => t.setValue(this.draft._showBackground !== false).onChange((v) => {
+        this.draft._showBackground = v;
         this.refreshPreview();
       })
     );
@@ -6896,9 +6896,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
       });
     });
     body.createDiv({ cls: "hp-settings-subhead", text: "Border" });
-    new import_obsidian2.Setting(body).setName("Hide border").setDesc("Remove the border and hover highlight.").addToggle(
-      (t) => t.setValue(this.draft._hideBorder === true).onChange((v) => {
-        this.draft._hideBorder = v;
+    new import_obsidian2.Setting(body).setName("Show border").setDesc("Show the border and hover highlight.").addToggle(
+      (t) => t.setValue(this.draft._showBorder !== false).onChange((v) => {
+        this.draft._showBorder = v;
         this.refreshPreview();
       })
     );
@@ -7283,7 +7283,7 @@ var GridLayout = class _GridLayout {
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
   buildBlockWrapper(container, instance, animDelayMs) {
     const classes = ["homepage-block-wrapper"];
-    const effectiveCollapsed = instance.collapsed && instance.config._hideTitle !== true;
+    const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
     if (effectiveCollapsed) classes.push("block-collapsed");
     const wrapper = container.createDiv({
       cls: classes.join(" "),
@@ -7946,7 +7946,7 @@ var HomepageView = class extends import_obsidian6.ItemView {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("homepage-view");
-    contentEl.toggleClass("homepage-no-scrollbar", !!this.plugin.layout.hideScrollbar);
+    contentEl.toggleClass("homepage-no-scrollbar", this.plugin.layout.showScrollbar === false);
     contentEl.toggleClass("homepage-hover-highlight", !!this.plugin.layout.hoverHighlight);
     const onLayoutChange = (newLayout) => {
       this.plugin.layout = newLayout;
@@ -8032,7 +8032,7 @@ var DEFAULT_LAYOUT_DATA = {
   manualOpenMode: "retain",
   openWhenEmpty: false,
   pin: false,
-  hideScrollbar: false,
+  showScrollbar: true,
   compactLayout: true,
   hoverHighlight: true,
   blocks: [
@@ -8156,9 +8156,31 @@ function migrateBlockInstance(b) {
   }
   const cfg = m.config;
   if (cfg && cfg._transparent === true) {
-    cfg._hideBorder = true;
-    cfg._hideBackground = true;
+    if (cfg._showBorder === void 0) cfg._showBorder = false;
+    if (cfg._showBackground === void 0) cfg._showBackground = false;
     delete cfg._transparent;
+  }
+  if (cfg) {
+    const HIDE_TO_SHOW = [
+      ["_hideTitle", "_showTitle"],
+      ["_hideBorder", "_showBorder"],
+      ["_hideBackground", "_showBackground"],
+      ["_hideHeaderAccent", "_showHeaderAccent"]
+    ];
+    for (const [hideKey, showKey] of HIDE_TO_SHOW) {
+      if (hideKey in cfg) {
+        if (cfg[hideKey] === true && cfg[showKey] === void 0) {
+          cfg[showKey] = false;
+        }
+        delete cfg[hideKey];
+      }
+    }
+    if (m.type === "quotes-list" && "hideAccentBar" in cfg) {
+      if (cfg.hideAccentBar === true && cfg.showAccentBar === void 0) {
+        cfg.showAccentBar = false;
+      }
+      delete cfg.hideAccentBar;
+    }
   }
   if (m.type === "voice-dictation" && cfg) {
     if (typeof cfg.whisperApiKey === "string" && !cfg.apiKey) {
@@ -8181,7 +8203,7 @@ function migrateBlockInstance(b) {
       cfg._titleLabel = cfg.title;
     }
     if (!cfg.title && (m.type === "html" || m.type === "static-text")) {
-      if (cfg._hideTitle === void 0) cfg._hideTitle = true;
+      if (cfg._showTitle === void 0) cfg._showTitle = false;
     }
     delete cfg.title;
   }
@@ -8216,7 +8238,7 @@ function validateLayout(raw) {
   const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
   const openWhenEmpty = typeof r.openWhenEmpty === "boolean" ? r.openWhenEmpty : defaults.openWhenEmpty;
   const pin = typeof r.pin === "boolean" ? r.pin : defaults.pin;
-  const hideScrollbar = typeof r.hideScrollbar === "boolean" ? r.hideScrollbar : defaults.hideScrollbar;
+  const showScrollbar = typeof r.showScrollbar === "boolean" ? r.showScrollbar : typeof r.hideScrollbar === "boolean" ? !r.hideScrollbar : defaults.showScrollbar;
   const compactLayout = typeof r.compactLayout === "boolean" ? r.compactLayout : defaults.compactLayout;
   const hoverHighlight = typeof r.hoverHighlight === "boolean" ? r.hoverHighlight : defaults.hoverHighlight;
   const blocks = validateBlocks(r.blocks, columns, defaults.blocks);
@@ -8233,7 +8255,7 @@ function validateLayout(raw) {
     manualOpenMode,
     openWhenEmpty,
     pin,
-    hideScrollbar,
+    showScrollbar,
     compactLayout,
     hoverHighlight,
     blocks
@@ -8280,16 +8302,16 @@ var SHARED_CONFIG_KEYS = /* @__PURE__ */ new Set([
   // the well-known ones here documents the contract.
   "_titleLabel",
   "_titleEmoji",
-  "_hideTitle",
+  "_showTitle",
   "_titleSize",
   "_titleGap",
   "_showDivider",
-  "_hideHeaderAccent",
-  "_hideBorder",
+  "_showHeaderAccent",
+  "_showBorder",
   "_borderWidth",
   "_borderStyle",
   "_borderRadius",
-  "_hideBackground",
+  "_showBackground",
   "_bgOpacity",
   "_backdropBlur",
   "_cardPadding",
@@ -8463,11 +8485,11 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     new import_obsidian8.Setting(root).setName("Mobile blocks").setDesc(mobileBlockCount + " block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.");
   }
   renderDisplaySection(root) {
-    new import_obsidian8.Setting(root).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage. You can still scroll.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.hideScrollbar).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
+    new import_obsidian8.Setting(root).setName("Show scrollbar").setDesc("Show the scrollbar on the homepage. You can still scroll when hidden.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.layout.showScrollbar !== false).onChange((value) => {
+        void this.plugin.saveLayout({ ...this.plugin.layout, showScrollbar: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-          leaf.view.containerEl.toggleClass("homepage-no-scrollbar", value);
+          leaf.view.containerEl.toggleClass("homepage-no-scrollbar", !value);
         }
       })
     );
@@ -9566,7 +9588,7 @@ var QuotesListBlock = class extends BaseBlock {
     el.toggleClass("quote-style-centered", false);
     el.toggleClass("quote-style-card", false);
     el.toggleClass("quotes-list-block--extend", false);
-    el.toggleClass("quote-no-accent", this.instance.config.hideAccentBar === true);
+    el.toggleClass("quote-no-accent", this.instance.config.showAccentBar === false);
     if (safeMode === "single") {
       if (source === "text") {
         this.renderSingleTextQuote(el, quotes, dailySeed);
@@ -9807,9 +9829,9 @@ var QuotesListBlock = class extends BaseBlock {
         cfg.quoteStyle = v === "centered" || v === "card" ? v : "classic";
       })
     );
-    new import_obsidian15.Setting(body).setName("Hide accent bar").setDesc("Remove the vertical line next to each quote.").addToggle(
-      (t) => t.setValue(cfg.hideAccentBar === true).onChange((v) => {
-        cfg.hideAccentBar = v;
+    new import_obsidian15.Setting(body).setName("Show accent bar").setDesc("Show the vertical line next to each quote.").addToggle(
+      (t) => t.setValue(cfg.showAccentBar !== false).onChange((v) => {
+        cfg.showAccentBar = v;
       })
     );
     new import_obsidian15.Setting(body).setName("Text alignment").setDesc("Left, center, or right.").addDropdown(
@@ -12283,7 +12305,7 @@ function registerBlocks() {
   BlockRegistry.register({
     type: "spacer",
     displayName: "Spacer",
-    defaultConfig: { _hideTitle: true, _hideBorder: true, _hideBackground: true, _hideHeaderAccent: true },
+    defaultConfig: { _showTitle: false, _showBorder: false, _showBackground: false, _showHeaderAccent: false },
     defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin)
   });

@@ -146,7 +146,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'spacer',
     displayName: 'Spacer',
-    defaultConfig: { _hideTitle: true, _hideBorder: true, _hideBackground: true, _hideHeaderAccent: true },
+    defaultConfig: { _showTitle: false, _showBorder: false, _showBackground: false, _showHeaderAccent: false },
     defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin),
   });

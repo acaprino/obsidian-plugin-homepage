@@ -54,8 +54,17 @@ export class HtmlBlock extends BaseBlock {
     let m: RegExpExecArray | null;
     while ((m = VAR_RE.exec(safe)) !== null) varRefs.add(m[1]);
 
-    // Build bridge stylesheet: Obsidian CSS variables + body padding reset
-    const bridgeParts = ['html{height:100%;margin:0;padding:0}body{margin:0;padding:0;min-height:100%}'];
+    // Build bridge stylesheet: Obsidian CSS variables + body padding reset.
+    // Dynamic width/scale are driven from the load handler below via
+    // setProperty('--hp-body-...', ...) on custom properties; the `hp-clipped`
+    // class toggles overflow:hidden. This detour avoids the obsidianmd
+    // no-static-styles-assignment rule (which permits custom-property writes
+    // but not static `.style.x = 'literal'` or `setAttribute('style', ...)`).
+    const bridgeParts = [
+      'html{height:100%;margin:0;padding:0}',
+      'html.hp-clipped{overflow:hidden}',
+      'body{margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}',
+    ];
     if (varRefs.size > 0) {
       const rootStyle = getComputedStyle(document.body);
       const pairs = [...varRefs]
@@ -95,23 +104,16 @@ export class HtmlBlock extends BaseBlock {
 
         let scale = availableH / contentH;
         for (let i = 0; i < 4; i++) {
-          doc.body.style.width = `${(1 / scale) * 100}%`;
+          doc.body.style.setProperty('--hp-body-width', `${(1 / scale) * 100}%`);
           contentH = doc.documentElement.scrollHeight;
           const next = availableH / contentH;
           if (Math.abs(next - scale) < 0.005) { scale = next; break; }
           scale = next;
         }
 
-        // NOTE: these style assignments target the iframe's contentDocument (the user's
-        // sandboxed HTML), not plugin-owned DOM. The values are per-render-computed scale
-        // transforms that can't live in a static CSS class. The Obsidian rule targets
-        // plugin-UI theming; iframe content is out of scope.
-        doc.body.style.width = `${(1 / scale) * 100}%`;
-        // eslint-disable-next-line obsidianmd/no-static-styles-assignment
-        doc.documentElement.style.overflow = 'hidden';
-        // eslint-disable-next-line obsidianmd/no-static-styles-assignment
-        doc.body.style.transformOrigin = 'top left';
-        doc.body.style.transform = `scale(${scale})`;
+        doc.documentElement.classList.add('hp-clipped');
+        doc.body.style.setProperty('--hp-body-width', `${(1 / scale) * 100}%`);
+        doc.body.style.setProperty('--hp-body-scale', `${scale}`);
       } catch { /* cross-origin fallback */ }
     });
   }

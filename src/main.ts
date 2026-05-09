@@ -488,7 +488,11 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       (err) => {
         // In-memory state stays authoritative so the session keeps working.
         // The user needs to know that the edit didn't persist though.
-        console.error('[Homepage Blocks] Failed to save layout', err);
+        // Log only err.message (mirrors VoiceDictation's pattern) so a future
+        // Electron version that attaches the failed-write payload to the error
+        // object can never echo plaintext apiKey content into DevTools.
+        const safeMsg = err instanceof Error ? err.message : 'unknown error';
+        console.error('[Homepage Blocks] Failed to save layout:', safeMsg);
         if (!this.saveErrorNotified) {
           this.saveErrorNotified = true;
           new Notice('Homepage blocks: failed to save layout. Check disk space / permissions.', 8000);

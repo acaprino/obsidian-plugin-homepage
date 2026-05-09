@@ -1,16 +1,16 @@
-import { App, setIcon } from 'obsidian';
+import { App } from 'obsidian';
 import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
 import { BlockInstance, LayoutConfig, LayoutPriority, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
 import { applyBlockStyling } from './utils/blockStyling';
-import { newId } from './utils/ids';
 import { Scheduler } from './utils/Scheduler';
 import { Phase } from './grid/phase';
 import { AutoHeightManager } from './grid/AutoHeight';
 import { ResponsiveColumnsManager } from './grid/ResponsiveColumns';
-import { BlockSettingsModal } from './modals/BlockSettingsModal';
-import { RemoveBlockConfirmModal } from './modals/RemoveBlockConfirmModal';
+import { LayoutPersister } from './grid/LayoutPersister';
+import { attachCollapseToggle } from './grid/CollapseToggle';
+import { attachEditHandleBar } from './grid/EditHandleBar';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
@@ -24,7 +24,10 @@ export class GridLayout {
   /** The grid DOM element owned by this layout. Used by ResponsiveColumnsManager for flex reordering. */
   gridEl: HTMLElement;
   gridStack: GridStack | null = null;
-  private blocks = new Map<string, { block: BaseBlock | null; wrapper: HTMLElement }>();
+  // Package-visible to satisfy EditHandleBarHost without leaking ownership;
+  // the host interface declares the same Map shape and only the EditHandleBar
+  // touches it externally.
+  blocks = new Map<string, { block: BaseBlock | null; wrapper: HTMLElement }>();
   readonly scheduler = new Scheduler();
   editMode = false;
   effectiveColumns: number;
@@ -37,12 +40,13 @@ export class GridLayout {
 
   private autoHeight: AutoHeightManager;
   private responsiveColumns: ResponsiveColumnsManager;
+  private persister: LayoutPersister;
 
   // ── Public API ─────────────────────────────────────────────────────────
 
   constructor(
     containerEl: HTMLElement,
-    private app: App,
+    readonly app: App,
     readonly plugin: IHomepagePlugin,
     private onLayoutChange: LayoutChangeCallback,
   ) {
@@ -54,6 +58,34 @@ export class GridLayout {
     this.effectiveColumns = plugin.activeColumns();
     this.autoHeight = new AutoHeightManager(this);
     this.responsiveColumns = new ResponsiveColumnsManager(this);
+    // GridLayout itself satisfies LayoutPersisterHost structurally (the host
+    // declares only fields/methods this class already exposes). Pass `this`
+    // so the persister always reads live state via property accesses.
+    this.persister = new LayoutPersister(this);
+  }
+
+  /**
+   * Conform GridLayout to LayoutPersisterHost / EditHandleBarHost. The
+   * interfaces require an `emitLayout(layout)` adapter because `onLayoutChange`
+   * is private to GridLayout (callers shouldn't bypass GridLayout to write the
+   * layout).
+   */
+  emitLayout(layout: LayoutConfig): void {
+    this.onLayoutChange(layout);
+  }
+
+  /**
+   * Public wrapper around the private rerender for EditHandleBarHost. Kept
+   * separate from the private path so the host method's name is descriptive
+   * outside the class.
+   */
+  triggerRerender(): void {
+    this.rerender();
+  }
+
+  /** Public setter for the lastAddedBlockId so EditHandleBar can mark a duplicate. */
+  setLastAddedBlockId(id: string): void {
+    this.lastAddedBlockId = id;
   }
 
   /**
@@ -402,7 +434,7 @@ export class GridLayout {
 
       // Edit handles
       if (this.editMode) {
-        this.attachEditHandles(wrapper, instance);
+        attachEditHandleBar(this, wrapper, instance);
       }
     }
 
@@ -590,88 +622,19 @@ export class GridLayout {
     return base;
   }
 
+  /** Read current positions from GridStack nodes and persist to layout. */
   private persistLayout(): void {
-    if (!this.gridStack || this.phase !== Phase.Ready) return;
-
-    // When responsive columns are active (effectiveColumns < canonicalColumns),
-    // GridStack nodes hold transient positions adapted for the narrow viewport.
-    // Persisting x/y/w from the responsive layout would destroy the canonical
-    // (desktop) layout.  Only persist height changes in this case.
-    // Note: dragstop/resizestop callers are gated by staticGrid (only active in
-    // edit mode), so isResponsive is always false for manual user interactions.
-    // Responsive guard: when effective columns differ from canonical,
-    // only persist h (not x/y/w) to avoid overwriting the canonical layout.
-    // This applies in view mode AND edit mode — in edit mode at a narrow
-    // viewport, the 5-column grid is squeezed and positions are distorted.
-
-    // Fast path: when every block is auto-height and we are in responsive mode,
-    // there is nothing to persist — skip the GridStack DOM traversal entirely.
-    if (this.isResponsive && this.plugin.activeBlocks().every(b => this.shouldAutoHeight(b))) {
-      return;
-    }
-
-    const nodes = this.gridStack.getGridItems();
-    const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
-
-    for (const el of nodes) {
-      const node = (el as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
-      const id = el.getAttribute('gs-id');
-      if (id && node) {
-        const w = Math.min(node.w ?? 1, this.effectiveColumns);
-        posMap.set(id, {
-          x: Math.min(node.x ?? 0, Math.max(0, this.effectiveColumns - w)),
-          y: node.y ?? 0,
-          w,
-          h: node.h ?? 1,
-        });
-      }
-    }
-
-    // Skip save if nothing actually changed.
-    // Auto-height blocks only compare x/y/w — h is always derived from content,
-    // so persisting it would corrupt y-positions on next open.
-    // Fixed-height blocks persist all four fields.
-    // In responsive mode, only h changes matter — x/y/w are transient.
-    const changed = this.plugin.activeBlocks().some(b => {
-      const pos = posMap.get(b.id);
-      if (!pos) return false;
-      const isAuto = this.shouldAutoHeight(b);
-      if (this.isResponsive) return !isAuto && b.h !== pos.h;
-      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
-      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
-    });
-    if (!changed) {
-      return;
-    }
-
-    const newBlocks = this.plugin.activeBlocks().map(b => {
-      const pos = posMap.get(b.id);
-      if (!pos) return b;
-      const isAuto = this.shouldAutoHeight(b);
-      if (this.isResponsive) {
-        // Only persist height for non-auto-height blocks; leave x/y/w canonical.
-        return isAuto ? b : { ...b, h: pos.h };
-      }
-      const update = isAuto
-        ? { x: pos.x, y: pos.y, w: pos.w }
-        : pos;
-      return { ...b, ...update };
-    });
-
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
+    this.persister.persist();
   }
 
-  /** Read current positions from GridStack nodes and persist to layout. */
   /** Debounced persistLayout — coalesces rapid auto-height resize saves into one write. */
   persistLayoutDebounced(): void {
-    this.scheduler.timeout('sync', 50, () => {
-      if (this.phase !== Phase.Destroyed) this.persistLayout();
-    });
+    this.persister.persistDebounced();
   }
 
-  /** True when the grid is showing a responsive (narrowed) layout — persistence should be restricted. */
+  /** True when the grid is showing a responsive (narrowed) layout. */
   private get isResponsive(): boolean {
-    return this.effectiveColumns !== this.canonicalColumns;
+    return this.persister.isResponsive();
   }
 
   // ── Layout Utilities ───────────────────────────────────────────────────
@@ -783,263 +746,18 @@ export class GridLayout {
 
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */
   repackGridNodes(): void {
-    if (!this.gridStack) return;
-    const nodeItems: { el: HTMLElement; x: number; y: number; w: number; h: number }[] = [];
-    for (const gsEl of this.gridStack.getGridItems()) {
-      const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
-      if (!node) continue;
-      nodeItems.push({ el: gsEl as HTMLElement, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
-    }
-    GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
-    this.gridStack.batchUpdate();
-    for (const item of nodeItems) {
-      this.gridStack.update(item.el, { y: item.y });
-    }
-    this.gridStack.batchUpdate(false);
+    // Wrap the static call in an arrow so `this` doesn't end up unbound
+    // when LayoutPersister invokes the function.
+    this.persister.repackGridNodes((items, columns, priority) =>
+      GridLayout.packRows(items, columns, priority),
+    );
   }
 
   // ── Block Interactions ─────────────────────────────────────────────────
 
   private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {
-    const wrapper = gsEl.querySelector('.homepage-block-wrapper') as HTMLElement;
-    const chevron = headerZone.querySelector<HTMLElement>('.block-collapse-chevron');
-    if (!wrapper) return;
-
-    const toggleCollapse = (e: Event) => {
-      e.stopPropagation();
-      if (this.editMode) return;
-      const isNowCollapsed = !wrapper.hasClass('block-collapsed');
-      wrapper.toggleClass('block-collapsed', isNowCollapsed);
-      chevron?.toggleClass('is-collapsed', isNowCollapsed);
-      headerZone.setAttribute('aria-expanded', String(!isNowCollapsed));
-
-      // Tell GridStack to resize the cell so the grid reflows, and persist the height
-      const gsNode = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
-      let newBlocks: BlockInstance[];
-
-      if (isNowCollapsed) {
-        // Read live height from GridStack (accounts for user resizes since render)
-        const liveH = gsNode?.h ?? instance.h;
-        if (this.gridStack) this.gridStack.update(gsEl, { h: 1 });
-        newBlocks = this.plugin.activeBlocks().map(b =>
-          b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b,
-        );
-      } else {
-        // Restore the saved expanded height
-        const currentBlock = this.plugin.activeBlocks().find(b => b.id === instance.id);
-        const origH = currentBlock?._expandedH ?? instance.h;
-        if (this.gridStack) this.gridStack.update(gsEl, { h: origH });
-        newBlocks = this.plugin.activeBlocks().map(b =>
-          b.id === instance.id ? { ...b, collapsed: false, h: origH } : b,
-        );
-      }
-
-      void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
-    };
-
-    headerZone.addEventListener('click', toggleCollapse);
-    headerZone.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleCollapse(e); }
-    });
+    attachCollapseToggle(this, gsEl, instance, headerZone);
   }
 
-  private attachEditHandles(wrapper: HTMLElement, instance: BlockInstance): void {
-    const bar = wrapper.createDiv({ cls: 'block-handle-bar' });
-
-    // Drag handle (left)
-    const handle = bar.createDiv({ cls: 'block-move-handle' });
-    setIcon(handle, 'grip-vertical');
-    handle.setAttribute('aria-label', 'Drag to reorder');
-    handle.setAttribute('title', 'Drag to reorder');
-
-    // Move up / down (grouped next to drag handle for logical order)
-    const moveUpBtn = bar.createEl('button', { cls: 'block-move-up-btn' });
-    setIcon(moveUpBtn, 'chevron-up');
-    moveUpBtn.setAttribute('aria-label', 'Move block up');
-    moveUpBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.swapWithNeighbor(instance, 'up');
-    });
-
-    const moveDownBtn = bar.createEl('button', { cls: 'block-move-down-btn' });
-    setIcon(moveDownBtn, 'chevron-down');
-    moveDownBtn.setAttribute('aria-label', 'Move block down');
-    moveDownBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.swapWithNeighbor(instance, 'down');
-    });
-
-    // Duplicate
-    const dupBtn = bar.createEl('button', { cls: 'block-duplicate-btn' });
-    setIcon(dupBtn, 'copy');
-    dupBtn.setAttribute('aria-label', 'Duplicate block');
-    dupBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      // Read current state from layout (not stale render-time closure)
-      const current = this.plugin.activeBlocks().find(b => b.id === instance.id);
-      if (!current) return;
-      const clone: BlockInstance = {
-        ...structuredClone(current),
-        id: newId(),
-        y: current.y + current.h,
-      };
-      const newBlocks = [...this.plugin.activeBlocks(), clone];
-      this.lastAddedBlockId = clone.id;
-      this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-      this.rerender();
-    });
-
-    // Settings (right group)
-    const settingsBtn = bar.createEl('button', { cls: 'block-settings-btn' });
-    setIcon(settingsBtn, 'settings');
-    settingsBtn.setAttribute('aria-label', 'Block settings');
-    settingsBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const entry = this.blocks.get(instance.id);
-      if (!entry) return;
-      const onSave = (config: Record<string, unknown>) => {
-        const newBlocks = this.plugin.activeBlocks().map(b =>
-          b.id === instance.id ? { ...b, config } : b,
-        );
-        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-        this.rerender();
-      };
-      // In edit mode blocks aren't instantiated — create a temporary one for settings
-      let tempBlock: BaseBlock | null = null;
-      const block = entry.block ?? (() => {
-        const factory = BlockRegistry.get(instance.type);
-        if (!factory) return null;
-        tempBlock = factory.create(this.app, instance, this.plugin);
-        return tempBlock;
-      })();
-      if (!block) return;
-      // Teardown runs on both Save AND Cancel/Esc/X. Without the onClose hook the
-      // tempBlock would leak its registered intervals/events on every cancel.
-      const teardownTempBlock = () => {
-        if (tempBlock) {
-          tempBlock.unload();
-          tempBlock = null;
-        }
-      };
-      const modal = new BlockSettingsModal(this.app, instance, block, (config) => {
-        teardownTempBlock();
-        onSave(config);
-      });
-      const originalOnClose = modal.onClose.bind(modal);
-      modal.onClose = () => {
-        teardownTempBlock();
-        originalOnClose();
-      };
-      modal.open();
-    });
-
-    // Remove (last — destructive action at the end)
-    const removeBtn = bar.createEl('button', { cls: 'block-remove-btn' });
-    setIcon(removeBtn, 'x');
-    removeBtn.setAttribute('aria-label', 'Remove block');
-    removeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      // Coalesce rapid clicks: while the confirm modal is up, ignore extra
-      // clicks. Without this guard, double-clicking the X button could open
-      // two confirm modals racing the same removeWidget+compact pair.
-      if (removeBtn.hasAttribute('data-remove-pending')) return;
-      removeBtn.setAttribute('data-remove-pending', '1');
-      const modal = new RemoveBlockConfirmModal(this.app, () => {
-        removeBtn.removeAttribute('data-remove-pending');
-        // Wrap the removeWidget + compact pair in batchUpdate so GridStack
-        // commits both operations atomically. Without this, a second remove
-        // arriving before the compact's reflow settled would read mid-state
-        // positions for posMap.
-        const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
-        if (gsItem instanceof HTMLElement && this.gridStack) {
-          this.gridStack.batchUpdate();
-          try {
-            this.gridStack.removeWidget(gsItem);
-            this.gridStack.compact();
-          } finally {
-            this.gridStack.batchUpdate(false);
-          }
-        }
-        const entry = this.blocks.get(instance.id);
-        if (entry) {
-          entry.block?.unload();
-          this.blocks.delete(instance.id);
-        }
-        const remaining = this.plugin.activeBlocks().filter(b => b.id !== instance.id);
-        if (remaining.length === 0) {
-          this.onLayoutChange(this.buildLayoutUpdate([]));
-          this.rerender();
-          return;
-        }
-        // Read compacted positions from GridStack and persist them
-        if (!this.gridStack) {
-          this.onLayoutChange(this.buildLayoutUpdate(remaining));
-          return;
-        }
-        const posMap = new Map<string, { x: number; y: number; w: number; h: number }>();
-        for (const el of this.gridStack.getGridItems()) {
-          const node = (el as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
-          const id = el.getAttribute('gs-id');
-          if (id && node) {
-            posMap.set(id, { x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
-          }
-        }
-        const newBlocks = remaining.map(b => {
-          const pos = posMap.get(b.id);
-          if (!pos) return b;
-          const isAuto = this.shouldAutoHeight(b);
-          const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
-          return { ...b, ...update };
-        });
-        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-      });
-      // Clear the pending flag on cancel/close as well, otherwise a user who
-      // clicks X then dismisses can never click X again.
-      const originalOnClose = modal.onClose.bind(modal);
-      modal.onClose = () => {
-        removeBtn.removeAttribute('data-remove-pending');
-        originalOnClose();
-      };
-      modal.open();
-    });
-
-    // Insert handle bar before header zone
-    const headerZone = wrapper.querySelector('.block-header-zone');
-    if (headerZone) {
-      wrapper.insertBefore(bar, headerZone);
-    }
-  }
-
-  /** Swap a block's position with its nearest spatial neighbor in the given direction. */
-  private swapWithNeighbor(instance: BlockInstance, direction: 'up' | 'down'): void {
-    const blocks = this.plugin.activeBlocks();
-    const current = blocks.find(b => b.id === instance.id);
-    if (!current) return;
-
-    const columns = this.plugin.activeColumns();
-    const neighbor = blocks
-      .filter(b => b.id !== instance.id && (
-        direction === 'up'
-          ? (b.y < current.y || (b.y === current.y && b.x < current.x))
-          : (b.y > current.y || (b.y === current.y && b.x > current.x))
-      ))
-      .sort((a, b) => direction === 'up'
-        ? (b.y - a.y || b.x - a.x)
-        : (a.y - b.y || a.x - b.x),
-      )[0];
-    if (!neighbor) return;
-
-    // Swap positions, clamping x so that x + w <= columns
-    const newBlocks = blocks.map(b => {
-      if (b.id === current.id) {
-        return { ...b, x: Math.min(neighbor.x, Math.max(0, columns - current.w)), y: neighbor.y };
-      }
-      if (b.id === neighbor.id) {
-        return { ...b, x: Math.min(current.x, Math.max(0, columns - neighbor.w)), y: current.y };
-      }
-      return b;
-    });
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-    this.rerender();
-  }
+  // attachEditHandleBar + swapWithNeighbor moved to src/grid/EditHandleBar.ts
 }

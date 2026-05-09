@@ -5,7 +5,7 @@ import { getDefaultLayout, validateLayout } from './validation';
 import { BlockRegistry } from './BlockRegistry';
 import { HomepageSettingTab } from './settings/HomepageSettingTab';
 import { installTagCacheListeners } from './utils/tags';
-import { decryptString, encryptString, isEncrypted } from './utils/apiKeyCrypto';
+import { decryptStringEx, encryptStringEx, isEncrypted, _resetDeviceKeyCache } from './utils/apiKeyCrypto';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
 import { FolderLinksBlock } from './blocks/FolderLinksBlock';
@@ -146,7 +146,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'spacer',
     displayName: 'Spacer',
-    defaultConfig: { _hideTitle: true, _hideBorder: true, _hideBackground: true, _hideHeaderAccent: true },
+    defaultConfig: { _showTitle: false, _showBorder: false, _showBackground: false, _showHeaderAccent: false },
     defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin),
   });
@@ -192,41 +192,101 @@ function registerBlocks(): void {
 // this future-proof — any new block that names its field `apiKey` gets encrypted
 // automatically.
 
-async function encryptApiKeys(layout: LayoutConfig): Promise<LayoutConfig> {
-  const encryptBlocks = async (blocks: BlockInstance[]): Promise<BlockInstance[]> =>
+/**
+ * Encrypt every BlockInstance.config.apiKey on the given layout. Returns a new
+ * layout with new block objects — never mutates the input.
+ *
+ * If WebCrypto is unavailable, encryptStringEx returns `ok: false`. To avoid
+ * downgrading already-stored ciphertext to plaintext (which would propagate via
+ * vault sync), we look up the previously-persisted apiKey from `priorOnDisk` and
+ * keep its ciphertext value when the encrypt step fell back to plaintext.
+ */
+async function encryptApiKeys(layout: LayoutConfig, priorOnDisk: LayoutConfig | null): Promise<LayoutConfig> {
+  const buildPriorMap = (blocks: BlockInstance[] | undefined): Map<string, string> => {
+    const m = new Map<string, string>();
+    if (!Array.isArray(blocks)) return m;
+    for (const b of blocks) {
+      const k = b?.config?.apiKey;
+      if (typeof k === 'string' && k) m.set(b.id, k);
+    }
+    return m;
+  };
+  const priorDesktop = buildPriorMap(priorOnDisk?.blocks);
+  const priorMobile = buildPriorMap(priorOnDisk?.mobileBlocks);
+
+  const encryptBlocks = async (blocks: BlockInstance[], prior: Map<string, string>): Promise<BlockInstance[]> =>
     Promise.all(blocks.map(async (b) => {
       const key = b.config.apiKey;
       if (typeof key !== 'string' || !key || isEncrypted(key)) return b;
-      const enc = await encryptString(key);
-      return { ...b, config: { ...b.config, apiKey: enc } };
+      const r = await encryptStringEx(key);
+      if (!r.ok) {
+        // Refuse to overwrite a previously-stored ciphertext with plaintext.
+        const previously = prior.get(b.id);
+        if (typeof previously === 'string' && isEncrypted(previously)) {
+          return { ...b, config: { ...b.config, apiKey: previously } };
+        }
+        // No prior ciphertext on disk: there's nothing to protect, so we let the
+        // plaintext fallback proceed (the warn is logged inside encryptStringEx).
+      }
+      return { ...b, config: { ...b.config, apiKey: r.value } };
     }));
+
   const [blocks, mobileBlocks] = await Promise.all([
-    encryptBlocks(layout.blocks),
-    encryptBlocks(layout.mobileBlocks),
+    encryptBlocks(layout.blocks, priorDesktop),
+    encryptBlocks(layout.mobileBlocks, priorMobile),
   ]);
   return { ...layout, blocks, mobileBlocks };
 }
 
-async function decryptApiKeys(layout: LayoutConfig): Promise<void> {
-  // Mutates in place — the layout was just returned from validateLayout so nobody
-  // else holds a reference, and we want to keep object identity with the in-memory
-  // `this.layout` so subsequent block reads see plaintext.
-  const decryptBlocks = async (blocks: BlockInstance[]): Promise<void> => {
+/**
+ * Decrypt apiKey fields on a layout in place. Returns `true` when every
+ * decryption succeeded (or the value was empty / plaintext), `false` if at
+ * least one ciphertext was preserved on disk because the device key was
+ * transiently unavailable. Callers should skip the post-load resave when
+ * this returns false, otherwise a transient WebCrypto/IndexedDB hiccup
+ * would silently destroy the user's encrypted key.
+ *
+ * The function still produces new BlockInstance / config objects rather than
+ * mutating the input — old code mutated in place to keep object identity, but
+ * that pattern leaked into shared input fixtures during tests.
+ */
+async function decryptApiKeys(layout: LayoutConfig): Promise<{ stable: boolean }> {
+  let stable = true;
+
+  const decryptBlocks = async (blocks: BlockInstance[]): Promise<BlockInstance[]> => {
+    const out: BlockInstance[] = [];
     for (const b of blocks) {
       const key = b.config.apiKey;
-      if (typeof key !== 'string' || !key || !isEncrypted(key)) continue;
-      const pt = await decryptString(key);
-      if (pt === null) {
-        // Cross-device sync or wiped IndexedDB — the user must re-enter the key.
-        b.config.apiKey = '';
-        new Notice('Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.', 10_000);
+      if (typeof key !== 'string' || !key || !isEncrypted(key)) {
+        out.push(b);
+        continue;
+      }
+      const r = await decryptStringEx(key);
+      if (r.ok) {
+        out.push({ ...b, config: { ...b.config, apiKey: r.plaintext } });
+      } else if (r.reason === 'no-key' && r.transient) {
+        // IndexedDB/WebCrypto hiccuped. Keep the ciphertext on disk untouched
+        // (we leave b.config.apiKey alone in memory; runtime callers will see
+        // the encrypted form, which is benign — the dictation block will fail
+        // with a clear "key invalid" path until next launch retries decrypt).
+        stable = false;
+        new Notice('Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.', 10_000);
+        out.push(b);
       } else {
-        b.config.apiKey = pt;
+        // Permanent failure: corrupt ciphertext, missing WebCrypto entirely,
+        // or wrong device. Clearing forces the user to re-enter on this device.
+        out.push({ ...b, config: { ...b.config, apiKey: '' } });
+        new Notice('Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.', 10_000);
       }
     }
+    return out;
   };
-  await decryptBlocks(layout.blocks);
-  await decryptBlocks(layout.mobileBlocks);
+
+  const desktop = await decryptBlocks(layout.blocks);
+  const mobile = await decryptBlocks(layout.mobileBlocks);
+  layout.blocks = desktop;
+  layout.mobileBlocks = mobile;
+  return { stable };
 }
 
 export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
@@ -235,20 +295,38 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   async onload(): Promise<void> {
     registerBlocks();
 
-    // Plugin-wide tag-cache invalidation — replaces the per-block clearTagCache()
-    // dance so callers of getFilesWithTag() always see fresh data without having
-    // to remember to wire up vault listeners themselves.
+    // Re-arm the imageCache singleton in case a previous onunload disposed it.
+    // The module-level cache survives across plugin disable+enable in the same
+    // renderer; without this, every gallery thumbnail would rebuild forever.
+    imageCache.reset();
+
+    // Plugin-wide tag-cache invalidation so callers of getFilesWithTag() always
+    // see fresh data without having to wire up vault listeners themselves.
     installTagCacheListeners(this);
 
     const raw = await this.loadData() as unknown;
-    const validated = validateLayout(raw);
+    const validated = validateLayout(raw, (badRaw) => {
+      // data.json existed but its top-level shape is unusable (string from a
+      // sync conflict marker, array from a schema mistake, etc.). Stash a copy
+      // alongside the plugin's data folder so the user can recover by hand
+      // instead of silently losing every block + every persisted setting.
+      void this.stashCorruptedData(badRaw).catch((err) => {
+        console.error('[Homepage Blocks] Failed to stash corrupted data.json', err instanceof Error ? err.message : 'unknown error');
+      });
+      new Notice('Homepage blocks: data.json was unreadable and has been backed up. Layout has been reset to defaults.', 12_000);
+    });
     // At-rest apiKey values are encrypted (AES-GCM, non-extractable device key in
     // IndexedDB). Decrypt on load so blocks see plaintext; encrypt again on save.
-    await decryptApiKeys(validated);
+    const decryptResult = await decryptApiKeys(validated);
     this.layout = validated;
-    // Persist cleaned layout to remove old-format properties and fix corruption.
-    // saveLayout() handles re-encryption so on-disk never carries plaintext keys.
-    await this.saveLayout(this.layout);
+    // Persist cleaned layout to remove old-format properties and fix corruption,
+    // BUT only when the apiKey decrypt was stable. If a key was preserved as
+    // ciphertext because of a transient WebCrypto/IndexedDB failure, the post-load
+    // resave would round-trip empty plaintext through encryptApiKeys and overwrite
+    // the original ciphertext on disk -- destroying the user's key for good.
+    if (decryptResult.stable) {
+      await this.saveLayout(this.layout);
+    }
 
     this.registerView(VIEW_TYPE, (leaf) => new HomepageView(leaf, this));
 
@@ -327,6 +405,34 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     clearPomodoroState();
     closeSharedAudioCtx();
     abortActiveLightbox();
+    // Drop the cached CryptoKey reference. The IndexedDB record itself stays so
+    // a re-enable on the same device decrypts existing ciphertext, but we don't
+    // hold a stale reference into a possibly-wiped database across reloads.
+    _resetDeviceKeyCache();
+  }
+
+  /**
+   * Write a copy of corrupted data.json content to a sibling file so the user
+   * can manually recover. Only invoked from validateLayout's corruption hook;
+   * silent in normal flow. Uses a single fixed sibling name (no timestamp) to
+   * avoid accumulating files when data.json corrupts repeatedly -- the most
+   * recent bad copy is the one the user typically wants.
+   */
+  private async stashCorruptedData(badRaw: unknown): Promise<void> {
+    const dir = this.manifest.dir;
+    if (!dir) return;
+    let serialized: string;
+    if (typeof badRaw === 'string') {
+      serialized = badRaw;
+    } else {
+      try {
+        serialized = JSON.stringify(badRaw, null, 2);
+      } catch {
+        serialized = String(badRaw);
+      }
+    }
+    const target = `${dir}/data.json.invalid`;
+    await this.app.vault.adapter.write(target, serialized);
   }
 
   // ── Platform-aware layout helpers ─────────────────────────────────
@@ -357,16 +463,35 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // Serialize save ordering AND await the pre-save encryption inside the
     // chain so a later-queued save sees the updated ciphertext format.
     this.savePromise = this.savePromise.then(async () => {
+      // Read the prior on-disk layout so encryptApiKeys can refuse to overwrite
+      // a previously-stored ciphertext with plaintext when WebCrypto is gated
+      // (cross-platform vault-sync footgun: ciphertext on desktop, plaintext on
+      // mobile if the mobile platform's WebCrypto is restricted).
+      let priorOnDisk: LayoutConfig | null = null;
+      try {
+        const prior = await this.loadData() as unknown;
+        if (prior && typeof prior === 'object' && !Array.isArray(prior)) {
+          priorOnDisk = prior as LayoutConfig;
+        }
+      } catch {
+        // Read failure is benign — without prior context we accept the plaintext
+        // fallback (encryptStringEx still warns), since refusing the save would
+        // be worse.
+      }
       // Clone so we don't write ciphertext back into the live layout the blocks
       // are reading from — runtime copies always stay plaintext.
-      const persistable = await encryptApiKeys(layout);
+      const persistable = await encryptApiKeys(layout, priorOnDisk);
       await this.saveData(persistable);
     }).then(
       () => { this.saveErrorNotified = false; },
       (err) => {
         // In-memory state stays authoritative so the session keeps working.
         // The user needs to know that the edit didn't persist though.
-        console.error('[Homepage Blocks] Failed to save layout', err);
+        // Log only err.message (mirrors VoiceDictation's pattern) so a future
+        // Electron version that attaches the failed-write payload to the error
+        // object can never echo plaintext apiKey content into DevTools.
+        const safeMsg = err instanceof Error ? err.message : 'unknown error';
+        console.error('[Homepage Blocks] Failed to save layout:', safeMsg);
         if (!this.saveErrorNotified) {
           this.saveErrorNotified = true;
           new Notice('Homepage blocks: failed to save layout. Check disk space / permissions.', 8000);
@@ -381,6 +506,32 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       ? { ...this.layout, mobileBlocks: blocks }
       : { ...this.layout, blocks };
     await this.saveLayout(next);
+  }
+
+  /**
+   * Atomically patch one block's config. The patcher reads `activeBlocks()`
+   * here at call time, but if a positional save (dragstop) is currently
+   * waiting on the savePromise chain it will land BEFORE this read -- so
+   * the snapshot we capture already reflects the dragged positions. Then
+   * saveLayout serializes our update behind it. The previous saveActiveBlocks
+   * pattern read positions inside the rename handler (before the chain),
+   * which lost any dragstop that hadn't yet been awaited.
+   */
+  async updateBlockConfig(id: string, patch: Record<string, unknown>): Promise<void> {
+    // Wait for any pending writes so we read positions written by a prior
+    // dragstop before computing newBlocks.
+    try {
+      await this.savePromise;
+    } catch {
+      // Prior save's failure has already been notified in saveLayout's chain;
+      // reading the current in-memory layout is still the right move.
+    }
+    const live = this.activeBlocks();
+    if (!live.some(b => b.id === id)) return;
+    const next = live.map(b =>
+      b.id === id ? { ...b, config: { ...b.config, ...patch } } : b,
+    );
+    await this.saveActiveBlocks(next);
   }
 
   async openHomepage(mode: OpenMode = 'retain'): Promise<void> {

@@ -95,6 +95,16 @@ class ImageCacheStore {
     this.pending.clear();
   }
 
+  /**
+   * Re-arm the cache after a previous destroy(). Required because the singleton
+   * survives plugin disable+enable in the same renderer process; without this the
+   * `disposed` flag would stay true forever and every gallery render would rebuild
+   * its thumbnails (and leak blob URLs) on the path at line 56.
+   */
+  reset(): void {
+    this.disposed = false;
+  }
+
   // ── internals ──
 
   private async generate(app: App, file: TFile, mtime: number): Promise<ImageCacheEntry> {

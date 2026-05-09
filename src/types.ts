@@ -33,7 +33,7 @@ export interface BlockInstance {
   _expandedH?: number;
   /**
    * Per-block config. Any key that starts with `_` is reserved for shared card/header/body styling
-   * (e.g. `_titleLabel`, `_titleEmoji`, `_hideBorder`, `_accentColor`, ...) and is merged into the
+   * (e.g. `_titleLabel`, `_titleEmoji`, `_showBorder`, `_accentColor`, ...) and is merged into the
    * block's config by the shared settings modal -- block-specific keys MUST NOT start with `_`.
    */
   config: Record<string, unknown>;
@@ -54,7 +54,7 @@ export interface LayoutConfig {
   manualOpenMode: OpenMode;
   openWhenEmpty: boolean;
   pin: boolean;
-  hideScrollbar: boolean;
+  showScrollbar: boolean;
   compactLayout: boolean;
   /** Show a subtle hover lift on blocks and reveal the collapse chevron on hover. */
   hoverHighlight: boolean;
@@ -77,6 +77,15 @@ export interface IHomepagePlugin {
   saveLayout(layout: LayoutConfig): Promise<void>;
   /** Save a new blocks array into the active field (mobileBlocks on mobile+separate, blocks otherwise). */
   saveActiveBlocks(blocks: BlockInstance[]): Promise<void>;
+  /**
+   * Atomically patch one block's config. The patcher reads the live layout
+   * inside the save chain so a concurrent positional save (e.g. from a drag
+   * that finishes while a vault rename is in flight) cannot be clobbered by
+   * a stale snapshot. Returns when the save has been queued; the patch is
+   * applied to whatever block matches `id` at write time. No-op if the id
+   * isn't present at write time.
+   */
+  updateBlockConfig(id: string, patch: Record<string, unknown>): Promise<void>;
   /** True when running on a mobile device AND responsiveMode is 'separate'. */
   isMobileActive(): boolean;
   /** Resolved blocks for the current platform (desktop blocks or mobile blocks). */

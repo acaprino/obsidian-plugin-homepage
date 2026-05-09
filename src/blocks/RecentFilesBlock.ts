@@ -1,4 +1,4 @@
-import { App, Modal, Setting, moment } from 'obsidian';
+import { Setting, moment } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 const DEBOUNCE_MS = 500;
@@ -8,8 +8,6 @@ interface RecentFilesConfig {
   showTimestamp?: boolean;
   excludeFolders?: string;
 }
-
-// ── Block ────────────────────────────────────────────────────────────────────
 
 export class RecentFilesBlock extends BaseBlock {
   render(el: HTMLElement): void {
@@ -57,7 +55,7 @@ export class RecentFilesBlock extends BaseBlock {
 
     if (files.length === 0) {
       const hint = list.createDiv({ cls: 'block-empty-hint' });
-      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\uD83D\uDCC4' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '📄' });
       hint.createDiv({ cls: 'block-empty-hint-text', text: 'No recent files found.' });
       return;
     }
@@ -75,67 +73,34 @@ export class RecentFilesBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new RecentFilesSettingsModal(this.app, this.instance.config as RecentFilesConfig, onSave).open();
-  }
-}
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as RecentFilesConfig;
 
-// ── Settings modal ───────────────────────────────────────────────────────────
-
-class RecentFilesSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: RecentFilesConfig,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Recent files settings').setHeading();
-
-    const draft: RecentFilesConfig = structuredClone(this.config);
-
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Max items')
-      .setDesc('How many files to show (5\u201320).')
+      .setDesc('How many files to show (5–20).')
       .addSlider(s =>
         s.setLimits(5, 20, 1)
-         .setValue(draft.maxItems ?? 10)
+         .setValue(cfg.maxItems ?? 10)
          .setDynamicTooltip()
-         .onChange(v => { draft.maxItems = v; }),
+         .onChange(v => { cfg.maxItems = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Show timestamps')
       .setDesc('Show relative time next to each file.')
       .addToggle(t =>
-        t.setValue(draft.showTimestamp ?? true)
-         .onChange(v => { draft.showTimestamp = v; }),
+        t.setValue(cfg.showTimestamp ?? true)
+         .onChange(v => { cfg.showTimestamp = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Exclude folders')
       .setDesc('Comma-separated folder paths to exclude.')
       .addText(t =>
         t.setPlaceholder('e.g. Templates, Archive/old')
-         .setValue(draft.excludeFolders ?? '')
-         .onChange(v => { draft.excludeFolders = v; }),
-      );
-
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Save').setCta().onClick(() => {
-          this.onSave(draft as Record<string, unknown>);
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
+         .setValue(cfg.excludeFolders ?? '')
+         .onChange(v => { cfg.excludeFolders = v; }),
       );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

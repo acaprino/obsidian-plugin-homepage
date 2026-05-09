@@ -214,15 +214,15 @@ export class HomepageSettingTab extends PluginSettingTab {
 
   private renderDisplaySection(root: HTMLElement): void {
     new Setting(root)
-      .setName('Hide scrollbar')
-      .setDesc('Hide the scrollbar on the homepage. You can still scroll.')
+      .setName('Show scrollbar')
+      .setDesc('Show the scrollbar on the homepage. You can still scroll when hidden.')
       .addToggle(toggle =>
         toggle
-          .setValue(this.plugin.layout.hideScrollbar)
+          .setValue(this.plugin.layout.showScrollbar !== false)
           .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
+            void this.plugin.saveLayout({ ...this.plugin.layout, showScrollbar: value });
             for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              leaf.view.containerEl.toggleClass('homepage-no-scrollbar', value);
+              leaf.view.containerEl.toggleClass('homepage-no-scrollbar', !value);
             }
           }),
       );
@@ -260,7 +260,20 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Restore all blocks to the default layout. This can’t be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
-          await this.plugin.saveLayout(getDefaultLayout());
+          // Preserve the inactive-platform's blocks. Previously the reset
+          // wiped both desktop and mobile layouts, so a desktop-side reset
+          // silently emptied the user's mobile layout under
+          // responsiveMode === 'separate'.
+          const fresh = getDefaultLayout();
+          const next = this.plugin.layout.responsiveMode === 'separate'
+            ? {
+                ...fresh,
+                mobileBlocks: this.plugin.layout.mobileBlocks,
+                mobileColumns: this.plugin.layout.mobileColumns,
+                mobileLayoutPriority: this.plugin.layout.mobileLayoutPriority,
+              }
+            : fresh;
+          await this.plugin.saveLayout(next);
           await this.reloadOpenHomepages();
         })()),
       );

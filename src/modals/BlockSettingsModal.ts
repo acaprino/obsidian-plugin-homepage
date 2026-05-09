@@ -4,12 +4,11 @@ import { BlockRegistry } from '../BlockRegistry';
 import { BaseBlock, TITLE_SIZE_RE } from '../blocks/BaseBlock';
 import { applyBlockStyling, HEX_COLOR_RE } from '../utils/blockStyling';
 import { createEmojiPicker } from '../utils/emojiPicker';
-import { BLOCK_META } from '../blockMeta';
 
 /**
  * Tabbed settings modal shared by every block. Holds the generic `_`-prefixed card styling
- * controls (Header · Body · Card) plus a Content tab that delegates to the block's own
- * `openSettings` for type-specific options.
+ * controls (Header · Body · Card) plus a Content tab that renders each block's type-specific
+ * controls inline via `renderContentSettings`.
  */
 
 type BlockSettingsTab = 'header' | 'body' | 'card' | 'content';
@@ -30,7 +29,6 @@ export class BlockSettingsModal extends Modal {
   private draft: Record<string, unknown> = {};
   private accentDirty = false;
   private gradDirty = false;
-  private activeTab: BlockSettingsTab = 'header';
   private tabBodyEl: HTMLElement | null = null;
   private tabButtons: Map<BlockSettingsTab, HTMLElement> = new Map();
   private defaultTitle = '';
@@ -82,7 +80,7 @@ export class BlockSettingsModal extends Modal {
       previewHeader.className = 'block-header';
       const sz = typeof d._titleSize === 'string' && TITLE_SIZE_RE.test(d._titleSize) ? d._titleSize : '';
       if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.toggleClass('hp-hidden', d._hideTitle === true);
+      previewHeaderZone.toggleClass('hp-hidden', d._showTitle === false);
       previewDivider.toggleClass('hp-hidden', d._showDivider !== true);
       applyBlockStyling(previewCard, d);
     };
@@ -121,7 +119,6 @@ export class BlockSettingsModal extends Modal {
   }
 
   private switchTab(id: BlockSettingsTab): void {
-    this.activeTab = id;
     for (const [tabId, btn] of this.tabButtons) {
       btn.toggleClass('is-active', tabId === id);
       btn.setAttribute('aria-selected', String(tabId === id));
@@ -156,10 +153,10 @@ export class BlockSettingsModal extends Modal {
     });
 
     new Setting(body)
-      .setName('Hide title')
+      .setName('Show title')
       .addToggle(t =>
-        t.setValue(this.draft._hideTitle === true)
-         .onChange(v => { this.draft._hideTitle = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showTitle !== false)
+         .onChange(v => { this.draft._showTitle = v; this.refreshPreview(); }),
       );
 
     new Setting(body)
@@ -191,11 +188,11 @@ export class BlockSettingsModal extends Modal {
       );
 
     new Setting(body)
-      .setName('Hide header bar')
-      .setDesc('Remove the colored header accent while keeping the title text.')
+      .setName('Show header bar')
+      .setDesc('Show the colored header accent behind the title.')
       .addToggle(t =>
-        t.setValue(this.draft._hideHeaderAccent === true)
-         .onChange(v => { this.draft._hideHeaderAccent = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showHeaderAccent !== false)
+         .onChange(v => { this.draft._showHeaderAccent = v; this.refreshPreview(); }),
       );
   }
 
@@ -211,11 +208,11 @@ export class BlockSettingsModal extends Modal {
       );
 
     new Setting(body)
-      .setName('Hide background')
-      .setDesc('Remove the body background so the block blends into the page.')
+      .setName('Show background')
+      .setDesc('Show the body background. Turn off to let the block blend into the page.')
       .addToggle(t =>
-        t.setValue(this.draft._hideBackground === true)
-         .onChange(v => { this.draft._hideBackground = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showBackground !== false)
+         .onChange(v => { this.draft._showBackground = v; this.refreshPreview(); }),
       );
 
     new Setting(body)
@@ -343,11 +340,11 @@ export class BlockSettingsModal extends Modal {
     body.createDiv({ cls: 'hp-settings-subhead', text: 'Border' });
 
     new Setting(body)
-      .setName('Hide border')
-      .setDesc('Remove the border and hover highlight.')
+      .setName('Show border')
+      .setDesc('Show the border and hover highlight.')
       .addToggle(t =>
-        t.setValue(this.draft._hideBorder === true)
-         .onChange(v => { this.draft._hideBorder = v; this.refreshPreview(); }),
+        t.setValue(this.draft._showBorder !== false)
+         .onChange(v => { this.draft._showBorder = v; this.refreshPreview(); }),
       );
 
     new Setting(body)
@@ -397,30 +394,16 @@ export class BlockSettingsModal extends Modal {
   }
 
   private renderContentTab(body: HTMLElement): void {
-    const meta = BLOCK_META[this.instance.type];
-    const card = body.createDiv({ cls: 'hp-settings-content-cta' });
-    const iconEl = card.createDiv({ cls: 'hp-settings-content-icon' });
-    iconEl.setText(meta?.icon ?? '⚙');
-    const textWrap = card.createDiv({ cls: 'hp-settings-content-text' });
-    textWrap.createDiv({ cls: 'hp-settings-content-title', text: this.defaultTitle });
-    textWrap.createDiv({
-      cls: 'hp-settings-content-desc',
-      text: meta?.desc ?? 'Configure the content and behavior of this block.',
-    });
-
-    new Setting(body)
-      .addButton(btn =>
-        btn.setButtonText('Edit content settings →').setCta().onClick(() => {
-          this.block.openSettings((blockConfig) => {
-            // Preserve shared _-prefixed keys from the current draft
-            const shared = Object.fromEntries(
-              Object.entries(this.draft).filter(([k]) => k.startsWith('_')),
-            );
-            this.draft = { ...blockConfig, ...shared };
-            this.refreshPreview();
-          });
-        }),
-      );
+    // Block writes its controls directly into `body` and mutates `this.draft` in place.
+    // Shared `_`-prefixed keys coexist with block-specific keys in the same draft,
+    // so the outer Save button commits everything at once.
+    this.block.renderContentSettings(body, this.draft);
+    if (!body.children.length) {
+      body.createEl('p', {
+        cls: 'hp-settings-empty',
+        text: 'This block has no content settings.',
+      });
+    }
   }
 
   private commit(): void {

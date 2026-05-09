@@ -57,7 +57,7 @@ function parseAllowlistedCustomCss(input: string): Array<[string, string]> {
 
 export function applyBlockStyling(el: HTMLElement, config: Record<string, unknown>): void {
   // ── Custom CSS ─────────────────────────────────────────────────────
-  // `customCss` is a block-specific field owned by ButtonGridSettingsModal
+  // `customCss` is a block-specific field owned by ButtonGridBlock
   // (not a shared `_`-prefixed key). Only --hp-btn-* custom properties are
   // applied; anything else is rejected by parseAllowlistedCustomCss.
   // Declarations go through setProperty (not cssText) so caller-set inline
@@ -84,7 +84,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   const accentColor = typeof config._accentColor === 'string'
     && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : '';
   el.toggleClass('block-accented', !!accentColor);
-  el.toggleClass('block-no-header-accent', config._hideHeaderAccent === true);
+  el.toggleClass('block-no-header-accent', config._showHeaderAccent === false);
   if (accentColor) {
     el.style.setProperty('--block-accent', accentColor);
     // Only set --block-accent-pct when it differs from the CSS default (15%)
@@ -115,8 +115,8 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   }
 
   // ── Visibility flags ───────────────────────────────────────────────
-  el.toggleClass('block-no-border', config._hideBorder === true);
-  el.toggleClass('block-no-background', config._hideBackground === true);
+  el.toggleClass('block-no-border', config._showBorder === false);
+  el.toggleClass('block-no-background', config._showBackground === false);
 
   // ── Padding ────────────────────────────────────────────────────────
   const pad = typeof config._cardPadding === 'number'
@@ -165,7 +165,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
     && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : '';
   const gradAngle = typeof config._gradientAngle === 'number'
     ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
-  if (gradStart && gradEnd && config._hideBackground !== true) {
+  if (gradStart && gradEnd && config._showBackground !== false) {
     el.style.setProperty('--hp-bg-gradient', `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
     el.toggleClass('block-has-gradient', true);
   } else {

@@ -1,7 +1,15 @@
-import { App, MarkdownRenderer, Modal, Setting, setIcon } from 'obsidian';
+import { MarkdownRenderer, Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 export class StaticTextBlock extends BaseBlock {
+  /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
+  private inlineEditActive = false;
+
+  hasUnsavedInlineState(): boolean {
+    return this.inlineEditActive;
+  }
+
   render(el: HTMLElement): void {
     el.addClass('static-text-block');
     this.renderContent(el).catch(e => {
@@ -33,7 +41,7 @@ export class StaticTextBlock extends BaseBlock {
 
     const contentEl = el.createDiv({ cls: 'static-text-content' });
     if (heightMode !== 'fixed') {
-      contentEl.setAttribute('data-auto-height-content', '');
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
     if (!content) {
@@ -49,6 +57,7 @@ export class StaticTextBlock extends BaseBlock {
 
   private enterInlineEdit(el: HTMLElement): void {
     const currentContent = (this.instance.config.content as string) ?? '';
+    this.inlineEditActive = true;
 
     // Hide rendered content and pencil button
     const contentEl = el.querySelector('.static-text-content');
@@ -59,7 +68,7 @@ export class StaticTextBlock extends BaseBlock {
     // Create inline editor
     const editor = el.createDiv({ cls: 'static-text-inline-editor' });
     if ((this.instance.config.heightMode ?? 'auto') !== 'fixed') {
-      editor.setAttribute('data-auto-height-content', '');
+      editor.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
     const textarea = editor.createEl('textarea');
@@ -80,13 +89,10 @@ export class StaticTextBlock extends BaseBlock {
     setIcon(cancelBtn, 'x');
 
     const save = (): void => {
-      const active = this.plugin.activeBlocks();
-      const currentConfig = active.find(b => b.id === this.instance.id)?.config ?? this.instance.config;
-      const newConfig = { ...currentConfig, content: textarea.value };
-      const newBlocks = active.map(b =>
-        b.id === this.instance.id ? { ...b, config: newConfig } : b,
-      );
-      void this.plugin.saveActiveBlocks(newBlocks);
+      this.inlineEditActive = false;
+      // updateBlockConfig waits for in-flight saves so a rapid drag+pencil-save
+      // doesn't lose either change.
+      void this.plugin.updateBlockConfig(this.instance.id, { content: textarea.value });
       // Re-render from the updated layout — do NOT reassign this.instance directly
       this.renderContent(el)
         .then(() => this.requestAutoHeight())
@@ -94,6 +100,7 @@ export class StaticTextBlock extends BaseBlock {
     };
 
     const cancel = (): void => {
+      this.inlineEditActive = false;
       this.renderContent(el).catch(() => { /* handled in render */ });
     };
 
@@ -112,28 +119,8 @@ export class StaticTextBlock extends BaseBlock {
     textarea.focus();
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new StaticTextSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class StaticTextSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Static text settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
-    new Setting(contentEl)
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    new Setting(body)
       .setName('Height')
       .setDesc('Auto: expands to fit content. Fixed: uses grid cell height with scrollbar.')
       .addDropdown(d =>
@@ -143,19 +130,10 @@ class StaticTextSettingsModal extends Modal {
          .onChange(v => { draft.heightMode = v; }),
       );
 
-    new Setting(contentEl).setName('Content').setDesc('Supports Markdown.');
-    const textarea = contentEl.createEl('textarea', { cls: 'static-text-settings-textarea' });
+    new Setting(body).setName('Content').setDesc('Supports Markdown.');
+    const textarea = body.createEl('textarea', { cls: 'static-text-settings-textarea' });
     textarea.value = draft.content as string ?? '';
     textarea.rows = 10;
     textarea.addEventListener('input', () => { draft.content = textarea.value; });
-
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

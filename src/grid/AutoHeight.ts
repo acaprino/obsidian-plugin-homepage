@@ -4,6 +4,15 @@ import { Scheduler } from '../utils/Scheduler';
 import { Phase } from './phase';
 
 /**
+ * Marker attribute for the in-block element whose offsetHeight should drive
+ * GridStack row count. Blocks that opt into auto-height set this on a single
+ * descendant; AutoHeightManager queries by this attribute. Exporting the
+ * constant prevents a typo on either side from silently disabling auto-height
+ * (the querySelector would just return null and the manager would no-op).
+ */
+export const AUTO_HEIGHT_ATTR = 'data-auto-height-content';
+
+/**
  * The subset of GridLayout state that AutoHeightManager needs. GridLayout holds the
  * real state and the helper borrows it via this narrow view — this keeps the helper
  * testable in isolation and prevents it from reaching into unrelated grid internals.
@@ -95,7 +104,7 @@ export class AutoHeightManager {
     const { gridStack } = this.host;
     if (!gridStack || !gsEl.isConnected) return false;
 
-    const contentEl = gsEl.querySelector<HTMLElement>('[data-auto-height-content]');
+    const contentEl = gsEl.querySelector<HTMLElement>(`[${AUTO_HEIGHT_ATTR}]`);
     const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
     if (!contentEl || !headerZone) return false;
 
@@ -132,7 +141,11 @@ export class AutoHeightManager {
     const divider = wrapper?.querySelector('.block-header-divider');
     const gapCount = divider ? 2 : 1;
     const margin = typeof gridStack.opts.margin === 'number' ? gridStack.opts.margin : 8;
-    const totalH = headerH + pad + contentH + (gap * gapCount) + margin * 2;
+    // 4px safety buffer absorbs sub-pixel rounding and late-reflow growth so
+    // `.block-content > *` (overflow: hidden) never crops the last row by a
+    // hair -- seen with the button-grid's 5th implicit row.
+    const SAFETY_BUFFER = 4;
+    const totalH = headerH + pad + contentH + (gap * gapCount) + margin * 2 + SAFETY_BUFFER;
     const cell = gridStack.getCellHeight();
     const rows = Math.max(1, Math.ceil(totalH / cell));
 

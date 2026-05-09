@@ -1,5 +1,6 @@
 import { MarkdownRenderer, Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 export class StaticTextBlock extends BaseBlock {
   /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
@@ -40,7 +41,7 @@ export class StaticTextBlock extends BaseBlock {
 
     const contentEl = el.createDiv({ cls: 'static-text-content' });
     if (heightMode !== 'fixed') {
-      contentEl.setAttribute('data-auto-height-content', '');
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
     if (!content) {
@@ -67,7 +68,7 @@ export class StaticTextBlock extends BaseBlock {
     // Create inline editor
     const editor = el.createDiv({ cls: 'static-text-inline-editor' });
     if ((this.instance.config.heightMode ?? 'auto') !== 'fixed') {
-      editor.setAttribute('data-auto-height-content', '');
+      editor.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
     const textarea = editor.createEl('textarea');

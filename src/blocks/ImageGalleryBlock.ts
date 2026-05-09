@@ -3,6 +3,7 @@ import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
 import { imageCache } from '../utils/imageCache';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -226,7 +227,7 @@ export class ImageGalleryBlock extends BaseBlock {
       gallery.addClass('image-gallery--fixed-height');
     } else {
       // Mark for natural-height measurement after images load
-      gallery.setAttribute('data-auto-height-content', '');
+      gallery.setAttribute(AUTO_HEIGHT_ATTR, '');
       // Width observer is started after images load (see below) to avoid
       // measuring before content is laid out.
     }

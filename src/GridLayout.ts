@@ -133,6 +133,13 @@ export class GridLayout {
   }
 
   setEditMode(enabled: boolean, skipRepack = false): void {
+    if (this.phase === Phase.Destroyed) return;
+    // If a drag was in-flight when this fires, dragstop won't get a chance to
+    // run (the grid is about to be torn down). Flush its current GridStack
+    // positions to the layout NOW so we don't lose the user's in-progress edit.
+    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+      try { this.persistLayout(); } catch { /* non-fatal */ }
+    }
     if (!enabled && this.editMode && !skipRepack) {
       // Repack y-positions: compact edit heights create y offsets that
       // would overlap blocks at full view-mode heights.
@@ -163,6 +170,14 @@ export class GridLayout {
 
   /** Update column count, clamping each block's w to fit. */
   setColumns(n: number): void {
+    if (this.phase === Phase.Destroyed) return;
+    // Flush any in-flight drag before tearing down the grid for the column
+    // change. Without this, switching columns while the user is mid-drag
+    // silently discards the dragged position (the rerender destroys the
+    // GridStack instance before its dragstop event has fired).
+    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+      try { this.persistLayout(); } catch { /* non-fatal */ }
+    }
     const newBlocks = this.plugin.activeBlocks().map(b => ({
       ...b,
       w: Math.min(b.w, n),
@@ -198,6 +213,7 @@ export class GridLayout {
   }
 
   addBlock(instance: BlockInstance): void {
+    if (this.phase === Phase.Destroyed) return;
     const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
     const positioned = { ...instance, y: maxY };
     const newBlocks = [...this.plugin.activeBlocks(), positioned];
@@ -209,6 +225,13 @@ export class GridLayout {
   // ── Rendering ──────────────────────────────────────────────────────────
 
   private rerender(): void {
+    // Suppress the rerender if any block has unsaved UI state (e.g.,
+    // StaticTextBlock's inline pencil-icon editor is open). Without this guard,
+    // a settings save on a sibling block calls rerender() which empties the
+    // gridEl mid-typing, destroying the user's textarea content.
+    for (const { block } of this.blocks.values()) {
+      if (block?.hasUnsavedInlineState()) return;
+    }
     this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
   }
 
@@ -324,10 +347,17 @@ export class GridLayout {
         block.setHeaderContainer(headerZone);
         block.load();
         const needsResize = this.shouldAutoHeight(instance);
-        // Listen for auto-height requests from block re-renders (via scheduleRender)
+        // Listen for auto-height requests from block re-renders (via scheduleRender).
+        // Re-resolve the live block on every fire instead of trusting the
+        // render-time `instance` closure -- otherwise a settings change that
+        // toggled heightMode without a teardown would still treat the block as
+        // auto-height because the listener was wired with the old config.
         if (needsResize) {
+          const blockId = instance.id;
           gsEl.addEventListener('request-auto-height', () => {
-            this.requestAutoHeight(gsEl, instance);
+            const live = this.plugin.activeBlocks().find(b => b.id === blockId);
+            if (!live || !this.shouldAutoHeight(live)) return;
+            this.requestAutoHeight(gsEl, live);
           });
         }
         // Skeleton overlay: show shimmer placeholder during initial load
@@ -896,11 +926,26 @@ export class GridLayout {
     removeBtn.setAttribute('aria-label', 'Remove block');
     removeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      new RemoveBlockConfirmModal(this.app, () => {
+      // Coalesce rapid clicks: while the confirm modal is up, ignore extra
+      // clicks. Without this guard, double-clicking the X button could open
+      // two confirm modals racing the same removeWidget+compact pair.
+      if (removeBtn.hasAttribute('data-remove-pending')) return;
+      removeBtn.setAttribute('data-remove-pending', '1');
+      const modal = new RemoveBlockConfirmModal(this.app, () => {
+        removeBtn.removeAttribute('data-remove-pending');
+        // Wrap the removeWidget + compact pair in batchUpdate so GridStack
+        // commits both operations atomically. Without this, a second remove
+        // arriving before the compact's reflow settled would read mid-state
+        // positions for posMap.
         const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
         if (gsItem instanceof HTMLElement && this.gridStack) {
-          this.gridStack.removeWidget(gsItem);
-          this.gridStack.compact();
+          this.gridStack.batchUpdate();
+          try {
+            this.gridStack.removeWidget(gsItem);
+            this.gridStack.compact();
+          } finally {
+            this.gridStack.batchUpdate(false);
+          }
         }
         const entry = this.blocks.get(instance.id);
         if (entry) {
@@ -934,7 +979,15 @@ export class GridLayout {
           return { ...b, ...update };
         });
         this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-      }).open();
+      });
+      // Clear the pending flag on cancel/close as well, otherwise a user who
+      // clicks X then dismisses can never click X again.
+      const originalOnClose = modal.onClose.bind(modal);
+      modal.onClose = () => {
+        removeBtn.removeAttribute('data-remove-pending');
+        originalOnClose();
+      };
+      modal.open();
     });
 
     // Insert handle bar before header zone

@@ -2,6 +2,13 @@ import { MarkdownRenderer, Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 export class StaticTextBlock extends BaseBlock {
+  /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
+  private inlineEditActive = false;
+
+  hasUnsavedInlineState(): boolean {
+    return this.inlineEditActive;
+  }
+
   render(el: HTMLElement): void {
     el.addClass('static-text-block');
     this.renderContent(el).catch(e => {
@@ -49,6 +56,7 @@ export class StaticTextBlock extends BaseBlock {
 
   private enterInlineEdit(el: HTMLElement): void {
     const currentContent = (this.instance.config.content as string) ?? '';
+    this.inlineEditActive = true;
 
     // Hide rendered content and pencil button
     const contentEl = el.querySelector('.static-text-content');
@@ -80,13 +88,10 @@ export class StaticTextBlock extends BaseBlock {
     setIcon(cancelBtn, 'x');
 
     const save = (): void => {
-      const active = this.plugin.activeBlocks();
-      const currentConfig = active.find(b => b.id === this.instance.id)?.config ?? this.instance.config;
-      const newConfig = { ...currentConfig, content: textarea.value };
-      const newBlocks = active.map(b =>
-        b.id === this.instance.id ? { ...b, config: newConfig } : b,
-      );
-      void this.plugin.saveActiveBlocks(newBlocks);
+      this.inlineEditActive = false;
+      // updateBlockConfig waits for in-flight saves so a rapid drag+pencil-save
+      // doesn't lose either change.
+      void this.plugin.updateBlockConfig(this.instance.id, { content: textarea.value });
       // Re-render from the updated layout — do NOT reassign this.instance directly
       this.renderContent(el)
         .then(() => this.requestAutoHeight())
@@ -94,6 +99,7 @@ export class StaticTextBlock extends BaseBlock {
     };
 
     const cancel = (): void => {
+      this.inlineEditActive = false;
       this.renderContent(el).catch(() => { /* handled in render */ });
     };
 

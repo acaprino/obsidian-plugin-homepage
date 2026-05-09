@@ -141,9 +141,24 @@ export class EditToolbar {
     this.grid.onRequestAddBlock = () => { this.openAddBlockModal(); };
   }
 
+  /**
+   * Tracked so EditToolbar.destroy() can close it. A leftover modal would
+   * otherwise hold a closure over `this.grid` -- when the homepage view
+   * gets reloaded mid-pick (e.g., user changes a setting in another tab),
+   * the user's selection lands on a destroyed grid instance. Silent failure.
+   */
+  private openModal: AddBlockModal | null = null;
+
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal(): void {
-    new AddBlockModal(this.app, (type) => {
+    // Replace any previously-open modal so the closure always points at the
+    // current grid.
+    this.openModal?.close();
+    const modal = new AddBlockModal(this.app, (type) => {
+      // Defensive: don't add to a grid that's been destroyed since the modal
+      // opened (e.g., the user changed showScrollbar in another tab while the
+      // picker was up, triggering a full view reload).
+      if (this.openModal !== modal) return;
       const factory = BlockRegistry.get(type);
       if (!factory) return;
 
@@ -160,7 +175,14 @@ export class EditToolbar {
       };
 
       this.grid.addBlock(instance);
-    }).open();
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      if (this.openModal === modal) this.openModal = null;
+      originalOnClose();
+    };
+    this.openModal = modal;
+    modal.open();
   }
 
   private formatZoom(scale: number): string {
@@ -176,6 +198,10 @@ export class EditToolbar {
   }
 
   destroy(): void {
+    // Close any open Add Block modal so its callback can't fire against this
+    // toolbar's about-to-be-destroyed grid reference.
+    this.openModal?.close();
+    this.openModal = null;
     this.grid.onRequestAddBlock = null;
     this.fabEl.remove();
     this.toolbarEl.remove();

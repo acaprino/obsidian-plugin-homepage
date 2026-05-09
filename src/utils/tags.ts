@@ -32,6 +32,10 @@ let listenersInstalled = false;
  * to call from both onload and unit tests.
  */
 export function installTagCacheListeners(plugin: Plugin): void {
+  // Always start cold. Without this, a plugin disable+enable cycle would re-use
+  // entries computed against the prior session's vault state -- subtly stale
+  // RandomNote / QuotesList results until the first vault event invalidates.
+  tagCache.clear();
   if (listenersInstalled) return;
   listenersInstalled = true;
   plugin.register(() => {

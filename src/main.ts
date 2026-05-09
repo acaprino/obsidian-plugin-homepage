@@ -306,7 +306,16 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     installTagCacheListeners(this);
 
     const raw = await this.loadData() as unknown;
-    const validated = validateLayout(raw);
+    const validated = validateLayout(raw, (badRaw) => {
+      // data.json existed but its top-level shape is unusable (string from a
+      // sync conflict marker, array from a schema mistake, etc.). Stash a copy
+      // alongside the plugin's data folder so the user can recover by hand
+      // instead of silently losing every block + every persisted setting.
+      void this.stashCorruptedData(badRaw).catch((err) => {
+        console.error('[Homepage Blocks] Failed to stash corrupted data.json', err instanceof Error ? err.message : 'unknown error');
+      });
+      new Notice('Homepage blocks: data.json was unreadable and has been backed up. Layout has been reset to defaults.', 12_000);
+    });
     // At-rest apiKey values are encrypted (AES-GCM, non-extractable device key in
     // IndexedDB). Decrypt on load so blocks see plaintext; encrypt again on save.
     const decryptResult = await decryptApiKeys(validated);
@@ -401,6 +410,30 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // a re-enable on the same device decrypts existing ciphertext, but we don't
     // hold a stale reference into a possibly-wiped database across reloads.
     _resetDeviceKeyCache();
+  }
+
+  /**
+   * Write a copy of corrupted data.json content to a sibling file so the user
+   * can manually recover. Only invoked from validateLayout's corruption hook;
+   * silent in normal flow. Uses a single fixed sibling name (no timestamp) to
+   * avoid accumulating files when data.json corrupts repeatedly -- the most
+   * recent bad copy is the one the user typically wants.
+   */
+  private async stashCorruptedData(badRaw: unknown): Promise<void> {
+    const dir = this.manifest.dir;
+    if (!dir) return;
+    let serialized: string;
+    if (typeof badRaw === 'string') {
+      serialized = badRaw;
+    } else {
+      try {
+        serialized = JSON.stringify(badRaw, null, 2);
+      } catch {
+        serialized = String(badRaw);
+      }
+    }
+    const target = `${dir}/data.json.invalid`;
+    await this.app.vault.adapter.write(target, serialized);
   }
 
   // ── Platform-aware layout helpers ─────────────────────────────────

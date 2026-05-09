@@ -239,10 +239,23 @@ export function validateBlocks(raw: unknown, columns: number, defaults: BlockIns
  * Contract: `validateLayout(validateLayout(x))` must deep-equal `validateLayout(x)`
  * (idempotence) — the plugin re-persists the validated layout on every load, and an
  * accreting implementation would corrupt `data.json` on every reload.
+ *
+ * `onTopLevelCorruption` fires when raw exists but isn't a usable object (e.g.,
+ * data.json is a string from a sync conflict, or an array from a schema mistake).
+ * This signals "the user had a layout, but we can't read it" — distinct from "no
+ * layout exists yet" (raw == null on first install). Callers can use the hook to
+ * stash a backup before defaults wipe the slot.
  */
-export function validateLayout(raw: unknown): LayoutConfig {
+export function validateLayout(
+  raw: unknown,
+  onTopLevelCorruption?: (raw: unknown) => void,
+): LayoutConfig {
   const defaults = getDefaultLayout();
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+  if (raw === null || raw === undefined) return defaults;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    onTopLevelCorruption?.(raw);
+    return defaults;
+  }
 
   const r = raw as Record<string, unknown>;
   const columns = typeof r.columns === 'number' && [2, 3, 4, 5].includes(r.columns)

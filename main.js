@@ -28,9 +28,6 @@ var import_obsidian27 = require("obsidian");
 // src/HomepageView.ts
 var import_obsidian6 = require("obsidian");
 
-// src/GridLayout.ts
-var import_obsidian4 = require("obsidian");
-
 // node_modules/gridstack/dist/utils.js
 var Utils = class _Utils {
   /**
@@ -5792,13 +5789,6 @@ function applyBlockStyling(el, config) {
   else el.style.removeProperty("--hp-border-style");
 }
 
-// src/utils/ids.ts
-function newId() {
-  const g = globalThis;
-  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
-  return "hp-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
 // src/utils/Scheduler.ts
 var Scheduler = class {
   timers = /* @__PURE__ */ new Map();
@@ -5851,6 +5841,7 @@ var Phase = {
 };
 
 // src/grid/AutoHeight.ts
+var AUTO_HEIGHT_ATTR = "data-auto-height-content";
 var AutoHeightManager = class {
   /**
    * `host` is kept as a live reference — AutoHeightManager re-reads `phase`, `gridStack`
@@ -5901,7 +5892,7 @@ var AutoHeightManager = class {
   measureAndResize(gsEl, instance) {
     const { gridStack } = this.host;
     if (!gridStack || !gsEl.isConnected) return false;
-    const contentEl = gsEl.querySelector("[data-auto-height-content]");
+    const contentEl = gsEl.querySelector(`[${AUTO_HEIGHT_ATTR}]`);
     const headerZone = gsEl.querySelector(".block-header-zone");
     if (!contentEl || !headerZone) return false;
     const blockContent = gsEl.querySelector(".block-content");
@@ -6050,6 +6041,141 @@ var ResponsiveColumnsManager = class {
   }
 };
 
+// src/grid/LayoutPersister.ts
+var LayoutPersister = class {
+  constructor(host) {
+    this.host = host;
+  }
+  /** Read positions from GridStack, diff against the persisted layout, write if changed. */
+  persist() {
+    const { gridStack, phase, plugin, effectiveColumns, canonicalColumns } = this.host;
+    if (!gridStack || phase !== Phase.Ready) return;
+    const isResponsive = effectiveColumns !== canonicalColumns;
+    if (isResponsive && plugin.activeBlocks().every((b) => this.host.shouldAutoHeight(b))) {
+      return;
+    }
+    const nodes = gridStack.getGridItems();
+    const posMap = /* @__PURE__ */ new Map();
+    for (const el of nodes) {
+      const node = el.gridstackNode;
+      const id = el.getAttribute("gs-id");
+      if (id && node) {
+        const w = Math.min(node.w ?? 1, effectiveColumns);
+        posMap.set(id, {
+          x: Math.min(node.x ?? 0, Math.max(0, effectiveColumns - w)),
+          y: node.y ?? 0,
+          w,
+          h: node.h ?? 1
+        });
+      }
+    }
+    const changed = plugin.activeBlocks().some((b) => {
+      const pos = posMap.get(b.id);
+      if (!pos) return false;
+      const isAuto = this.host.shouldAutoHeight(b);
+      if (isResponsive) return !isAuto && b.h !== pos.h;
+      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
+      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
+    });
+    if (!changed) return;
+    const newBlocks = plugin.activeBlocks().map((b) => {
+      const pos = posMap.get(b.id);
+      if (!pos) return b;
+      const isAuto = this.host.shouldAutoHeight(b);
+      if (isResponsive) {
+        return isAuto ? b : { ...b, h: pos.h };
+      }
+      const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+      return { ...b, ...update };
+    });
+    this.host.emitLayout(this.host.buildLayoutUpdate(newBlocks));
+  }
+  /**
+   * Debounced persist — coalesces rapid auto-height resize saves into one
+   * write. The 50ms window is short enough not to feel laggy on Save buttons,
+   * long enough to coalesce a 60fps ResizeObserver storm into a single save.
+   */
+  persistDebounced() {
+    this.host.scheduler.timeout("sync", 50, () => {
+      if (this.host.phase !== Phase.Destroyed) this.persist();
+    });
+  }
+  /** True when the grid is showing a responsive (narrowed) layout. */
+  isResponsive() {
+    return this.host.effectiveColumns !== this.host.canonicalColumns;
+  }
+  /**
+   * Repack all GridStack nodes so blocks shift up to fill vertical gaps left
+   * by auto-height shrinks. Called from AutoHeightManager.runBatch after any
+   * measurement changes a row count.
+   */
+  repackGridNodes(packRows) {
+    const { gridStack, plugin, effectiveColumns } = this.host;
+    if (!gridStack) return;
+    const nodeItems = [];
+    for (const gsEl of gridStack.getGridItems()) {
+      const node = gsEl.gridstackNode;
+      if (!node) continue;
+      nodeItems.push({ el: gsEl, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+    }
+    packRows(nodeItems, effectiveColumns, plugin.activeLayoutPriority());
+    gridStack.batchUpdate();
+    for (const item of nodeItems) {
+      gridStack.update(item.el, { y: item.y });
+    }
+    gridStack.batchUpdate(false);
+  }
+};
+
+// src/grid/CollapseToggle.ts
+function attachCollapseToggle(host, gsEl, instance, headerZone) {
+  const wrapper = gsEl.querySelector(".homepage-block-wrapper");
+  const chevron = headerZone.querySelector(".block-collapse-chevron");
+  if (!wrapper) return;
+  const toggleCollapse = (e) => {
+    e.stopPropagation();
+    if (host.editMode) return;
+    const isNowCollapsed = !wrapper.hasClass("block-collapsed");
+    wrapper.toggleClass("block-collapsed", isNowCollapsed);
+    chevron?.toggleClass("is-collapsed", isNowCollapsed);
+    headerZone.setAttribute("aria-expanded", String(!isNowCollapsed));
+    const gsNode = gsEl.gridstackNode;
+    let newBlocks;
+    if (isNowCollapsed) {
+      const liveH = gsNode?.h ?? instance.h;
+      if (host.gridStack) host.gridStack.update(gsEl, { h: 1 });
+      newBlocks = host.plugin.activeBlocks().map(
+        (b) => b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b
+      );
+    } else {
+      const currentBlock = host.plugin.activeBlocks().find((b) => b.id === instance.id);
+      const origH = currentBlock?._expandedH ?? instance.h;
+      if (host.gridStack) host.gridStack.update(gsEl, { h: origH });
+      newBlocks = host.plugin.activeBlocks().map(
+        (b) => b.id === instance.id ? { ...b, collapsed: false, h: origH } : b
+      );
+    }
+    void host.plugin.saveLayout(host.buildLayoutUpdate(newBlocks));
+  };
+  headerZone.addEventListener("click", toggleCollapse);
+  headerZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleCollapse(e);
+    }
+  });
+}
+
+// src/grid/EditHandleBar.ts
+var import_obsidian4 = require("obsidian");
+
+// src/utils/ids.ts
+function newId() {
+  const g = globalThis;
+  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
+  return "hp-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
 // src/modals/BlockSettingsModal.ts
 var import_obsidian2 = require("obsidian");
 
@@ -6074,6 +6200,15 @@ var BaseBlock = class extends import_obsidian.Component {
   // Mutate `draft` in place — the outer BlockSettingsModal owns commit/cancel.
   // Default: no content settings.
   renderContentSettings(_body, _draft) {
+  }
+  /**
+   * Subclasses can override to declare that the block currently holds unsaved
+   * UI state that a full rerender would destroy (e.g., StaticTextBlock's inline
+   * editor, VaultSearchBlock's typed query). GridLayout.rerender consults this
+   * and skips the rerender when any block returns true. Default: no unsaved state.
+   */
+  hasUnsavedInlineState() {
+    return false;
   }
   // Called by GridLayout to redirect renderHeader output outside block-content.
   setHeaderContainer(el) {
@@ -6608,6 +6743,12 @@ function createEmojiPicker(opts) {
     outsideClickAc = null;
   };
   const destroy = () => {
+    if (searchTimer) {
+      clearTimeout(searchTimer);
+      searchTimer = null;
+    }
+    outsideClickAc?.abort();
+    outsideClickAc = null;
     row.remove();
     panel.remove();
   };
@@ -6644,7 +6785,6 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
   draft = {};
   accentDirty = false;
   gradDirty = false;
-  activeTab = "header";
   tabBodyEl = null;
   tabButtons = /* @__PURE__ */ new Map();
   defaultTitle = "";
@@ -6713,7 +6853,6 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     this.switchTab("header");
   }
   switchTab(id) {
-    this.activeTab = id;
     for (const [tabId, btn] of this.tabButtons) {
       btn.toggleClass("is-active", tabId === id);
       btn.setAttribute("aria-selected", String(tabId === id));
@@ -6978,9 +7117,170 @@ var RemoveBlockConfirmModal = class extends import_obsidian3.Modal {
   }
 };
 
+// src/grid/EditHandleBar.ts
+function attachEditHandleBar(host, wrapper, instance) {
+  const bar = wrapper.createDiv({ cls: "block-handle-bar" });
+  const handle = bar.createDiv({ cls: "block-move-handle" });
+  (0, import_obsidian4.setIcon)(handle, "grip-vertical");
+  handle.setAttribute("aria-label", "Drag to reorder");
+  handle.setAttribute("title", "Drag to reorder");
+  const moveUpBtn = bar.createEl("button", { cls: "block-move-up-btn" });
+  (0, import_obsidian4.setIcon)(moveUpBtn, "chevron-up");
+  moveUpBtn.setAttribute("aria-label", "Move block up");
+  moveUpBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    swapWithNeighbor(host, instance, "up");
+  });
+  const moveDownBtn = bar.createEl("button", { cls: "block-move-down-btn" });
+  (0, import_obsidian4.setIcon)(moveDownBtn, "chevron-down");
+  moveDownBtn.setAttribute("aria-label", "Move block down");
+  moveDownBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    swapWithNeighbor(host, instance, "down");
+  });
+  const dupBtn = bar.createEl("button", { cls: "block-duplicate-btn" });
+  (0, import_obsidian4.setIcon)(dupBtn, "copy");
+  dupBtn.setAttribute("aria-label", "Duplicate block");
+  dupBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const current = host.plugin.activeBlocks().find((b) => b.id === instance.id);
+    if (!current) return;
+    const clone = {
+      ...structuredClone(current),
+      id: newId(),
+      y: current.y + current.h
+    };
+    const newBlocks = [...host.plugin.activeBlocks(), clone];
+    host.setLastAddedBlockId(clone.id);
+    host.emitLayout(host.buildLayoutUpdate(newBlocks));
+    host.triggerRerender();
+  });
+  const settingsBtn = bar.createEl("button", { cls: "block-settings-btn" });
+  (0, import_obsidian4.setIcon)(settingsBtn, "settings");
+  settingsBtn.setAttribute("aria-label", "Block settings");
+  settingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const entry = host.blocks.get(instance.id);
+    if (!entry) return;
+    const onSave = (config) => {
+      const newBlocks = host.plugin.activeBlocks().map(
+        (b) => b.id === instance.id ? { ...b, config } : b
+      );
+      host.emitLayout(host.buildLayoutUpdate(newBlocks));
+      host.triggerRerender();
+    };
+    let tempBlock = null;
+    const block = entry.block ?? (() => {
+      const factory = BlockRegistry.get(instance.type);
+      if (!factory) return null;
+      tempBlock = factory.create(host.app, instance, host.plugin);
+      return tempBlock;
+    })();
+    if (!block) return;
+    const teardownTempBlock = () => {
+      if (tempBlock) {
+        tempBlock.unload();
+        tempBlock = null;
+      }
+    };
+    const modal = new BlockSettingsModal(host.app, instance, block, (config) => {
+      teardownTempBlock();
+      onSave(config);
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      teardownTempBlock();
+      originalOnClose();
+    };
+    modal.open();
+  });
+  const removeBtn = bar.createEl("button", { cls: "block-remove-btn" });
+  (0, import_obsidian4.setIcon)(removeBtn, "x");
+  removeBtn.setAttribute("aria-label", "Remove block");
+  removeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (removeBtn.hasAttribute("data-remove-pending")) return;
+    removeBtn.setAttribute("data-remove-pending", "1");
+    const modal = new RemoveBlockConfirmModal(host.app, () => {
+      removeBtn.removeAttribute("data-remove-pending");
+      const gsItem = host.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
+      if (gsItem instanceof HTMLElement && host.gridStack) {
+        host.gridStack.batchUpdate();
+        try {
+          host.gridStack.removeWidget(gsItem);
+          host.gridStack.compact();
+        } finally {
+          host.gridStack.batchUpdate(false);
+        }
+      }
+      const entry = host.blocks.get(instance.id);
+      if (entry) {
+        entry.block?.unload();
+        host.blocks.delete(instance.id);
+      }
+      const remaining = host.plugin.activeBlocks().filter((b) => b.id !== instance.id);
+      if (remaining.length === 0) {
+        host.emitLayout(host.buildLayoutUpdate([]));
+        host.triggerRerender();
+        return;
+      }
+      if (!host.gridStack) {
+        host.emitLayout(host.buildLayoutUpdate(remaining));
+        return;
+      }
+      const posMap = /* @__PURE__ */ new Map();
+      for (const el of host.gridStack.getGridItems()) {
+        const node = el.gridstackNode;
+        const id = el.getAttribute("gs-id");
+        if (id && node) {
+          posMap.set(id, { x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+        }
+      }
+      const newBlocks = remaining.map((b) => {
+        const pos = posMap.get(b.id);
+        if (!pos) return b;
+        const isAuto = host.shouldAutoHeight(b);
+        const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+        return { ...b, ...update };
+      });
+      host.emitLayout(host.buildLayoutUpdate(newBlocks));
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      removeBtn.removeAttribute("data-remove-pending");
+      originalOnClose();
+    };
+    modal.open();
+  });
+  const headerZone = wrapper.querySelector(".block-header-zone");
+  if (headerZone) {
+    wrapper.insertBefore(bar, headerZone);
+  }
+}
+function swapWithNeighbor(host, instance, direction) {
+  const blocks = host.plugin.activeBlocks();
+  const current = blocks.find((b) => b.id === instance.id);
+  if (!current) return;
+  const columns = host.plugin.activeColumns();
+  const neighbor = blocks.filter((b) => b.id !== instance.id && (direction === "up" ? b.y < current.y || b.y === current.y && b.x < current.x : b.y > current.y || b.y === current.y && b.x > current.x)).sort(
+    (a, b) => direction === "up" ? b.y - a.y || b.x - a.x : a.y - b.y || a.x - b.x
+  )[0];
+  if (!neighbor) return;
+  const newBlocks = blocks.map((b) => {
+    if (b.id === current.id) {
+      return { ...b, x: Math.min(neighbor.x, Math.max(0, columns - current.w)), y: neighbor.y };
+    }
+    if (b.id === neighbor.id) {
+      return { ...b, x: Math.min(current.x, Math.max(0, columns - neighbor.w)), y: current.y };
+    }
+    return b;
+  });
+  host.emitLayout(host.buildLayoutUpdate(newBlocks));
+  host.triggerRerender();
+}
+
 // src/GridLayout.ts
 var COMPACT_EDIT_H = 2;
-var APPEND_AT_BOTTOM = 1e3;
 var GridLayout = class _GridLayout {
   // ── Public API ─────────────────────────────────────────────────────────
   constructor(containerEl, app, plugin, onLayoutChange) {
@@ -6988,9 +7288,10 @@ var GridLayout = class _GridLayout {
     this.plugin = plugin;
     this.onLayoutChange = onLayoutChange;
     this.gridEl = containerEl.createDiv({ cls: "homepage-grid grid-stack" });
-    this.effectiveColumns = plugin.layout.columns;
+    this.effectiveColumns = plugin.activeColumns();
     this.autoHeight = new AutoHeightManager(this);
     this.responsiveColumns = new ResponsiveColumnsManager(this);
+    this.persister = new LayoutPersister(this);
   }
   // NOTE: several fields below are intentionally non-private (package-visible). AutoHeightManager
   // and ResponsiveColumnsManager access them through their narrow Host interfaces (declared in
@@ -6998,6 +7299,9 @@ var GridLayout = class _GridLayout {
   /** The grid DOM element owned by this layout. Used by ResponsiveColumnsManager for flex reordering. */
   gridEl;
   gridStack = null;
+  // Package-visible to satisfy EditHandleBarHost without leaking ownership;
+  // the host interface declares the same Map shape and only the EditHandleBar
+  // touches it externally.
   blocks = /* @__PURE__ */ new Map();
   scheduler = new Scheduler();
   editMode = false;
@@ -7010,6 +7314,28 @@ var GridLayout = class _GridLayout {
   lastAddedBlockId = null;
   autoHeight;
   responsiveColumns;
+  persister;
+  /**
+   * Conform GridLayout to LayoutPersisterHost / EditHandleBarHost. The
+   * interfaces require an `emitLayout(layout)` adapter because `onLayoutChange`
+   * is private to GridLayout (callers shouldn't bypass GridLayout to write the
+   * layout).
+   */
+  emitLayout(layout) {
+    this.onLayoutChange(layout);
+  }
+  /**
+   * Public wrapper around the private rerender for EditHandleBarHost. Kept
+   * separate from the private path so the host method's name is descriptive
+   * outside the class.
+   */
+  triggerRerender() {
+    this.rerender();
+  }
+  /** Public setter for the lastAddedBlockId so EditHandleBar can mark a duplicate. */
+  setLastAddedBlockId(id) {
+    this.lastAddedBlockId = id;
+  }
   /**
    * Clear any queued auto-height measurements. Called by ResponsiveColumnsManager
    * before a column change so stale measurements against the old column count are discarded.
@@ -7070,6 +7396,13 @@ var GridLayout = class _GridLayout {
     this.gridEl.remove();
   }
   setEditMode(enabled, skipRepack = false) {
+    if (this.phase === Phase.Destroyed) return;
+    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+      try {
+        this.persistLayout();
+      } catch {
+      }
+    }
     if (!enabled && this.editMode && !skipRepack) {
       const repacked = _GridLayout.repackEditLayout(
         this.plugin.activeBlocks(),
@@ -7092,6 +7425,13 @@ var GridLayout = class _GridLayout {
   }
   /** Update column count, clamping each block's w to fit. */
   setColumns(n) {
+    if (this.phase === Phase.Destroyed) return;
+    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+      try {
+        this.persistLayout();
+      } catch {
+      }
+    }
     const newBlocks = this.plugin.activeBlocks().map((b) => ({
       ...b,
       w: Math.min(b.w, n)
@@ -7123,6 +7463,7 @@ var GridLayout = class _GridLayout {
     return Math.max(0.75, Math.min(1, Math.round(scale * 20) / 20));
   }
   addBlock(instance) {
+    if (this.phase === Phase.Destroyed) return;
     const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
     const positioned = { ...instance, y: maxY };
     const newBlocks = [...this.plugin.activeBlocks(), positioned];
@@ -7132,6 +7473,9 @@ var GridLayout = class _GridLayout {
   }
   // ── Rendering ──────────────────────────────────────────────────────────
   rerender() {
+    for (const { block } of this.blocks.values()) {
+      if (block?.hasUnsavedInlineState()) return;
+    }
     this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
   }
   /** Unload all blocks and destroy GridStack instance. */
@@ -7162,17 +7506,25 @@ var GridLayout = class _GridLayout {
   }
   initGridStack(blocks, columns, isInitial) {
     this.phase = Phase.Initializing;
-    const items = blocks.map((instance) => ({
-      id: instance.id,
-      x: instance.x,
-      y: instance.y,
-      w: Math.min(instance.w, columns),
-      maxW: columns,
-      h: this.editMode && this.shouldAutoHeight(instance) ? COMPACT_EDIT_H : instance.h
-      // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
-      // load() before we've added any DOM content, causing "firstElementChild is null".
-      // We call resizeToContent() manually after building each block's DOM below.
-    }));
+    const items = blocks.map((instance) => {
+      const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
+      let renderH = instance.h;
+      if (instance.collapsed && !effectiveCollapsed) {
+        const expandedH = instance._expandedH;
+        if (typeof expandedH === "number" && expandedH > 0) renderH = expandedH;
+      }
+      return {
+        id: instance.id,
+        x: instance.x,
+        y: instance.y,
+        w: Math.min(instance.w, columns),
+        maxW: columns,
+        h: this.editMode && this.shouldAutoHeight(instance) ? COMPACT_EDIT_H : renderH
+        // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
+        // load() before we've added any DOM content, causing "firstElementChild is null".
+        // We call resizeToContent() manually after building each block's DOM below.
+      };
+    });
     if (this.editMode || this.plugin.layout.compactLayout) {
       _GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
     }
@@ -7219,8 +7571,11 @@ var GridLayout = class _GridLayout {
         block.load();
         const needsResize = this.shouldAutoHeight(instance);
         if (needsResize) {
+          const blockId = instance.id;
           gsEl.addEventListener("request-auto-height", () => {
-            this.requestAutoHeight(gsEl, instance);
+            const live = this.plugin.activeBlocks().find((b) => b.id === blockId);
+            if (!live || !this.shouldAutoHeight(live)) return;
+            this.requestAutoHeight(gsEl, live);
           });
         }
         const skeletonEl = isInitial ? this.createSkeleton(wrapper) : null;
@@ -7242,7 +7597,7 @@ var GridLayout = class _GridLayout {
       }
       this.setupCollapseToggle(gsEl, instance, headerZone);
       if (this.editMode) {
-        this.attachEditHandles(wrapper, instance);
+        attachEditHandleBar(this, wrapper, instance);
       }
     }
     if (columns === 1) {
@@ -7257,11 +7612,11 @@ var GridLayout = class _GridLayout {
       }
     }
     this.gridStack.on("dragstop", () => {
-      if (this.phase !== Phase.Ready) return;
+      if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
     });
     this.gridStack.on("resizestop", () => {
-      if (this.phase !== Phase.Ready) return;
+      if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
       this.updateCompactSizeLabels();
     });
@@ -7366,6 +7721,13 @@ var GridLayout = class _GridLayout {
    * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
    * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
    */
+  /**
+   * Public for callers that need the same mobile/desktop routing logic but
+   * don't go through onLayoutChange (e.g., EditToolbar's discardChanges).
+   * Keeping `buildLayoutUpdate` as the single funnel for layout writes that
+   * need the platform split prevents drift -- a future field added here
+   * propagates to every call site automatically.
+   */
   buildLayoutUpdate(blocks, extra) {
     const mobile = this.plugin.isMobileActive();
     const base = { ...this.plugin.layout };
@@ -7378,59 +7740,17 @@ var GridLayout = class _GridLayout {
     }
     return base;
   }
-  persistLayout() {
-    if (!this.gridStack || this.phase !== Phase.Ready) return;
-    if (this.isResponsive && this.plugin.activeBlocks().every((b) => this.shouldAutoHeight(b))) {
-      return;
-    }
-    const nodes = this.gridStack.getGridItems();
-    const posMap = /* @__PURE__ */ new Map();
-    for (const el of nodes) {
-      const node = el.gridstackNode;
-      const id = el.getAttribute("gs-id");
-      if (id && node) {
-        const w = Math.min(node.w ?? 1, this.effectiveColumns);
-        posMap.set(id, {
-          x: Math.min(node.x ?? 0, Math.max(0, this.effectiveColumns - w)),
-          y: node.y ?? 0,
-          w,
-          h: node.h ?? 1
-        });
-      }
-    }
-    const changed = this.plugin.activeBlocks().some((b) => {
-      const pos = posMap.get(b.id);
-      if (!pos) return false;
-      const isAuto = this.shouldAutoHeight(b);
-      if (this.isResponsive) return !isAuto && b.h !== pos.h;
-      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
-      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
-    });
-    if (!changed) {
-      return;
-    }
-    const newBlocks = this.plugin.activeBlocks().map((b) => {
-      const pos = posMap.get(b.id);
-      if (!pos) return b;
-      const isAuto = this.shouldAutoHeight(b);
-      if (this.isResponsive) {
-        return isAuto ? b : { ...b, h: pos.h };
-      }
-      const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
-      return { ...b, ...update };
-    });
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-  }
   /** Read current positions from GridStack nodes and persist to layout. */
+  persistLayout() {
+    this.persister.persist();
+  }
   /** Debounced persistLayout — coalesces rapid auto-height resize saves into one write. */
   persistLayoutDebounced() {
-    this.scheduler.timeout("sync", 50, () => {
-      if (this.phase !== Phase.Destroyed) this.persistLayout();
-    });
+    this.persister.persistDebounced();
   }
-  /** True when the grid is showing a responsive (narrowed) layout — persistence should be restricted. */
+  /** True when the grid is showing a responsive (narrowed) layout. */
   get isResponsive() {
-    return this.effectiveColumns !== this.canonicalColumns;
+    return this.persister.isResponsive();
   }
   // ── Layout Utilities ───────────────────────────────────────────────────
   /**
@@ -7527,194 +7847,13 @@ var GridLayout = class _GridLayout {
   }
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */
   repackGridNodes() {
-    if (!this.gridStack) return;
-    const nodeItems = [];
-    for (const gsEl of this.gridStack.getGridItems()) {
-      const node = gsEl.gridstackNode;
-      if (!node) continue;
-      nodeItems.push({ el: gsEl, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
-    }
-    _GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
-    this.gridStack.batchUpdate();
-    for (const item of nodeItems) {
-      this.gridStack.update(item.el, { y: item.y });
-    }
-    this.gridStack.batchUpdate(false);
+    this.persister.repackGridNodes(_GridLayout.packRows);
   }
   // ── Block Interactions ─────────────────────────────────────────────────
   setupCollapseToggle(gsEl, instance, headerZone) {
-    const wrapper = gsEl.querySelector(".homepage-block-wrapper");
-    const chevron = headerZone.querySelector(".block-collapse-chevron");
-    if (!wrapper) return;
-    const toggleCollapse = (e) => {
-      e.stopPropagation();
-      if (this.editMode) return;
-      const isNowCollapsed = !wrapper.hasClass("block-collapsed");
-      wrapper.toggleClass("block-collapsed", isNowCollapsed);
-      chevron?.toggleClass("is-collapsed", isNowCollapsed);
-      headerZone.setAttribute("aria-expanded", String(!isNowCollapsed));
-      const gsNode = gsEl.gridstackNode;
-      let newBlocks;
-      if (isNowCollapsed) {
-        const liveH = gsNode?.h ?? instance.h;
-        if (this.gridStack) this.gridStack.update(gsEl, { h: 1 });
-        newBlocks = this.plugin.activeBlocks().map(
-          (b) => b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b
-        );
-      } else {
-        const currentBlock = this.plugin.activeBlocks().find((b) => b.id === instance.id);
-        const origH = currentBlock?._expandedH ?? instance.h;
-        if (this.gridStack) this.gridStack.update(gsEl, { h: origH });
-        newBlocks = this.plugin.activeBlocks().map(
-          (b) => b.id === instance.id ? { ...b, collapsed: false, h: origH } : b
-        );
-      }
-      void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
-    };
-    headerZone.addEventListener("click", toggleCollapse);
-    headerZone.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggleCollapse(e);
-      }
-    });
+    attachCollapseToggle(this, gsEl, instance, headerZone);
   }
-  attachEditHandles(wrapper, instance) {
-    const bar = wrapper.createDiv({ cls: "block-handle-bar" });
-    const handle = bar.createDiv({ cls: "block-move-handle" });
-    (0, import_obsidian4.setIcon)(handle, "grip-vertical");
-    handle.setAttribute("aria-label", "Drag to reorder");
-    handle.setAttribute("title", "Drag to reorder");
-    const moveUpBtn = bar.createEl("button", { cls: "block-move-up-btn" });
-    (0, import_obsidian4.setIcon)(moveUpBtn, "chevron-up");
-    moveUpBtn.setAttribute("aria-label", "Move block up");
-    moveUpBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.swapWithNeighbor(instance, "up");
-    });
-    const moveDownBtn = bar.createEl("button", { cls: "block-move-down-btn" });
-    (0, import_obsidian4.setIcon)(moveDownBtn, "chevron-down");
-    moveDownBtn.setAttribute("aria-label", "Move block down");
-    moveDownBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.swapWithNeighbor(instance, "down");
-    });
-    const dupBtn = bar.createEl("button", { cls: "block-duplicate-btn" });
-    (0, import_obsidian4.setIcon)(dupBtn, "copy");
-    dupBtn.setAttribute("aria-label", "Duplicate block");
-    dupBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const current = this.plugin.activeBlocks().find((b) => b.id === instance.id);
-      if (!current) return;
-      const clone = {
-        ...structuredClone(current),
-        id: newId(),
-        y: current.y + current.h
-      };
-      const newBlocks = [...this.plugin.activeBlocks(), clone];
-      this.lastAddedBlockId = clone.id;
-      this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-      this.rerender();
-    });
-    const settingsBtn = bar.createEl("button", { cls: "block-settings-btn" });
-    (0, import_obsidian4.setIcon)(settingsBtn, "settings");
-    settingsBtn.setAttribute("aria-label", "Block settings");
-    settingsBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const entry = this.blocks.get(instance.id);
-      if (!entry) return;
-      const onSave = (config) => {
-        const newBlocks = this.plugin.activeBlocks().map(
-          (b) => b.id === instance.id ? { ...b, config } : b
-        );
-        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-        this.rerender();
-      };
-      let tempBlock = null;
-      const block = entry.block ?? (() => {
-        const factory = BlockRegistry.get(instance.type);
-        if (!factory) return null;
-        tempBlock = factory.create(this.app, instance, this.plugin);
-        return tempBlock;
-      })();
-      if (!block) return;
-      const modal = new BlockSettingsModal(this.app, instance, block, (config) => {
-        if (tempBlock) tempBlock.unload();
-        onSave(config);
-      });
-      modal.open();
-    });
-    const removeBtn = bar.createEl("button", { cls: "block-remove-btn" });
-    (0, import_obsidian4.setIcon)(removeBtn, "x");
-    removeBtn.setAttribute("aria-label", "Remove block");
-    removeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      new RemoveBlockConfirmModal(this.app, () => {
-        const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
-        if (gsItem instanceof HTMLElement && this.gridStack) {
-          this.gridStack.removeWidget(gsItem);
-          this.gridStack.compact();
-        }
-        const entry = this.blocks.get(instance.id);
-        if (entry) {
-          entry.block?.unload();
-          this.blocks.delete(instance.id);
-        }
-        const remaining = this.plugin.activeBlocks().filter((b) => b.id !== instance.id);
-        if (remaining.length === 0) {
-          this.onLayoutChange(this.buildLayoutUpdate([]));
-          this.rerender();
-          return;
-        }
-        if (!this.gridStack) {
-          this.onLayoutChange(this.buildLayoutUpdate(remaining));
-          return;
-        }
-        const posMap = /* @__PURE__ */ new Map();
-        for (const el of this.gridStack.getGridItems()) {
-          const node = el.gridstackNode;
-          const id = el.getAttribute("gs-id");
-          if (id && node) {
-            posMap.set(id, { x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
-          }
-        }
-        const newBlocks = remaining.map((b) => {
-          const pos = posMap.get(b.id);
-          if (!pos) return b;
-          const isAuto = this.shouldAutoHeight(b);
-          const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
-          return { ...b, ...update };
-        });
-        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-      }).open();
-    });
-    const headerZone = wrapper.querySelector(".block-header-zone");
-    if (headerZone) {
-      wrapper.insertBefore(bar, headerZone);
-    }
-  }
-  /** Swap a block's position with its nearest spatial neighbor in the given direction. */
-  swapWithNeighbor(instance, direction) {
-    const blocks = this.plugin.activeBlocks();
-    const current = blocks.find((b) => b.id === instance.id);
-    if (!current) return;
-    const columns = this.plugin.activeColumns();
-    const neighbor = blocks.filter((b) => b.id !== instance.id && (direction === "up" ? b.y < current.y || b.y === current.y && b.x < current.x : b.y > current.y || b.y === current.y && b.x > current.x)).sort(
-      (a, b) => direction === "up" ? b.y - a.y || b.x - a.x : a.y - b.y || a.x - b.x
-    )[0];
-    if (!neighbor) return;
-    const newBlocks = blocks.map((b) => {
-      if (b.id === current.id) {
-        return { ...b, x: Math.min(neighbor.x, Math.max(0, columns - current.w)), y: neighbor.y };
-      }
-      if (b.id === neighbor.id) {
-        return { ...b, x: Math.min(current.x, Math.max(0, columns - neighbor.w)), y: current.y };
-      }
-      return b;
-    });
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-    this.rerender();
-  }
+  // attachEditHandleBar + swapWithNeighbor moved to src/grid/EditHandleBar.ts
 };
 
 // src/EditToolbar.ts
@@ -7796,13 +7935,7 @@ var EditToolbar = class {
   discardChanges() {
     if (!this.editMode) return;
     if (this.blocksSnapshot) {
-      const mobile = this.plugin.isMobileActive();
-      const restored = structuredClone(this.plugin.layout);
-      if (mobile) {
-        restored.mobileBlocks = this.blocksSnapshot;
-      } else {
-        restored.blocks = this.blocksSnapshot;
-      }
+      const restored = this.grid.buildLayoutUpdate(this.blocksSnapshot);
       this.plugin.layout = restored;
       void this.plugin.saveLayout(restored);
       this.blocksSnapshot = null;
@@ -7860,24 +7993,41 @@ var EditToolbar = class {
       this.openAddBlockModal();
     };
   }
+  /**
+   * Tracked so EditToolbar.destroy() can close it. A leftover modal would
+   * otherwise hold a closure over `this.grid` -- when the homepage view
+   * gets reloaded mid-pick (e.g., user changes a setting in another tab),
+   * the user's selection lands on a destroyed grid instance. Silent failure.
+   */
+  openModal = null;
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal() {
-    new AddBlockModal(this.app, (type) => {
+    this.openModal?.close();
+    const modal = new AddBlockModal(this.app, (type) => {
+      if (this.openModal !== modal) return;
       const factory = BlockRegistry.get(type);
       if (!factory) return;
       const instance = {
         id: newId(),
         type,
         x: 0,
-        // APPEND_AT_BOTTOM is a sentinel recognized by GridLayout.addBlock — the
-        // block is placed below every existing block so GridStack compacts cleanly.
-        y: APPEND_AT_BOTTOM,
+        // GridLayout.addBlock recomputes y from the current maxY, so the value
+        // here is unused -- kept at 0 for clarity rather than the prior fake
+        // sentinel that pretended to mean something.
+        y: 0,
         w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
         config: { ...factory.defaultConfig }
       };
       this.grid.addBlock(instance);
-    }).open();
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      if (this.openModal === modal) this.openModal = null;
+      originalOnClose();
+    };
+    this.openModal = modal;
+    modal.open();
   }
   formatZoom(scale) {
     return `${Math.round(scale * 100)}%`;
@@ -7889,6 +8039,8 @@ var EditToolbar = class {
     return this.fabEl;
   }
   destroy() {
+    this.openModal?.close();
+    this.openModal = null;
     this.grid.onRequestAddBlock = null;
     this.fabEl.remove();
     this.toolbarEl.remove();
@@ -7941,7 +8093,11 @@ var HomepageView = class extends import_obsidian6.ItemView {
   getIcon() {
     return "home";
   }
-  onOpen() {
+  // Async by contract: `reload()` awaits onOpen, and any future async work in
+  // this method (e.g., loading per-leaf state, awaiting an editor-ready signal)
+  // MUST be awaited inside the function body so `reload()` callers don't proceed
+  // before render is actually complete.
+  async onOpen() {
     this.grid?.destroy();
     this.toolbar?.destroy();
     const { contentEl } = this;
@@ -7966,7 +8122,6 @@ var HomepageView = class extends import_obsidian6.ItemView {
     contentEl.insertBefore(this.toolbar.getElement(), this.grid.getElement());
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
     this.grid.render(this.plugin.activeBlocks(), this.plugin.activeColumns(), true);
-    return Promise.resolve();
   }
   onClose() {
     this.grid?.destroy();
@@ -8135,16 +8290,16 @@ var SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 var MAX_BLOCKS = 100;
 function migrateBlockInstance(b) {
   const m = { ...b };
-  if (typeof m.col === "number") {
+  if (typeof m.col === "number" && typeof m.x !== "number") {
     m.x = m.col - 1;
   }
-  if (typeof m.row === "number") {
+  if (typeof m.row === "number" && typeof m.y !== "number") {
     m.y = m.row - 1;
   }
-  if (typeof m.colSpan === "number") {
+  if (typeof m.colSpan === "number" && typeof m.w !== "number") {
     m.w = m.colSpan;
   }
-  if (typeof m.rowSpan === "number") {
+  if (typeof m.rowSpan === "number" && typeof m.h !== "number") {
     m.h = m.rowSpan;
   }
   delete m.col;
@@ -8219,15 +8374,25 @@ function validateBlocks(raw, columns, defaults) {
   if (!Array.isArray(raw)) return defaults;
   const migrated = raw.map((b) => migrateBlockInstance(b));
   const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
-  return valid.map((b) => ({
+  const seen = /* @__PURE__ */ new Set();
+  const dedup = valid.filter((b) => {
+    if (seen.has(b.id)) return false;
+    seen.add(b.id);
+    return true;
+  });
+  return dedup.map((b) => ({
     ...b,
     w: Math.min(b.w, columns),
     x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns)))
   }));
 }
-function validateLayout(raw) {
+function validateLayout(raw, onTopLevelCorruption) {
   const defaults = getDefaultLayout();
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return defaults;
+  if (raw === null || raw === void 0) return defaults;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    onTopLevelCorruption?.(raw);
+    return defaults;
+  }
   const r = raw;
   const columns = typeof r.columns === "number" && [2, 3, 4, 5].includes(r.columns) ? r.columns : defaults.columns;
   const layoutPriority = isLayoutPriority(r.layoutPriority) ? r.layoutPriority : defaults.layoutPriority;
@@ -8323,6 +8488,31 @@ var SHARED_CONFIG_KEYS = /* @__PURE__ */ new Set([
   "_gradientEnd",
   "_gradientAngle"
 ]);
+var TITLE_SIZE_RE2 = /^h[1-6]$/;
+var BORDER_STYLE_VALUES = /* @__PURE__ */ new Set(["solid", "dashed", "dotted"]);
+var SHARED_VALIDATORS = {
+  _titleLabel: (v) => typeof v === "string" ? v.slice(0, 200) : void 0,
+  _titleEmoji: (v) => typeof v === "string" ? v.slice(0, 16) : void 0,
+  _showTitle: (v) => typeof v === "boolean" ? v : void 0,
+  _titleSize: (v) => typeof v === "string" && TITLE_SIZE_RE2.test(v) ? v : void 0,
+  _titleGap: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(-32, Math.min(32, v)) : void 0,
+  _showDivider: (v) => typeof v === "boolean" ? v : void 0,
+  _showHeaderAccent: (v) => typeof v === "boolean" ? v : void 0,
+  _showBorder: (v) => typeof v === "boolean" ? v : void 0,
+  _borderWidth: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(8, v)) : void 0,
+  _borderStyle: (v) => typeof v === "string" && BORDER_STYLE_VALUES.has(v) ? v : void 0,
+  _borderRadius: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(48, v)) : void 0,
+  _showBackground: (v) => typeof v === "boolean" ? v : void 0,
+  _bgOpacity: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : void 0,
+  _backdropBlur: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(48, v)) : void 0,
+  _cardPadding: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(-48, Math.min(48, v)) : void 0,
+  _elevation: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(8, v)) : void 0,
+  _accentColor: (v) => typeof v === "string" && (v === "" || HEX_COLOR_RE.test(v)) ? v : void 0,
+  _accentIntensity: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(5, Math.min(100, v)) : void 0,
+  _gradientStart: (v) => typeof v === "string" && (v === "" || HEX_COLOR_RE.test(v)) ? v : void 0,
+  _gradientEnd: (v) => typeof v === "string" && (v === "" || HEX_COLOR_RE.test(v)) ? v : void 0,
+  _gradientAngle: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(360, v)) : void 0
+};
 function sanitizeImportedConfig(blockType, config) {
   const factory = BlockRegistry.get(blockType);
   const allowed = new Set(factory ? Object.keys(factory.defaultConfig) : []);
@@ -8334,7 +8524,26 @@ function sanitizeImportedConfig(blockType, config) {
       stripped.push(key);
       continue;
     }
-    if (key.startsWith("_") || allowed.has(key)) {
+    if (key.startsWith("_")) {
+      const validator = SHARED_VALIDATORS[key];
+      if (validator) {
+        const validated = validator(value);
+        if (validated === void 0) {
+          stripped.push(key);
+          continue;
+        }
+        clean[key] = validated;
+      } else {
+        const t = typeof value;
+        if (t === "string" || t === "number" || t === "boolean") {
+          clean[key] = value;
+        } else {
+          stripped.push(key);
+        }
+      }
+      continue;
+    }
+    if (allowed.has(key)) {
       clean[key] = value;
     } else {
       stripped.push(key);
@@ -8512,7 +8721,14 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     );
     new import_obsidian8.Setting(root).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
-        await this.plugin.saveLayout(getDefaultLayout());
+        const fresh = getDefaultLayout();
+        const next = this.plugin.layout.responsiveMode === "separate" ? {
+          ...fresh,
+          mobileBlocks: this.plugin.layout.mobileBlocks,
+          mobileColumns: this.plugin.layout.mobileColumns,
+          mobileLayoutPriority: this.plugin.layout.mobileLayoutPriority
+        } : fresh;
+        await this.plugin.saveLayout(next);
         await this.reloadOpenHomepages();
       })())
     );
@@ -8580,6 +8796,7 @@ function cacheHasTag(cache, tag) {
 var tagCache = /* @__PURE__ */ new Map();
 var listenersInstalled = false;
 function installTagCacheListeners(plugin) {
+  tagCache.clear();
   if (listenersInstalled) return;
   listenersInstalled = true;
   plugin.register(() => {
@@ -8615,6 +8832,7 @@ var DB_STORE = "keys";
 var DB_RECORD = "apiKeyDeviceKey";
 var PREFIX = "enc:v1:";
 var cachedKey = null;
+var lastKeyLoadError = false;
 function hasWebCrypto() {
   return typeof globalThis.crypto?.subtle?.generateKey === "function" && typeof indexedDB !== "undefined";
 }
@@ -8645,14 +8863,21 @@ function idbSet(db, key, value) {
   });
 }
 async function loadDeviceKey() {
-  if (cachedKey) return cachedKey;
-  if (!hasWebCrypto()) return null;
+  if (cachedKey) {
+    lastKeyLoadError = false;
+    return cachedKey;
+  }
+  if (!hasWebCrypto()) {
+    lastKeyLoadError = false;
+    return null;
+  }
   try {
     const db = await openDb();
     try {
       const existing = await idbGet(db, DB_RECORD);
       if (existing instanceof CryptoKey) {
         cachedKey = existing;
+        lastKeyLoadError = false;
         return existing;
       }
       const fresh = await crypto.subtle.generateKey(
@@ -8663,13 +8888,19 @@ async function loadDeviceKey() {
       );
       await idbSet(db, DB_RECORD, fresh);
       cachedKey = fresh;
+      lastKeyLoadError = false;
       return fresh;
     } finally {
       db.close();
     }
-  } catch {
+  } catch (err) {
+    lastKeyLoadError = true;
+    console.error("[Homepage Blocks] device key unavailable (transient)", err instanceof Error ? err.message : "unknown error");
     return null;
   }
+}
+function lastLoadWasTransient() {
+  return lastKeyLoadError;
 }
 function toBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -8686,27 +8917,32 @@ function fromBase64(b64) {
 function isEncrypted(value) {
   return typeof value === "string" && value.startsWith(PREFIX);
 }
-async function encryptString(plaintext) {
-  if (!plaintext) return plaintext;
-  if (isEncrypted(plaintext)) return plaintext;
+async function encryptStringEx(plaintext) {
+  if (!plaintext) return { ok: true, value: plaintext };
+  if (isEncrypted(plaintext)) return { ok: true, value: plaintext };
   const key = await loadDeviceKey();
-  if (!key) return plaintext;
+  if (!key) {
+    console.warn("[Homepage Blocks] WebCrypto unavailable \u2014 apiKey will be stored in plaintext on disk");
+    return { ok: false, reason: "fallback-plaintext", value: plaintext };
+  }
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext));
-    return `${PREFIX}${toBase64(iv)}:${toBase64(ct)}`;
+    return { ok: true, value: `${PREFIX}${toBase64(iv)}:${toBase64(ct)}` };
   } catch (err) {
-    console.error("[Homepage Blocks] API key encryption failed \u2014 storing plaintext", err);
-    return plaintext;
+    console.error("[Homepage Blocks] API key encryption failed \u2014 storing plaintext", err instanceof Error ? err.message : "unknown error");
+    return { ok: false, reason: "crypto-error", value: plaintext };
   }
 }
-async function decryptString(value) {
-  if (!isEncrypted(value)) return value;
+async function decryptStringEx(value) {
+  if (!isEncrypted(value)) return { ok: true, plaintext: value };
   const key = await loadDeviceKey();
-  if (!key) return null;
+  if (!key) {
+    return { ok: false, reason: "no-key", transient: lastLoadWasTransient() };
+  }
   const body = value.slice(PREFIX.length);
   const sep = body.indexOf(":");
-  if (sep < 0) return null;
+  if (sep < 0) return { ok: false, reason: "corrupt", transient: false };
   const ivB64 = body.slice(0, sep);
   const ctB64 = body.slice(sep + 1);
   try {
@@ -8717,10 +8953,13 @@ async function decryptString(value) {
     const ct = new Uint8Array(ctBytes.length);
     ct.set(ctBytes);
     const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
-    return new TextDecoder().decode(pt);
+    return { ok: true, plaintext: new TextDecoder().decode(pt) };
   } catch {
-    return null;
+    return { ok: false, reason: "corrupt", transient: false };
   }
+}
+function _resetDeviceKeyCache() {
+  cachedKey = null;
 }
 
 // src/blocks/GreetingBlock.ts
@@ -9405,7 +9644,7 @@ var ButtonGridBlock = class extends BaseBlock {
     const grid = el.createDiv({ cls: "button-grid" });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
     grid.style.setProperty("--hp-grid-cols", `repeat(${safeCols}, 1fr)`);
-    grid.setAttribute("data-auto-height-content", "");
+    grid.setAttribute(AUTO_HEIGHT_ATTR, "");
     this.observeWidthForAutoHeight(grid);
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: "block-empty-hint" });
@@ -9626,7 +9865,7 @@ var QuotesListBlock = class extends BaseBlock {
       const card = el.querySelector(".insight-card");
       if (card && heightMode === "extend") {
         el.toggleClass("quotes-list-block--extend", true);
-        card.setAttribute("data-auto-height-content", "");
+        card.setAttribute(AUTO_HEIGHT_ATTR, "");
       }
       return;
     }
@@ -9635,7 +9874,7 @@ var QuotesListBlock = class extends BaseBlock {
     el.toggleClass("quote-style-card", safeQuoteStyle === "card");
     el.toggleClass("quotes-list-block--extend", heightMode === "extend");
     const colsEl = el.createDiv({ cls: "quotes-columns" });
-    if (heightMode !== "wrap") colsEl.setAttribute("data-auto-height-content", "");
+    if (heightMode !== "wrap") colsEl.setAttribute(AUTO_HEIGHT_ATTR, "");
     if (heightMode === "wrap") {
       colsEl.setAttribute("tabindex", "0");
       colsEl.setAttribute("role", "region");
@@ -9930,6 +10169,15 @@ var ImageCacheStore = class {
     this.entries.clear();
     this.pending.clear();
   }
+  /**
+   * Re-arm the cache after a previous destroy(). Required because the singleton
+   * survives plugin disable+enable in the same renderer process; without this the
+   * `disposed` flag would stay true forever and every gallery render would rebuild
+   * its thumbnails (and leak blob URLs) on the path at line 56.
+   */
+  reset() {
+    this.disposed = false;
+  }
   // ── internals ──
   async generate(app, file, mtime) {
     const fullUrl = app.vault.getResourcePath(file);
@@ -10215,7 +10463,7 @@ var ImageGalleryBlock = class extends BaseBlock {
     if (heightMode === "fixed") {
       gallery.addClass("image-gallery--fixed-height");
     } else {
-      gallery.setAttribute("data-auto-height-content", "");
+      gallery.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     if (layout === "masonry") {
       gallery.addClass("masonry-layout");
@@ -10413,10 +10661,7 @@ var EmbeddedNoteBlock = class extends BaseBlock {
       const current = active.find((b) => b.id === this.instance.id);
       const filePath = current?.config.filePath ?? "";
       if (oldPath === filePath) {
-        const newBlocks = active.map(
-          (b) => b.id === this.instance.id ? { ...b, config: { ...b.config, filePath: file.path } } : b
-        );
-        void this.plugin.saveActiveBlocks(newBlocks).then(trigger);
+        void this.plugin.updateBlockConfig(this.instance.id, { filePath: file.path }).then(trigger);
         return;
       }
       if (file.path === filePath) trigger();
@@ -10452,7 +10697,7 @@ var EmbeddedNoteBlock = class extends BaseBlock {
       contentEl.setAttribute("role", "region");
       contentEl.setAttribute("aria-label", file.basename);
     } else if (heightMode === "grow") {
-      contentEl.setAttribute("data-auto-height-content", "");
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     try {
       const content = await this.app.vault.read(file);
@@ -10504,6 +10749,11 @@ var FileSuggest = class extends import_obsidian17.AbstractInputSuggest {
 // src/blocks/StaticTextBlock.ts
 var import_obsidian18 = require("obsidian");
 var StaticTextBlock = class extends BaseBlock {
+  /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
+  inlineEditActive = false;
+  hasUnsavedInlineState() {
+    return this.inlineEditActive;
+  }
   render(el) {
     el.addClass("static-text-block");
     this.renderContent(el).catch((e) => {
@@ -10526,7 +10776,7 @@ var StaticTextBlock = class extends BaseBlock {
     });
     const contentEl = el.createDiv({ cls: "static-text-content" });
     if (heightMode !== "fixed") {
-      contentEl.setAttribute("data-auto-height-content", "");
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     if (!content) {
       const hint = contentEl.createDiv({ cls: "block-empty-hint" });
@@ -10539,13 +10789,14 @@ var StaticTextBlock = class extends BaseBlock {
   }
   enterInlineEdit(el) {
     const currentContent = this.instance.config.content ?? "";
+    this.inlineEditActive = true;
     const contentEl = el.querySelector(".static-text-content");
     const editBtn = el.querySelector(".static-text-edit-btn");
     if (contentEl) contentEl.addClass("hp-hidden");
     if (editBtn) editBtn.addClass("hp-hidden");
     const editor = el.createDiv({ cls: "static-text-inline-editor" });
     if ((this.instance.config.heightMode ?? "auto") !== "fixed") {
-      editor.setAttribute("data-auto-height-content", "");
+      editor.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     const textarea = editor.createEl("textarea");
     textarea.value = currentContent;
@@ -10561,17 +10812,13 @@ var StaticTextBlock = class extends BaseBlock {
     });
     (0, import_obsidian18.setIcon)(cancelBtn, "x");
     const save = () => {
-      const active = this.plugin.activeBlocks();
-      const currentConfig = active.find((b) => b.id === this.instance.id)?.config ?? this.instance.config;
-      const newConfig = { ...currentConfig, content: textarea.value };
-      const newBlocks = active.map(
-        (b) => b.id === this.instance.id ? { ...b, config: newConfig } : b
-      );
-      void this.plugin.saveActiveBlocks(newBlocks);
+      this.inlineEditActive = false;
+      void this.plugin.updateBlockConfig(this.instance.id, { content: textarea.value });
       this.renderContent(el).then(() => this.requestAutoHeight()).catch(() => {
       });
     };
     const cancel = () => {
+      this.inlineEditActive = false;
       this.renderContent(el).catch(() => {
       });
     };
@@ -11213,7 +11460,7 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
         osc.stop(t + 4.1);
       }
     } catch (e) {
-      console.error("[Homepage] Audio playback failed", e);
+      console.error("[Homepage Blocks] Pomodoro audio playback failed", e instanceof Error ? e.message : "unknown error");
     }
   }
   startPhase(phase, minutes) {
@@ -11433,7 +11680,7 @@ var RandomNoteBlock = class extends BaseBlock {
       }
     }
     if (this.isStale(gen)) return;
-    el.setAttribute("data-auto-height-content", "");
+    el.setAttribute(AUTO_HEIGHT_ATTR, "");
     this.observeWidthForAutoHeight(el);
     if (showImage) {
       const rawProp = fm[imageProperty];
@@ -12177,9 +12424,9 @@ var VaultSearchBlock = class extends BaseBlock {
   positionDropdown() {
     if (!this.dropdownEl || !this.wrapperEl) return;
     const rect = this.wrapperEl.getBoundingClientRect();
-    this.dropdownEl.style.top = `${rect.bottom + 4}px`;
-    this.dropdownEl.style.left = `${rect.left}px`;
-    this.dropdownEl.style.width = `${rect.width}px`;
+    this.dropdownEl.style.setProperty("--hp-search-dropdown-top", `${rect.bottom + 4}px`);
+    this.dropdownEl.style.setProperty("--hp-search-dropdown-left", `${rect.left}px`);
+    this.dropdownEl.style.setProperty("--hp-search-dropdown-width", `${rect.width}px`);
   }
   showDropdown() {
     if (this.dropdownEl) {
@@ -12341,46 +12588,84 @@ function registerBlocks() {
     create: (app, instance, plugin) => new VaultSearchBlock(app, instance, plugin)
   });
 }
-async function encryptApiKeys(layout) {
-  const encryptBlocks = async (blocks2) => Promise.all(blocks2.map(async (b) => {
+async function encryptApiKeys(layout, priorOnDisk) {
+  const buildPriorMap = (blocks2) => {
+    const m = /* @__PURE__ */ new Map();
+    if (!Array.isArray(blocks2)) return m;
+    for (const b of blocks2) {
+      const k = b?.config?.apiKey;
+      if (typeof k === "string" && k) m.set(b.id, k);
+    }
+    return m;
+  };
+  const priorDesktop = buildPriorMap(priorOnDisk?.blocks);
+  const priorMobile = buildPriorMap(priorOnDisk?.mobileBlocks);
+  const encryptBlocks = async (blocks2, prior) => Promise.all(blocks2.map(async (b) => {
     const key = b.config.apiKey;
     if (typeof key !== "string" || !key || isEncrypted(key)) return b;
-    const enc = await encryptString(key);
-    return { ...b, config: { ...b.config, apiKey: enc } };
+    const r = await encryptStringEx(key);
+    if (!r.ok) {
+      const previously = prior.get(b.id);
+      if (typeof previously === "string" && isEncrypted(previously)) {
+        return { ...b, config: { ...b.config, apiKey: previously } };
+      }
+    }
+    return { ...b, config: { ...b.config, apiKey: r.value } };
   }));
   const [blocks, mobileBlocks] = await Promise.all([
-    encryptBlocks(layout.blocks),
-    encryptBlocks(layout.mobileBlocks)
+    encryptBlocks(layout.blocks, priorDesktop),
+    encryptBlocks(layout.mobileBlocks, priorMobile)
   ]);
   return { ...layout, blocks, mobileBlocks };
 }
 async function decryptApiKeys(layout) {
+  let stable = true;
   const decryptBlocks = async (blocks) => {
+    const out = [];
     for (const b of blocks) {
       const key = b.config.apiKey;
-      if (typeof key !== "string" || !key || !isEncrypted(key)) continue;
-      const pt = await decryptString(key);
-      if (pt === null) {
-        b.config.apiKey = "";
-        new import_obsidian27.Notice("Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.", 1e4);
+      if (typeof key !== "string" || !key || !isEncrypted(key)) {
+        out.push(b);
+        continue;
+      }
+      const r = await decryptStringEx(key);
+      if (r.ok) {
+        out.push({ ...b, config: { ...b.config, apiKey: r.plaintext } });
+      } else if (r.reason === "no-key" && r.transient) {
+        stable = false;
+        new import_obsidian27.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
+        out.push(b);
       } else {
-        b.config.apiKey = pt;
+        out.push({ ...b, config: { ...b.config, apiKey: "" } });
+        new import_obsidian27.Notice("Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.", 1e4);
       }
     }
+    return out;
   };
-  await decryptBlocks(layout.blocks);
-  await decryptBlocks(layout.mobileBlocks);
+  const desktop = await decryptBlocks(layout.blocks);
+  const mobile = await decryptBlocks(layout.mobileBlocks);
+  layout.blocks = desktop;
+  layout.mobileBlocks = mobile;
+  return { stable };
 }
 var HomepagePlugin = class extends import_obsidian27.Plugin {
   layout = getDefaultLayout();
   async onload() {
     registerBlocks();
+    imageCache.reset();
     installTagCacheListeners(this);
     const raw = await this.loadData();
-    const validated = validateLayout(raw);
-    await decryptApiKeys(validated);
+    const validated = validateLayout(raw, (badRaw) => {
+      void this.stashCorruptedData(badRaw).catch((err) => {
+        console.error("[Homepage Blocks] Failed to stash corrupted data.json", err instanceof Error ? err.message : "unknown error");
+      });
+      new import_obsidian27.Notice("Homepage blocks: data.json was unreadable and has been backed up. Layout has been reset to defaults.", 12e3);
+    });
+    const decryptResult = await decryptApiKeys(validated);
     this.layout = validated;
-    await this.saveLayout(this.layout);
+    if (decryptResult.stable) {
+      await this.saveLayout(this.layout);
+    }
     this.registerView(VIEW_TYPE, (leaf) => new HomepageView(leaf, this));
     this.addCommand({
       id: "open-homepage",
@@ -12454,6 +12739,30 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     clearPomodoroState();
     closeSharedAudioCtx();
     abortActiveLightbox();
+    _resetDeviceKeyCache();
+  }
+  /**
+   * Write a copy of corrupted data.json content to a sibling file so the user
+   * can manually recover. Only invoked from validateLayout's corruption hook;
+   * silent in normal flow. Uses a single fixed sibling name (no timestamp) to
+   * avoid accumulating files when data.json corrupts repeatedly -- the most
+   * recent bad copy is the one the user typically wants.
+   */
+  async stashCorruptedData(badRaw) {
+    const dir = this.manifest.dir;
+    if (!dir) return;
+    let serialized;
+    if (typeof badRaw === "string") {
+      serialized = badRaw;
+    } else {
+      try {
+        serialized = JSON.stringify(badRaw, null, 2);
+      } catch {
+        serialized = String(badRaw);
+      }
+    }
+    const target = `${dir}/data.json.invalid`;
+    await this.app.vault.adapter.write(target, serialized);
   }
   // ── Platform-aware layout helpers ─────────────────────────────────
   isMobileActive() {
@@ -12474,14 +12783,23 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
   async saveLayout(layout) {
     this.layout = layout;
     this.savePromise = this.savePromise.then(async () => {
-      const persistable = await encryptApiKeys(layout);
+      let priorOnDisk = null;
+      try {
+        const prior = await this.loadData();
+        if (prior && typeof prior === "object" && !Array.isArray(prior)) {
+          priorOnDisk = prior;
+        }
+      } catch {
+      }
+      const persistable = await encryptApiKeys(layout, priorOnDisk);
       await this.saveData(persistable);
     }).then(
       () => {
         this.saveErrorNotified = false;
       },
       (err) => {
-        console.error("[Homepage Blocks] Failed to save layout", err);
+        const safeMsg = err instanceof Error ? err.message : "unknown error";
+        console.error("[Homepage Blocks] Failed to save layout:", safeMsg);
         if (!this.saveErrorNotified) {
           this.saveErrorNotified = true;
           new import_obsidian27.Notice("Homepage blocks: failed to save layout. Check disk space / permissions.", 8e3);
@@ -12493,6 +12811,27 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
   async saveActiveBlocks(blocks) {
     const next = this.isMobileActive() ? { ...this.layout, mobileBlocks: blocks } : { ...this.layout, blocks };
     await this.saveLayout(next);
+  }
+  /**
+   * Atomically patch one block's config. The patcher reads `activeBlocks()`
+   * here at call time, but if a positional save (dragstop) is currently
+   * waiting on the savePromise chain it will land BEFORE this read -- so
+   * the snapshot we capture already reflects the dragged positions. Then
+   * saveLayout serializes our update behind it. The previous saveActiveBlocks
+   * pattern read positions inside the rename handler (before the chain),
+   * which lost any dragstop that hadn't yet been awaited.
+   */
+  async updateBlockConfig(id, patch) {
+    try {
+      await this.savePromise;
+    } catch {
+    }
+    const live = this.activeBlocks();
+    if (!live.some((b) => b.id === id)) return;
+    const next = live.map(
+      (b) => b.id === id ? { ...b, config: { ...b.config, ...patch } } : b
+    );
+    await this.saveActiveBlocks(next);
   }
   async openHomepage(mode = "retain") {
     const { workspace } = this.app;

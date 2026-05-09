@@ -235,6 +235,11 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   async onload(): Promise<void> {
     registerBlocks();
 
+    // Re-arm the imageCache singleton in case a previous onunload disposed it.
+    // The module-level cache survives across plugin disable+enable in the same
+    // renderer; without this, every gallery thumbnail would rebuild forever.
+    imageCache.reset();
+
     // Plugin-wide tag-cache invalidation — replaces the per-block clearTagCache()
     // dance so callers of getFilesWithTag() always see fresh data without having
     // to remember to wire up vault listeners themselves.

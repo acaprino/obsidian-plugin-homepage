@@ -379,13 +379,17 @@ export class GridLayout {
 
     // GridStack already compensates for CSS transform via getValuesFromTransformedElement
     // (dragTransform.xScale/yScale), so we do NOT need to clear the viewport-fit scale.
+    // editMode guard: AutoHeightManager temporarily lifts staticGrid during its rAF
+    // batch (see AutoHeight.ts:67). A pointer twitch latched at mousedown can become
+    // a real drag during that lift in view mode -- without this guard, dragstop would
+    // persist the phantom drag and silently corrupt the saved layout.
     this.gridStack.on('dragstop', () => {
-      if (this.phase !== Phase.Ready) return;
+      if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
     });
 
     this.gridStack.on('resizestop', () => {
-      if (this.phase !== Phase.Ready) return;
+      if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
       this.updateCompactSizeLabels();
     });
@@ -859,10 +863,23 @@ export class GridLayout {
         return tempBlock;
       })();
       if (!block) return;
+      // Teardown runs on both Save AND Cancel/Esc/X. Without the onClose hook the
+      // tempBlock would leak its registered intervals/events on every cancel.
+      const teardownTempBlock = () => {
+        if (tempBlock) {
+          tempBlock.unload();
+          tempBlock = null;
+        }
+      };
       const modal = new BlockSettingsModal(this.app, instance, block, (config) => {
-        if (tempBlock) tempBlock.unload();
+        teardownTempBlock();
         onSave(config);
       });
+      const originalOnClose = modal.onClose.bind(modal);
+      modal.onClose = () => {
+        teardownTempBlock();
+        originalOnClose();
+      };
       modal.open();
     });
 

@@ -505,6 +505,32 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     await this.saveLayout(next);
   }
 
+  /**
+   * Atomically patch one block's config. The patcher reads `activeBlocks()`
+   * here at call time, but if a positional save (dragstop) is currently
+   * waiting on the savePromise chain it will land BEFORE this read -- so
+   * the snapshot we capture already reflects the dragged positions. Then
+   * saveLayout serializes our update behind it. The previous saveActiveBlocks
+   * pattern read positions inside the rename handler (before the chain),
+   * which lost any dragstop that hadn't yet been awaited.
+   */
+  async updateBlockConfig(id: string, patch: Record<string, unknown>): Promise<void> {
+    // Wait for any pending writes so we read positions written by a prior
+    // dragstop before computing newBlocks.
+    try {
+      await this.savePromise;
+    } catch {
+      // Prior save's failure has already been notified in saveLayout's chain;
+      // reading the current in-memory layout is still the right move.
+    }
+    const live = this.activeBlocks();
+    if (!live.some(b => b.id === id)) return;
+    const next = live.map(b =>
+      b.id === id ? { ...b, config: { ...b.config, ...patch } } : b,
+    );
+    await this.saveActiveBlocks(next);
+  }
+
   async openHomepage(mode: OpenMode = 'retain'): Promise<void> {
     const { workspace } = this.app;
     const existing = workspace.getLeavesOfType(VIEW_TYPE);

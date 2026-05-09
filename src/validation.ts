@@ -33,7 +33,7 @@ export const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   manualOpenMode: 'retain',
   openWhenEmpty: false,
   pin: false,
-  hideScrollbar: false,
+  showScrollbar: true,
   compactLayout: true,
   hoverHighlight: true,
   blocks: [
@@ -124,10 +124,13 @@ export const MAX_BLOCKS = 100;
  */
 export function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknown> {
   const m = { ...b };
-  if (typeof m.col === 'number') { m.x = m.col - 1; }
-  if (typeof m.row === 'number') { m.y = m.row - 1; }
-  if (typeof m.colSpan === 'number') { m.w = m.colSpan; }
-  if (typeof m.rowSpan === 'number') { m.h = m.rowSpan; }
+  // "Only write if target unset" guard, mirroring the safer pattern used by the
+  // _hideX/_showX migration below. A corrupted data.json with both `col` and
+  // `x` (e.g. from a partial sync merge) would otherwise lose the valid `x`.
+  if (typeof m.col === 'number' && typeof m.x !== 'number') { m.x = m.col - 1; }
+  if (typeof m.row === 'number' && typeof m.y !== 'number') { m.y = m.row - 1; }
+  if (typeof m.colSpan === 'number' && typeof m.w !== 'number') { m.w = m.colSpan; }
+  if (typeof m.rowSpan === 'number' && typeof m.h !== 'number') { m.h = m.rowSpan; }
   delete m.col;
   delete m.row;
   delete m.colSpan;
@@ -138,9 +141,35 @@ export function migrateBlockInstance(b: Record<string, unknown>): Record<string,
   // Migrate legacy _transparent flag to granular flags.
   const cfg = m.config as Record<string, unknown> | undefined;
   if (cfg && cfg._transparent === true) {
-    cfg._hideBorder = true;
-    cfg._hideBackground = true;
+    if (cfg._showBorder === undefined) cfg._showBorder = false;
+    if (cfg._showBackground === undefined) cfg._showBackground = false;
     delete cfg._transparent;
+  }
+  // Migrate legacy `_hideX: true` flags to their `_showX: false` inverse.
+  // Only writes the new key when it is undefined, so an explicit user-set
+  // `_showX` overrides the legacy value without being silently overwritten.
+  if (cfg) {
+    const HIDE_TO_SHOW: Array<[string, string]> = [
+      ['_hideTitle', '_showTitle'],
+      ['_hideBorder', '_showBorder'],
+      ['_hideBackground', '_showBackground'],
+      ['_hideHeaderAccent', '_showHeaderAccent'],
+    ];
+    for (const [hideKey, showKey] of HIDE_TO_SHOW) {
+      if (hideKey in cfg) {
+        if (cfg[hideKey] === true && cfg[showKey] === undefined) {
+          cfg[showKey] = false;
+        }
+        delete cfg[hideKey];
+      }
+    }
+    // quotes-list specific: hideAccentBar -> showAccentBar
+    if (m.type === 'quotes-list' && 'hideAccentBar' in cfg) {
+      if (cfg.hideAccentBar === true && cfg.showAccentBar === undefined) {
+        cfg.showAccentBar = false;
+      }
+      delete cfg.hideAccentBar;
+    }
   }
   // Migrate voice-dictation config field renames.
   if (m.type === 'voice-dictation' && cfg) {
@@ -170,9 +199,9 @@ export function migrateBlockInstance(b: Record<string, unknown>): Record<string,
       cfg._titleLabel = cfg.title;
     }
     // Blocks that previously used an empty title to hide the header
-    // (html, static-text) should set _hideTitle so they stay headerless.
+    // (html, static-text) should set _showTitle: false so they stay headerless.
     if (!cfg.title && (m.type === 'html' || m.type === 'static-text')) {
-      if (cfg._hideTitle === undefined) cfg._hideTitle = true;
+      if (cfg._showTitle === undefined) cfg._showTitle = false;
     }
     delete cfg.title;
   }
@@ -199,7 +228,17 @@ export function validateBlocks(raw: unknown, columns: number, defaults: BlockIns
   if (!Array.isArray(raw)) return defaults;
   const migrated: unknown[] = raw.map(b => migrateBlockInstance(b as Record<string, unknown>));
   const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
-  return valid.map(b => ({
+  // Dedupe block IDs. A hand-edited or clipboard-imported layout with two blocks
+  // sharing the same id breaks every gs-id selector + Array.find lookup downstream
+  // (edit handles modify the wrong block, remove deletes one but not the duplicate,
+  // PomodoroBlock's id-keyed timerStore double-ticks). First occurrence wins.
+  const seen = new Set<string>();
+  const dedup = valid.filter(b => {
+    if (seen.has(b.id)) return false;
+    seen.add(b.id);
+    return true;
+  });
+  return dedup.map(b => ({
     ...b,
     w: Math.min(b.w, columns),
     x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
@@ -213,10 +252,23 @@ export function validateBlocks(raw: unknown, columns: number, defaults: BlockIns
  * Contract: `validateLayout(validateLayout(x))` must deep-equal `validateLayout(x)`
  * (idempotence) — the plugin re-persists the validated layout on every load, and an
  * accreting implementation would corrupt `data.json` on every reload.
+ *
+ * `onTopLevelCorruption` fires when raw exists but isn't a usable object (e.g.,
+ * data.json is a string from a sync conflict, or an array from a schema mistake).
+ * This signals "the user had a layout, but we can't read it" — distinct from "no
+ * layout exists yet" (raw == null on first install). Callers can use the hook to
+ * stash a backup before defaults wipe the slot.
  */
-export function validateLayout(raw: unknown): LayoutConfig {
+export function validateLayout(
+  raw: unknown,
+  onTopLevelCorruption?: (raw: unknown) => void,
+): LayoutConfig {
   const defaults = getDefaultLayout();
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+  if (raw === null || raw === undefined) return defaults;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    onTopLevelCorruption?.(raw);
+    return defaults;
+  }
 
   const r = raw as Record<string, unknown>;
   const columns = typeof r.columns === 'number' && [2, 3, 4, 5].includes(r.columns)
@@ -249,9 +301,14 @@ export function validateLayout(raw: unknown): LayoutConfig {
   const pin = typeof r.pin === 'boolean'
     ? r.pin
     : defaults.pin;
-  const hideScrollbar = typeof r.hideScrollbar === 'boolean'
-    ? r.hideScrollbar
-    : defaults.hideScrollbar;
+  // Migrate legacy `hideScrollbar` to its `showScrollbar` inverse. A
+  // new `showScrollbar` value on disk always wins; otherwise fall back to
+  // the inverted legacy key, otherwise the default.
+  const showScrollbar = typeof r.showScrollbar === 'boolean'
+    ? r.showScrollbar
+    : typeof r.hideScrollbar === 'boolean'
+      ? !r.hideScrollbar
+      : defaults.showScrollbar;
   const compactLayout = typeof r.compactLayout === 'boolean'
     ? r.compactLayout
     : defaults.compactLayout;
@@ -265,6 +322,6 @@ export function validateLayout(raw: unknown): LayoutConfig {
     columns, layoutPriority, responsiveMode,
     mobileColumns, mobileLayoutPriority, mobileBlocks,
     openOnStartup, openMode, manualOpenMode, openWhenEmpty,
-    pin, hideScrollbar, compactLayout, hoverHighlight, blocks,
+    pin, showScrollbar, compactLayout, hoverHighlight, blocks,
   };
 }

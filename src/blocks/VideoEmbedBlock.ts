@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;
@@ -147,28 +147,8 @@ export class VideoEmbedBlock extends BaseBlock {
     });
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new VideoEmbedSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class VideoEmbedSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Video embed settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
-    new Setting(contentEl)
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    new Setting(body)
       .setName('Video or playlist link')
       .setDesc('Paste a video or playlist link from any supported platform.')
       .addText(t =>
@@ -177,21 +157,12 @@ class VideoEmbedSettingsModal extends Modal {
          .onChange(v => { draft.url = v; }),
       );
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Shuffle on load')
       .setDesc('Start at a random video each time the homepage opens. Only works with playlists.')
       .addToggle(t =>
         t.setValue(Boolean(draft.shuffleOnLoad))
          .onChange(v => { draft.shuffleOnLoad = v; }),
       );
-
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

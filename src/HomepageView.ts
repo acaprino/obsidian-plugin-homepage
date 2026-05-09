@@ -17,7 +17,11 @@ export class HomepageView extends ItemView {
   getDisplayText(): string { return 'Homepage'; }
   getIcon(): string { return 'home'; }
 
-  onOpen(): Promise<void> {
+  // Async by contract: `reload()` awaits onOpen, and any future async work in
+  // this method (e.g., loading per-leaf state, awaiting an editor-ready signal)
+  // MUST be awaited inside the function body so `reload()` callers don't proceed
+  // before render is actually complete.
+  async onOpen(): Promise<void> {
     // Full teardown: unloads blocks AND removes the grid DOM element
     this.grid?.destroy();
     this.toolbar?.destroy();
@@ -25,7 +29,7 @@ export class HomepageView extends ItemView {
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass('homepage-view');
-    contentEl.toggleClass('homepage-no-scrollbar', !!this.plugin.layout.hideScrollbar);
+    contentEl.toggleClass('homepage-no-scrollbar', this.plugin.layout.showScrollbar === false);
     contentEl.toggleClass('homepage-hover-highlight', !!this.plugin.layout.hoverHighlight);
 
     const onLayoutChange = (newLayout: LayoutConfig) => {
@@ -48,7 +52,6 @@ export class HomepageView extends ItemView {
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
 
     this.grid.render(this.plugin.activeBlocks(), this.plugin.activeColumns(), true);
-    return Promise.resolve();
   }
 
   onClose(): Promise<void> {

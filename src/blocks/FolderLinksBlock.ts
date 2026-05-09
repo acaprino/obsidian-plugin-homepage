@@ -1,4 +1,4 @@
-import { App, Modal, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
@@ -185,63 +185,39 @@ export class FolderLinksBlock extends BaseBlock {
     return files;
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new FolderLinksSettingsModal(
-      this.app,
-      this.instance.config as FolderLinksConfig,
-      (newConfig) => { onSave(newConfig as Record<string, unknown>); },
-    ).open();
-  }
-}
-
-// ── Settings modal ───────────────────────────────────────────────────────────
-
-class FolderLinksSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: FolderLinksConfig,
-    private onSave: (config: FolderLinksConfig) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Quick links settings').setHeading();
-
-    const draft: FolderLinksConfig = structuredClone(this.config);
-    draft.links ??= [];
-    const links = draft.links;
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as FolderLinksConfig;
+    cfg.links ??= [];
+    const links = cfg.links;
 
     // Track all pickers so we can close siblings when one opens
     const pickers: EmojiPickerInstance[] = [];
     const closeAllPickers = () => { for (const p of pickers) p.close(); };
 
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Link alignment')
       .setDesc('Left, center, or right.')
       .addDropdown(d =>
         d.addOptions({ left: 'Left', center: 'Center', right: 'Right' })
-         .setValue(draft.linkAlign ?? 'left')
-         .onChange(v => { draft.linkAlign = v as 'left' | 'center' | 'right'; }),
+         .setValue(cfg.linkAlign ?? 'left')
+         .onChange(v => { cfg.linkAlign = v as 'left' | 'center' | 'right'; }),
       );
 
     let folderText: import('obsidian').TextComponent;
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Auto-list folder')
       .setDesc('Folder path, with optional wildcards. Examples: Projects, Projects/*.md, Projects/**/*-draft.md')
       .addText(t => {
         folderText = t;
-        t.setValue(draft.folder ?? '')
+        t.setValue(cfg.folder ?? '')
          .setPlaceholder('Projects/*.md')
-         .onChange(v => { draft.folder = v; });
+         .onChange(v => { cfg.folder = v; });
       })
       .addButton(btn =>
         btn.setIcon('folder').setTooltip('Browse vault folders').onClick(() => {
           new FolderSuggestModal(this.app, (folder) => {
             const path = folder.path === '/' ? '' : folder.path;
-            draft.folder = path;
+            cfg.folder = path;
             folderText.setValue(path);
           }).open();
         }),
@@ -249,21 +225,21 @@ class FolderLinksSettingsModal extends Modal {
 
     // Folder emoji picker
     const folderPicker = createEmojiPicker({
-      container: contentEl,
+      container: body,
       label: 'Folder link emoji',
-      value: draft.folderEmoji ?? '',
+      value: cfg.folderEmoji ?? '',
       placeholder: 'None',
       rowClass: 'link-emoji-picker-row',
       panelClass: 'link-emoji-panel',
-      onSelect: (emoji) => { draft.folderEmoji = emoji; },
-      onClear: () => { draft.folderEmoji = ''; },
+      onSelect: (emoji) => { cfg.folderEmoji = emoji; },
+      onClear: () => { cfg.folderEmoji = ''; },
       onBeforeOpen: closeAllPickers,
     });
     pickers.push(folderPicker);
 
-    new Setting(contentEl).setName('Manual links').setHeading();
+    new Setting(body).setName('Manual links').setHeading();
 
-    const linksContainer = contentEl.createDiv();
+    const linksContainer = body.createDiv();
 
     const dragState = { dragIdx: -1 };
     const renderLinks = () => {
@@ -299,16 +275,10 @@ class FolderLinksSettingsModal extends Modal {
     };
     renderLinks();
 
-    new Setting(contentEl)
+    new Setting(body)
       .addButton(btn => btn.setButtonText('Add link').onClick(() => {
         links.push({ label: '', path: '' });
         renderLinks();
-      }))
-      .addButton(btn => btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
       }));
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

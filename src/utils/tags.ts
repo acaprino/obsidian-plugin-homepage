@@ -32,6 +32,10 @@ let listenersInstalled = false;
  * to call from both onload and unit tests.
  */
 export function installTagCacheListeners(plugin: Plugin): void {
+  // Always start cold. Without this, a plugin disable+enable cycle would re-use
+  // entries computed against the prior session's vault state -- subtly stale
+  // RandomNote / QuotesList results until the first vault event invalidates.
+  tagCache.clear();
   if (listenersInstalled) return;
   listenersInstalled = true;
   plugin.register(() => {
@@ -61,11 +65,3 @@ export function getFilesWithTag(app: App, tag: string): TFile[] {
   return files;
 }
 
-/**
- * Clear the tag cache manually. Normal invalidation happens through the listeners
- * installed by installTagCacheListeners; this is kept for tests and for callers
- * that want to force a refresh without waiting for the next vault event.
- */
-export function clearTagCache(): void {
-  tagCache.clear();
-}

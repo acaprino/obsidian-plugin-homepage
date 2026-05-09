@@ -1,4 +1,4 @@
-import { App, Modal, Setting, moment } from 'obsidian';
+import { Setting, moment } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 
 type ClockStyle = 'minimal' | 'centered' | 'large' | 'accent';
@@ -55,28 +55,8 @@ export class ClockBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new ClockSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class ClockSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (config: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Clock settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
-    new Setting(contentEl)
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    new Setting(body)
       .setName('Style')
       .setDesc('How the clock looks.')
       .addDropdown(d =>
@@ -84,28 +64,20 @@ class ClockSettingsModal extends Modal {
          .setValue(draft.clockStyle as string ?? 'minimal')
          .onChange(v => { draft.clockStyle = v; }),
       );
-    new Setting(contentEl).setName('Show seconds').addToggle(t =>
+    new Setting(body).setName('Show seconds').addToggle(t =>
       t.setValue(draft.showSeconds as boolean ?? false)
        .onChange(v => { draft.showSeconds = v; }),
     );
-    new Setting(contentEl).setName('Show date').addToggle(t =>
+    new Setting(body).setName('Show date').addToggle(t =>
       t.setValue(draft.showDate as boolean ?? true)
        .onChange(v => { draft.showDate = v; }),
     );
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Custom format')
       .setDesc('Moment.js format string. Leave blank for default.')
       .addText(t =>
         t.setValue(draft.format as string ?? '')
          .onChange(v => { draft.format = v; }),
       );
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

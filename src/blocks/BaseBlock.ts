@@ -24,9 +24,20 @@ export abstract class BaseBlock extends Component {
 
   abstract render(el: HTMLElement): void | Promise<void>;
 
-  // Override to open a per-block settings modal.
-  // onSave receives the new config; do NOT mutate this.instance.config directly.
-  openSettings(_onSave: (config: Record<string, unknown>) => void): void {}
+  // Override to render block-specific content settings directly into `body`.
+  // Mutate `draft` in place — the outer BlockSettingsModal owns commit/cancel.
+  // Default: no content settings.
+  renderContentSettings(_body: HTMLElement, _draft: Record<string, unknown>): void {}
+
+  /**
+   * Subclasses can override to declare that the block currently holds unsaved
+   * UI state that a full rerender would destroy (e.g., StaticTextBlock's inline
+   * editor, VaultSearchBlock's typed query). GridLayout.rerender consults this
+   * and skips the rerender when any block returns true. Default: no unsaved state.
+   */
+  hasUnsavedInlineState(): boolean {
+    return false;
+  }
 
   // Called by GridLayout to redirect renderHeader output outside block-content.
   setHeaderContainer(el: HTMLElement): void {
@@ -34,11 +45,11 @@ export abstract class BaseBlock extends Component {
   }
 
   // Render the muted uppercase block header label.
-  // Respects _hideTitle, _titleLabel, and _titleEmoji from instance.config.
+  // Respects _showTitle, _titleLabel, and _titleEmoji from instance.config.
   // Renders into the header container set by GridLayout (if any), else falls back to el.
   protected renderHeader(el: HTMLElement, title: string): void {
     const cfg = this.instance.config;
-    if (cfg._hideTitle === true) return;
+    if (cfg._showTitle === false) return;
     const label = (typeof cfg._titleLabel === 'string' && cfg._titleLabel.trim())
       ? cfg._titleLabel.trim()
       : title;

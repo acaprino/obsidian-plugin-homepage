@@ -1,5 +1,6 @@
-import { App, AbstractInputSuggest, Modal, Setting, TFile, MarkdownRenderer } from 'obsidian';
+import { App, AbstractInputSuggest, Setting, TFile, MarkdownRenderer } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 const DEBOUNCE_MS = 300;
 
@@ -27,15 +28,17 @@ export class EmbeddedNoteBlock extends BaseBlock {
     // Update the config and re-render if the embedded file is renamed.
     // Read filePath from the live layout (not this.instance) to avoid stale refs
     // after a prior rename already updated the persisted config.
+    //
+    // updateBlockConfig waits for any pending positional save (dragstop) before
+    // computing newBlocks -- without that ordering, a drag-then-rename pair
+    // would silently lose the dragged position by writing a stale x/y/w/h
+    // snapshot back to disk.
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       const active = this.plugin.activeBlocks();
       const current = active.find(b => b.id === this.instance.id);
       const filePath = (current?.config.filePath as string) ?? '';
       if (oldPath === filePath) {
-        const newBlocks = active.map(b =>
-          b.id === this.instance.id ? { ...b, config: { ...b.config, filePath: file.path } } : b,
-        );
-        void this.plugin.saveActiveBlocks(newBlocks).then(trigger);
+        void this.plugin.updateBlockConfig(this.instance.id, { filePath: file.path }).then(trigger);
         return;
       }
       if (file.path === filePath) trigger();
@@ -83,7 +86,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
       contentEl.setAttribute('role', 'region');
       contentEl.setAttribute('aria-label', file.basename);
     } else if (heightMode === 'grow') {
-      contentEl.setAttribute('data-auto-height-content', '');
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
     try {
@@ -96,8 +99,26 @@ export class EmbeddedNoteBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new EmbeddedNoteSettingsModal(this.app, this.instance.config, onSave).open();
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    new Setting(body).setName('File path').setDesc('Path to the note (e.g. Notes/MyNote.md)').addText(t => {
+      t.setValue(draft.filePath as string ?? '')
+       .setPlaceholder('Start typing to search…')
+       .onChange(v => { draft.filePath = v; });
+      new FileSuggest(this.app, t.inputEl);
+    });
+    new Setting(body).setName('Show title').addToggle(t =>
+      t.setValue(draft.showTitle as boolean ?? true)
+       .onChange(v => { draft.showTitle = v; }),
+    );
+    new Setting(body)
+      .setName('Height mode')
+      .setDesc('Scroll keeps the block compact. Grow to fit expands the card to show the full note.')
+      .addDropdown(d =>
+        d.addOption('scroll', 'Scroll (fixed height)')
+         .addOption('grow', 'Grow to fit all')
+         .setValue(draft.heightMode as string ?? 'scroll')
+         .onChange(v => { draft.heightMode = v; }),
+      );
   }
 }
 
@@ -125,50 +146,4 @@ class FileSuggest extends AbstractInputSuggest<TFile> {
     this.inputEl.dispatchEvent(new Event('input'));
     this.close();
   }
-}
-
-class EmbeddedNoteSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Embedded note settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
-    new Setting(contentEl).setName('File path').setDesc('Path to the note (e.g. Notes/MyNote.md)').addText(t => {
-      t.setValue(draft.filePath as string ?? '')
-       .setPlaceholder('Start typing to search…')
-       .onChange(v => { draft.filePath = v; });
-      new FileSuggest(this.app, t.inputEl);
-    });
-    new Setting(contentEl).setName('Show title').addToggle(t =>
-      t.setValue(draft.showTitle as boolean ?? true)
-       .onChange(v => { draft.showTitle = v; }),
-    );
-    new Setting(contentEl)
-      .setName('Height mode')
-      .setDesc('Scroll keeps the block compact. Grow to fit expands the card to show the full note.')
-      .addDropdown(d =>
-        d.addOption('scroll', 'Scroll (fixed height)')
-         .addOption('grow', 'Grow to fit all')
-         .setValue(draft.heightMode as string ?? 'scroll')
-         .onChange(v => { draft.heightMode = v; }),
-      );
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
-  }
-
-  onClose(): void { this.contentEl.empty(); }
 }

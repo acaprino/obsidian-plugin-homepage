@@ -1,9 +1,12 @@
 node_modules/
 data.json
+data.json.invalid
 data.backup.json
-.frontend-review/
-.full-review/
-.team-review/
-.deep-dive/
+# Glob pattern catches archived review snapshots like .team-review-2026-04-23/
+.frontend-review*/
+.full-review*/
+.team-review*/
+.deep-dive*/
 obsidian-simulator/
 claude_.bat
+.claude/scheduled_tasks.lock

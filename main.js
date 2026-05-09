@@ -28,9 +28,6 @@ var import_obsidian27 = require("obsidian");
 // src/HomepageView.ts
 var import_obsidian6 = require("obsidian");
 
-// src/GridLayout.ts
-var import_obsidian4 = require("obsidian");
-
 // node_modules/gridstack/dist/utils.js
 var Utils = class _Utils {
   /**
@@ -5729,7 +5726,7 @@ function applyBlockStyling(el, config) {
   }
   const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
   el.toggleClass("block-accented", !!accentColor);
-  el.toggleClass("block-no-header-accent", config._hideHeaderAccent === true);
+  el.toggleClass("block-no-header-accent", config._showHeaderAccent === false);
   if (accentColor) {
     el.style.setProperty("--block-accent", accentColor);
     const intensity = typeof config._accentIntensity === "number" ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
@@ -5750,8 +5747,8 @@ function applyBlockStyling(el, config) {
     el.style.removeProperty("--block-accent-pct");
     el.toggleClass("block-bright-accent", false);
   }
-  el.toggleClass("block-no-border", config._hideBorder === true);
-  el.toggleClass("block-no-background", config._hideBackground === true);
+  el.toggleClass("block-no-border", config._showBorder === false);
+  el.toggleClass("block-no-background", config._showBackground === false);
   const pad = typeof config._cardPadding === "number" ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
   if (pad) el.style.setProperty("--hp-card-padding", `${pad}px`);
   else el.style.removeProperty("--hp-card-padding");
@@ -5777,7 +5774,7 @@ function applyBlockStyling(el, config) {
   const gradStart = typeof config._gradientStart === "string" && HEX_COLOR_RE.test(config._gradientStart) ? config._gradientStart : "";
   const gradEnd = typeof config._gradientEnd === "string" && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : "";
   const gradAngle = typeof config._gradientAngle === "number" ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
-  if (gradStart && gradEnd && config._hideBackground !== true) {
+  if (gradStart && gradEnd && config._showBackground !== false) {
     el.style.setProperty("--hp-bg-gradient", `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
     el.toggleClass("block-has-gradient", true);
   } else {
@@ -5790,13 +5787,6 @@ function applyBlockStyling(el, config) {
   const borderStyle = typeof config._borderStyle === "string" && VALID_BORDER_STYLES.includes(config._borderStyle) ? config._borderStyle : "";
   if (borderStyle) el.style.setProperty("--hp-border-style", borderStyle);
   else el.style.removeProperty("--hp-border-style");
-}
-
-// src/utils/ids.ts
-function newId() {
-  const g = globalThis;
-  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
-  return "hp-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 // src/utils/Scheduler.ts
@@ -5851,6 +5841,7 @@ var Phase = {
 };
 
 // src/grid/AutoHeight.ts
+var AUTO_HEIGHT_ATTR = "data-auto-height-content";
 var AutoHeightManager = class {
   /**
    * `host` is kept as a live reference — AutoHeightManager re-reads `phase`, `gridStack`
@@ -5901,7 +5892,7 @@ var AutoHeightManager = class {
   measureAndResize(gsEl, instance) {
     const { gridStack } = this.host;
     if (!gridStack || !gsEl.isConnected) return false;
-    const contentEl = gsEl.querySelector("[data-auto-height-content]");
+    const contentEl = gsEl.querySelector(`[${AUTO_HEIGHT_ATTR}]`);
     const headerZone = gsEl.querySelector(".block-header-zone");
     if (!contentEl || !headerZone) return false;
     const blockContent = gsEl.querySelector(".block-content");
@@ -5924,7 +5915,8 @@ var AutoHeightManager = class {
     const divider = wrapper?.querySelector(".block-header-divider");
     const gapCount = divider ? 2 : 1;
     const margin = typeof gridStack.opts.margin === "number" ? gridStack.opts.margin : 8;
-    const totalH = headerH + pad + contentH + gap * gapCount + margin * 2;
+    const SAFETY_BUFFER = 4;
+    const totalH = headerH + pad + contentH + gap * gapCount + margin * 2 + SAFETY_BUFFER;
     const cell = gridStack.getCellHeight();
     const rows = Math.max(1, Math.ceil(totalH / cell));
     const node = gsEl.gridstackNode;
@@ -6049,6 +6041,141 @@ var ResponsiveColumnsManager = class {
   }
 };
 
+// src/grid/LayoutPersister.ts
+var LayoutPersister = class {
+  constructor(host) {
+    this.host = host;
+  }
+  /** Read positions from GridStack, diff against the persisted layout, write if changed. */
+  persist() {
+    const { gridStack, phase, plugin, effectiveColumns, canonicalColumns } = this.host;
+    if (!gridStack || phase !== Phase.Ready) return;
+    const isResponsive = effectiveColumns !== canonicalColumns;
+    if (isResponsive && plugin.activeBlocks().every((b) => this.host.shouldAutoHeight(b))) {
+      return;
+    }
+    const nodes = gridStack.getGridItems();
+    const posMap = /* @__PURE__ */ new Map();
+    for (const el of nodes) {
+      const node = el.gridstackNode;
+      const id = el.getAttribute("gs-id");
+      if (id && node) {
+        const w = Math.min(node.w ?? 1, effectiveColumns);
+        posMap.set(id, {
+          x: Math.min(node.x ?? 0, Math.max(0, effectiveColumns - w)),
+          y: node.y ?? 0,
+          w,
+          h: node.h ?? 1
+        });
+      }
+    }
+    const changed = plugin.activeBlocks().some((b) => {
+      const pos = posMap.get(b.id);
+      if (!pos) return false;
+      const isAuto = this.host.shouldAutoHeight(b);
+      if (isResponsive) return !isAuto && b.h !== pos.h;
+      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
+      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
+    });
+    if (!changed) return;
+    const newBlocks = plugin.activeBlocks().map((b) => {
+      const pos = posMap.get(b.id);
+      if (!pos) return b;
+      const isAuto = this.host.shouldAutoHeight(b);
+      if (isResponsive) {
+        return isAuto ? b : { ...b, h: pos.h };
+      }
+      const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+      return { ...b, ...update };
+    });
+    this.host.emitLayout(this.host.buildLayoutUpdate(newBlocks));
+  }
+  /**
+   * Debounced persist — coalesces rapid auto-height resize saves into one
+   * write. The 50ms window is short enough not to feel laggy on Save buttons,
+   * long enough to coalesce a 60fps ResizeObserver storm into a single save.
+   */
+  persistDebounced() {
+    this.host.scheduler.timeout("sync", 50, () => {
+      if (this.host.phase !== Phase.Destroyed) this.persist();
+    });
+  }
+  /** True when the grid is showing a responsive (narrowed) layout. */
+  isResponsive() {
+    return this.host.effectiveColumns !== this.host.canonicalColumns;
+  }
+  /**
+   * Repack all GridStack nodes so blocks shift up to fill vertical gaps left
+   * by auto-height shrinks. Called from AutoHeightManager.runBatch after any
+   * measurement changes a row count.
+   */
+  repackGridNodes(packRows) {
+    const { gridStack, plugin, effectiveColumns } = this.host;
+    if (!gridStack) return;
+    const nodeItems = [];
+    for (const gsEl of gridStack.getGridItems()) {
+      const node = gsEl.gridstackNode;
+      if (!node) continue;
+      nodeItems.push({ el: gsEl, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+    }
+    packRows(nodeItems, effectiveColumns, plugin.activeLayoutPriority());
+    gridStack.batchUpdate();
+    for (const item of nodeItems) {
+      gridStack.update(item.el, { y: item.y });
+    }
+    gridStack.batchUpdate(false);
+  }
+};
+
+// src/grid/CollapseToggle.ts
+function attachCollapseToggle(host, gsEl, instance, headerZone) {
+  const wrapper = gsEl.querySelector(".homepage-block-wrapper");
+  const chevron = headerZone.querySelector(".block-collapse-chevron");
+  if (!wrapper) return;
+  const toggleCollapse = (e) => {
+    e.stopPropagation();
+    if (host.editMode) return;
+    const isNowCollapsed = !wrapper.hasClass("block-collapsed");
+    wrapper.toggleClass("block-collapsed", isNowCollapsed);
+    chevron?.toggleClass("is-collapsed", isNowCollapsed);
+    headerZone.setAttribute("aria-expanded", String(!isNowCollapsed));
+    const gsNode = gsEl.gridstackNode;
+    let newBlocks;
+    if (isNowCollapsed) {
+      const liveH = gsNode?.h ?? instance.h;
+      if (host.gridStack) host.gridStack.update(gsEl, { h: 1 });
+      newBlocks = host.plugin.activeBlocks().map(
+        (b) => b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b
+      );
+    } else {
+      const currentBlock = host.plugin.activeBlocks().find((b) => b.id === instance.id);
+      const origH = currentBlock?._expandedH ?? instance.h;
+      if (host.gridStack) host.gridStack.update(gsEl, { h: origH });
+      newBlocks = host.plugin.activeBlocks().map(
+        (b) => b.id === instance.id ? { ...b, collapsed: false, h: origH } : b
+      );
+    }
+    void host.plugin.saveLayout(host.buildLayoutUpdate(newBlocks));
+  };
+  headerZone.addEventListener("click", toggleCollapse);
+  headerZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleCollapse(e);
+    }
+  });
+}
+
+// src/grid/EditHandleBar.ts
+var import_obsidian4 = require("obsidian");
+
+// src/utils/ids.ts
+function newId() {
+  const g = globalThis;
+  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
+  return "hp-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
 // src/modals/BlockSettingsModal.ts
 var import_obsidian2 = require("obsidian");
 
@@ -6069,20 +6196,30 @@ var BaseBlock = class extends import_obsidian.Component {
   _widthRafId = 0;
   /** Set by subclasses in render() to enable scheduleRender(). */
   containerEl = null;
-  // Override to open a per-block settings modal.
-  // onSave receives the new config; do NOT mutate this.instance.config directly.
-  openSettings(_onSave) {
+  // Override to render block-specific content settings directly into `body`.
+  // Mutate `draft` in place — the outer BlockSettingsModal owns commit/cancel.
+  // Default: no content settings.
+  renderContentSettings(_body, _draft) {
+  }
+  /**
+   * Subclasses can override to declare that the block currently holds unsaved
+   * UI state that a full rerender would destroy (e.g., StaticTextBlock's inline
+   * editor, VaultSearchBlock's typed query). GridLayout.rerender consults this
+   * and skips the rerender when any block returns true. Default: no unsaved state.
+   */
+  hasUnsavedInlineState() {
+    return false;
   }
   // Called by GridLayout to redirect renderHeader output outside block-content.
   setHeaderContainer(el) {
     this._headerContainer = el;
   }
   // Render the muted uppercase block header label.
-  // Respects _hideTitle, _titleLabel, and _titleEmoji from instance.config.
+  // Respects _showTitle, _titleLabel, and _titleEmoji from instance.config.
   // Renders into the header container set by GridLayout (if any), else falls back to el.
   renderHeader(el, title) {
     const cfg = this.instance.config;
-    if (cfg._hideTitle === true) return;
+    if (cfg._showTitle === false) return;
     const label = typeof cfg._titleLabel === "string" && cfg._titleLabel.trim() ? cfg._titleLabel.trim() : title;
     if (!label) return;
     const container = this._headerContainer ?? el;
@@ -6606,32 +6743,17 @@ function createEmojiPicker(opts) {
     outsideClickAc = null;
   };
   const destroy = () => {
+    if (searchTimer) {
+      clearTimeout(searchTimer);
+      searchTimer = null;
+    }
+    outsideClickAc?.abort();
+    outsideClickAc = null;
     row.remove();
     panel.remove();
   };
   return { close, destroy };
 }
-
-// src/blockMeta.ts
-var BLOCK_META = {
-  "greeting": { icon: "\u{1F44B}", desc: "Personalized greeting with time of day" },
-  "clock": { icon: "\u{1F550}", desc: "Live clock with date display" },
-  "folder-links": { icon: "\u{1F517}", desc: "Quick links to notes and folders" },
-  "button-grid": { icon: "\u{1F532}", desc: "Grid of emoji-labeled buttons" },
-  "quotes-list": { icon: "\u{1F4AC}", desc: "Collection of quotes from notes" },
-  "image-gallery": { icon: "\u{1F5BC}\uFE0F", desc: "Photo grid from a vault folder" },
-  "embedded-note": { icon: "\u{1F4C4}", desc: "Render a note inline on the page" },
-  "static-text": { icon: "\u{1F4DD}", desc: "Markdown text block you write directly" },
-  "html": { icon: "</>", desc: "Custom HTML content (sanitized)" },
-  "video-embed": { icon: "\u{1F3AC}", desc: "Embed YouTube, Vimeo, or other videos" },
-  "bookmarks": { icon: "\u{1F516}", desc: "Web links and vault bookmarks grid" },
-  "recent-files": { icon: "\u{1F4C2}", desc: "Recently modified notes in your vault" },
-  "pomodoro": { icon: "\u{1F345}", desc: "Pomodoro timer with work/break cycles" },
-  "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" },
-  "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" },
-  "voice-dictation": { icon: "\u{1F399}\uFE0F", desc: "Record voice notes saved automatically to a folder" },
-  "vault-search": { icon: "\u{1F50D}", desc: "Search notes by name with live results" }
-};
 
 // src/modals/BlockSettingsModal.ts
 var BLOCK_SETTINGS_TABS = [
@@ -6663,7 +6785,6 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
   draft = {};
   accentDirty = false;
   gradDirty = false;
-  activeTab = "header";
   tabBodyEl = null;
   tabButtons = /* @__PURE__ */ new Map();
   defaultTitle = "";
@@ -6700,7 +6821,7 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
       previewHeader.className = "block-header";
       const sz = typeof d._titleSize === "string" && TITLE_SIZE_RE.test(d._titleSize) ? d._titleSize : "";
       if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.toggleClass("hp-hidden", d._hideTitle === true);
+      previewHeaderZone.toggleClass("hp-hidden", d._showTitle === false);
       previewDivider.toggleClass("hp-hidden", d._showDivider !== true);
       applyBlockStyling(previewCard, d);
     };
@@ -6732,7 +6853,6 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     this.switchTab("header");
   }
   switchTab(id) {
-    this.activeTab = id;
     for (const [tabId, btn] of this.tabButtons) {
       btn.toggleClass("is-active", tabId === id);
       btn.setAttribute("aria-selected", String(tabId === id));
@@ -6775,9 +6895,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
         this.refreshPreview();
       }
     });
-    new import_obsidian2.Setting(body).setName("Hide title").addToggle(
-      (t) => t.setValue(this.draft._hideTitle === true).onChange((v) => {
-        this.draft._hideTitle = v;
+    new import_obsidian2.Setting(body).setName("Show title").addToggle(
+      (t) => t.setValue(this.draft._showTitle !== false).onChange((v) => {
+        this.draft._showTitle = v;
         this.refreshPreview();
       })
     );
@@ -6799,9 +6919,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Hide header bar").setDesc("Remove the colored header accent while keeping the title text.").addToggle(
-      (t) => t.setValue(this.draft._hideHeaderAccent === true).onChange((v) => {
-        this.draft._hideHeaderAccent = v;
+    new import_obsidian2.Setting(body).setName("Show header bar").setDesc("Show the colored header accent behind the title.").addToggle(
+      (t) => t.setValue(this.draft._showHeaderAccent !== false).onChange((v) => {
+        this.draft._showHeaderAccent = v;
         this.refreshPreview();
       })
     );
@@ -6813,9 +6933,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Hide background").setDesc("Remove the body background so the block blends into the page.").addToggle(
-      (t) => t.setValue(this.draft._hideBackground === true).onChange((v) => {
-        this.draft._hideBackground = v;
+    new import_obsidian2.Setting(body).setName("Show background").setDesc("Show the body background. Turn off to let the block blend into the page.").addToggle(
+      (t) => t.setValue(this.draft._showBackground !== false).onChange((v) => {
+        this.draft._showBackground = v;
         this.refreshPreview();
       })
     );
@@ -6916,9 +7036,9 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
       });
     });
     body.createDiv({ cls: "hp-settings-subhead", text: "Border" });
-    new import_obsidian2.Setting(body).setName("Hide border").setDesc("Remove the border and hover highlight.").addToggle(
-      (t) => t.setValue(this.draft._hideBorder === true).onChange((v) => {
-        this.draft._hideBorder = v;
+    new import_obsidian2.Setting(body).setName("Show border").setDesc("Show the border and hover highlight.").addToggle(
+      (t) => t.setValue(this.draft._showBorder !== false).onChange((v) => {
+        this.draft._showBorder = v;
         this.refreshPreview();
       })
     );
@@ -6949,27 +7069,13 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     );
   }
   renderContentTab(body) {
-    const meta = BLOCK_META[this.instance.type];
-    const card = body.createDiv({ cls: "hp-settings-content-cta" });
-    const iconEl = card.createDiv({ cls: "hp-settings-content-icon" });
-    iconEl.setText(meta?.icon ?? "\u2699");
-    const textWrap = card.createDiv({ cls: "hp-settings-content-text" });
-    textWrap.createDiv({ cls: "hp-settings-content-title", text: this.defaultTitle });
-    textWrap.createDiv({
-      cls: "hp-settings-content-desc",
-      text: meta?.desc ?? "Configure the content and behavior of this block."
-    });
-    new import_obsidian2.Setting(body).addButton(
-      (btn) => btn.setButtonText("Edit content settings \u2192").setCta().onClick(() => {
-        this.block.openSettings((blockConfig) => {
-          const shared = Object.fromEntries(
-            Object.entries(this.draft).filter(([k]) => k.startsWith("_"))
-          );
-          this.draft = { ...blockConfig, ...shared };
-          this.refreshPreview();
-        });
-      })
-    );
+    this.block.renderContentSettings(body, this.draft);
+    if (!body.children.length) {
+      body.createEl("p", {
+        cls: "hp-settings-empty",
+        text: "This block has no content settings."
+      });
+    }
   }
   commit() {
     if (!this.accentDirty) this.draft._accentColor = "";
@@ -7011,9 +7117,170 @@ var RemoveBlockConfirmModal = class extends import_obsidian3.Modal {
   }
 };
 
+// src/grid/EditHandleBar.ts
+function attachEditHandleBar(host, wrapper, instance) {
+  const bar = wrapper.createDiv({ cls: "block-handle-bar" });
+  const handle = bar.createDiv({ cls: "block-move-handle" });
+  (0, import_obsidian4.setIcon)(handle, "grip-vertical");
+  handle.setAttribute("aria-label", "Drag to reorder");
+  handle.setAttribute("title", "Drag to reorder");
+  const moveUpBtn = bar.createEl("button", { cls: "block-move-up-btn" });
+  (0, import_obsidian4.setIcon)(moveUpBtn, "chevron-up");
+  moveUpBtn.setAttribute("aria-label", "Move block up");
+  moveUpBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    swapWithNeighbor(host, instance, "up");
+  });
+  const moveDownBtn = bar.createEl("button", { cls: "block-move-down-btn" });
+  (0, import_obsidian4.setIcon)(moveDownBtn, "chevron-down");
+  moveDownBtn.setAttribute("aria-label", "Move block down");
+  moveDownBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    swapWithNeighbor(host, instance, "down");
+  });
+  const dupBtn = bar.createEl("button", { cls: "block-duplicate-btn" });
+  (0, import_obsidian4.setIcon)(dupBtn, "copy");
+  dupBtn.setAttribute("aria-label", "Duplicate block");
+  dupBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const current = host.plugin.activeBlocks().find((b) => b.id === instance.id);
+    if (!current) return;
+    const clone = {
+      ...structuredClone(current),
+      id: newId(),
+      y: current.y + current.h
+    };
+    const newBlocks = [...host.plugin.activeBlocks(), clone];
+    host.setLastAddedBlockId(clone.id);
+    host.emitLayout(host.buildLayoutUpdate(newBlocks));
+    host.triggerRerender();
+  });
+  const settingsBtn = bar.createEl("button", { cls: "block-settings-btn" });
+  (0, import_obsidian4.setIcon)(settingsBtn, "settings");
+  settingsBtn.setAttribute("aria-label", "Block settings");
+  settingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const entry = host.blocks.get(instance.id);
+    if (!entry) return;
+    const onSave = (config) => {
+      const newBlocks = host.plugin.activeBlocks().map(
+        (b) => b.id === instance.id ? { ...b, config } : b
+      );
+      host.emitLayout(host.buildLayoutUpdate(newBlocks));
+      host.triggerRerender();
+    };
+    let tempBlock = null;
+    const block = entry.block ?? (() => {
+      const factory = BlockRegistry.get(instance.type);
+      if (!factory) return null;
+      tempBlock = factory.create(host.app, instance, host.plugin);
+      return tempBlock;
+    })();
+    if (!block) return;
+    const teardownTempBlock = () => {
+      if (tempBlock) {
+        tempBlock.unload();
+        tempBlock = null;
+      }
+    };
+    const modal = new BlockSettingsModal(host.app, instance, block, (config) => {
+      teardownTempBlock();
+      onSave(config);
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      teardownTempBlock();
+      originalOnClose();
+    };
+    modal.open();
+  });
+  const removeBtn = bar.createEl("button", { cls: "block-remove-btn" });
+  (0, import_obsidian4.setIcon)(removeBtn, "x");
+  removeBtn.setAttribute("aria-label", "Remove block");
+  removeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (removeBtn.hasAttribute("data-remove-pending")) return;
+    removeBtn.setAttribute("data-remove-pending", "1");
+    const modal = new RemoveBlockConfirmModal(host.app, () => {
+      removeBtn.removeAttribute("data-remove-pending");
+      const gsItem = host.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
+      if (gsItem instanceof HTMLElement && host.gridStack) {
+        host.gridStack.batchUpdate();
+        try {
+          host.gridStack.removeWidget(gsItem);
+          host.gridStack.compact();
+        } finally {
+          host.gridStack.batchUpdate(false);
+        }
+      }
+      const entry = host.blocks.get(instance.id);
+      if (entry) {
+        entry.block?.unload();
+        host.blocks.delete(instance.id);
+      }
+      const remaining = host.plugin.activeBlocks().filter((b) => b.id !== instance.id);
+      if (remaining.length === 0) {
+        host.emitLayout(host.buildLayoutUpdate([]));
+        host.triggerRerender();
+        return;
+      }
+      if (!host.gridStack) {
+        host.emitLayout(host.buildLayoutUpdate(remaining));
+        return;
+      }
+      const posMap = /* @__PURE__ */ new Map();
+      for (const el of host.gridStack.getGridItems()) {
+        const node = el.gridstackNode;
+        const id = el.getAttribute("gs-id");
+        if (id && node) {
+          posMap.set(id, { x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
+        }
+      }
+      const newBlocks = remaining.map((b) => {
+        const pos = posMap.get(b.id);
+        if (!pos) return b;
+        const isAuto = host.shouldAutoHeight(b);
+        const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+        return { ...b, ...update };
+      });
+      host.emitLayout(host.buildLayoutUpdate(newBlocks));
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      removeBtn.removeAttribute("data-remove-pending");
+      originalOnClose();
+    };
+    modal.open();
+  });
+  const headerZone = wrapper.querySelector(".block-header-zone");
+  if (headerZone) {
+    wrapper.insertBefore(bar, headerZone);
+  }
+}
+function swapWithNeighbor(host, instance, direction) {
+  const blocks = host.plugin.activeBlocks();
+  const current = blocks.find((b) => b.id === instance.id);
+  if (!current) return;
+  const columns = host.plugin.activeColumns();
+  const neighbor = blocks.filter((b) => b.id !== instance.id && (direction === "up" ? b.y < current.y || b.y === current.y && b.x < current.x : b.y > current.y || b.y === current.y && b.x > current.x)).sort(
+    (a, b) => direction === "up" ? b.y - a.y || b.x - a.x : a.y - b.y || a.x - b.x
+  )[0];
+  if (!neighbor) return;
+  const newBlocks = blocks.map((b) => {
+    if (b.id === current.id) {
+      return { ...b, x: Math.min(neighbor.x, Math.max(0, columns - current.w)), y: neighbor.y };
+    }
+    if (b.id === neighbor.id) {
+      return { ...b, x: Math.min(current.x, Math.max(0, columns - neighbor.w)), y: current.y };
+    }
+    return b;
+  });
+  host.emitLayout(host.buildLayoutUpdate(newBlocks));
+  host.triggerRerender();
+}
+
 // src/GridLayout.ts
 var COMPACT_EDIT_H = 2;
-var APPEND_AT_BOTTOM = 1e3;
 var GridLayout = class _GridLayout {
   // ── Public API ─────────────────────────────────────────────────────────
   constructor(containerEl, app, plugin, onLayoutChange) {
@@ -7021,9 +7288,10 @@ var GridLayout = class _GridLayout {
     this.plugin = plugin;
     this.onLayoutChange = onLayoutChange;
     this.gridEl = containerEl.createDiv({ cls: "homepage-grid grid-stack" });
-    this.effectiveColumns = plugin.layout.columns;
+    this.effectiveColumns = plugin.activeColumns();
     this.autoHeight = new AutoHeightManager(this);
     this.responsiveColumns = new ResponsiveColumnsManager(this);
+    this.persister = new LayoutPersister(this);
   }
   // NOTE: several fields below are intentionally non-private (package-visible). AutoHeightManager
   // and ResponsiveColumnsManager access them through their narrow Host interfaces (declared in
@@ -7031,6 +7299,9 @@ var GridLayout = class _GridLayout {
   /** The grid DOM element owned by this layout. Used by ResponsiveColumnsManager for flex reordering. */
   gridEl;
   gridStack = null;
+  // Package-visible to satisfy EditHandleBarHost without leaking ownership;
+  // the host interface declares the same Map shape and only the EditHandleBar
+  // touches it externally.
   blocks = /* @__PURE__ */ new Map();
   scheduler = new Scheduler();
   editMode = false;
@@ -7043,6 +7314,28 @@ var GridLayout = class _GridLayout {
   lastAddedBlockId = null;
   autoHeight;
   responsiveColumns;
+  persister;
+  /**
+   * Conform GridLayout to LayoutPersisterHost / EditHandleBarHost. The
+   * interfaces require an `emitLayout(layout)` adapter because `onLayoutChange`
+   * is private to GridLayout (callers shouldn't bypass GridLayout to write the
+   * layout).
+   */
+  emitLayout(layout) {
+    this.onLayoutChange(layout);
+  }
+  /**
+   * Public wrapper around the private rerender for EditHandleBarHost. Kept
+   * separate from the private path so the host method's name is descriptive
+   * outside the class.
+   */
+  triggerRerender() {
+    this.rerender();
+  }
+  /** Public setter for the lastAddedBlockId so EditHandleBar can mark a duplicate. */
+  setLastAddedBlockId(id) {
+    this.lastAddedBlockId = id;
+  }
   /**
    * Clear any queued auto-height measurements. Called by ResponsiveColumnsManager
    * before a column change so stale measurements against the old column count are discarded.
@@ -7103,6 +7396,13 @@ var GridLayout = class _GridLayout {
     this.gridEl.remove();
   }
   setEditMode(enabled, skipRepack = false) {
+    if (this.phase === Phase.Destroyed) return;
+    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+      try {
+        this.persistLayout();
+      } catch {
+      }
+    }
     if (!enabled && this.editMode && !skipRepack) {
       const repacked = _GridLayout.repackEditLayout(
         this.plugin.activeBlocks(),
@@ -7125,6 +7425,13 @@ var GridLayout = class _GridLayout {
   }
   /** Update column count, clamping each block's w to fit. */
   setColumns(n) {
+    if (this.phase === Phase.Destroyed) return;
+    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+      try {
+        this.persistLayout();
+      } catch {
+      }
+    }
     const newBlocks = this.plugin.activeBlocks().map((b) => ({
       ...b,
       w: Math.min(b.w, n)
@@ -7156,6 +7463,7 @@ var GridLayout = class _GridLayout {
     return Math.max(0.75, Math.min(1, Math.round(scale * 20) / 20));
   }
   addBlock(instance) {
+    if (this.phase === Phase.Destroyed) return;
     const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
     const positioned = { ...instance, y: maxY };
     const newBlocks = [...this.plugin.activeBlocks(), positioned];
@@ -7165,6 +7473,9 @@ var GridLayout = class _GridLayout {
   }
   // ── Rendering ──────────────────────────────────────────────────────────
   rerender() {
+    for (const { block } of this.blocks.values()) {
+      if (block?.hasUnsavedInlineState()) return;
+    }
     this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
   }
   /** Unload all blocks and destroy GridStack instance. */
@@ -7195,17 +7506,25 @@ var GridLayout = class _GridLayout {
   }
   initGridStack(blocks, columns, isInitial) {
     this.phase = Phase.Initializing;
-    const items = blocks.map((instance) => ({
-      id: instance.id,
-      x: instance.x,
-      y: instance.y,
-      w: Math.min(instance.w, columns),
-      maxW: columns,
-      h: this.editMode && this.shouldAutoHeight(instance) ? COMPACT_EDIT_H : instance.h
-      // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
-      // load() before we've added any DOM content, causing "firstElementChild is null".
-      // We call resizeToContent() manually after building each block's DOM below.
-    }));
+    const items = blocks.map((instance) => {
+      const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
+      let renderH = instance.h;
+      if (instance.collapsed && !effectiveCollapsed) {
+        const expandedH = instance._expandedH;
+        if (typeof expandedH === "number" && expandedH > 0) renderH = expandedH;
+      }
+      return {
+        id: instance.id,
+        x: instance.x,
+        y: instance.y,
+        w: Math.min(instance.w, columns),
+        maxW: columns,
+        h: this.editMode && this.shouldAutoHeight(instance) ? COMPACT_EDIT_H : renderH
+        // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
+        // load() before we've added any DOM content, causing "firstElementChild is null".
+        // We call resizeToContent() manually after building each block's DOM below.
+      };
+    });
     if (this.editMode || this.plugin.layout.compactLayout) {
       _GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
     }
@@ -7252,8 +7571,11 @@ var GridLayout = class _GridLayout {
         block.load();
         const needsResize = this.shouldAutoHeight(instance);
         if (needsResize) {
+          const blockId = instance.id;
           gsEl.addEventListener("request-auto-height", () => {
-            this.requestAutoHeight(gsEl, instance);
+            const live = this.plugin.activeBlocks().find((b) => b.id === blockId);
+            if (!live || !this.shouldAutoHeight(live)) return;
+            this.requestAutoHeight(gsEl, live);
           });
         }
         const skeletonEl = isInitial ? this.createSkeleton(wrapper) : null;
@@ -7275,7 +7597,7 @@ var GridLayout = class _GridLayout {
       }
       this.setupCollapseToggle(gsEl, instance, headerZone);
       if (this.editMode) {
-        this.attachEditHandles(wrapper, instance);
+        attachEditHandleBar(this, wrapper, instance);
       }
     }
     if (columns === 1) {
@@ -7290,11 +7612,11 @@ var GridLayout = class _GridLayout {
       }
     }
     this.gridStack.on("dragstop", () => {
-      if (this.phase !== Phase.Ready) return;
+      if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
     });
     this.gridStack.on("resizestop", () => {
-      if (this.phase !== Phase.Ready) return;
+      if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
       this.updateCompactSizeLabels();
     });
@@ -7317,7 +7639,7 @@ var GridLayout = class _GridLayout {
   /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
   buildBlockWrapper(container, instance, animDelayMs) {
     const classes = ["homepage-block-wrapper"];
-    const effectiveCollapsed = instance.collapsed && instance.config._hideTitle !== true;
+    const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
     if (effectiveCollapsed) classes.push("block-collapsed");
     const wrapper = container.createDiv({
       cls: classes.join(" "),
@@ -7399,6 +7721,13 @@ var GridLayout = class _GridLayout {
    * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
    * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
    */
+  /**
+   * Public for callers that need the same mobile/desktop routing logic but
+   * don't go through onLayoutChange (e.g., EditToolbar's discardChanges).
+   * Keeping `buildLayoutUpdate` as the single funnel for layout writes that
+   * need the platform split prevents drift -- a future field added here
+   * propagates to every call site automatically.
+   */
   buildLayoutUpdate(blocks, extra) {
     const mobile = this.plugin.isMobileActive();
     const base = { ...this.plugin.layout };
@@ -7411,59 +7740,17 @@ var GridLayout = class _GridLayout {
     }
     return base;
   }
-  persistLayout() {
-    if (!this.gridStack || this.phase !== Phase.Ready) return;
-    if (this.isResponsive && this.plugin.activeBlocks().every((b) => this.shouldAutoHeight(b))) {
-      return;
-    }
-    const nodes = this.gridStack.getGridItems();
-    const posMap = /* @__PURE__ */ new Map();
-    for (const el of nodes) {
-      const node = el.gridstackNode;
-      const id = el.getAttribute("gs-id");
-      if (id && node) {
-        const w = Math.min(node.w ?? 1, this.effectiveColumns);
-        posMap.set(id, {
-          x: Math.min(node.x ?? 0, Math.max(0, this.effectiveColumns - w)),
-          y: node.y ?? 0,
-          w,
-          h: node.h ?? 1
-        });
-      }
-    }
-    const changed = this.plugin.activeBlocks().some((b) => {
-      const pos = posMap.get(b.id);
-      if (!pos) return false;
-      const isAuto = this.shouldAutoHeight(b);
-      if (this.isResponsive) return !isAuto && b.h !== pos.h;
-      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
-      return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
-    });
-    if (!changed) {
-      return;
-    }
-    const newBlocks = this.plugin.activeBlocks().map((b) => {
-      const pos = posMap.get(b.id);
-      if (!pos) return b;
-      const isAuto = this.shouldAutoHeight(b);
-      if (this.isResponsive) {
-        return isAuto ? b : { ...b, h: pos.h };
-      }
-      const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
-      return { ...b, ...update };
-    });
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-  }
   /** Read current positions from GridStack nodes and persist to layout. */
+  persistLayout() {
+    this.persister.persist();
+  }
   /** Debounced persistLayout — coalesces rapid auto-height resize saves into one write. */
   persistLayoutDebounced() {
-    this.scheduler.timeout("sync", 50, () => {
-      if (this.phase !== Phase.Destroyed) this.persistLayout();
-    });
+    this.persister.persistDebounced();
   }
-  /** True when the grid is showing a responsive (narrowed) layout — persistence should be restricted. */
+  /** True when the grid is showing a responsive (narrowed) layout. */
   get isResponsive() {
-    return this.effectiveColumns !== this.canonicalColumns;
+    return this.persister.isResponsive();
   }
   // ── Layout Utilities ───────────────────────────────────────────────────
   /**
@@ -7560,198 +7847,40 @@ var GridLayout = class _GridLayout {
   }
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */
   repackGridNodes() {
-    if (!this.gridStack) return;
-    const nodeItems = [];
-    for (const gsEl of this.gridStack.getGridItems()) {
-      const node = gsEl.gridstackNode;
-      if (!node) continue;
-      nodeItems.push({ el: gsEl, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
-    }
-    _GridLayout.packRows(nodeItems, this.effectiveColumns, this.plugin.activeLayoutPriority());
-    this.gridStack.batchUpdate();
-    for (const item of nodeItems) {
-      this.gridStack.update(item.el, { y: item.y });
-    }
-    this.gridStack.batchUpdate(false);
+    this.persister.repackGridNodes(_GridLayout.packRows);
   }
   // ── Block Interactions ─────────────────────────────────────────────────
   setupCollapseToggle(gsEl, instance, headerZone) {
-    const wrapper = gsEl.querySelector(".homepage-block-wrapper");
-    const chevron = headerZone.querySelector(".block-collapse-chevron");
-    if (!wrapper) return;
-    const toggleCollapse = (e) => {
-      e.stopPropagation();
-      if (this.editMode) return;
-      const isNowCollapsed = !wrapper.hasClass("block-collapsed");
-      wrapper.toggleClass("block-collapsed", isNowCollapsed);
-      chevron?.toggleClass("is-collapsed", isNowCollapsed);
-      headerZone.setAttribute("aria-expanded", String(!isNowCollapsed));
-      const gsNode = gsEl.gridstackNode;
-      let newBlocks;
-      if (isNowCollapsed) {
-        const liveH = gsNode?.h ?? instance.h;
-        if (this.gridStack) this.gridStack.update(gsEl, { h: 1 });
-        newBlocks = this.plugin.activeBlocks().map(
-          (b) => b.id === instance.id ? { ...b, collapsed: true, _expandedH: liveH } : b
-        );
-      } else {
-        const currentBlock = this.plugin.activeBlocks().find((b) => b.id === instance.id);
-        const origH = currentBlock?._expandedH ?? instance.h;
-        if (this.gridStack) this.gridStack.update(gsEl, { h: origH });
-        newBlocks = this.plugin.activeBlocks().map(
-          (b) => b.id === instance.id ? { ...b, collapsed: false, h: origH } : b
-        );
-      }
-      void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
-    };
-    headerZone.addEventListener("click", toggleCollapse);
-    headerZone.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        toggleCollapse(e);
-      }
-    });
+    attachCollapseToggle(this, gsEl, instance, headerZone);
   }
-  attachEditHandles(wrapper, instance) {
-    const bar = wrapper.createDiv({ cls: "block-handle-bar" });
-    const handle = bar.createDiv({ cls: "block-move-handle" });
-    (0, import_obsidian4.setIcon)(handle, "grip-vertical");
-    handle.setAttribute("aria-label", "Drag to reorder");
-    handle.setAttribute("title", "Drag to reorder");
-    const moveUpBtn = bar.createEl("button", { cls: "block-move-up-btn" });
-    (0, import_obsidian4.setIcon)(moveUpBtn, "chevron-up");
-    moveUpBtn.setAttribute("aria-label", "Move block up");
-    moveUpBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.swapWithNeighbor(instance, "up");
-    });
-    const moveDownBtn = bar.createEl("button", { cls: "block-move-down-btn" });
-    (0, import_obsidian4.setIcon)(moveDownBtn, "chevron-down");
-    moveDownBtn.setAttribute("aria-label", "Move block down");
-    moveDownBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.swapWithNeighbor(instance, "down");
-    });
-    const dupBtn = bar.createEl("button", { cls: "block-duplicate-btn" });
-    (0, import_obsidian4.setIcon)(dupBtn, "copy");
-    dupBtn.setAttribute("aria-label", "Duplicate block");
-    dupBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const current = this.plugin.activeBlocks().find((b) => b.id === instance.id);
-      if (!current) return;
-      const clone = {
-        ...structuredClone(current),
-        id: newId(),
-        y: current.y + current.h
-      };
-      const newBlocks = [...this.plugin.activeBlocks(), clone];
-      this.lastAddedBlockId = clone.id;
-      this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-      this.rerender();
-    });
-    const settingsBtn = bar.createEl("button", { cls: "block-settings-btn" });
-    (0, import_obsidian4.setIcon)(settingsBtn, "settings");
-    settingsBtn.setAttribute("aria-label", "Block settings");
-    settingsBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const entry = this.blocks.get(instance.id);
-      if (!entry) return;
-      const onSave = (config) => {
-        const newBlocks = this.plugin.activeBlocks().map(
-          (b) => b.id === instance.id ? { ...b, config } : b
-        );
-        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-        this.rerender();
-      };
-      let tempBlock = null;
-      const block = entry.block ?? (() => {
-        const factory = BlockRegistry.get(instance.type);
-        if (!factory) return null;
-        tempBlock = factory.create(this.app, instance, this.plugin);
-        return tempBlock;
-      })();
-      if (!block) return;
-      const modal = new BlockSettingsModal(this.app, instance, block, (config) => {
-        if (tempBlock) tempBlock.unload();
-        onSave(config);
-      });
-      modal.open();
-    });
-    const removeBtn = bar.createEl("button", { cls: "block-remove-btn" });
-    (0, import_obsidian4.setIcon)(removeBtn, "x");
-    removeBtn.setAttribute("aria-label", "Remove block");
-    removeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      new RemoveBlockConfirmModal(this.app, () => {
-        const gsItem = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
-        if (gsItem instanceof HTMLElement && this.gridStack) {
-          this.gridStack.removeWidget(gsItem);
-          this.gridStack.compact();
-        }
-        const entry = this.blocks.get(instance.id);
-        if (entry) {
-          entry.block?.unload();
-          this.blocks.delete(instance.id);
-        }
-        const remaining = this.plugin.activeBlocks().filter((b) => b.id !== instance.id);
-        if (remaining.length === 0) {
-          this.onLayoutChange(this.buildLayoutUpdate([]));
-          this.rerender();
-          return;
-        }
-        if (!this.gridStack) {
-          this.onLayoutChange(this.buildLayoutUpdate(remaining));
-          return;
-        }
-        const posMap = /* @__PURE__ */ new Map();
-        for (const el of this.gridStack.getGridItems()) {
-          const node = el.gridstackNode;
-          const id = el.getAttribute("gs-id");
-          if (id && node) {
-            posMap.set(id, { x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
-          }
-        }
-        const newBlocks = remaining.map((b) => {
-          const pos = posMap.get(b.id);
-          if (!pos) return b;
-          const isAuto = this.shouldAutoHeight(b);
-          const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
-          return { ...b, ...update };
-        });
-        this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-      }).open();
-    });
-    const headerZone = wrapper.querySelector(".block-header-zone");
-    if (headerZone) {
-      wrapper.insertBefore(bar, headerZone);
-    }
-  }
-  /** Swap a block's position with its nearest spatial neighbor in the given direction. */
-  swapWithNeighbor(instance, direction) {
-    const blocks = this.plugin.activeBlocks();
-    const current = blocks.find((b) => b.id === instance.id);
-    if (!current) return;
-    const columns = this.plugin.activeColumns();
-    const neighbor = blocks.filter((b) => b.id !== instance.id && (direction === "up" ? b.y < current.y || b.y === current.y && b.x < current.x : b.y > current.y || b.y === current.y && b.x > current.x)).sort(
-      (a, b) => direction === "up" ? b.y - a.y || b.x - a.x : a.y - b.y || a.x - b.x
-    )[0];
-    if (!neighbor) return;
-    const newBlocks = blocks.map((b) => {
-      if (b.id === current.id) {
-        return { ...b, x: Math.min(neighbor.x, Math.max(0, columns - current.w)), y: neighbor.y };
-      }
-      if (b.id === neighbor.id) {
-        return { ...b, x: Math.min(current.x, Math.max(0, columns - neighbor.w)), y: current.y };
-      }
-      return b;
-    });
-    this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-    this.rerender();
-  }
+  // attachEditHandleBar + swapWithNeighbor moved to src/grid/EditHandleBar.ts
 };
 
 // src/EditToolbar.ts
 var import_obsidian5 = require("obsidian");
+
+// src/blockMeta.ts
+var BLOCK_META = {
+  "greeting": { icon: "\u{1F44B}", desc: "Personalized greeting with time of day" },
+  "clock": { icon: "\u{1F550}", desc: "Live clock with date display" },
+  "folder-links": { icon: "\u{1F517}", desc: "Quick links to notes and folders" },
+  "button-grid": { icon: "\u{1F532}", desc: "Grid of emoji-labeled buttons" },
+  "quotes-list": { icon: "\u{1F4AC}", desc: "Collection of quotes from notes" },
+  "image-gallery": { icon: "\u{1F5BC}\uFE0F", desc: "Photo grid from a vault folder" },
+  "embedded-note": { icon: "\u{1F4C4}", desc: "Render a note inline on the page" },
+  "static-text": { icon: "\u{1F4DD}", desc: "Markdown text block you write directly" },
+  "html": { icon: "</>", desc: "Custom HTML content (sanitized)" },
+  "video-embed": { icon: "\u{1F3AC}", desc: "Embed YouTube, Vimeo, or other videos" },
+  "bookmarks": { icon: "\u{1F516}", desc: "Web links and vault bookmarks grid" },
+  "recent-files": { icon: "\u{1F4C2}", desc: "Recently modified notes in your vault" },
+  "pomodoro": { icon: "\u{1F345}", desc: "Pomodoro timer with work/break cycles" },
+  "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" },
+  "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" },
+  "voice-dictation": { icon: "\u{1F399}\uFE0F", desc: "Record voice notes saved automatically to a folder" },
+  "vault-search": { icon: "\u{1F50D}", desc: "Search notes by name with live results" }
+};
+
+// src/EditToolbar.ts
 var EditToolbar = class {
   constructor(containerEl, app, plugin, grid, onColumnsChange) {
     this.containerEl = containerEl;
@@ -7806,13 +7935,7 @@ var EditToolbar = class {
   discardChanges() {
     if (!this.editMode) return;
     if (this.blocksSnapshot) {
-      const mobile = this.plugin.isMobileActive();
-      const restored = structuredClone(this.plugin.layout);
-      if (mobile) {
-        restored.mobileBlocks = this.blocksSnapshot;
-      } else {
-        restored.blocks = this.blocksSnapshot;
-      }
+      const restored = this.grid.buildLayoutUpdate(this.blocksSnapshot);
       this.plugin.layout = restored;
       void this.plugin.saveLayout(restored);
       this.blocksSnapshot = null;
@@ -7870,24 +7993,41 @@ var EditToolbar = class {
       this.openAddBlockModal();
     };
   }
+  /**
+   * Tracked so EditToolbar.destroy() can close it. A leftover modal would
+   * otherwise hold a closure over `this.grid` -- when the homepage view
+   * gets reloaded mid-pick (e.g., user changes a setting in another tab),
+   * the user's selection lands on a destroyed grid instance. Silent failure.
+   */
+  openModal = null;
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal() {
-    new AddBlockModal(this.app, (type) => {
+    this.openModal?.close();
+    const modal = new AddBlockModal(this.app, (type) => {
+      if (this.openModal !== modal) return;
       const factory = BlockRegistry.get(type);
       if (!factory) return;
       const instance = {
         id: newId(),
         type,
         x: 0,
-        // APPEND_AT_BOTTOM is a sentinel recognized by GridLayout.addBlock — the
-        // block is placed below every existing block so GridStack compacts cleanly.
-        y: APPEND_AT_BOTTOM,
+        // GridLayout.addBlock recomputes y from the current maxY, so the value
+        // here is unused -- kept at 0 for clarity rather than the prior fake
+        // sentinel that pretended to mean something.
+        y: 0,
         w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
         config: { ...factory.defaultConfig }
       };
       this.grid.addBlock(instance);
-    }).open();
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      if (this.openModal === modal) this.openModal = null;
+      originalOnClose();
+    };
+    this.openModal = modal;
+    modal.open();
   }
   formatZoom(scale) {
     return `${Math.round(scale * 100)}%`;
@@ -7899,6 +8039,8 @@ var EditToolbar = class {
     return this.fabEl;
   }
   destroy() {
+    this.openModal?.close();
+    this.openModal = null;
     this.grid.onRequestAddBlock = null;
     this.fabEl.remove();
     this.toolbarEl.remove();
@@ -7951,13 +8093,17 @@ var HomepageView = class extends import_obsidian6.ItemView {
   getIcon() {
     return "home";
   }
-  onOpen() {
+  // Async by contract: `reload()` awaits onOpen, and any future async work in
+  // this method (e.g., loading per-leaf state, awaiting an editor-ready signal)
+  // MUST be awaited inside the function body so `reload()` callers don't proceed
+  // before render is actually complete.
+  async onOpen() {
     this.grid?.destroy();
     this.toolbar?.destroy();
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("homepage-view");
-    contentEl.toggleClass("homepage-no-scrollbar", !!this.plugin.layout.hideScrollbar);
+    contentEl.toggleClass("homepage-no-scrollbar", this.plugin.layout.showScrollbar === false);
     contentEl.toggleClass("homepage-hover-highlight", !!this.plugin.layout.hoverHighlight);
     const onLayoutChange = (newLayout) => {
       this.plugin.layout = newLayout;
@@ -7976,7 +8122,6 @@ var HomepageView = class extends import_obsidian6.ItemView {
     contentEl.insertBefore(this.toolbar.getElement(), this.grid.getElement());
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
     this.grid.render(this.plugin.activeBlocks(), this.plugin.activeColumns(), true);
-    return Promise.resolve();
   }
   onClose() {
     this.grid?.destroy();
@@ -8043,7 +8188,7 @@ var DEFAULT_LAYOUT_DATA = {
   manualOpenMode: "retain",
   openWhenEmpty: false,
   pin: false,
-  hideScrollbar: false,
+  showScrollbar: true,
   compactLayout: true,
   hoverHighlight: true,
   blocks: [
@@ -8145,16 +8290,16 @@ var SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 var MAX_BLOCKS = 100;
 function migrateBlockInstance(b) {
   const m = { ...b };
-  if (typeof m.col === "number") {
+  if (typeof m.col === "number" && typeof m.x !== "number") {
     m.x = m.col - 1;
   }
-  if (typeof m.row === "number") {
+  if (typeof m.row === "number" && typeof m.y !== "number") {
     m.y = m.row - 1;
   }
-  if (typeof m.colSpan === "number") {
+  if (typeof m.colSpan === "number" && typeof m.w !== "number") {
     m.w = m.colSpan;
   }
-  if (typeof m.rowSpan === "number") {
+  if (typeof m.rowSpan === "number" && typeof m.h !== "number") {
     m.h = m.rowSpan;
   }
   delete m.col;
@@ -8167,9 +8312,31 @@ function migrateBlockInstance(b) {
   }
   const cfg = m.config;
   if (cfg && cfg._transparent === true) {
-    cfg._hideBorder = true;
-    cfg._hideBackground = true;
+    if (cfg._showBorder === void 0) cfg._showBorder = false;
+    if (cfg._showBackground === void 0) cfg._showBackground = false;
     delete cfg._transparent;
+  }
+  if (cfg) {
+    const HIDE_TO_SHOW = [
+      ["_hideTitle", "_showTitle"],
+      ["_hideBorder", "_showBorder"],
+      ["_hideBackground", "_showBackground"],
+      ["_hideHeaderAccent", "_showHeaderAccent"]
+    ];
+    for (const [hideKey, showKey] of HIDE_TO_SHOW) {
+      if (hideKey in cfg) {
+        if (cfg[hideKey] === true && cfg[showKey] === void 0) {
+          cfg[showKey] = false;
+        }
+        delete cfg[hideKey];
+      }
+    }
+    if (m.type === "quotes-list" && "hideAccentBar" in cfg) {
+      if (cfg.hideAccentBar === true && cfg.showAccentBar === void 0) {
+        cfg.showAccentBar = false;
+      }
+      delete cfg.hideAccentBar;
+    }
   }
   if (m.type === "voice-dictation" && cfg) {
     if (typeof cfg.whisperApiKey === "string" && !cfg.apiKey) {
@@ -8192,7 +8359,7 @@ function migrateBlockInstance(b) {
       cfg._titleLabel = cfg.title;
     }
     if (!cfg.title && (m.type === "html" || m.type === "static-text")) {
-      if (cfg._hideTitle === void 0) cfg._hideTitle = true;
+      if (cfg._showTitle === void 0) cfg._showTitle = false;
     }
     delete cfg.title;
   }
@@ -8207,15 +8374,25 @@ function validateBlocks(raw, columns, defaults) {
   if (!Array.isArray(raw)) return defaults;
   const migrated = raw.map((b) => migrateBlockInstance(b));
   const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
-  return valid.map((b) => ({
+  const seen = /* @__PURE__ */ new Set();
+  const dedup = valid.filter((b) => {
+    if (seen.has(b.id)) return false;
+    seen.add(b.id);
+    return true;
+  });
+  return dedup.map((b) => ({
     ...b,
     w: Math.min(b.w, columns),
     x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns)))
   }));
 }
-function validateLayout(raw) {
+function validateLayout(raw, onTopLevelCorruption) {
   const defaults = getDefaultLayout();
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return defaults;
+  if (raw === null || raw === void 0) return defaults;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    onTopLevelCorruption?.(raw);
+    return defaults;
+  }
   const r = raw;
   const columns = typeof r.columns === "number" && [2, 3, 4, 5].includes(r.columns) ? r.columns : defaults.columns;
   const layoutPriority = isLayoutPriority(r.layoutPriority) ? r.layoutPriority : defaults.layoutPriority;
@@ -8227,7 +8404,7 @@ function validateLayout(raw) {
   const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
   const openWhenEmpty = typeof r.openWhenEmpty === "boolean" ? r.openWhenEmpty : defaults.openWhenEmpty;
   const pin = typeof r.pin === "boolean" ? r.pin : defaults.pin;
-  const hideScrollbar = typeof r.hideScrollbar === "boolean" ? r.hideScrollbar : defaults.hideScrollbar;
+  const showScrollbar = typeof r.showScrollbar === "boolean" ? r.showScrollbar : typeof r.hideScrollbar === "boolean" ? !r.hideScrollbar : defaults.showScrollbar;
   const compactLayout = typeof r.compactLayout === "boolean" ? r.compactLayout : defaults.compactLayout;
   const hoverHighlight = typeof r.hoverHighlight === "boolean" ? r.hoverHighlight : defaults.hoverHighlight;
   const blocks = validateBlocks(r.blocks, columns, defaults.blocks);
@@ -8244,7 +8421,7 @@ function validateLayout(raw) {
     manualOpenMode,
     openWhenEmpty,
     pin,
-    hideScrollbar,
+    showScrollbar,
     compactLayout,
     hoverHighlight,
     blocks
@@ -8291,16 +8468,16 @@ var SHARED_CONFIG_KEYS = /* @__PURE__ */ new Set([
   // the well-known ones here documents the contract.
   "_titleLabel",
   "_titleEmoji",
-  "_hideTitle",
+  "_showTitle",
   "_titleSize",
   "_titleGap",
   "_showDivider",
-  "_hideHeaderAccent",
-  "_hideBorder",
+  "_showHeaderAccent",
+  "_showBorder",
   "_borderWidth",
   "_borderStyle",
   "_borderRadius",
-  "_hideBackground",
+  "_showBackground",
   "_bgOpacity",
   "_backdropBlur",
   "_cardPadding",
@@ -8311,6 +8488,31 @@ var SHARED_CONFIG_KEYS = /* @__PURE__ */ new Set([
   "_gradientEnd",
   "_gradientAngle"
 ]);
+var TITLE_SIZE_RE2 = /^h[1-6]$/;
+var BORDER_STYLE_VALUES = /* @__PURE__ */ new Set(["solid", "dashed", "dotted"]);
+var SHARED_VALIDATORS = {
+  _titleLabel: (v) => typeof v === "string" ? v.slice(0, 200) : void 0,
+  _titleEmoji: (v) => typeof v === "string" ? v.slice(0, 16) : void 0,
+  _showTitle: (v) => typeof v === "boolean" ? v : void 0,
+  _titleSize: (v) => typeof v === "string" && TITLE_SIZE_RE2.test(v) ? v : void 0,
+  _titleGap: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(-32, Math.min(32, v)) : void 0,
+  _showDivider: (v) => typeof v === "boolean" ? v : void 0,
+  _showHeaderAccent: (v) => typeof v === "boolean" ? v : void 0,
+  _showBorder: (v) => typeof v === "boolean" ? v : void 0,
+  _borderWidth: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(8, v)) : void 0,
+  _borderStyle: (v) => typeof v === "string" && BORDER_STYLE_VALUES.has(v) ? v : void 0,
+  _borderRadius: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(48, v)) : void 0,
+  _showBackground: (v) => typeof v === "boolean" ? v : void 0,
+  _bgOpacity: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : void 0,
+  _backdropBlur: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(48, v)) : void 0,
+  _cardPadding: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(-48, Math.min(48, v)) : void 0,
+  _elevation: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(8, v)) : void 0,
+  _accentColor: (v) => typeof v === "string" && (v === "" || HEX_COLOR_RE.test(v)) ? v : void 0,
+  _accentIntensity: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(5, Math.min(100, v)) : void 0,
+  _gradientStart: (v) => typeof v === "string" && (v === "" || HEX_COLOR_RE.test(v)) ? v : void 0,
+  _gradientEnd: (v) => typeof v === "string" && (v === "" || HEX_COLOR_RE.test(v)) ? v : void 0,
+  _gradientAngle: (v) => typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(360, v)) : void 0
+};
 function sanitizeImportedConfig(blockType, config) {
   const factory = BlockRegistry.get(blockType);
   const allowed = new Set(factory ? Object.keys(factory.defaultConfig) : []);
@@ -8322,7 +8524,26 @@ function sanitizeImportedConfig(blockType, config) {
       stripped.push(key);
       continue;
     }
-    if (key.startsWith("_") || allowed.has(key)) {
+    if (key.startsWith("_")) {
+      const validator = SHARED_VALIDATORS[key];
+      if (validator) {
+        const validated = validator(value);
+        if (validated === void 0) {
+          stripped.push(key);
+          continue;
+        }
+        clean[key] = validated;
+      } else {
+        const t = typeof value;
+        if (t === "string" || t === "number" || t === "boolean") {
+          clean[key] = value;
+        } else {
+          stripped.push(key);
+        }
+      }
+      continue;
+    }
+    if (allowed.has(key)) {
       clean[key] = value;
     } else {
       stripped.push(key);
@@ -8474,11 +8695,11 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     new import_obsidian8.Setting(root).setName("Mobile blocks").setDesc(mobileBlockCount + " block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.");
   }
   renderDisplaySection(root) {
-    new import_obsidian8.Setting(root).setName("Hide scrollbar").setDesc("Hide the scrollbar on the homepage. You can still scroll.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.hideScrollbar).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, hideScrollbar: value });
+    new import_obsidian8.Setting(root).setName("Show scrollbar").setDesc("Show the scrollbar on the homepage. You can still scroll when hidden.").addToggle(
+      (toggle) => toggle.setValue(this.plugin.layout.showScrollbar !== false).onChange((value) => {
+        void this.plugin.saveLayout({ ...this.plugin.layout, showScrollbar: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-          leaf.view.containerEl.toggleClass("homepage-no-scrollbar", value);
+          leaf.view.containerEl.toggleClass("homepage-no-scrollbar", !value);
         }
       })
     );
@@ -8500,7 +8721,14 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     );
     new import_obsidian8.Setting(root).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
-        await this.plugin.saveLayout(getDefaultLayout());
+        const fresh = getDefaultLayout();
+        const next = this.plugin.layout.responsiveMode === "separate" ? {
+          ...fresh,
+          mobileBlocks: this.plugin.layout.mobileBlocks,
+          mobileColumns: this.plugin.layout.mobileColumns,
+          mobileLayoutPriority: this.plugin.layout.mobileLayoutPriority
+        } : fresh;
+        await this.plugin.saveLayout(next);
         await this.reloadOpenHomepages();
       })())
     );
@@ -8568,6 +8796,7 @@ function cacheHasTag(cache, tag) {
 var tagCache = /* @__PURE__ */ new Map();
 var listenersInstalled = false;
 function installTagCacheListeners(plugin) {
+  tagCache.clear();
   if (listenersInstalled) return;
   listenersInstalled = true;
   plugin.register(() => {
@@ -8603,6 +8832,7 @@ var DB_STORE = "keys";
 var DB_RECORD = "apiKeyDeviceKey";
 var PREFIX = "enc:v1:";
 var cachedKey = null;
+var lastKeyLoadError = false;
 function hasWebCrypto() {
   return typeof globalThis.crypto?.subtle?.generateKey === "function" && typeof indexedDB !== "undefined";
 }
@@ -8633,14 +8863,21 @@ function idbSet(db, key, value) {
   });
 }
 async function loadDeviceKey() {
-  if (cachedKey) return cachedKey;
-  if (!hasWebCrypto()) return null;
+  if (cachedKey) {
+    lastKeyLoadError = false;
+    return cachedKey;
+  }
+  if (!hasWebCrypto()) {
+    lastKeyLoadError = false;
+    return null;
+  }
   try {
     const db = await openDb();
     try {
       const existing = await idbGet(db, DB_RECORD);
       if (existing instanceof CryptoKey) {
         cachedKey = existing;
+        lastKeyLoadError = false;
         return existing;
       }
       const fresh = await crypto.subtle.generateKey(
@@ -8651,13 +8888,19 @@ async function loadDeviceKey() {
       );
       await idbSet(db, DB_RECORD, fresh);
       cachedKey = fresh;
+      lastKeyLoadError = false;
       return fresh;
     } finally {
       db.close();
     }
-  } catch {
+  } catch (err) {
+    lastKeyLoadError = true;
+    console.error("[Homepage Blocks] device key unavailable (transient)", err instanceof Error ? err.message : "unknown error");
     return null;
   }
+}
+function lastLoadWasTransient() {
+  return lastKeyLoadError;
 }
 function toBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -8674,27 +8917,32 @@ function fromBase64(b64) {
 function isEncrypted(value) {
   return typeof value === "string" && value.startsWith(PREFIX);
 }
-async function encryptString(plaintext) {
-  if (!plaintext) return plaintext;
-  if (isEncrypted(plaintext)) return plaintext;
+async function encryptStringEx(plaintext) {
+  if (!plaintext) return { ok: true, value: plaintext };
+  if (isEncrypted(plaintext)) return { ok: true, value: plaintext };
   const key = await loadDeviceKey();
-  if (!key) return plaintext;
+  if (!key) {
+    console.warn("[Homepage Blocks] WebCrypto unavailable \u2014 apiKey will be stored in plaintext on disk");
+    return { ok: false, reason: "fallback-plaintext", value: plaintext };
+  }
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plaintext));
-    return `${PREFIX}${toBase64(iv)}:${toBase64(ct)}`;
+    return { ok: true, value: `${PREFIX}${toBase64(iv)}:${toBase64(ct)}` };
   } catch (err) {
-    console.error("[Homepage Blocks] API key encryption failed \u2014 storing plaintext", err);
-    return plaintext;
+    console.error("[Homepage Blocks] API key encryption failed \u2014 storing plaintext", err instanceof Error ? err.message : "unknown error");
+    return { ok: false, reason: "crypto-error", value: plaintext };
   }
 }
-async function decryptString(value) {
-  if (!isEncrypted(value)) return value;
+async function decryptStringEx(value) {
+  if (!isEncrypted(value)) return { ok: true, plaintext: value };
   const key = await loadDeviceKey();
-  if (!key) return null;
+  if (!key) {
+    return { ok: false, reason: "no-key", transient: lastLoadWasTransient() };
+  }
   const body = value.slice(PREFIX.length);
   const sep = body.indexOf(":");
-  if (sep < 0) return null;
+  if (sep < 0) return { ok: false, reason: "corrupt", transient: false };
   const ivB64 = body.slice(0, sep);
   const ctB64 = body.slice(sep + 1);
   try {
@@ -8705,10 +8953,13 @@ async function decryptString(value) {
     const ct = new Uint8Array(ctBytes.length);
     ct.set(ctBytes);
     const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
-    return new TextDecoder().decode(pt);
+    return { ok: true, plaintext: new TextDecoder().decode(pt) };
   } catch {
-    return null;
+    return { ok: false, reason: "corrupt", transient: false };
   }
+}
+function _resetDeviceKeyCache() {
+  cachedKey = null;
 }
 
 // src/blocks/GreetingBlock.ts
@@ -8878,39 +9129,26 @@ var GreetingBlock = class extends BaseBlock {
       this.timeEl.setText(now.format("HH:mm"));
     }
   }
-  openSettings(onSave) {
-    new GreetingSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var GreetingSettingsModal = class extends import_obsidian10.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian10.Setting(contentEl).setName("Greeting settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian10.Setting(contentEl).setName("Name").addText(
-      (t) => t.setValue(draft.name ?? "bentornato").onChange((v) => {
-        draft.name = v;
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    new import_obsidian10.Setting(body).setName("Name").addText(
+      (t) => t.setValue(cfg.name ?? "bentornato").onChange((v) => {
+        cfg.name = v;
       })
     );
-    new import_obsidian10.Setting(contentEl).setName("Show time").addToggle(
-      (t) => t.setValue(draft.showTime ?? true).onChange((v) => {
-        draft.showTime = v;
+    new import_obsidian10.Setting(body).setName("Show time").addToggle(
+      (t) => t.setValue(cfg.showTime ?? true).onChange((v) => {
+        cfg.showTime = v;
       })
     );
-    new import_obsidian10.Setting(contentEl).setName("Salutation").setHeading();
-    const salutSection = contentEl.createDiv();
+    new import_obsidian10.Setting(body).setName("Salutation").setHeading();
+    const salutSection = body.createDiv();
     const buildSalutSettings = () => {
       salutSection.empty();
-      const mode = draft.salutationMode ?? "auto";
+      const mode = cfg.salutationMode ?? "auto";
       new import_obsidian10.Setting(salutSection).setName("Salutation mode").setDesc("Auto: language preset. Custom: write your own for each time slot.").addDropdown(
         (d) => d.addOption("auto", "Language preset").addOption("custom", "Custom text").setValue(mode).onChange((v) => {
-          draft.salutationMode = v === "custom" ? "custom" : "auto";
+          cfg.salutationMode = v === "custom" ? "custom" : "auto";
           buildSalutSettings();
         })
       );
@@ -8919,11 +9157,11 @@ var GreetingSettingsModal = class extends import_obsidian10.Modal {
           for (const key of PRESET_KEYS) {
             d.addOption(key, LANG_PRESETS[key].label);
           }
-          d.setValue(draft.salutationPreset ?? "it").onChange((v) => {
-            draft.salutationPreset = v;
+          d.setValue(cfg.salutationPreset ?? "it").onChange((v) => {
+            cfg.salutationPreset = v;
           });
         });
-        const preset = LANG_PRESETS[draft.salutationPreset ?? "it"] ?? DEFAULT_SALUT;
+        const preset = LANG_PRESETS[cfg.salutationPreset ?? "it"] ?? DEFAULT_SALUT;
         const preview = salutSection.createDiv({ cls: "setting-item-description" });
         preview.addClass("hp-preview-hint");
         preview.setText(`${preset.morning} / ${preset.afternoon} / ${preset.evening}`);
@@ -8936,35 +9174,35 @@ var GreetingSettingsModal = class extends import_obsidian10.Modal {
         ];
         for (const slot of slots) {
           new import_obsidian10.Setting(salutSection).setName(`${slot.label} greeting`).setDesc(slot.time).addText(
-            (t) => t.setValue(draft[slot.key] ?? slot.fallback).setPlaceholder(slot.fallback).onChange((v) => {
-              draft[slot.key] = v;
+            (t) => t.setValue(cfg[slot.key] ?? slot.fallback).setPlaceholder(slot.fallback).onChange((v) => {
+              cfg[slot.key] = v;
             })
           );
         }
       }
     };
     buildSalutSettings();
-    new import_obsidian10.Setting(contentEl).setName("Emoji").setHeading();
-    new import_obsidian10.Setting(contentEl).setName("Show emoji").addToggle(
-      (t) => t.setValue(draft.showEmoji ?? true).onChange((v) => {
-        draft.showEmoji = v;
+    new import_obsidian10.Setting(body).setName("Emoji").setHeading();
+    new import_obsidian10.Setting(body).setName("Show emoji").addToggle(
+      (t) => t.setValue(cfg.showEmoji ?? true).onChange((v) => {
+        cfg.showEmoji = v;
         buildEmojiSettings();
       })
     );
-    const emojiSection = contentEl.createDiv();
+    const emojiSection = body.createDiv();
     let slotPickers = [];
     const buildEmojiSettings = () => {
       for (const p of slotPickers) p.destroy();
       slotPickers = [];
       emojiSection.empty();
-      if (draft.showEmoji === false) return;
+      if (cfg.showEmoji === false) return;
       new import_obsidian10.Setting(emojiSection).setName("Emoji mode").setDesc("Auto: based on time of day. Custom: one per time slot. Random: picked from a pool.").addDropdown(
-        (d) => d.addOption("auto", "Auto (time of day)").addOption("custom", "Custom per slot").addOption("random", "Random pool").setValue(draft.emojiMode ?? "auto").onChange((v) => {
-          draft.emojiMode = v === "custom" || v === "random" ? v : "auto";
+        (d) => d.addOption("auto", "Auto (time of day)").addOption("custom", "Custom per slot").addOption("random", "Random pool").setValue(cfg.emojiMode ?? "auto").onChange((v) => {
+          cfg.emojiMode = v === "custom" || v === "random" ? v : "auto";
           buildEmojiSettings();
         })
       );
-      const mode = draft.emojiMode ?? "auto";
+      const mode = cfg.emojiMode ?? "auto";
       if (mode === "custom") {
         const slots = [
           { key: "emojiMorning", label: "Morning", default: "\u2600\uFE0F", time: "5:00\u201312:00" },
@@ -8981,13 +9219,13 @@ var GreetingSettingsModal = class extends import_obsidian10.Modal {
           };
           const picker = createEmojiPicker({
             container: control,
-            value: draft[slot.key] ?? slot.default,
+            value: cfg[slot.key] ?? slot.default,
             placeholder: slot.default,
             onSelect: (emoji) => {
-              draft[slot.key] = emoji;
+              cfg[slot.key] = emoji;
             },
             onClear: () => {
-              draft[slot.key] = "";
+              cfg[slot.key] = "";
             },
             onBeforeOpen: closePickers
           });
@@ -9001,7 +9239,7 @@ var GreetingSettingsModal = class extends import_obsidian10.Modal {
         poolInfo.createDiv({ cls: "setting-item-description", text: "Click to add emoji. Remove by clicking the \u2715 on each." });
         const poolControl = poolRow.createDiv({ cls: "setting-item-control" });
         const poolContainer = poolControl.createDiv({ cls: "greeting-emoji-pool" });
-        const currentPool = parseEmojiPool(draft.emojiPool ?? "");
+        const currentPool = parseEmojiPool(cfg.emojiPool ?? "");
         const renderPool = () => {
           poolContainer.empty();
           for (let i = 0; i < currentPool.length; i++) {
@@ -9010,7 +9248,7 @@ var GreetingSettingsModal = class extends import_obsidian10.Modal {
             const del = chip.createEl("button", { cls: "greeting-emoji-chip-del", text: "\u2715" });
             del.addEventListener("click", () => {
               currentPool.splice(i, 1);
-              draft.emojiPool = currentPool.join(" ");
+              cfg.emojiPool = currentPool.join(" ");
               renderPool();
             });
           }
@@ -9024,7 +9262,7 @@ var GreetingSettingsModal = class extends import_obsidian10.Modal {
             placeholder: "\uFF0B",
             onSelect: (emoji) => {
               currentPool.push(emoji);
-              draft.emojiPool = currentPool.join(" ");
+              cfg.emojiPool = currentPool.join(" ");
               renderPool();
             },
             onClear: () => {
@@ -9035,22 +9273,13 @@ var GreetingSettingsModal = class extends import_obsidian10.Modal {
         };
         renderPool();
         new import_obsidian10.Setting(emojiSection).setName("Same emoji all day").setDesc("Pick one at midnight, keep it all day.").addToggle(
-          (t) => t.setValue(draft.emojiDailySeed ?? false).onChange((v) => {
-            draft.emojiDailySeed = v;
+          (t) => t.setValue(cfg.emojiDailySeed ?? false).onChange((v) => {
+            cfg.emojiDailySeed = v;
           })
         );
       }
     };
     buildEmojiSettings();
-    new import_obsidian10.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -9092,50 +9321,27 @@ var ClockBlock = class extends BaseBlock {
       this.dateEl.setText(now.format("dddd, D MMMM YYYY"));
     }
   }
-  openSettings(onSave) {
-    new ClockSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var ClockSettingsModal = class extends import_obsidian11.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian11.Setting(contentEl).setName("Clock settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian11.Setting(contentEl).setName("Style").setDesc("How the clock looks.").addDropdown(
+  renderContentSettings(body, draft) {
+    new import_obsidian11.Setting(body).setName("Style").setDesc("How the clock looks.").addDropdown(
       (d) => d.addOptions(CLOCK_STYLES).setValue(draft.clockStyle ?? "minimal").onChange((v) => {
         draft.clockStyle = v;
       })
     );
-    new import_obsidian11.Setting(contentEl).setName("Show seconds").addToggle(
+    new import_obsidian11.Setting(body).setName("Show seconds").addToggle(
       (t) => t.setValue(draft.showSeconds ?? false).onChange((v) => {
         draft.showSeconds = v;
       })
     );
-    new import_obsidian11.Setting(contentEl).setName("Show date").addToggle(
+    new import_obsidian11.Setting(body).setName("Show date").addToggle(
       (t) => t.setValue(draft.showDate ?? true).onChange((v) => {
         draft.showDate = v;
       })
     );
-    new import_obsidian11.Setting(contentEl).setName("Custom format").setDesc("Moment.js format string. Leave blank for default.").addText(
+    new import_obsidian11.Setting(body).setName("Custom format").setDesc("Moment.js format string. Leave blank for default.").addText(
       (t) => t.setValue(draft.format ?? "").onChange((v) => {
         draft.format = v;
       })
     );
-    new import_obsidian11.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -9341,71 +9547,52 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
     recurse(folder);
     return files;
   }
-  openSettings(onSave) {
-    new FolderLinksSettingsModal(
-      this.app,
-      this.instance.config,
-      (newConfig) => {
-        onSave(newConfig);
-      }
-    ).open();
-  }
-};
-var FolderLinksSettingsModal = class extends import_obsidian13.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian13.Setting(contentEl).setName("Quick links settings").setHeading();
-    const draft = structuredClone(this.config);
-    draft.links ??= [];
-    const links = draft.links;
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    cfg.links ??= [];
+    const links = cfg.links;
     const pickers = [];
     const closeAllPickers = () => {
       for (const p of pickers) p.close();
     };
-    new import_obsidian13.Setting(contentEl).setName("Link alignment").setDesc("Left, center, or right.").addDropdown(
-      (d) => d.addOptions({ left: "Left", center: "Center", right: "Right" }).setValue(draft.linkAlign ?? "left").onChange((v) => {
-        draft.linkAlign = v;
+    new import_obsidian13.Setting(body).setName("Link alignment").setDesc("Left, center, or right.").addDropdown(
+      (d) => d.addOptions({ left: "Left", center: "Center", right: "Right" }).setValue(cfg.linkAlign ?? "left").onChange((v) => {
+        cfg.linkAlign = v;
       })
     );
     let folderText;
-    new import_obsidian13.Setting(contentEl).setName("Auto-list folder").setDesc("Folder path, with optional wildcards. Examples: Projects, Projects/*.md, Projects/**/*-draft.md").addText((t) => {
+    new import_obsidian13.Setting(body).setName("Auto-list folder").setDesc("Folder path, with optional wildcards. Examples: Projects, Projects/*.md, Projects/**/*-draft.md").addText((t) => {
       folderText = t;
-      t.setValue(draft.folder ?? "").setPlaceholder("Projects/*.md").onChange((v) => {
-        draft.folder = v;
+      t.setValue(cfg.folder ?? "").setPlaceholder("Projects/*.md").onChange((v) => {
+        cfg.folder = v;
       });
     }).addButton(
       (btn) => btn.setIcon("folder").setTooltip("Browse vault folders").onClick(() => {
         new FolderSuggestModal(this.app, (folder) => {
           const path = folder.path === "/" ? "" : folder.path;
-          draft.folder = path;
+          cfg.folder = path;
           folderText.setValue(path);
         }).open();
       })
     );
     const folderPicker = createEmojiPicker({
-      container: contentEl,
+      container: body,
       label: "Folder link emoji",
-      value: draft.folderEmoji ?? "",
+      value: cfg.folderEmoji ?? "",
       placeholder: "None",
       rowClass: "link-emoji-picker-row",
       panelClass: "link-emoji-panel",
       onSelect: (emoji) => {
-        draft.folderEmoji = emoji;
+        cfg.folderEmoji = emoji;
       },
       onClear: () => {
-        draft.folderEmoji = "";
+        cfg.folderEmoji = "";
       },
       onBeforeOpen: closeAllPickers
     });
     pickers.push(folderPicker);
-    new import_obsidian13.Setting(contentEl).setName("Manual links").setHeading();
-    const linksContainer = contentEl.createDiv();
+    new import_obsidian13.Setting(body).setName("Manual links").setHeading();
+    const linksContainer = body.createDiv();
     const dragState = { dragIdx: -1 };
     const renderLinks = () => {
       pickers.length = 1;
@@ -9440,16 +9627,10 @@ var FolderLinksSettingsModal = class extends import_obsidian13.Modal {
       });
     };
     renderLinks();
-    new import_obsidian13.Setting(contentEl).addButton((btn) => btn.setButtonText("Add link").onClick(() => {
+    new import_obsidian13.Setting(body).addButton((btn) => btn.setButtonText("Add link").onClick(() => {
       links.push({ label: "", path: "" });
       renderLinks();
-    })).addButton((btn) => btn.setButtonText("Save").setCta().onClick(() => {
-      this.onSave(draft);
-      this.close();
     }));
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -9463,7 +9644,7 @@ var ButtonGridBlock = class extends BaseBlock {
     const grid = el.createDiv({ cls: "button-grid" });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
     grid.style.setProperty("--hp-grid-cols", `repeat(${safeCols}, 1fr)`);
-    grid.setAttribute("data-auto-height-content", "");
+    grid.setAttribute(AUTO_HEIGHT_ATTR, "");
     this.observeWidthForAutoHeight(grid);
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: "block-empty-hint" });
@@ -9486,47 +9667,34 @@ var ButtonGridBlock = class extends BaseBlock {
       }
     }
   }
-  openSettings(onSave) {
-    new ButtonGridSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var ButtonGridSettingsModal = class extends import_obsidian14.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian14.Setting(contentEl).setName("Button grid settings").setHeading();
-    const draft = structuredClone(this.config);
-    if (!Array.isArray(draft.items)) draft.items = [];
-    new import_obsidian14.Setting(contentEl).setName("Columns").addDropdown(
-      (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(draft.columns ?? 2)).onChange((v) => {
-        draft.columns = Number(v);
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    if (!Array.isArray(cfg.items)) cfg.items = [];
+    new import_obsidian14.Setting(body).setName("Columns").addDropdown(
+      (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(cfg.columns ?? 2)).onChange((v) => {
+        cfg.columns = Number(v);
       })
     );
-    const cssSection = contentEl.createDiv({ cls: "hp-custom-css-section" });
+    const cssSection = body.createDiv({ cls: "hp-custom-css-section" });
     cssSection.createDiv({ cls: "setting-item-name", text: "Custom CSS" });
     const cssTextarea = cssSection.createEl("textarea", { cls: "hp-custom-css-textarea" });
     cssTextarea.placeholder = "--hp-btn-bg: transparent;\n--hp-btn-border: none;\n--hp-btn-shadow: none;\n--hp-btn-hover-bg: var(--background-modifier-hover);\n--hp-btn-hover-border-color: transparent;\n--hp-btn-hover-transform: none;\n--hp-btn-hover-shadow: none;";
     cssTextarea.maxLength = 4096;
-    cssTextarea.value = typeof draft.customCss === "string" ? draft.customCss : "";
+    cssTextarea.value = typeof cfg.customCss === "string" ? cfg.customCss : "";
     cssTextarea.addEventListener("input", () => {
-      draft.customCss = cssTextarea.value;
+      cfg.customCss = cssTextarea.value;
     });
-    contentEl.createEl("p", { text: "Items", cls: "setting-item-name" });
-    const listEl = contentEl.createDiv({ cls: "btn-grid-item-list" });
+    body.createEl("p", { text: "Items", cls: "setting-item-name" });
+    const listEl = body.createDiv({ cls: "btn-grid-item-list" });
     const dragState = { dragIdx: -1 };
     let pickers = [];
     const renderList = () => {
       pickers.forEach((p) => p.destroy());
       pickers = [];
       listEl.empty();
-      draft.items.forEach((item, i) => {
+      cfg.items.forEach((item, i) => {
         const row = listEl.createDiv({ cls: "btn-grid-item-row" });
-        enableDragReorder(row, i, draft.items, dragState, renderList);
+        enableDragReorder(row, i, cfg.items, dragState, renderList);
         const picker = createEmojiPicker({
           container: row,
           panelContainer: listEl,
@@ -9556,29 +9724,18 @@ var ButtonGridSettingsModal = class extends import_obsidian14.Modal {
         });
         const delBtn = row.createEl("button", { cls: "btn-grid-item-del", text: "\u2715" });
         delBtn.addEventListener("click", () => {
-          draft.items.splice(i, 1);
+          cfg.items.splice(i, 1);
           renderList();
         });
       });
     };
     renderList();
-    new import_obsidian14.Setting(contentEl).addButton(
+    new import_obsidian14.Setting(body).addButton(
       (btn) => btn.setButtonText("+ add item").onClick(() => {
-        draft.items.push({ emoji: "", label: "" });
+        cfg.items.push({ emoji: "", label: "" });
         renderList();
       })
     );
-    new import_obsidian14.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -9671,7 +9828,7 @@ var QuotesListBlock = class extends BaseBlock {
     el.toggleClass("quote-style-centered", false);
     el.toggleClass("quote-style-card", false);
     el.toggleClass("quotes-list-block--extend", false);
-    el.toggleClass("quote-no-accent", this.instance.config.hideAccentBar === true);
+    el.toggleClass("quote-no-accent", this.instance.config.showAccentBar === false);
     if (safeMode === "single") {
       if (source === "text") {
         this.renderSingleTextQuote(el, quotes, dailySeed);
@@ -9708,7 +9865,7 @@ var QuotesListBlock = class extends BaseBlock {
       const card = el.querySelector(".insight-card");
       if (card && heightMode === "extend") {
         el.toggleClass("quotes-list-block--extend", true);
-        card.setAttribute("data-auto-height-content", "");
+        card.setAttribute(AUTO_HEIGHT_ATTR, "");
       }
       return;
     }
@@ -9717,7 +9874,7 @@ var QuotesListBlock = class extends BaseBlock {
     el.toggleClass("quote-style-card", safeQuoteStyle === "card");
     el.toggleClass("quotes-list-block--extend", heightMode === "extend");
     const colsEl = el.createDiv({ cls: "quotes-columns" });
-    if (heightMode !== "wrap") colsEl.setAttribute("data-auto-height-content", "");
+    if (heightMode !== "wrap") colsEl.setAttribute(AUTO_HEIGHT_ATTR, "");
     if (heightMode === "wrap") {
       colsEl.setAttribute("tabindex", "0");
       colsEl.setAttribute("role", "region");
@@ -9848,117 +10005,95 @@ var QuotesListBlock = class extends BaseBlock {
     const lines = afterFm.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
     return lines.slice(0, 3).join(" ");
   }
-  openSettings(onSave) {
-    new QuotesSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var QuotesSettingsModal = class extends import_obsidian15.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian15.Setting(contentEl).setName("Quotes settings").setHeading();
-    const draft = structuredClone(this.config);
-    draft.source ??= "tag";
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    cfg.source ??= "tag";
     let tagSection;
     let textSection;
-    new import_obsidian15.Setting(contentEl).setName("Source").setDesc("From tagged notes, or entered manually.").addDropdown(
-      (d) => d.addOption("tag", "Notes with tag").addOption("text", "Manual text").setValue(draft.source ?? "tag").onChange((v) => {
-        draft.source = v === "text" ? "text" : "tag";
+    new import_obsidian15.Setting(body).setName("Source").setDesc("From tagged notes, or entered manually.").addDropdown(
+      (d) => d.addOption("tag", "Notes with tag").addOption("text", "Manual text").setValue(cfg.source ?? "tag").onChange((v) => {
+        cfg.source = v === "text" ? "text" : "tag";
         tagSection.toggleClass("hp-hidden", v !== "tag");
         textSection.toggleClass("hp-hidden", v !== "text");
       })
     );
-    tagSection = contentEl.createDiv();
-    tagSection.toggleClass("hp-hidden", draft.source !== "tag");
+    tagSection = body.createDiv();
+    tagSection.toggleClass("hp-hidden", cfg.source !== "tag");
     new import_obsidian15.Setting(tagSection).setName("Tag").setDesc("Without # prefix").addText(
-      (t) => t.setValue(draft.tag ?? "").onChange((v) => {
-        draft.tag = v;
+      (t) => t.setValue(cfg.tag ?? "").onChange((v) => {
+        cfg.tag = v;
       })
     );
     new import_obsidian15.Setting(tagSection).setName("Show note title").setDesc("Display the note filename as the quote attribution.").addToggle(
-      (t) => t.setValue(draft.showNoteTitle !== false).onChange((v) => {
-        draft.showNoteTitle = v;
+      (t) => t.setValue(cfg.showNoteTitle !== false).onChange((v) => {
+        cfg.showNoteTitle = v;
       })
     );
-    textSection = contentEl.createDiv();
-    textSection.toggleClass("hp-hidden", draft.source !== "text");
+    textSection = body.createDiv();
+    textSection.toggleClass("hp-hidden", cfg.source !== "text");
     const textSetting = new import_obsidian15.Setting(textSection).setName("Quotes").setDesc("Separate quotes with --- on its own line, then add a source with \u2014 (e.g. \u2014 author).");
     textSetting.settingEl.addClass("hp-setting-column");
     const textarea = textSetting.settingEl.createEl("textarea");
     textarea.rows = 8;
     textarea.addClass("hp-textarea-full");
-    textarea.value = draft.quotes ?? "";
+    textarea.value = cfg.quotes ?? "";
     textarea.addEventListener("input", () => {
-      draft.quotes = textarea.value;
+      cfg.quotes = textarea.value;
     });
-    new import_obsidian15.Setting(contentEl).setName("Max quotes").setDesc("Leave empty for all. Set to 1 for a daily rotating quote.").addText(
-      (t) => t.setPlaceholder("All").setValue(typeof draft.maxItems === "number" && draft.maxItems > 0 ? String(draft.maxItems) : "").onChange((v) => {
+    new import_obsidian15.Setting(body).setName("Max quotes").setDesc("Leave empty for all. Set to 1 for a daily rotating quote.").addText(
+      (t) => t.setPlaceholder("All").setValue(typeof cfg.maxItems === "number" && cfg.maxItems > 0 ? String(cfg.maxItems) : "").onChange((v) => {
         const n = parseInt(v);
-        draft.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
-        dailySeedSetting.toggleClass("hp-hidden", draft.maxItems !== 1);
+        cfg.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
+        dailySeedSetting.toggleClass("hp-hidden", cfg.maxItems !== 1);
       })
     );
-    const dailySeedSetting = contentEl.createDiv();
-    dailySeedSetting.toggleClass("hp-hidden", (draft.maxItems ?? 0) !== 1);
+    const dailySeedSetting = body.createDiv();
+    dailySeedSetting.toggleClass("hp-hidden", (cfg.maxItems ?? 0) !== 1);
     new import_obsidian15.Setting(dailySeedSetting).setName("Daily seed").setDesc("Same quote all day, changes at midnight.").addToggle(
-      (t) => t.setValue(draft.dailySeed !== false).onChange((v) => {
-        draft.dailySeed = v;
+      (t) => t.setValue(cfg.dailySeed !== false).onChange((v) => {
+        cfg.dailySeed = v;
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Columns").addDropdown(
-      (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(typeof draft.columns === "number" ? draft.columns : 2)).onChange((v) => {
-        draft.columns = Number(v);
+    new import_obsidian15.Setting(body).setName("Columns").addDropdown(
+      (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(typeof cfg.columns === "number" ? cfg.columns : 2)).onChange((v) => {
+        cfg.columns = Number(v);
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands to show all quotes.").addDropdown(
-      (d) => d.addOption("wrap", "Scroll (fixed height)").addOption("extend", "Grow to fit all").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "extend").onChange((v) => {
-        draft.heightMode = v === "wrap" ? "wrap" : "extend";
+    new import_obsidian15.Setting(body).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands to show all quotes.").addDropdown(
+      (d) => d.addOption("wrap", "Scroll (fixed height)").addOption("extend", "Grow to fit all").setValue(typeof cfg.heightMode === "string" ? cfg.heightMode : "extend").onChange((v) => {
+        cfg.heightMode = v === "wrap" ? "wrap" : "extend";
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
-      (d) => d.addOption("classic", "Classic").addOption("centered", "Centered").addOption("card", "Card").setValue(typeof draft.quoteStyle === "string" ? draft.quoteStyle : "classic").onChange((v) => {
-        draft.quoteStyle = v === "centered" || v === "card" ? v : "classic";
+    new import_obsidian15.Setting(body).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
+      (d) => d.addOption("classic", "Classic").addOption("centered", "Centered").addOption("card", "Card").setValue(typeof cfg.quoteStyle === "string" ? cfg.quoteStyle : "classic").onChange((v) => {
+        cfg.quoteStyle = v === "centered" || v === "card" ? v : "classic";
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Hide accent bar").setDesc("Remove the vertical line next to each quote.").addToggle(
-      (t) => t.setValue(draft.hideAccentBar === true).onChange((v) => {
-        draft.hideAccentBar = v;
+    new import_obsidian15.Setting(body).setName("Show accent bar").setDesc("Show the vertical line next to each quote.").addToggle(
+      (t) => t.setValue(cfg.showAccentBar !== false).onChange((v) => {
+        cfg.showAccentBar = v;
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Text alignment").setDesc("Left, center, or right.").addDropdown(
-      (d) => d.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(typeof draft.textAlign === "string" ? draft.textAlign : "left").onChange((v) => {
-        draft.textAlign = v;
+    new import_obsidian15.Setting(body).setName("Text alignment").setDesc("Left, center, or right.").addDropdown(
+      (d) => d.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(typeof cfg.textAlign === "string" ? cfg.textAlign : "left").onChange((v) => {
+        cfg.textAlign = v;
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Vertical alignment").setDesc("Vertical alignment within the block.").addDropdown(
-      (d) => d.addOption("top", "Top").addOption("middle", "Middle").addOption("bottom", "Bottom").setValue(typeof draft.verticalAlign === "string" ? draft.verticalAlign : "top").onChange((v) => {
-        draft.verticalAlign = v;
+    new import_obsidian15.Setting(body).setName("Vertical alignment").setDesc("Vertical alignment within the block.").addDropdown(
+      (d) => d.addOption("top", "Top").addOption("middle", "Middle").addOption("bottom", "Bottom").setValue(typeof cfg.verticalAlign === "string" ? cfg.verticalAlign : "top").onChange((v) => {
+        cfg.verticalAlign = v;
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Font style").setDesc("Font preset. A custom font below will override this (line-height still applies).").addDropdown(
-      (d) => d.addOption("default", "Default").addOption("serif", "Serif").addOption("handwriting", "Handwriting").setValue(typeof draft.fontStyle === "string" ? draft.fontStyle : "default").onChange((v) => {
-        draft.fontStyle = v === "serif" || v === "handwriting" ? v : "default";
+    new import_obsidian15.Setting(body).setName("Font style").setDesc("Font preset. A custom font below will override this (line-height still applies).").addDropdown(
+      (d) => d.addOption("default", "Default").addOption("serif", "Serif").addOption("handwriting", "Handwriting").setValue(typeof cfg.fontStyle === "string" ? cfg.fontStyle : "default").onChange((v) => {
+        cfg.fontStyle = v === "serif" || v === "handwriting" ? v : "default";
       })
     );
-    new import_obsidian15.Setting(contentEl).setName("Custom font").setDesc("Any installed font. Overrides the preset above.").addText(
-      (t) => t.setPlaceholder("Georgia").setValue(typeof draft.customFont === "string" ? draft.customFont : "").onChange((v) => {
-        draft.customFont = v;
+    new import_obsidian15.Setting(body).setName("Custom font").setDesc("Any installed font. Overrides the preset above.").addText(
+      (t) => t.setPlaceholder("Georgia").setValue(typeof cfg.customFont === "string" ? cfg.customFont : "").onChange((v) => {
+        cfg.customFont = v;
       })
     );
-    new import_obsidian15.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -10033,6 +10168,15 @@ var ImageCacheStore = class {
     }
     this.entries.clear();
     this.pending.clear();
+  }
+  /**
+   * Re-arm the cache after a previous destroy(). Required because the singleton
+   * survives plugin disable+enable in the same renderer process; without this the
+   * `disposed` flag would stay true forever and every gallery render would rebuild
+   * its thumbnails (and leak blob URLs) on the path at line 56.
+   */
+  reset() {
+    this.disposed = false;
   }
   // ── internals ──
   async generate(app, file, mtime) {
@@ -10319,7 +10463,7 @@ var ImageGalleryBlock = class extends BaseBlock {
     if (heightMode === "fixed") {
       gallery.addClass("image-gallery--fixed-height");
     } else {
-      gallery.setAttribute("data-auto-height-content", "");
+      gallery.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     if (layout === "masonry") {
       gallery.addClass("masonry-layout");
@@ -10454,23 +10598,9 @@ var ImageGalleryBlock = class extends BaseBlock {
     recurse(folder);
     return files;
   }
-  openSettings(onSave) {
-    new ImageGallerySettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var ImageGallerySettingsModal = class extends import_obsidian16.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian16.Setting(contentEl).setName("Image gallery settings").setHeading();
-    const draft = structuredClone(this.config);
+  renderContentSettings(body, draft) {
     let folderText;
-    new import_obsidian16.Setting(contentEl).setName("Folder").setDesc("Pick a vault folder.").addText((t) => {
+    new import_obsidian16.Setting(body).setName("Folder").setDesc("Pick a vault folder.").addText((t) => {
       folderText = t;
       t.setValue(draft.folder ?? "").setPlaceholder("Attachments/photos").onChange((v) => {
         draft.folder = v;
@@ -10484,36 +10614,27 @@ var ImageGallerySettingsModal = class extends import_obsidian16.Modal {
         }).open();
       })
     );
-    new import_obsidian16.Setting(contentEl).setName("Height").setDesc("Auto: expands to fit all images. Fixed: uses the block's row height and scrolls.").addDropdown(
+    new import_obsidian16.Setting(body).setName("Height").setDesc("Auto: expands to fit all images. Fixed: uses the block's row height and scrolls.").addDropdown(
       (d) => d.addOption("auto", "Auto (fit all images)").addOption("fixed", "Fixed (scroll)").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "auto").onChange((v) => {
         draft.heightMode = v === "fixed" ? "fixed" : "auto";
       })
     );
-    new import_obsidian16.Setting(contentEl).setName("Layout").addDropdown(
+    new import_obsidian16.Setting(body).setName("Layout").addDropdown(
       (d) => d.addOption("grid", "Grid").addOption("masonry", "Masonry").setValue(typeof draft.layout === "string" ? draft.layout : "grid").onChange((v) => {
         draft.layout = v;
       })
     );
-    new import_obsidian16.Setting(contentEl).setName("Columns").addDropdown(
+    new import_obsidian16.Setting(body).setName("Columns").addDropdown(
       (d) => d.addOption("2", "2").addOption("3", "3").addOption("4", "4").addOption("5", "5").addOption("6", "6").addOption("7", "7").setValue(String(typeof draft.columns === "number" ? draft.columns : 3)).onChange((v) => {
         draft.columns = Number(v);
       })
     );
-    new import_obsidian16.Setting(contentEl).setName("Max items").setDesc("0 = show all files.").addText(
+    new import_obsidian16.Setting(body).setName("Max items").setDesc("0 = show all files.").addText(
       (t) => t.setValue(String(typeof draft.maxItems === "number" ? draft.maxItems : 0)).onChange((v) => {
         const n = parseInt(v) || 0;
         draft.maxItems = Math.min(Math.max(0, n), 500);
       })
     );
-    new import_obsidian16.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -10540,10 +10661,7 @@ var EmbeddedNoteBlock = class extends BaseBlock {
       const current = active.find((b) => b.id === this.instance.id);
       const filePath = current?.config.filePath ?? "";
       if (oldPath === filePath) {
-        const newBlocks = active.map(
-          (b) => b.id === this.instance.id ? { ...b, config: { ...b.config, filePath: file.path } } : b
-        );
-        void this.plugin.saveActiveBlocks(newBlocks).then(trigger);
+        void this.plugin.updateBlockConfig(this.instance.id, { filePath: file.path }).then(trigger);
         return;
       }
       if (file.path === filePath) trigger();
@@ -10579,7 +10697,7 @@ var EmbeddedNoteBlock = class extends BaseBlock {
       contentEl.setAttribute("role", "region");
       contentEl.setAttribute("aria-label", file.basename);
     } else if (heightMode === "grow") {
-      contentEl.setAttribute("data-auto-height-content", "");
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     try {
       const content = await this.app.vault.read(file);
@@ -10590,8 +10708,23 @@ var EmbeddedNoteBlock = class extends BaseBlock {
       contentEl.setText("Error rendering file.");
     }
   }
-  openSettings(onSave) {
-    new EmbeddedNoteSettingsModal(this.app, this.instance.config, onSave).open();
+  renderContentSettings(body, draft) {
+    new import_obsidian17.Setting(body).setName("File path").setDesc("Path to the note (e.g. Notes/MyNote.md)").addText((t) => {
+      t.setValue(draft.filePath ?? "").setPlaceholder("Start typing to search\u2026").onChange((v) => {
+        draft.filePath = v;
+      });
+      new FileSuggest(this.app, t.inputEl);
+    });
+    new import_obsidian17.Setting(body).setName("Show title").addToggle(
+      (t) => t.setValue(draft.showTitle ?? true).onChange((v) => {
+        draft.showTitle = v;
+      })
+    );
+    new import_obsidian17.Setting(body).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands the card to show the full note.").addDropdown(
+      (d) => d.addOption("scroll", "Scroll (fixed height)").addOption("grow", "Grow to fit all").setValue(draft.heightMode ?? "scroll").onChange((v) => {
+        draft.heightMode = v;
+      })
+    );
   }
 };
 var FileSuggest = class extends import_obsidian17.AbstractInputSuggest {
@@ -10612,48 +10745,15 @@ var FileSuggest = class extends import_obsidian17.AbstractInputSuggest {
     this.close();
   }
 };
-var EmbeddedNoteSettingsModal = class extends import_obsidian17.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian17.Setting(contentEl).setName("Embedded note settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian17.Setting(contentEl).setName("File path").setDesc("Path to the note (e.g. Notes/MyNote.md)").addText((t) => {
-      t.setValue(draft.filePath ?? "").setPlaceholder("Start typing to search\u2026").onChange((v) => {
-        draft.filePath = v;
-      });
-      new FileSuggest(this.app, t.inputEl);
-    });
-    new import_obsidian17.Setting(contentEl).setName("Show title").addToggle(
-      (t) => t.setValue(draft.showTitle ?? true).onChange((v) => {
-        draft.showTitle = v;
-      })
-    );
-    new import_obsidian17.Setting(contentEl).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands the card to show the full note.").addDropdown(
-      (d) => d.addOption("scroll", "Scroll (fixed height)").addOption("grow", "Grow to fit all").setValue(draft.heightMode ?? "scroll").onChange((v) => {
-        draft.heightMode = v;
-      })
-    );
-    new import_obsidian17.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
 
 // src/blocks/StaticTextBlock.ts
 var import_obsidian18 = require("obsidian");
 var StaticTextBlock = class extends BaseBlock {
+  /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
+  inlineEditActive = false;
+  hasUnsavedInlineState() {
+    return this.inlineEditActive;
+  }
   render(el) {
     el.addClass("static-text-block");
     this.renderContent(el).catch((e) => {
@@ -10676,7 +10776,7 @@ var StaticTextBlock = class extends BaseBlock {
     });
     const contentEl = el.createDiv({ cls: "static-text-content" });
     if (heightMode !== "fixed") {
-      contentEl.setAttribute("data-auto-height-content", "");
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     if (!content) {
       const hint = contentEl.createDiv({ cls: "block-empty-hint" });
@@ -10689,13 +10789,14 @@ var StaticTextBlock = class extends BaseBlock {
   }
   enterInlineEdit(el) {
     const currentContent = this.instance.config.content ?? "";
+    this.inlineEditActive = true;
     const contentEl = el.querySelector(".static-text-content");
     const editBtn = el.querySelector(".static-text-edit-btn");
     if (contentEl) contentEl.addClass("hp-hidden");
     if (editBtn) editBtn.addClass("hp-hidden");
     const editor = el.createDiv({ cls: "static-text-inline-editor" });
     if ((this.instance.config.heightMode ?? "auto") !== "fixed") {
-      editor.setAttribute("data-auto-height-content", "");
+      editor.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
     const textarea = editor.createEl("textarea");
     textarea.value = currentContent;
@@ -10711,17 +10812,13 @@ var StaticTextBlock = class extends BaseBlock {
     });
     (0, import_obsidian18.setIcon)(cancelBtn, "x");
     const save = () => {
-      const active = this.plugin.activeBlocks();
-      const currentConfig = active.find((b) => b.id === this.instance.id)?.config ?? this.instance.config;
-      const newConfig = { ...currentConfig, content: textarea.value };
-      const newBlocks = active.map(
-        (b) => b.id === this.instance.id ? { ...b, config: newConfig } : b
-      );
-      void this.plugin.saveActiveBlocks(newBlocks);
+      this.inlineEditActive = false;
+      void this.plugin.updateBlockConfig(this.instance.id, { content: textarea.value });
       this.renderContent(el).then(() => this.requestAutoHeight()).catch(() => {
       });
     };
     const cancel = () => {
+      this.inlineEditActive = false;
       this.renderContent(el).catch(() => {
       });
     };
@@ -10738,42 +10835,19 @@ var StaticTextBlock = class extends BaseBlock {
     });
     textarea.focus();
   }
-  openSettings(onSave) {
-    new StaticTextSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var StaticTextSettingsModal = class extends import_obsidian18.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian18.Setting(contentEl).setName("Static text settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian18.Setting(contentEl).setName("Height").setDesc("Auto: expands to fit content. Fixed: uses grid cell height with scrollbar.").addDropdown(
+  renderContentSettings(body, draft) {
+    new import_obsidian18.Setting(body).setName("Height").setDesc("Auto: expands to fit content. Fixed: uses grid cell height with scrollbar.").addDropdown(
       (d) => d.addOption("auto", "Auto (fit content)").addOption("fixed", "Fixed (scroll)").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "auto").onChange((v) => {
         draft.heightMode = v;
       })
     );
-    new import_obsidian18.Setting(contentEl).setName("Content").setDesc("Supports Markdown.");
-    const textarea = contentEl.createEl("textarea", { cls: "static-text-settings-textarea" });
+    new import_obsidian18.Setting(body).setName("Content").setDesc("Supports Markdown.");
+    const textarea = body.createEl("textarea", { cls: "static-text-settings-textarea" });
     textarea.value = draft.content ?? "";
     textarea.rows = 10;
     textarea.addEventListener("input", () => {
       draft.content = textarea.value;
     });
-    new import_obsidian18.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -10817,7 +10891,11 @@ var HtmlBlock = class extends BaseBlock {
     const VAR_RE = /var\((--[\w-]+)/g;
     let m;
     while ((m = VAR_RE.exec(safe)) !== null) varRefs.add(m[1]);
-    const bridgeParts = ["html{height:100%;margin:0;padding:0}body{margin:0;padding:0;min-height:100%}"];
+    const bridgeParts = [
+      "html{height:100%;margin:0;padding:0}",
+      "html.hp-clipped{overflow:hidden}",
+      "body{margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}"
+    ];
     if (varRefs.size > 0) {
       const rootStyle = getComputedStyle(document.body);
       const pairs = [...varRefs].map((v) => {
@@ -10848,7 +10926,7 @@ var HtmlBlock = class extends BaseBlock {
         if (contentH <= availableH || availableH <= 0) return;
         let scale = availableH / contentH;
         for (let i = 0; i < 4; i++) {
-          doc.body.style.width = `${1 / scale * 100}%`;
+          doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
           contentH = doc.documentElement.scrollHeight;
           const next = availableH / contentH;
           if (Math.abs(next - scale) < 5e-3) {
@@ -10857,46 +10935,22 @@ var HtmlBlock = class extends BaseBlock {
           }
           scale = next;
         }
-        doc.body.style.width = `${1 / scale * 100}%`;
-        doc.documentElement.style.overflow = "hidden";
-        doc.body.style.transformOrigin = "top left";
-        doc.body.style.transform = `scale(${scale})`;
+        doc.documentElement.classList.add("hp-clipped");
+        doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
+        doc.body.style.setProperty("--hp-body-scale", `${scale}`);
       } catch {
       }
     });
   }
-  openSettings(onSave) {
-    new HtmlBlockSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var HtmlBlockSettingsModal = class extends import_obsidian19.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian19.Setting(contentEl).setName("HTML block settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian19.Setting(contentEl).setName("HTML").setDesc("Supports full HTML documents with <style> blocks.");
-    const textarea = contentEl.createEl("textarea", { cls: "html-settings-textarea" });
+  renderContentSettings(body, draft) {
+    new import_obsidian19.Setting(body).setName("HTML").setDesc("Supports full HTML documents with <style> blocks.");
+    const textarea = body.createEl("textarea", { cls: "html-settings-textarea" });
     textarea.value = draft.html ?? "";
     textarea.rows = 12;
     textarea.setAttribute("spellcheck", "false");
     textarea.addEventListener("input", () => {
       draft.html = textarea.value;
     });
-    new import_obsidian19.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -11007,40 +11061,17 @@ var VideoEmbedBlock = class extends BaseBlock {
       }
     });
   }
-  openSettings(onSave) {
-    new VideoEmbedSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var VideoEmbedSettingsModal = class extends import_obsidian20.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian20.Setting(contentEl).setName("Video embed settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian20.Setting(contentEl).setName("Video or playlist link").setDesc("Paste a video or playlist link from any supported platform.").addText(
+  renderContentSettings(body, draft) {
+    new import_obsidian20.Setting(body).setName("Video or playlist link").setDesc("Paste a video or playlist link from any supported platform.").addText(
       (t) => t.setValue(draft.url ?? "").setPlaceholder("https://www.youtube.com/watch?v=...").onChange((v) => {
         draft.url = v;
       })
     );
-    new import_obsidian20.Setting(contentEl).setName("Shuffle on load").setDesc("Start at a random video each time the homepage opens. Only works with playlists.").addToggle(
+    new import_obsidian20.Setting(body).setName("Shuffle on load").setDesc("Start at a random video each time the homepage opens. Only works with playlists.").addToggle(
       (t) => t.setValue(Boolean(draft.shuffleOnLoad)).onChange((v) => {
         draft.shuffleOnLoad = v;
       })
     );
-    new import_obsidian20.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -11082,40 +11113,27 @@ var BookmarkBlock = class extends BaseBlock {
       });
     }
   }
-  openSettings(onSave) {
-    new BookmarkSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var BookmarkSettingsModal = class extends import_obsidian21.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian21.Setting(contentEl).setName("Bookmark settings").setHeading();
-    const draft = structuredClone(this.config);
-    if (!Array.isArray(draft.items)) draft.items = [];
-    new import_obsidian21.Setting(contentEl).setName("Columns").addDropdown(
-      (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(draft.columns ?? 2)).onChange((v) => {
-        draft.columns = Number(v);
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    if (!Array.isArray(cfg.items)) cfg.items = [];
+    new import_obsidian21.Setting(body).setName("Columns").addDropdown(
+      (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(cfg.columns ?? 2)).onChange((v) => {
+        cfg.columns = Number(v);
       })
     );
-    new import_obsidian21.Setting(contentEl).setName("Show descriptions").addToggle(
-      (t) => t.setValue(draft.showDescriptions !== false).onChange((v) => {
-        draft.showDescriptions = v;
+    new import_obsidian21.Setting(body).setName("Show descriptions").addToggle(
+      (t) => t.setValue(cfg.showDescriptions !== false).onChange((v) => {
+        cfg.showDescriptions = v;
       })
     );
-    contentEl.createEl("p", { text: "Items", cls: "setting-item-name" });
-    const listEl = contentEl.createDiv({ cls: "bookmark-item-list" });
+    body.createEl("p", { text: "Items", cls: "setting-item-name" });
+    const listEl = body.createDiv({ cls: "bookmark-item-list" });
     const dragState = { dragIdx: -1 };
     const renderList = () => {
       listEl.empty();
-      draft.items.forEach((item, i) => {
+      cfg.items.forEach((item, i) => {
         const row = listEl.createDiv({ cls: "bookmark-item-row" });
-        enableDragReorder(row, i, draft.items, dragState, renderList);
+        enableDragReorder(row, i, cfg.items, dragState, renderList);
         const emojiInput = row.createEl("input", { type: "text", cls: "bookmark-item-emoji" });
         emojiInput.value = item.emoji ?? "";
         emojiInput.placeholder = "\u{1F310}";
@@ -11142,29 +11160,18 @@ var BookmarkSettingsModal = class extends import_obsidian21.Modal {
         });
         const delBtn = row.createEl("button", { cls: "bookmark-item-del", text: "\u2715" });
         delBtn.addEventListener("click", () => {
-          draft.items.splice(i, 1);
+          cfg.items.splice(i, 1);
           renderList();
         });
       });
     };
     renderList();
-    new import_obsidian21.Setting(contentEl).addButton(
+    new import_obsidian21.Setting(body).addButton(
       (btn) => btn.setButtonText("+ add item").onClick(() => {
-        draft.items.push({ label: "", url: "" });
+        cfg.items.push({ label: "", url: "" });
         renderList();
       })
     );
-    new import_obsidian21.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -11221,47 +11228,23 @@ var RecentFilesBlock = class extends BaseBlock {
       });
     }
   }
-  openSettings(onSave) {
-    new RecentFilesSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var RecentFilesSettingsModal = class extends import_obsidian22.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian22.Setting(contentEl).setName("Recent files settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian22.Setting(contentEl).setName("Max items").setDesc("How many files to show (5\u201320).").addSlider(
-      (s) => s.setLimits(5, 20, 1).setValue(draft.maxItems ?? 10).setDynamicTooltip().onChange((v) => {
-        draft.maxItems = v;
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    new import_obsidian22.Setting(body).setName("Max items").setDesc("How many files to show (5\u201320).").addSlider(
+      (s) => s.setLimits(5, 20, 1).setValue(cfg.maxItems ?? 10).setDynamicTooltip().onChange((v) => {
+        cfg.maxItems = v;
       })
     );
-    new import_obsidian22.Setting(contentEl).setName("Show timestamps").setDesc("Show relative time next to each file.").addToggle(
-      (t) => t.setValue(draft.showTimestamp ?? true).onChange((v) => {
-        draft.showTimestamp = v;
+    new import_obsidian22.Setting(body).setName("Show timestamps").setDesc("Show relative time next to each file.").addToggle(
+      (t) => t.setValue(cfg.showTimestamp ?? true).onChange((v) => {
+        cfg.showTimestamp = v;
       })
     );
-    new import_obsidian22.Setting(contentEl).setName("Exclude folders").setDesc("Comma-separated folder paths to exclude.").addText(
-      (t) => t.setPlaceholder("e.g. Templates, Archive/old").setValue(draft.excludeFolders ?? "").onChange((v) => {
-        draft.excludeFolders = v;
+    new import_obsidian22.Setting(body).setName("Exclude folders").setDesc("Comma-separated folder paths to exclude.").addText(
+      (t) => t.setPlaceholder("e.g. Templates, Archive/old").setValue(cfg.excludeFolders ?? "").onChange((v) => {
+        cfg.excludeFolders = v;
       })
     );
-    new import_obsidian22.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -11477,7 +11460,7 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
         osc.stop(t + 4.1);
       }
     } catch (e) {
-      console.error("[Homepage] Audio playback failed", e);
+      console.error("[Homepage Blocks] Pomodoro audio playback failed", e instanceof Error ? e.message : "unknown error");
     }
   }
   startPhase(phase, minutes) {
@@ -11563,65 +11546,40 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
     }
   }
   // ── Settings ───────────────────────────────────────────────────────────
-  openSettings(onSave) {
-    new PomodoroSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var PomodoroSettingsModal = class extends import_obsidian23.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian23.Setting(contentEl).setName("Pomodoro settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian23.Setting(contentEl).setName("Work duration").setDesc("Minutes per work session.").addSlider(
+  renderContentSettings(body, draft) {
+    new import_obsidian23.Setting(body).setName("Work duration").setDesc("Minutes per work session.").addSlider(
       (s) => s.setLimits(1, 60, 1).setValue(draft.workMinutes ?? 25).setDynamicTooltip().onChange((v) => {
         draft.workMinutes = v;
       })
     );
-    new import_obsidian23.Setting(contentEl).setName("Break duration").setDesc("Minutes per short break.").addSlider(
+    new import_obsidian23.Setting(body).setName("Break duration").setDesc("Minutes per short break.").addSlider(
       (s) => s.setLimits(1, 30, 1).setValue(draft.breakMinutes ?? 5).setDynamicTooltip().onChange((v) => {
         draft.breakMinutes = v;
       })
     );
-    new import_obsidian23.Setting(contentEl).setName("Long break duration").setDesc("Minutes per long break.").addSlider(
+    new import_obsidian23.Setting(body).setName("Long break duration").setDesc("Minutes per long break.").addSlider(
       (s) => s.setLimits(1, 60, 1).setValue(draft.longBreakMinutes ?? 15).setDynamicTooltip().onChange((v) => {
         draft.longBreakMinutes = v;
       })
     );
-    new import_obsidian23.Setting(contentEl).setName("Sessions before long break").setDesc("Work sessions before a long break.").addSlider(
+    new import_obsidian23.Setting(body).setName("Sessions before long break").setDesc("Work sessions before a long break.").addSlider(
       (s) => s.setLimits(2, 8, 1).setValue(draft.sessionsBeforeLong ?? 4).setDynamicTooltip().onChange((v) => {
         draft.sessionsBeforeLong = v;
       })
     );
-    new import_obsidian23.Setting(contentEl).setName("Notification sound").setDesc("Play a sound when a phase ends.").addDropdown((d) => {
+    new import_obsidian23.Setting(body).setName("Notification sound").setDesc("Play a sound when a phase ends.").addDropdown((d) => {
       d.addOption("none", "None").addOption("crystal", "Crystal").addOption("chime", "Chime").addOption("bowl", "Singing bowl").setValue(draft.soundType ?? "crystal").onChange((v) => {
         draft.soundType = v;
         if (v !== "none") {
-          PomodoroBlock.playNotificationSound(v);
+          _PomodoroBlock.playNotificationSound(v);
         }
       });
     });
-    new import_obsidian23.Setting(contentEl).setName("Auto-start next session").setDesc("Start the next phase automatically.").addToggle(
+    new import_obsidian23.Setting(body).setName("Auto-start next session").setDesc("Start the next phase automatically.").addToggle(
       (t) => t.setValue(draft.autoStartCycle ?? false).onChange((v) => {
         draft.autoStartCycle = v;
       })
     );
-    new import_obsidian23.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -11722,7 +11680,7 @@ var RandomNoteBlock = class extends BaseBlock {
       }
     }
     if (this.isStale(gen)) return;
-    el.setAttribute("data-auto-height-content", "");
+    el.setAttribute(AUTO_HEIGHT_ATTR, "");
     this.observeWidthForAutoHeight(el);
     if (showImage) {
       const rawProp = fm[imageProperty];
@@ -11790,62 +11748,38 @@ var RandomNoteBlock = class extends BaseBlock {
     }
     return "";
   }
-  openSettings(onSave) {
-    new RandomNoteSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var RandomNoteSettingsModal = class extends import_obsidian24.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian24.Setting(contentEl).setName("Random note settings").setHeading();
-    const draft = structuredClone(this.config);
-    new import_obsidian24.Setting(contentEl).setName("Tag filter").setDesc("Only notes with this tag will appear.").addText(
-      (t) => t.setPlaceholder("#tag or tag").setValue(draft.tag ?? "").onChange((v) => {
-        draft.tag = v.trim();
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    new import_obsidian24.Setting(body).setName("Tag filter").setDesc("Only notes with this tag will appear.").addText(
+      (t) => t.setPlaceholder("#tag or tag").setValue(cfg.tag ?? "").onChange((v) => {
+        cfg.tag = v.trim();
       })
     );
-    new import_obsidian24.Setting(contentEl).setName("Daily seed").setDesc("Same note all day, changes at midnight.").addToggle(
-      (t) => t.setValue(draft.dailySeed ?? false).onChange((v) => {
-        draft.dailySeed = v;
+    new import_obsidian24.Setting(body).setName("Daily seed").setDesc("Same note all day, changes at midnight.").addToggle(
+      (t) => t.setValue(cfg.dailySeed ?? false).onChange((v) => {
+        cfg.dailySeed = v;
       })
     );
-    new import_obsidian24.Setting(contentEl).setName("Show cover image").addToggle(
-      (t) => t.setValue(draft.showImage ?? true).onChange((v) => {
-        draft.showImage = v;
+    new import_obsidian24.Setting(body).setName("Show cover image").addToggle(
+      (t) => t.setValue(cfg.showImage ?? true).onChange((v) => {
+        cfg.showImage = v;
       })
     );
-    new import_obsidian24.Setting(contentEl).setName("Cover image property").setDesc("Frontmatter property with the image path.").addText(
-      (t) => t.setPlaceholder("Cover").setValue(draft.imageProperty ?? "").onChange((v) => {
-        draft.imageProperty = v.trim() || "cover";
+    new import_obsidian24.Setting(body).setName("Cover image property").setDesc("Frontmatter property with the image path.").addText(
+      (t) => t.setPlaceholder("Cover").setValue(cfg.imageProperty ?? "").onChange((v) => {
+        cfg.imageProperty = v.trim() || "cover";
       })
     );
-    new import_obsidian24.Setting(contentEl).setName("Title property").setDesc("Frontmatter property for the title. Falls back to filename.").addText(
-      (t) => t.setPlaceholder("Title").setValue(draft.titleProperty ?? "title").onChange((v) => {
-        draft.titleProperty = v.trim() || "title";
+    new import_obsidian24.Setting(body).setName("Title property").setDesc("Frontmatter property for the title. Falls back to filename.").addText(
+      (t) => t.setPlaceholder("Title").setValue(cfg.titleProperty ?? "title").onChange((v) => {
+        cfg.titleProperty = v.trim() || "title";
       })
     );
-    new import_obsidian24.Setting(contentEl).setName("Show content preview").setDesc("Show the first paragraph or frontmatter description.").addToggle(
-      (t) => t.setValue(draft.showPreview ?? true).onChange((v) => {
-        draft.showPreview = v;
+    new import_obsidian24.Setting(body).setName("Show content preview").setDesc("Show the first paragraph or frontmatter description.").addToggle(
+      (t) => t.setValue(cfg.showPreview ?? true).onChange((v) => {
+        cfg.showPreview = v;
       })
     );
-    new import_obsidian24.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    ).addButton(
-      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -12230,86 +12164,64 @@ Content-Type: ${mimeType}\r
     const json = res.json;
     return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
   }
-  // ── Settings modal ─────────────────────────────────────────────────────────
-  openSettings(onSave) {
-    new VoiceDictationSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var VoiceDictationSettingsModal = class extends import_obsidian25.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.onSave = onSave;
-    this.draft = { ...config };
-  }
-  draft;
-  onOpen() {
-    this.renderSettings();
-  }
-  renderSettings() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian25.Setting(contentEl).setName("Voice notes settings").setHeading();
-    new import_obsidian25.Setting(contentEl).setName("Destination folder").setDesc("Where new voice notes go. Leave blank for vault root.").addText((t) => {
-      t.setPlaceholder("Voice notes").setValue(this.draft.folder ?? "").onChange((v) => {
-        this.draft.folder = v.trim();
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    const renderSettings = () => {
+      body.empty();
+      new import_obsidian25.Setting(body).setName("Destination folder").setDesc("Where new voice notes go. Leave blank for vault root.").addText((t) => {
+        t.setPlaceholder("Voice notes").setValue(cfg.folder ?? "").onChange((v) => {
+          cfg.folder = v.trim();
+        });
+        t.inputEl.addEventListener("click", () => {
+          new FolderSuggestModal(this.app, (folder) => {
+            cfg.folder = folder.path;
+            t.setValue(folder.path);
+          }).open();
+        });
       });
-      t.inputEl.addEventListener("click", () => {
-        new FolderSuggestModal(this.app, (folder) => {
-          this.draft.folder = folder.path;
-          t.setValue(folder.path);
-        }).open();
+      new import_obsidian25.Setting(body).setName("Trigger mode").setDesc("How the mic button starts recording.").addDropdown((d) => {
+        d.addOption("tap", "Tap to record").addOption("push", "Push to talk").setValue(cfg.triggerMode ?? "tap").onChange((v) => {
+          cfg.triggerMode = v;
+        });
       });
-    });
-    new import_obsidian25.Setting(contentEl).setName("Trigger mode").setDesc("How the mic button starts recording.").addDropdown((d) => {
-      d.addOption("tap", "Tap to record").addOption("push", "Push to talk").setValue(this.draft.triggerMode ?? "tap").onChange((v) => {
-        this.draft.triggerMode = v;
+      new import_obsidian25.Setting(body).setName("Transcription provider").setDesc("Service used for transcription.").addDropdown((d) => {
+        d.addOption("whisper", "Whisper").addOption("gemini", "Gemini").setValue(cfg.provider ?? "whisper").onChange((v) => {
+          cfg.provider = v;
+          cfg.model = v === "gemini" ? "gemini-2.0-flash" : "whisper-1";
+          renderSettings();
+        });
       });
-    });
-    new import_obsidian25.Setting(contentEl).setName("Transcription provider").setDesc("Service used for transcription.").addDropdown((d) => {
-      d.addOption("whisper", "Whisper").addOption("gemini", "Gemini").setValue(this.draft.provider ?? "whisper").onChange((v) => {
-        this.draft.provider = v;
-        this.draft.model = v === "gemini" ? "gemini-2.0-flash" : "whisper-1";
-        this.renderSettings();
+      const isGemini = (cfg.provider ?? "whisper") === "gemini";
+      new import_obsidian25.Setting(body).setName("API key").setDesc(isGemini ? "Google AI API key for Gemini. Stored in plaintext in your vault data folder." : "OpenAI API key for Whisper. Stored in plaintext in your vault data folder.").addText((t) => {
+        t.inputEl.type = "password";
+        t.setPlaceholder(isGemini ? "AIza..." : "sk-...").setValue(cfg.apiKey ?? "").onChange((v) => {
+          cfg.apiKey = v.trim();
+        });
       });
-    });
-    const isGemini = (this.draft.provider ?? "whisper") === "gemini";
-    new import_obsidian25.Setting(contentEl).setName("API key").setDesc(isGemini ? "Google AI API key for Gemini. Stored in plaintext in your vault data folder." : "OpenAI API key for Whisper. Stored in plaintext in your vault data folder.").addText((t) => {
-      t.inputEl.type = "password";
-      t.setPlaceholder(isGemini ? "AIza..." : "sk-...").setValue(this.draft.apiKey ?? "").onChange((v) => {
-        this.draft.apiKey = v.trim();
+      const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
+      const defaultModel = isGemini ? "gemini-2.0-flash" : "whisper-1";
+      new import_obsidian25.Setting(body).setName("Model").setDesc("Transcription model.").addDropdown((d) => {
+        for (const [value, label] of Object.entries(models)) {
+          d.addOption(value, label);
+        }
+        d.setValue(cfg.model && cfg.model in models ? cfg.model : defaultModel);
+        d.onChange((v) => {
+          cfg.model = v;
+        });
       });
-    });
-    const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
-    const defaultModel = isGemini ? "gemini-2.0-flash" : "whisper-1";
-    new import_obsidian25.Setting(contentEl).setName("Model").setDesc("Transcription model.").addDropdown((d) => {
-      for (const [value, label] of Object.entries(models)) {
-        d.addOption(value, label);
-      }
-      d.setValue(this.draft.model && this.draft.model in models ? this.draft.model : defaultModel);
-      d.onChange((v) => {
-        this.draft.model = v;
+      new import_obsidian25.Setting(body).setName("Language").setDesc("Language code (en, it, fr). Leave blank to auto-detect.").addText((t) => {
+        t.setPlaceholder("Auto").setValue(cfg.language ?? "").onChange((v) => {
+          cfg.language = v.trim();
+        });
       });
-    });
-    new import_obsidian25.Setting(contentEl).setName("Language").setDesc("Language code (en, it, fr). Leave blank to auto-detect.").addText((t) => {
-      t.setPlaceholder("Auto").setValue(this.draft.language ?? "").onChange((v) => {
-        this.draft.language = v.trim();
+      new import_obsidian25.Setting(body).setName("Note template").setDesc("Optional. Use {{transcript}} where the text should appear.").addTextArea((t) => {
+        t.setPlaceholder("{{transcript}}").setValue(cfg.noteTemplate ?? "").onChange((v) => {
+          cfg.noteTemplate = v;
+        });
+        t.inputEl.rows = 4;
       });
-    });
-    new import_obsidian25.Setting(contentEl).setName("Note template").setDesc("Optional. Use {{transcript}} where the text should appear.").addTextArea((t) => {
-      t.setPlaceholder("{{transcript}}").setValue(this.draft.noteTemplate ?? "").onChange((v) => {
-        this.draft.noteTemplate = v;
-      });
-      t.inputEl.rows = 4;
-    });
-    new import_obsidian25.Setting(contentEl).addButton((b) => {
-      b.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(this.draft);
-        this.close();
-      });
-    });
-  }
-  onClose() {
-    this.contentEl.empty();
+    };
+    renderSettings();
   }
 };
 var VoiceConsentModal = class extends import_obsidian25.Modal {
@@ -12512,9 +12424,9 @@ var VaultSearchBlock = class extends BaseBlock {
   positionDropdown() {
     if (!this.dropdownEl || !this.wrapperEl) return;
     const rect = this.wrapperEl.getBoundingClientRect();
-    this.dropdownEl.style.top = `${rect.bottom + 4}px`;
-    this.dropdownEl.style.left = `${rect.left}px`;
-    this.dropdownEl.style.width = `${rect.width}px`;
+    this.dropdownEl.style.setProperty("--hp-search-dropdown-top", `${rect.bottom + 4}px`);
+    this.dropdownEl.style.setProperty("--hp-search-dropdown-left", `${rect.left}px`);
+    this.dropdownEl.style.setProperty("--hp-search-dropdown-width", `${rect.width}px`);
   }
   showDropdown() {
     if (this.dropdownEl) {
@@ -12529,35 +12441,13 @@ var VaultSearchBlock = class extends BaseBlock {
     this.selectedIndex = -1;
     this.results = [];
   }
-  openSettings(onSave) {
-    new VaultSearchSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-};
-var VaultSearchSettingsModal = class extends import_obsidian26.Modal {
-  constructor(app, config, onSave) {
-    super(app);
-    this.config = config;
-    this.onSave = onSave;
-  }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian26.Setting(contentEl).setName("Vault search settings").setHeading();
-    const draft = { ...this.config };
-    new import_obsidian26.Setting(contentEl).setName("Placeholder text").setDesc("Text shown when the search field is empty.").addText(
-      (t) => t.setPlaceholder("Search vault...").setValue(draft.placeholder ?? "").onChange((v) => {
-        draft.placeholder = v;
+  renderContentSettings(body, draft) {
+    const cfg = draft;
+    new import_obsidian26.Setting(body).setName("Placeholder text").setDesc("Text shown when the search field is empty.").addText(
+      (t) => t.setPlaceholder("Search vault...").setValue(cfg.placeholder ?? "").onChange((v) => {
+        cfg.placeholder = v;
       })
     );
-    new import_obsidian26.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText("Save").setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      })
-    );
-  }
-  onClose() {
-    this.contentEl.empty();
   }
 };
 
@@ -12663,7 +12553,7 @@ function registerBlocks() {
   BlockRegistry.register({
     type: "spacer",
     displayName: "Spacer",
-    defaultConfig: { _hideTitle: true, _hideBorder: true, _hideBackground: true, _hideHeaderAccent: true },
+    defaultConfig: { _showTitle: false, _showBorder: false, _showBackground: false, _showHeaderAccent: false },
     defaultSize: { w: 1, h: 2 },
     create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin)
   });
@@ -12698,46 +12588,84 @@ function registerBlocks() {
     create: (app, instance, plugin) => new VaultSearchBlock(app, instance, plugin)
   });
 }
-async function encryptApiKeys(layout) {
-  const encryptBlocks = async (blocks2) => Promise.all(blocks2.map(async (b) => {
+async function encryptApiKeys(layout, priorOnDisk) {
+  const buildPriorMap = (blocks2) => {
+    const m = /* @__PURE__ */ new Map();
+    if (!Array.isArray(blocks2)) return m;
+    for (const b of blocks2) {
+      const k = b?.config?.apiKey;
+      if (typeof k === "string" && k) m.set(b.id, k);
+    }
+    return m;
+  };
+  const priorDesktop = buildPriorMap(priorOnDisk?.blocks);
+  const priorMobile = buildPriorMap(priorOnDisk?.mobileBlocks);
+  const encryptBlocks = async (blocks2, prior) => Promise.all(blocks2.map(async (b) => {
     const key = b.config.apiKey;
     if (typeof key !== "string" || !key || isEncrypted(key)) return b;
-    const enc = await encryptString(key);
-    return { ...b, config: { ...b.config, apiKey: enc } };
+    const r = await encryptStringEx(key);
+    if (!r.ok) {
+      const previously = prior.get(b.id);
+      if (typeof previously === "string" && isEncrypted(previously)) {
+        return { ...b, config: { ...b.config, apiKey: previously } };
+      }
+    }
+    return { ...b, config: { ...b.config, apiKey: r.value } };
   }));
   const [blocks, mobileBlocks] = await Promise.all([
-    encryptBlocks(layout.blocks),
-    encryptBlocks(layout.mobileBlocks)
+    encryptBlocks(layout.blocks, priorDesktop),
+    encryptBlocks(layout.mobileBlocks, priorMobile)
   ]);
   return { ...layout, blocks, mobileBlocks };
 }
 async function decryptApiKeys(layout) {
+  let stable = true;
   const decryptBlocks = async (blocks) => {
+    const out = [];
     for (const b of blocks) {
       const key = b.config.apiKey;
-      if (typeof key !== "string" || !key || !isEncrypted(key)) continue;
-      const pt = await decryptString(key);
-      if (pt === null) {
-        b.config.apiKey = "";
-        new import_obsidian27.Notice("Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.", 1e4);
+      if (typeof key !== "string" || !key || !isEncrypted(key)) {
+        out.push(b);
+        continue;
+      }
+      const r = await decryptStringEx(key);
+      if (r.ok) {
+        out.push({ ...b, config: { ...b.config, apiKey: r.plaintext } });
+      } else if (r.reason === "no-key" && r.transient) {
+        stable = false;
+        new import_obsidian27.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
+        out.push(b);
       } else {
-        b.config.apiKey = pt;
+        out.push({ ...b, config: { ...b.config, apiKey: "" } });
+        new import_obsidian27.Notice("Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.", 1e4);
       }
     }
+    return out;
   };
-  await decryptBlocks(layout.blocks);
-  await decryptBlocks(layout.mobileBlocks);
+  const desktop = await decryptBlocks(layout.blocks);
+  const mobile = await decryptBlocks(layout.mobileBlocks);
+  layout.blocks = desktop;
+  layout.mobileBlocks = mobile;
+  return { stable };
 }
 var HomepagePlugin = class extends import_obsidian27.Plugin {
   layout = getDefaultLayout();
   async onload() {
     registerBlocks();
+    imageCache.reset();
     installTagCacheListeners(this);
     const raw = await this.loadData();
-    const validated = validateLayout(raw);
-    await decryptApiKeys(validated);
+    const validated = validateLayout(raw, (badRaw) => {
+      void this.stashCorruptedData(badRaw).catch((err) => {
+        console.error("[Homepage Blocks] Failed to stash corrupted data.json", err instanceof Error ? err.message : "unknown error");
+      });
+      new import_obsidian27.Notice("Homepage blocks: data.json was unreadable and has been backed up. Layout has been reset to defaults.", 12e3);
+    });
+    const decryptResult = await decryptApiKeys(validated);
     this.layout = validated;
-    await this.saveLayout(this.layout);
+    if (decryptResult.stable) {
+      await this.saveLayout(this.layout);
+    }
     this.registerView(VIEW_TYPE, (leaf) => new HomepageView(leaf, this));
     this.addCommand({
       id: "open-homepage",
@@ -12811,6 +12739,30 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     clearPomodoroState();
     closeSharedAudioCtx();
     abortActiveLightbox();
+    _resetDeviceKeyCache();
+  }
+  /**
+   * Write a copy of corrupted data.json content to a sibling file so the user
+   * can manually recover. Only invoked from validateLayout's corruption hook;
+   * silent in normal flow. Uses a single fixed sibling name (no timestamp) to
+   * avoid accumulating files when data.json corrupts repeatedly -- the most
+   * recent bad copy is the one the user typically wants.
+   */
+  async stashCorruptedData(badRaw) {
+    const dir = this.manifest.dir;
+    if (!dir) return;
+    let serialized;
+    if (typeof badRaw === "string") {
+      serialized = badRaw;
+    } else {
+      try {
+        serialized = JSON.stringify(badRaw, null, 2);
+      } catch {
+        serialized = String(badRaw);
+      }
+    }
+    const target = `${dir}/data.json.invalid`;
+    await this.app.vault.adapter.write(target, serialized);
   }
   // ── Platform-aware layout helpers ─────────────────────────────────
   isMobileActive() {
@@ -12831,14 +12783,23 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
   async saveLayout(layout) {
     this.layout = layout;
     this.savePromise = this.savePromise.then(async () => {
-      const persistable = await encryptApiKeys(layout);
+      let priorOnDisk = null;
+      try {
+        const prior = await this.loadData();
+        if (prior && typeof prior === "object" && !Array.isArray(prior)) {
+          priorOnDisk = prior;
+        }
+      } catch {
+      }
+      const persistable = await encryptApiKeys(layout, priorOnDisk);
       await this.saveData(persistable);
     }).then(
       () => {
         this.saveErrorNotified = false;
       },
       (err) => {
-        console.error("[Homepage Blocks] Failed to save layout", err);
+        const safeMsg = err instanceof Error ? err.message : "unknown error";
+        console.error("[Homepage Blocks] Failed to save layout:", safeMsg);
         if (!this.saveErrorNotified) {
           this.saveErrorNotified = true;
           new import_obsidian27.Notice("Homepage blocks: failed to save layout. Check disk space / permissions.", 8e3);
@@ -12850,6 +12811,27 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
   async saveActiveBlocks(blocks) {
     const next = this.isMobileActive() ? { ...this.layout, mobileBlocks: blocks } : { ...this.layout, blocks };
     await this.saveLayout(next);
+  }
+  /**
+   * Atomically patch one block's config. The patcher reads `activeBlocks()`
+   * here at call time, but if a positional save (dragstop) is currently
+   * waiting on the savePromise chain it will land BEFORE this read -- so
+   * the snapshot we capture already reflects the dragged positions. Then
+   * saveLayout serializes our update behind it. The previous saveActiveBlocks
+   * pattern read positions inside the rename handler (before the chain),
+   * which lost any dragstop that hadn't yet been awaited.
+   */
+  async updateBlockConfig(id, patch) {
+    try {
+      await this.savePromise;
+    } catch {
+    }
+    const live = this.activeBlocks();
+    if (!live.some((b) => b.id === id)) return;
+    const next = live.map(
+      (b) => b.id === id ? { ...b, config: { ...b.config, ...patch } } : b
+    );
+    await this.saveActiveBlocks(next);
   }
   async openHomepage(mode = "retain") {
     const { workspace } = this.app;

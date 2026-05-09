@@ -1,8 +1,9 @@
-import { App, Modal, setIcon, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { setIcon, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
 import { imageCache } from '../utils/imageCache';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -98,6 +99,13 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
     if (e.target === overlay || e.target === mediaContainer) close();
   }, { signal });
 
+  // Direct document.addEventListener (not Component.registerDomEvent) because
+  // the lightbox is a free-standing overlay attached to document.body, not a
+  // child of any Component. The `signal` comes from `myLightboxAc` (per-block
+  // instance AbortController, see this file's `openMediaLightbox`); abort
+  // happens on lightbox close AND on plugin onunload via abortActiveLightbox()
+  // wired in main.ts. Manual reviewers: trace `signal` -> `ac.abort()` to
+  // confirm the cleanup chain.
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     // Ignore when focus is in an input/textarea/contenteditable or when a modal is open.
     const active = document.activeElement as HTMLElement | null;
@@ -226,7 +234,7 @@ export class ImageGalleryBlock extends BaseBlock {
       gallery.addClass('image-gallery--fixed-height');
     } else {
       // Mark for natural-height measurement after images load
-      gallery.setAttribute('data-auto-height-content', '');
+      gallery.setAttribute(AUTO_HEIGHT_ATTR, '');
       // Width observer is started after images load (see below) to avoid
       // measuring before content is laid out.
     }
@@ -373,29 +381,9 @@ export class ImageGalleryBlock extends BaseBlock {
     return files;
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new ImageGallerySettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
-
-class ImageGallerySettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Image gallery settings').setHeading();
-
-    const draft = structuredClone(this.config);
-
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
     let folderText: import('obsidian').TextComponent;
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Folder')
       .setDesc('Pick a vault folder.')
       .addText(t => {
@@ -413,7 +401,7 @@ class ImageGallerySettingsModal extends Modal {
           }).open();
         }),
       );
-    new Setting(contentEl)
+    new Setting(body)
       .setName('Height')
       .setDesc('Auto: expands to fit all images. Fixed: uses the block\'s row height and scrolls.')
       .addDropdown(d =>
@@ -422,31 +410,23 @@ class ImageGallerySettingsModal extends Modal {
          .setValue(typeof draft.heightMode === 'string' ? draft.heightMode : 'auto')
          .onChange(v => { draft.heightMode = v === 'fixed' ? 'fixed' : 'auto'; }),
       );
-    new Setting(contentEl).setName('Layout').addDropdown(d =>
+    new Setting(body).setName('Layout').addDropdown(d =>
       d.addOption('grid', 'Grid').addOption('masonry', 'Masonry')
        .setValue(typeof draft.layout === 'string' ? draft.layout : 'grid')
        .onChange(v => { draft.layout = v; }),
     );
-    new Setting(contentEl).setName('Columns').addDropdown(d =>
+    new Setting(body).setName('Columns').addDropdown(d =>
       d.addOption('2', '2').addOption('3', '3').addOption('4', '4')
        .addOption('5', '5').addOption('6', '6').addOption('7', '7')
        .setValue(String(typeof draft.columns === 'number' ? draft.columns : 3))
        .onChange(v => { draft.columns = Number(v); }),
     );
-    new Setting(contentEl).setName('Max items').setDesc('0 = show all files.').addText(t =>
+    new Setting(body).setName('Max items').setDesc('0 = show all files.').addText(t =>
       t.setValue(String(typeof draft.maxItems === 'number' ? draft.maxItems : 0))
        .onChange(v => {
          const n = parseInt(v) || 0;
          draft.maxItems = Math.min(Math.max(0, n), 500);
        }),
     );
-    new Setting(contentEl).addButton(btn =>
-      btn.setButtonText('Save').setCta().onClick(() => {
-        this.onSave(draft);
-        this.close();
-      }),
-    );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

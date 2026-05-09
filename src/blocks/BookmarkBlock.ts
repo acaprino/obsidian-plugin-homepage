@@ -1,4 +1,4 @@
-import { App, Modal, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
@@ -31,7 +31,7 @@ export class BookmarkBlock extends BaseBlock {
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });
-      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\uD83D\uDD17' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '🔗' });
       hint.createDiv({ cls: 'block-empty-hint-text', text: 'No bookmarks yet. Add links in settings.' });
       return;
     }
@@ -58,51 +58,33 @@ export class BookmarkBlock extends BaseBlock {
     }
   }
 
-  openSettings(onSave: (config: Record<string, unknown>) => void): void {
-    new BookmarkSettingsModal(this.app, this.instance.config, onSave).open();
-  }
-}
+  renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
+    const cfg = draft as BookmarkConfig;
+    if (!Array.isArray(cfg.items)) cfg.items = [];
 
-class BookmarkSettingsModal extends Modal {
-  constructor(
-    app: App,
-    private config: Record<string, unknown>,
-    private onSave: (cfg: Record<string, unknown>) => void,
-  ) {
-    super(app);
-  }
-
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Bookmark settings').setHeading();
-
-    const draft = structuredClone(this.config) as BookmarkConfig;
-    if (!Array.isArray(draft.items)) draft.items = [];
-
-    new Setting(contentEl).setName('Columns').addDropdown(d =>
+    new Setting(body).setName('Columns').addDropdown(d =>
       d.addOption('1', '1').addOption('2', '2').addOption('3', '3')
-       .setValue(String(draft.columns ?? 2))
-       .onChange(v => { draft.columns = Number(v); }),
+       .setValue(String(cfg.columns ?? 2))
+       .onChange(v => { cfg.columns = Number(v); }),
     );
-    new Setting(contentEl).setName('Show descriptions').addToggle(t =>
-      t.setValue(draft.showDescriptions !== false)
-       .onChange(v => { draft.showDescriptions = v; }),
+    new Setting(body).setName('Show descriptions').addToggle(t =>
+      t.setValue(cfg.showDescriptions !== false)
+       .onChange(v => { cfg.showDescriptions = v; }),
     );
 
-    contentEl.createEl('p', { text: 'Items', cls: 'setting-item-name' });
+    body.createEl('p', { text: 'Items', cls: 'setting-item-name' });
 
-    const listEl = contentEl.createDiv({ cls: 'bookmark-item-list' });
+    const listEl = body.createDiv({ cls: 'bookmark-item-list' });
     const dragState = { dragIdx: -1 };
     const renderList = () => {
       listEl.empty();
-      draft.items!.forEach((item, i) => {
+      cfg.items!.forEach((item, i) => {
         const row = listEl.createDiv({ cls: 'bookmark-item-row' });
-        enableDragReorder(row, i, draft.items!, dragState, renderList);
+        enableDragReorder(row, i, cfg.items!, dragState, renderList);
 
         const emojiInput = row.createEl('input', { type: 'text', cls: 'bookmark-item-emoji' });
         emojiInput.value = item.emoji ?? '';
-        emojiInput.placeholder = '\uD83C\uDF10';
+        emojiInput.placeholder = '🌐';
         emojiInput.addEventListener('input', () => { item.emoji = emojiInput.value || undefined; });
 
         const labelInput = row.createEl('input', { type: 'text', cls: 'bookmark-item-label' });
@@ -120,33 +102,20 @@ class BookmarkSettingsModal extends Modal {
         descInput.placeholder = 'Description (optional)';
         descInput.addEventListener('input', () => { item.description = descInput.value || undefined; });
 
-        const delBtn = row.createEl('button', { cls: 'bookmark-item-del', text: '\u2715' });
+        const delBtn = row.createEl('button', { cls: 'bookmark-item-del', text: '✕' });
         delBtn.addEventListener('click', () => {
-          draft.items!.splice(i, 1);
+          cfg.items!.splice(i, 1);
           renderList();
         });
       });
     };
     renderList();
 
-    new Setting(contentEl).addButton(btn =>
+    new Setting(body).addButton(btn =>
       btn.setButtonText('+ add item').onClick(() => {
-        draft.items!.push({ label: '', url: '' });
+        cfg.items!.push({ label: '', url: '' });
         renderList();
       }),
     );
-
-    new Setting(contentEl)
-      .addButton(btn =>
-        btn.setButtonText('Save').setCta().onClick(() => {
-          this.onSave(draft as Record<string, unknown>);
-          this.close();
-        }),
-      )
-      .addButton(btn =>
-        btn.setButtonText('Cancel').onClick(() => this.close()),
-      );
   }
-
-  onClose(): void { this.contentEl.empty(); }
 }

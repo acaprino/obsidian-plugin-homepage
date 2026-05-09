@@ -32,6 +32,7 @@ const DB_RECORD = 'apiKeyDeviceKey';
 const PREFIX = 'enc:v1:';
 
 let cachedKey: CryptoKey | null = null;
+let lastKeyLoadError = false;
 
 function hasWebCrypto(): boolean {
   return typeof globalThis.crypto?.subtle?.generateKey === 'function'
@@ -73,8 +74,16 @@ function idbSet(db: IDBDatabase, key: string, value: unknown): Promise<void> {
  * should fall back to storing plaintext.
  */
 async function loadDeviceKey(): Promise<CryptoKey | null> {
-  if (cachedKey) return cachedKey;
-  if (!hasWebCrypto()) return null;
+  if (cachedKey) {
+    lastKeyLoadError = false;
+    return cachedKey;
+  }
+  if (!hasWebCrypto()) {
+    // Permanent: WebCrypto is missing entirely. Caller can rely on this signal
+    // to refuse to overwrite ciphertext with plaintext.
+    lastKeyLoadError = false;
+    return null;
+  }
 
   try {
     const db = await openDb();
@@ -82,6 +91,7 @@ async function loadDeviceKey(): Promise<CryptoKey | null> {
       const existing = await idbGet(db, DB_RECORD);
       if (existing instanceof CryptoKey) {
         cachedKey = existing;
+        lastKeyLoadError = false;
         return existing;
       }
       const fresh = await crypto.subtle.generateKey(
@@ -91,13 +101,25 @@ async function loadDeviceKey(): Promise<CryptoKey | null> {
       );
       await idbSet(db, DB_RECORD, fresh);
       cachedKey = fresh;
+      lastKeyLoadError = false;
       return fresh;
     } finally {
       db.close();
     }
-  } catch {
+  } catch (err) {
+    // Transient: IndexedDB threw (e.g., quota, locked, profile-under-stress).
+    // Track the error so callers can distinguish "device key wiped" from
+    // "WebCrypto subsystem hiccup" -- the former should clear ciphertext, the
+    // latter should preserve it.
+    lastKeyLoadError = true;
+    console.error('[Homepage Blocks] device key unavailable (transient)', err instanceof Error ? err.message : 'unknown error');
     return null;
   }
+}
+
+/** True if the most recent loadDeviceKey() failed because of a transient error. */
+function lastLoadWasTransient(): boolean {
+  return lastKeyLoadError;
 }
 
 function toBase64(bytes: ArrayBuffer | Uint8Array): string {
@@ -120,39 +142,75 @@ export function isEncrypted(value: string): boolean {
 }
 
 /**
- * Encrypt a string with the device key. Returns the ciphertext on success,
- * or the original plaintext when WebCrypto is unavailable (we can't refuse to
- * save — the user would lose their config — so we log and fall back).
+ * Result of encryptString — the caller can tell whether the value is real ciphertext
+ * (`enc:v1:...`) or plaintext that fell through because WebCrypto was unavailable.
+ * The `fallback` flag lets the higher-level encrypt loop refuse to overwrite a
+ * previously-stored ciphertext with plaintext on the next save (which would otherwise
+ * downgrade the security guarantee for users on cross-platform vault sync).
  */
-export async function encryptString(plaintext: string): Promise<string> {
-  if (!plaintext) return plaintext;
-  if (isEncrypted(plaintext)) return plaintext; // already encrypted, idempotent
+export type EncryptResult =
+  | { ok: true; value: string }
+  | { ok: false; reason: 'fallback-plaintext' | 'crypto-error'; value: string };
+
+/**
+ * Encrypt a string with the device key. Returns the ciphertext on success,
+ * or the original plaintext when WebCrypto is unavailable. The structured
+ * result lets callers distinguish "got real ciphertext" from "had to fall
+ * back to plaintext" so they can refuse to overwrite stored ciphertext.
+ */
+export async function encryptStringEx(plaintext: string): Promise<EncryptResult> {
+  if (!plaintext) return { ok: true, value: plaintext };
+  if (isEncrypted(plaintext)) return { ok: true, value: plaintext }; // already encrypted, idempotent
   const key = await loadDeviceKey();
-  if (!key) return plaintext;
+  if (!key) {
+    console.warn('[Homepage Blocks] WebCrypto unavailable — apiKey will be stored in plaintext on disk');
+    return { ok: false, reason: 'fallback-plaintext', value: plaintext };
+  }
 
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
-    return `${PREFIX}${toBase64(iv)}:${toBase64(ct)}`;
+    return { ok: true, value: `${PREFIX}${toBase64(iv)}:${toBase64(ct)}` };
   } catch (err) {
-    console.error('[Homepage Blocks] API key encryption failed — storing plaintext', err);
-    return plaintext;
+    console.error('[Homepage Blocks] API key encryption failed — storing plaintext', err instanceof Error ? err.message : 'unknown error');
+    return { ok: false, reason: 'crypto-error', value: plaintext };
   }
 }
 
 /**
- * Decrypt a string previously produced by encryptString. Returns the decrypted
- * plaintext, or null on any failure (missing device key, tampered ciphertext,
- * cross-device import). Callers should treat null as "key unrecoverable — clear it".
+ * Convenience wrapper that returns just the value string. Kept for callers that
+ * don't care whether the result was real ciphertext or a plaintext fallback.
  */
-export async function decryptString(value: string): Promise<string | null> {
-  if (!isEncrypted(value)) return value; // plaintext or empty
+export async function encryptString(plaintext: string): Promise<string> {
+  const r = await encryptStringEx(plaintext);
+  return r.value;
+}
+
+/**
+ * Result of decryptString — distinguishes "transient crypto failure" (preserve
+ * ciphertext on disk) from "definitely corrupt or wrong device" (clear the key).
+ * Without this distinction, a single QuotaExceededError or transient IndexedDB
+ * hiccup would destroy the user's encrypted ciphertext on the next save.
+ */
+export type DecryptResult =
+  | { ok: true; plaintext: string }
+  | { ok: false; reason: 'no-key' | 'corrupt'; transient: boolean };
+
+/**
+ * Decrypt a string previously produced by encryptString — rich-result variant.
+ * Use this when you need to act differently for transient failures (preserve
+ * ciphertext) versus permanent ones (clear and let the user re-enter).
+ */
+export async function decryptStringEx(value: string): Promise<DecryptResult> {
+  if (!isEncrypted(value)) return { ok: true, plaintext: value }; // plaintext or empty
   const key = await loadDeviceKey();
-  if (!key) return null;
+  if (!key) {
+    return { ok: false, reason: 'no-key', transient: lastLoadWasTransient() };
+  }
 
   const body = value.slice(PREFIX.length);
   const sep = body.indexOf(':');
-  if (sep < 0) return null;
+  if (sep < 0) return { ok: false, reason: 'corrupt', transient: false };
   const ivB64 = body.slice(0, sep);
   const ctB64 = body.slice(sep + 1);
 
@@ -164,10 +222,24 @@ export async function decryptString(value: string): Promise<string | null> {
     const iv = new Uint8Array(ivBytes.length); iv.set(ivBytes);
     const ct = new Uint8Array(ctBytes.length); ct.set(ctBytes);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-    return new TextDecoder().decode(pt);
+    return { ok: true, plaintext: new TextDecoder().decode(pt) };
   } catch {
-    return null;
+    // AES-GCM authenticated decryption failed — ciphertext is tampered or the
+    // device key doesn't match (cross-device sync, IndexedDB wiped). Either way
+    // the value can never be recovered with this key.
+    return { ok: false, reason: 'corrupt', transient: false };
   }
+}
+
+/**
+ * Decrypt a string previously produced by encryptString. Returns the decrypted
+ * plaintext, or null on any failure (missing device key, tampered ciphertext,
+ * cross-device import). Kept for callers that don't need the transient/permanent
+ * distinction; new code should prefer decryptStringEx.
+ */
+export async function decryptString(value: string): Promise<string | null> {
+  const r = await decryptStringEx(value);
+  return r.ok ? r.plaintext : null;
 }
 
 /** Test hook — drops the cached key so loadDeviceKey re-reads from IndexedDB. */

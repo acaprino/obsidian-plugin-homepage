@@ -272,17 +272,29 @@ export class GridLayout {
 
     // Build widget items WITHOUT content — DOM will be built manually using Obsidian API
     // (GridStack sets content via innerHTML which Obsidian blocks)
-    const items: GridStackWidget[] = blocks.map((instance) => ({
-      id: instance.id,
-      x: instance.x,
-      y: instance.y,
-      w: Math.min(instance.w, columns),
-      maxW: columns,
-      h: (this.editMode && this.shouldAutoHeight(instance)) ? COMPACT_EDIT_H : instance.h,
-      // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
-      // load() before we've added any DOM content, causing "firstElementChild is null".
-      // We call resizeToContent() manually after building each block's DOM below.
-    }));
+    const items: GridStackWidget[] = blocks.map((instance) => {
+      // When _showTitle is false but the block was previously collapsed, the
+      // wrapper renders full content (no header to click to re-expand) yet
+      // instance.h is still the collapsed `1` row. Use _expandedH so the
+      // GridStack widget matches what the wrapper actually displays.
+      const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
+      let renderH = instance.h;
+      if (instance.collapsed && !effectiveCollapsed) {
+        const expandedH = instance._expandedH;
+        if (typeof expandedH === 'number' && expandedH > 0) renderH = expandedH;
+      }
+      return {
+        id: instance.id,
+        x: instance.x,
+        y: instance.y,
+        w: Math.min(instance.w, columns),
+        maxW: columns,
+        h: (this.editMode && this.shouldAutoHeight(instance)) ? COMPACT_EDIT_H : renderH,
+        // Do NOT pass sizeToContent here — GridStack calls resizeToContent() during
+        // load() before we've added any DOM content, causing "firstElementChild is null".
+        // We call resizeToContent() manually after building each block's DOM below.
+      };
+    });
 
     // Repack y values so items are tightly stacked from the start.
     // Edit mode: ALWAYS pack — compact heights (COMPACT_EDIT_H) make saved

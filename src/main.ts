@@ -300,9 +300,8 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // renderer; without this, every gallery thumbnail would rebuild forever.
     imageCache.reset();
 
-    // Plugin-wide tag-cache invalidation — replaces the per-block clearTagCache()
-    // dance so callers of getFilesWithTag() always see fresh data without having
-    // to remember to wire up vault listeners themselves.
+    // Plugin-wide tag-cache invalidation so callers of getFilesWithTag() always
+    // see fresh data without having to wire up vault listeners themselves.
     installTagCacheListeners(this);
 
     const raw = await this.loadData() as unknown;

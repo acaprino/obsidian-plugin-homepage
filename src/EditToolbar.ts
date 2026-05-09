@@ -1,7 +1,7 @@
 import { App, Modal, Setting } from 'obsidian';
 import { BlockInstance, BlockType, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
-import { GridLayout, APPEND_AT_BOTTOM } from './GridLayout';
+import { GridLayout } from './GridLayout';
 import { BLOCK_META } from './blockMeta';
 import { newId } from './utils/ids';
 
@@ -166,9 +166,10 @@ export class EditToolbar {
         id: newId(),
         type,
         x: 0,
-        // APPEND_AT_BOTTOM is a sentinel recognized by GridLayout.addBlock — the
-        // block is placed below every existing block so GridStack compacts cleanly.
-        y: APPEND_AT_BOTTOM,
+        // GridLayout.addBlock recomputes y from the current maxY, so the value
+        // here is unused -- kept at 0 for clarity rather than the prior fake
+        // sentinel that pretended to mean something.
+        y: 0,
         w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
         config: { ...factory.defaultConfig },

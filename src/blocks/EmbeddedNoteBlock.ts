@@ -1,5 +1,6 @@
 import { App, AbstractInputSuggest, Setting, TFile, MarkdownRenderer } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 const DEBOUNCE_MS = 300;
 
@@ -85,7 +86,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
       contentEl.setAttribute('role', 'region');
       contentEl.setAttribute('aria-label', file.basename);
     } else if (heightMode === 'grow') {
-      contentEl.setAttribute('data-auto-height-content', '');
+      contentEl.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
     try {

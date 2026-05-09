@@ -65,11 +65,3 @@ export function getFilesWithTag(app: App, tag: string): TFile[] {
   return files;
 }
 
-/**
- * Clear the tag cache manually. Normal invalidation happens through the listeners
- * installed by installTagCacheListeners; this is kept for tests and for callers
- * that want to force a refresh without waiting for the next vault event.
- */
-export function clearTagCache(): void {
-  tagCache.clear();
-}

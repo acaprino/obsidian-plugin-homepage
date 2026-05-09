@@ -17,9 +17,6 @@ type LayoutChangeCallback = (layout: LayoutConfig) => void;
 /** Compact grid-row height for edit-mode placeholders (cellHeight = 80px). */
 const COMPACT_EDIT_H = 2;
 
-/** Sentinel y-coordinate passed to GridLayout.addBlock to mean "place below every existing block". */
-export const APPEND_AT_BOTTOM = 1000;
-
 export class GridLayout {
   // NOTE: several fields below are intentionally non-private (package-visible). AutoHeightManager
   // and ResponsiveColumnsManager access them through their narrow Host interfaces (declared in
@@ -50,7 +47,11 @@ export class GridLayout {
     private onLayoutChange: LayoutChangeCallback,
   ) {
     this.gridEl = containerEl.createDiv({ cls: 'homepage-grid grid-stack' });
-    this.effectiveColumns = plugin.layout.columns;
+    // Read via the platform-aware accessor instead of plugin.layout.columns
+    // directly. Today the value is overwritten by the first render() call so
+    // the wrong-platform desktop value is never observed; using activeColumns
+    // makes the constructor's internal state correct on its own.
+    this.effectiveColumns = plugin.activeColumns();
     this.autoHeight = new AutoHeightManager(this);
     this.responsiveColumns = new ResponsiveColumnsManager(this);
   }

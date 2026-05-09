@@ -260,7 +260,20 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Restore all blocks to the default layout. This can’t be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
-          await this.plugin.saveLayout(getDefaultLayout());
+          // Preserve the inactive-platform's blocks. Previously the reset
+          // wiped both desktop and mobile layouts, so a desktop-side reset
+          // silently emptied the user's mobile layout under
+          // responsiveMode === 'separate'.
+          const fresh = getDefaultLayout();
+          const next = this.plugin.layout.responsiveMode === 'separate'
+            ? {
+                ...fresh,
+                mobileBlocks: this.plugin.layout.mobileBlocks,
+                mobileColumns: this.plugin.layout.mobileColumns,
+                mobileLayoutPriority: this.plugin.layout.mobileLayoutPriority,
+              }
+            : fresh;
+          await this.plugin.saveLayout(next);
           await this.reloadOpenHomepages();
         })()),
       );

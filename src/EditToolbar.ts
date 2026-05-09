@@ -1,7 +1,7 @@
 import { App, Modal, Setting } from 'obsidian';
 import { BlockInstance, BlockType, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
-import { GridLayout, APPEND_AT_BOTTOM } from './GridLayout';
+import { GridLayout } from './GridLayout';
 import { BLOCK_META } from './blockMeta';
 import { newId } from './utils/ids';
 
@@ -64,15 +64,12 @@ export class EditToolbar {
   private discardChanges(): void {
     if (!this.editMode) return; // re-entrancy guard
     if (this.blocksSnapshot) {
-      // Build restored layout (only blocks revert; global settings survive)
-      // Route restored blocks to the correct field (desktop or mobile)
-      const mobile = this.plugin.isMobileActive();
-      const restored = structuredClone(this.plugin.layout);
-      if (mobile) {
-        restored.mobileBlocks = this.blocksSnapshot;
-      } else {
-        restored.blocks = this.blocksSnapshot;
-      }
+      // Route restored blocks through GridLayout.buildLayoutUpdate so the
+      // mobile/desktop split (and any future per-platform fields) is owned by
+      // a single function rather than duplicated here. Without this routing,
+      // a new field added to buildLayoutUpdate would silently fail to revert
+      // on Discard.
+      const restored = this.grid.buildLayoutUpdate(this.blocksSnapshot);
       // Set synchronously so the rerender triggered by setEditMode(false) reads the correct state
       this.plugin.layout = restored;
       void this.plugin.saveLayout(restored);
@@ -144,9 +141,24 @@ export class EditToolbar {
     this.grid.onRequestAddBlock = () => { this.openAddBlockModal(); };
   }
 
+  /**
+   * Tracked so EditToolbar.destroy() can close it. A leftover modal would
+   * otherwise hold a closure over `this.grid` -- when the homepage view
+   * gets reloaded mid-pick (e.g., user changes a setting in another tab),
+   * the user's selection lands on a destroyed grid instance. Silent failure.
+   */
+  private openModal: AddBlockModal | null = null;
+
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal(): void {
-    new AddBlockModal(this.app, (type) => {
+    // Replace any previously-open modal so the closure always points at the
+    // current grid.
+    this.openModal?.close();
+    const modal = new AddBlockModal(this.app, (type) => {
+      // Defensive: don't add to a grid that's been destroyed since the modal
+      // opened (e.g., the user changed showScrollbar in another tab while the
+      // picker was up, triggering a full view reload).
+      if (this.openModal !== modal) return;
       const factory = BlockRegistry.get(type);
       if (!factory) return;
 
@@ -154,16 +166,24 @@ export class EditToolbar {
         id: newId(),
         type,
         x: 0,
-        // APPEND_AT_BOTTOM is a sentinel recognized by GridLayout.addBlock — the
-        // block is placed below every existing block so GridStack compacts cleanly.
-        y: APPEND_AT_BOTTOM,
+        // GridLayout.addBlock recomputes y from the current maxY, so the value
+        // here is unused -- kept at 0 for clarity rather than the prior fake
+        // sentinel that pretended to mean something.
+        y: 0,
         w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
         config: { ...factory.defaultConfig },
       };
 
       this.grid.addBlock(instance);
-    }).open();
+    });
+    const originalOnClose = modal.onClose.bind(modal);
+    modal.onClose = () => {
+      if (this.openModal === modal) this.openModal = null;
+      originalOnClose();
+    };
+    this.openModal = modal;
+    modal.open();
   }
 
   private formatZoom(scale: number): string {
@@ -179,6 +199,10 @@ export class EditToolbar {
   }
 
   destroy(): void {
+    // Close any open Add Block modal so its callback can't fire against this
+    // toolbar's about-to-be-destroyed grid reference.
+    this.openModal?.close();
+    this.openModal = null;
     this.grid.onRequestAddBlock = null;
     this.fabEl.remove();
     this.toolbarEl.remove();

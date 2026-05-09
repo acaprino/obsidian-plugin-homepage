@@ -2,6 +2,7 @@ import { Setting, TFile } from 'obsidian';
 import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { dailyEpochDay } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 const DEBOUNCE_MS = 500;
 const DELETE_RENAME_DEBOUNCE_MS = 2000;
@@ -118,7 +119,7 @@ export class RandomNoteBlock extends BaseBlock {
     // ── Render all content atomically after async work completes ────────────
 
     // Mark for auto-height measurement
-    el.setAttribute('data-auto-height-content', '');
+    el.setAttribute(AUTO_HEIGHT_ATTR, '');
     this.observeWidthForAutoHeight(el);
 
     // Cover image — supports vault paths, [[wiki-links]], https:// URLs,

@@ -64,15 +64,12 @@ export class EditToolbar {
   private discardChanges(): void {
     if (!this.editMode) return; // re-entrancy guard
     if (this.blocksSnapshot) {
-      // Build restored layout (only blocks revert; global settings survive)
-      // Route restored blocks to the correct field (desktop or mobile)
-      const mobile = this.plugin.isMobileActive();
-      const restored = structuredClone(this.plugin.layout);
-      if (mobile) {
-        restored.mobileBlocks = this.blocksSnapshot;
-      } else {
-        restored.blocks = this.blocksSnapshot;
-      }
+      // Route restored blocks through GridLayout.buildLayoutUpdate so the
+      // mobile/desktop split (and any future per-platform fields) is owned by
+      // a single function rather than duplicated here. Without this routing,
+      // a new field added to buildLayoutUpdate would silently fail to revert
+      // on Discard.
+      const restored = this.grid.buildLayoutUpdate(this.blocksSnapshot);
       // Set synchronously so the rerender triggered by setEditMode(false) reads the correct state
       this.plugin.layout = restored;
       void this.plugin.saveLayout(restored);

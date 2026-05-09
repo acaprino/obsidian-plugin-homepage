@@ -27,15 +27,17 @@ export class EmbeddedNoteBlock extends BaseBlock {
     // Update the config and re-render if the embedded file is renamed.
     // Read filePath from the live layout (not this.instance) to avoid stale refs
     // after a prior rename already updated the persisted config.
+    //
+    // updateBlockConfig waits for any pending positional save (dragstop) before
+    // computing newBlocks -- without that ordering, a drag-then-rename pair
+    // would silently lose the dragged position by writing a stale x/y/w/h
+    // snapshot back to disk.
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       const active = this.plugin.activeBlocks();
       const current = active.find(b => b.id === this.instance.id);
       const filePath = (current?.config.filePath as string) ?? '';
       if (oldPath === filePath) {
-        const newBlocks = active.map(b =>
-          b.id === this.instance.id ? { ...b, config: { ...b.config, filePath: file.path } } : b,
-        );
-        void this.plugin.saveActiveBlocks(newBlocks).then(trigger);
+        void this.plugin.updateBlockConfig(this.instance.id, { filePath: file.path }).then(trigger);
         return;
       }
       if (file.path === filePath) trigger();

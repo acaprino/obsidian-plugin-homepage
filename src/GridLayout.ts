@@ -524,7 +524,14 @@ export class GridLayout {
    * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
    * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
    */
-  private buildLayoutUpdate(
+  /**
+   * Public for callers that need the same mobile/desktop routing logic but
+   * don't go through onLayoutChange (e.g., EditToolbar's discardChanges).
+   * Keeping `buildLayoutUpdate` as the single funnel for layout writes that
+   * need the platform split prevents drift -- a future field added here
+   * propagates to every call site automatically.
+   */
+  buildLayoutUpdate(
     blocks: BlockInstance[],
     extra?: { columns?: number },
   ): LayoutConfig {

@@ -124,10 +124,13 @@ export const MAX_BLOCKS = 100;
  */
 export function migrateBlockInstance(b: Record<string, unknown>): Record<string, unknown> {
   const m = { ...b };
-  if (typeof m.col === 'number') { m.x = m.col - 1; }
-  if (typeof m.row === 'number') { m.y = m.row - 1; }
-  if (typeof m.colSpan === 'number') { m.w = m.colSpan; }
-  if (typeof m.rowSpan === 'number') { m.h = m.rowSpan; }
+  // "Only write if target unset" guard, mirroring the safer pattern used by the
+  // _hideX/_showX migration below. A corrupted data.json with both `col` and
+  // `x` (e.g. from a partial sync merge) would otherwise lose the valid `x`.
+  if (typeof m.col === 'number' && typeof m.x !== 'number') { m.x = m.col - 1; }
+  if (typeof m.row === 'number' && typeof m.y !== 'number') { m.y = m.row - 1; }
+  if (typeof m.colSpan === 'number' && typeof m.w !== 'number') { m.w = m.colSpan; }
+  if (typeof m.rowSpan === 'number' && typeof m.h !== 'number') { m.h = m.rowSpan; }
   delete m.col;
   delete m.row;
   delete m.colSpan;
@@ -225,7 +228,17 @@ export function validateBlocks(raw: unknown, columns: number, defaults: BlockIns
   if (!Array.isArray(raw)) return defaults;
   const migrated: unknown[] = raw.map(b => migrateBlockInstance(b as Record<string, unknown>));
   const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
-  return valid.map(b => ({
+  // Dedupe block IDs. A hand-edited or clipboard-imported layout with two blocks
+  // sharing the same id breaks every gs-id selector + Array.find lookup downstream
+  // (edit handles modify the wrong block, remove deletes one but not the duplicate,
+  // PomodoroBlock's id-keyed timerStore double-ticks). First occurrence wins.
+  const seen = new Set<string>();
+  const dedup = valid.filter(b => {
+    if (seen.has(b.id)) return false;
+    seen.add(b.id);
+    return true;
+  });
+  return dedup.map(b => ({
     ...b,
     w: Math.min(b.w, columns),
     x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),

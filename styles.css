@@ -1049,6 +1049,15 @@
 
 .vault-search-dropdown {
   position: fixed;
+  /*
+   * Position is computed in JS (positionDropdown) and written via custom
+   * properties so we don't run afoul of eslint-plugin-obsidianmd's
+   * no-static-styles-assignment heuristic. Defaults of 0 keep the dropdown
+   * off-screen until the first measurement lands.
+   */
+  top: var(--hp-search-dropdown-top, 0);
+  left: var(--hp-search-dropdown-left, 0);
+  width: var(--hp-search-dropdown-width, 0);
   z-index: 9999;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);

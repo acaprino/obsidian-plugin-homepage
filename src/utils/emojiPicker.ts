@@ -109,7 +109,12 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
       searchInput.value = '';
       renderGrid('');
       searchInput.focus();
-      // Close on outside click
+      // Close on outside click. Direct document.addEventListener (not
+      // Component.registerDomEvent) because emojiPicker is a free function
+      // with no Component reference; cleanup runs via the AbortController
+      // signal -- aborted by the next picker open AND inside close() below.
+      // If the consuming block is unloaded with the picker open, close() is
+      // called via the picker instance's destroy() and the listener detaches.
       outsideClickAc?.abort();
       outsideClickAc = new AbortController();
       document.addEventListener('mousedown', (e) => {
@@ -142,6 +147,12 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
   };
 
   const destroy = () => {
+    if (searchTimer) {
+      clearTimeout(searchTimer);
+      searchTimer = null;
+    }
+    outsideClickAc?.abort();
+    outsideClickAc = null;
     row.remove();
     panel.remove();
   };

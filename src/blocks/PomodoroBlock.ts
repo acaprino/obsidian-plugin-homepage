@@ -285,7 +285,7 @@ export class PomodoroBlock extends BaseBlock {
         osc.stop(t + 4.1);
       }
     } catch (e) {
-      console.error('[Homepage] Audio playback failed', e);
+      console.error('[Homepage Blocks] Pomodoro audio playback failed', e instanceof Error ? e.message : 'unknown error');
     }
   }
 

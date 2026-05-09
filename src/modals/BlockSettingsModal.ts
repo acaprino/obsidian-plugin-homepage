@@ -29,7 +29,6 @@ export class BlockSettingsModal extends Modal {
   private draft: Record<string, unknown> = {};
   private accentDirty = false;
   private gradDirty = false;
-  private activeTab: BlockSettingsTab = 'header';
   private tabBodyEl: HTMLElement | null = null;
   private tabButtons: Map<BlockSettingsTab, HTMLElement> = new Map();
   private defaultTitle = '';
@@ -120,7 +119,6 @@ export class BlockSettingsModal extends Modal {
   }
 
   private switchTab(id: BlockSettingsTab): void {
-    this.activeTab = id;
     for (const [tabId, btn] of this.tabButtons) {
       btn.toggleClass('is-active', tabId === id);
       btn.setAttribute('aria-selected', String(tabId === id));

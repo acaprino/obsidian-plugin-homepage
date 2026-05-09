@@ -2,6 +2,7 @@ import { Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 interface ButtonItem {
   emoji: string;
@@ -23,7 +24,7 @@ export class ButtonGridBlock extends BaseBlock {
     const grid = el.createDiv({ cls: 'button-grid' });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
     grid.style.setProperty('--hp-grid-cols', `repeat(${safeCols}, 1fr)`);
-    grid.setAttribute('data-auto-height-content', '');
+    grid.setAttribute(AUTO_HEIGHT_ATTR, '');
     this.observeWidthForAutoHeight(grid);
 
     if (items.length === 0) {

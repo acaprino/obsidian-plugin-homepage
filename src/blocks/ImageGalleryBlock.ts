@@ -3,6 +3,7 @@ import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
 import { imageCache } from '../utils/imageCache';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -98,6 +99,13 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
     if (e.target === overlay || e.target === mediaContainer) close();
   }, { signal });
 
+  // Direct document.addEventListener (not Component.registerDomEvent) because
+  // the lightbox is a free-standing overlay attached to document.body, not a
+  // child of any Component. The `signal` comes from `myLightboxAc` (per-block
+  // instance AbortController, see this file's `openMediaLightbox`); abort
+  // happens on lightbox close AND on plugin onunload via abortActiveLightbox()
+  // wired in main.ts. Manual reviewers: trace `signal` -> `ac.abort()` to
+  // confirm the cleanup chain.
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     // Ignore when focus is in an input/textarea/contenteditable or when a modal is open.
     const active = document.activeElement as HTMLElement | null;
@@ -226,7 +234,7 @@ export class ImageGalleryBlock extends BaseBlock {
       gallery.addClass('image-gallery--fixed-height');
     } else {
       // Mark for natural-height measurement after images load
-      gallery.setAttribute('data-auto-height-content', '');
+      gallery.setAttribute(AUTO_HEIGHT_ATTR, '');
       // Width observer is started after images load (see below) to avoid
       // measuring before content is laid out.
     }

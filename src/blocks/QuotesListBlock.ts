@@ -3,6 +3,7 @@ import { cacheHasTag, getFilesWithTag } from '../utils/tags';
 import { parseNoteInsight } from '../utils/noteContent';
 import { dailyIndex } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 // Only assign safe CSS color values; reject potentially malicious strings.
 // Hex, rgb/rgba, hsl/hsla with strict numeric internals. Bare-word colors
@@ -172,7 +173,7 @@ export class QuotesListBlock extends BaseBlock {
       const card = el.querySelector('.insight-card') as HTMLElement;
       if (card && heightMode === 'extend') {
         el.toggleClass('quotes-list-block--extend', true);
-        card.setAttribute('data-auto-height-content', '');
+        card.setAttribute(AUTO_HEIGHT_ATTR, '');
       }
       return;
     }
@@ -187,7 +188,7 @@ export class QuotesListBlock extends BaseBlock {
     el.toggleClass('quotes-list-block--extend', heightMode === 'extend');
 
     const colsEl = el.createDiv({ cls: 'quotes-columns' });
-    if (heightMode !== 'wrap') colsEl.setAttribute('data-auto-height-content', '');
+    if (heightMode !== 'wrap') colsEl.setAttribute(AUTO_HEIGHT_ATTR, '');
     if (heightMode === 'wrap') {
       colsEl.setAttribute('tabindex', '0');
       colsEl.setAttribute('role', 'region');

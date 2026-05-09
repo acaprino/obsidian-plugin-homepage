@@ -29,6 +29,16 @@ export abstract class BaseBlock extends Component {
   // Default: no content settings.
   renderContentSettings(_body: HTMLElement, _draft: Record<string, unknown>): void {}
 
+  /**
+   * Subclasses can override to declare that the block currently holds unsaved
+   * UI state that a full rerender would destroy (e.g., StaticTextBlock's inline
+   * editor, VaultSearchBlock's typed query). GridLayout.rerender consults this
+   * and skips the rerender when any block returns true. Default: no unsaved state.
+   */
+  hasUnsavedInlineState(): boolean {
+    return false;
+  }
+
   // Called by GridLayout to redirect renderHeader output outside block-content.
   setHeaderContainer(el: HTMLElement): void {
     this._headerContainer = el;

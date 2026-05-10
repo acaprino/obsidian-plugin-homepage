@@ -17,11 +17,10 @@ export class HomepageView extends ItemView {
   getDisplayText(): string { return 'Homepage'; }
   getIcon(): string { return 'home'; }
 
-  // Async by contract: `reload()` awaits onOpen, and any future async work in
-  // this method (e.g., loading per-leaf state, awaiting an editor-ready signal)
-  // MUST be awaited inside the function body so `reload()` callers don't proceed
-  // before render is actually complete.
-  async onOpen(): Promise<void> {
+  // Returns Promise<void> to match ItemView.onOpen and keep `reload()`'s await
+  // meaningful. If future work needs awaiting (per-leaf state, editor-ready
+  // signal), switch this back to `async` and await inside the body.
+  onOpen(): Promise<void> {
     // Full teardown: unloads blocks AND removes the grid DOM element
     this.grid?.destroy();
     this.toolbar?.destroy();
@@ -52,6 +51,7 @@ export class HomepageView extends ItemView {
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
 
     this.grid.render(this.plugin.activeBlocks(), this.plugin.activeColumns(), true);
+    return Promise.resolve();
   }
 
   onClose(): Promise<void> {

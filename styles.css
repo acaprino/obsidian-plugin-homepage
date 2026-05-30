@@ -677,14 +677,14 @@
 
 .greeting-time {
   font-size: 0.8125rem;
+  /* --text-faint already encodes the theme-calibrated muting; no extra opacity. */
   color: var(--text-faint);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.05em;
   font-weight: 500;
-  opacity: 0.7;
   margin-left: auto;
-  transition: font-size 0.25s ease-out, opacity 0.2s ease-out;
+  transition: font-size 0.25s ease-out;
 }
 
 /* ── Greeting responsive ──────────────────────────────── */
@@ -733,7 +733,6 @@
   .greeting-time {
     font-size: clamp(0.65rem, max(4cqi, 2cqb), 0.85rem);
     color: var(--text-faint);
-    opacity: 0.7;
     letter-spacing: 0.06em;
   }
 }

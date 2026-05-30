@@ -95,6 +95,19 @@ describe('migrateBlockInstance', () => {
     expect('rowSpan' in migrated).toBe(false);
   });
 
+  it('clamps a legacy col/row of 0 to x/y=0 (not -1) so the block survives validation', () => {
+    const migrated = migrateBlockInstance({ id: 'b', type: 'clock', col: 0, row: 0, config: {} });
+    expect(migrated).toMatchObject({ x: 0, y: 0 });
+    // Round-trip through validateBlocks: previously col:0 -> x:-1 failed the
+    // x>=0 guard and the block was silently dropped.
+    const out = validateBlocks(
+      [{ id: 'b', type: 'clock', col: 0, row: 0, colSpan: 1, rowSpan: 1, config: {} }],
+      3, [],
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ x: 0, y: 0, w: 1, h: 1 });
+  });
+
   it('renames the legacy tag-grid type to button-grid', () => {
     expect(migrateBlockInstance({ type: 'tag-grid', config: {} }).type).toBe('button-grid');
   });

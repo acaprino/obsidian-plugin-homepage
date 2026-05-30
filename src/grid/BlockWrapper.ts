@@ -52,13 +52,17 @@ export function createSkeleton(wrapper: HTMLElement): HTMLElement {
   return overlay;
 }
 
+/** Monotonic id for skeleton fade timers — each fade needs its own scheduler token. */
+let skeletonSeq = 0;
+
 /** Fade out and remove a skeleton overlay. The Scheduler keeps the fade timer cancellable on teardown. */
 export function removeSkeleton(el: HTMLElement | null, scheduler: Scheduler): void {
   if (!el?.isConnected) return;
   el.classList.add('hp-skeleton-overlay--out');
   // Short-lived timer; cleanup binds to GridLayout's scheduler so a teardown
-  // mid-fade doesn't leak a pending el.remove() on a detached node.
-  const token = `skeleton-${Math.random()}`;
+  // mid-fade doesn't leak a pending el.remove() on a detached node. A monotonic
+  // counter (not Math.random) keeps the token unique and deterministic.
+  const token = `skeleton-${skeletonSeq++}`;
   scheduler.timeout(token, 200, () => el.remove());
 }
 

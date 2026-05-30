@@ -32,7 +32,6 @@ const DB_RECORD = 'apiKeyDeviceKey';
 const PREFIX = 'enc:v1:';
 
 let cachedKey: CryptoKey | null = null;
-let lastKeyLoadError = false;
 
 function hasWebCrypto(): boolean {
   return typeof globalThis.crypto?.subtle?.generateKey === 'function'
@@ -69,21 +68,25 @@ function idbSet(db: IDBDatabase, key: string, value: unknown): Promise<void> {
 }
 
 /**
- * Return the device's persistent AES-GCM key, generating and storing it on first use.
- * Returns null if WebCrypto / IndexedDB are unavailable or generation fails — callers
- * should fall back to storing plaintext.
+ * Outcome of a device-key load. `transient` distinguishes "WebCrypto/IndexedDB
+ * hiccupped just now" (preserve ciphertext, retry later) from a permanent
+ * "WebCrypto is absent on this platform" or a successful load. Returned per
+ * call (not stashed in a module global) so concurrent encrypt/decrypt calls —
+ * e.g. desktop + mobile arrays under `Promise.all` — never read each other's
+ * result.
  */
-async function loadDeviceKey(): Promise<CryptoKey | null> {
-  if (cachedKey) {
-    lastKeyLoadError = false;
-    return cachedKey;
-  }
-  if (!hasWebCrypto()) {
-    // Permanent: WebCrypto is missing entirely. Caller can rely on this signal
-    // to refuse to overwrite ciphertext with plaintext.
-    lastKeyLoadError = false;
-    return null;
-  }
+interface DeviceKeyResult { key: CryptoKey | null; transient: boolean; }
+
+/**
+ * Return the device's persistent AES-GCM key, generating and storing it on first use.
+ * `key` is null if WebCrypto / IndexedDB are unavailable or generation fails — callers
+ * should fall back to storing plaintext (only when `transient` is false).
+ */
+async function loadDeviceKey(): Promise<DeviceKeyResult> {
+  if (cachedKey) return { key: cachedKey, transient: false };
+  // Permanent: WebCrypto is missing entirely. Callers rely on transient=false
+  // here to know the plaintext fallback is the only option on this platform.
+  if (!hasWebCrypto()) return { key: null, transient: false };
 
   try {
     const db = await openDb();
@@ -91,8 +94,7 @@ async function loadDeviceKey(): Promise<CryptoKey | null> {
       const existing = await idbGet(db, DB_RECORD);
       if (existing instanceof CryptoKey) {
         cachedKey = existing;
-        lastKeyLoadError = false;
-        return existing;
+        return { key: existing, transient: false };
       }
       const fresh = await crypto.subtle.generateKey(
         { name: 'AES-GCM', length: 256 },
@@ -101,25 +103,17 @@ async function loadDeviceKey(): Promise<CryptoKey | null> {
       );
       await idbSet(db, DB_RECORD, fresh);
       cachedKey = fresh;
-      lastKeyLoadError = false;
-      return fresh;
+      return { key: fresh, transient: false };
     } finally {
       db.close();
     }
   } catch (err) {
     // Transient: IndexedDB threw (e.g., quota, locked, profile-under-stress).
-    // Track the error so callers can distinguish "device key wiped" from
-    // "WebCrypto subsystem hiccup" -- the former should clear ciphertext, the
-    // latter should preserve it.
-    lastKeyLoadError = true;
+    // Signal transient=true so callers preserve ciphertext / refuse to write
+    // plaintext, rather than treating it as "device key wiped".
     console.error('[Homepage Blocks] device key unavailable (transient)', err instanceof Error ? err.message : 'unknown error');
-    return null;
+    return { key: null, transient: true };
   }
-}
-
-/** True if the most recent loadDeviceKey() failed because of a transient error. */
-function lastLoadWasTransient(): boolean {
-  return lastKeyLoadError;
 }
 
 function toBase64(bytes: ArrayBuffer | Uint8Array): string {
@@ -150,7 +144,7 @@ export function isEncrypted(value: string): boolean {
  */
 export type EncryptResult =
   | { ok: true; value: string }
-  | { ok: false; reason: 'fallback-plaintext' | 'crypto-error'; value: string };
+  | { ok: false; reason: 'fallback-plaintext' | 'crypto-error'; value: string; transient: boolean };
 
 /**
  * Encrypt a string with the device key. Returns the ciphertext on success,
@@ -161,10 +155,12 @@ export type EncryptResult =
 export async function encryptStringEx(plaintext: string): Promise<EncryptResult> {
   if (!plaintext) return { ok: true, value: plaintext };
   if (isEncrypted(plaintext)) return { ok: true, value: plaintext }; // already encrypted, idempotent
-  const key = await loadDeviceKey();
+  const { key, transient } = await loadDeviceKey();
   if (!key) {
-    console.warn('[Homepage Blocks] WebCrypto unavailable — apiKey will be stored in plaintext on disk');
-    return { ok: false, reason: 'fallback-plaintext', value: plaintext };
+    if (!transient) {
+      console.warn('[Homepage Blocks] WebCrypto unavailable — apiKey will be stored in plaintext on disk');
+    }
+    return { ok: false, reason: 'fallback-plaintext', value: plaintext, transient };
   }
 
   try {
@@ -173,7 +169,7 @@ export async function encryptStringEx(plaintext: string): Promise<EncryptResult>
     return { ok: true, value: `${PREFIX}${toBase64(iv)}:${toBase64(ct)}` };
   } catch (err) {
     console.error('[Homepage Blocks] API key encryption failed — storing plaintext', err instanceof Error ? err.message : 'unknown error');
-    return { ok: false, reason: 'crypto-error', value: plaintext };
+    return { ok: false, reason: 'crypto-error', value: plaintext, transient: false };
   }
 }
 
@@ -203,9 +199,9 @@ export type DecryptResult =
  */
 export async function decryptStringEx(value: string): Promise<DecryptResult> {
   if (!isEncrypted(value)) return { ok: true, plaintext: value }; // plaintext or empty
-  const key = await loadDeviceKey();
+  const { key, transient } = await loadDeviceKey();
   if (!key) {
-    return { ok: false, reason: 'no-key', transient: lastLoadWasTransient() };
+    return { ok: false, reason: 'no-key', transient };
   }
 
   const body = value.slice(PREFIX.length);

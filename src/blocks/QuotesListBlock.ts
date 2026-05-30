@@ -85,7 +85,7 @@ export class QuotesListBlock extends BaseBlock {
 
     return this.loadAndRender(el).catch(e => {
       console.error('[Homepage Blocks] QuotesListBlock failed to render:', e);
-      el.setText('Error loading quotes. Check console for details.');
+      this.renderErrorHint(el, 'Couldn’t load quotes — check the console for details.');
     });
   }
 

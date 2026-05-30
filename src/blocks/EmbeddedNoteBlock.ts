@@ -46,7 +46,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
 
     return this.renderContent(el).catch(e => {
       console.error('[Homepage Blocks] EmbeddedNoteBlock failed to render:', e);
-      el.setText('Error rendering file. Check console for details.');
+      this.renderErrorHint(el, 'Couldn’t render this note — check the console for details.');
     });
   }
 

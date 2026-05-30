@@ -3,11 +3,8 @@ import { BlockInstance, IHomepagePlugin, LayoutPriority } from '../types';
 import { Scheduler } from '../utils/Scheduler';
 import { Phase } from './phase';
 
-/**
- * Width breakpoints (px) where the grid drops a column. Kept as an exported constant so
- * the CSS container queries in styles.css (380 / 540 / 768) can be double-checked against it.
- */
-export const COLUMN_BREAKPOINTS = { single: 480, double: 768, triple: 1024 };
+/** Width breakpoints (px) where the grid drops a column (mirrors the container queries in styles.css). */
+const COLUMN_BREAKPOINTS = { single: 480, double: 768, triple: 1024 };
 
 /** Narrow view of GridLayout state / methods needed by the responsive-columns manager. */
 export interface ResponsiveColumnsHost {
@@ -35,7 +32,7 @@ export interface ResponsiveColumnsHost {
  * canonical (saved) column count. The canonical value is the maximum — we never
  * exceed it.
  */
-export function computeEffectiveColumns(width: number, canonical: number): number {
+function computeEffectiveColumns(width: number, canonical: number): number {
   if (width < COLUMN_BREAKPOINTS.single) return 1;
   if (width < COLUMN_BREAKPOINTS.double) return Math.min(2, canonical);
   if (width < COLUMN_BREAKPOINTS.triple) return Math.min(3, canonical);

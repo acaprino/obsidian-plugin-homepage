@@ -11,6 +11,7 @@ import { ResponsiveColumnsManager } from './grid/ResponsiveColumns';
 import { LayoutPersister } from './grid/LayoutPersister';
 import { attachCollapseToggle } from './grid/CollapseToggle';
 import { attachEditHandleBar } from './grid/EditHandleBar';
+import { packRows, repackEditLayout } from './grid/packing';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
@@ -108,7 +109,7 @@ export class GridLayout {
     priority: LayoutPriority,
     reflow: boolean,
   ): void {
-    GridLayout.packRows(items, columns, priority, reflow);
+    packRows(items, columns, priority, reflow);
   }
 
   /** Determine if a block should auto-expand beyond its grid cell height. */
@@ -165,18 +166,23 @@ export class GridLayout {
     this.gridEl.remove();
   }
 
-  setEditMode(enabled: boolean, skipRepack = false): void {
+  setEditMode(enabled: boolean, skipRepack = false, flushInFlight = true): void {
     if (this.phase === Phase.Destroyed) return;
     // If a drag was in-flight when this fires, dragstop won't get a chance to
     // run (the grid is about to be torn down). Flush its current GridStack
     // positions to the layout NOW so we don't lose the user's in-progress edit.
-    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+    //
+    // Discard MUST pass flushInFlight=false: it has already written the pre-edit
+    // snapshot to plugin.layout, and flushing here would read the still-live
+    // edited GridStack DOM and re-persist exactly the positions the user asked
+    // to discard — silently turning Discard into Save.
+    if (flushInFlight && this.editMode && this.gridStack && this.phase === Phase.Ready) {
       try { this.persistLayout(); } catch { /* non-fatal */ }
     }
     if (!enabled && this.editMode && !skipRepack) {
       // Repack y-positions: compact edit heights create y offsets that
       // would overlap blocks at full view-mode heights.
-      const repacked = GridLayout.repackEditLayout(
+      const repacked = repackEditLayout(
         this.plugin.activeBlocks(),
         this.canonicalColumns,
         this.plugin.activeLayoutPriority(),
@@ -194,11 +200,29 @@ export class GridLayout {
     if (this.gridStack) {
       this.gridStack.setStatic(!enabled);
     }
-    this.rerender();
+    // Render directly (not via rerender) so this deliberate mode switch always
+    // repaints, even if a block reports unsaved inline state. The
+    // hasUnsavedInlineState guard in rerender() exists to protect against
+    // *external* sibling-save rerenders mid-typing — it must NOT block the
+    // user's own enter/exit/discard, which has to reconcile the DOM with
+    // plugin.layout (otherwise Discard reverts on disk but the screen keeps
+    // the edited layout).
+    this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
     if (!enabled) {
       // Exiting edit mode — clear any zoom transform
       this.setZoom(1);
     }
+  }
+
+  /**
+   * Cancel any queued debounced layout persist + auto-height measurement.
+   * Called by Discard so a late write (a 50ms `sync` debounce or a queued
+   * auto-height rAF) can't resurrect the discarded positions after the
+   * pre-edit snapshot has been restored.
+   */
+  cancelPendingPersist(): void {
+    this.scheduler.cancelTimeout('sync');
+    this.clearPendingResizes();
   }
 
   /** Update column count, clamping each block's w to fit. */
@@ -334,7 +358,7 @@ export class GridLayout {
     // view-mode y positions incorrect, leaving large visual gaps.
     // View mode: pack only when compactLayout is on to preserve intentional gaps.
     if (this.editMode || this.plugin.layout.compactLayout) {
-      GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
+      packRows(items, columns, this.plugin.activeLayoutPriority());
     }
 
     this.effectiveColumns = columns;
@@ -430,7 +454,7 @@ export class GridLayout {
       }
 
       // Collapse toggle
-      this.setupCollapseToggle(gsEl, instance, headerZone);
+      attachCollapseToggle(this, gsEl, instance, headerZone);
 
       // Edit handles
       if (this.editMode) {
@@ -632,132 +656,15 @@ export class GridLayout {
     this.persister.persistDebounced();
   }
 
-  /** True when the grid is showing a responsive (narrowed) layout. */
-  private get isResponsive(): boolean {
-    return this.persister.isResponsive();
-  }
-
   // ── Layout Utilities ───────────────────────────────────────────────────
-
-  /**
-   * Row-group-aware packing: items sharing the same y form a "row group" and
-   * stay on the same row in the output, preserving visual row grouping.
-   * Mutates items in place.  Works on any object with { x, y, w, h }.
-   *
-   * When `reflow=true` (responsive column change), falls back to greedy
-   * column-height packing: each item is assigned the x with the lowest max
-   * height.  Row groups don't apply because old x positions are meaningless
-   * after a column count change.
-   *
-   * @param priority Reserved for future use; grouping is always by y.
-   */
-  private static packRows<T extends { x?: number; y?: number; w?: number; h?: number }>(
-    items: T[], columns: number, _priority: LayoutPriority = 'row', reflow = false,
-  ): void {
-    const safeCols = Math.max(1, columns);
-    const colHeights = new Array<number>(safeCols).fill(0);
-
-    if (reflow) {
-      // Greedy best-fit placement for responsive column changes
-      items.sort((a, b) =>
-        (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0),
-      );
-      for (const item of items) {
-        const w = Math.min(item.w ?? 1, safeCols);
-        let x = 0;
-        let bestY = Infinity;
-        for (let cx = 0; cx <= safeCols - w; cx++) {
-          let maxH = 0;
-          for (let c = cx; c < cx + w; c++) {
-            maxH = Math.max(maxH, colHeights[c] ?? 0);
-          }
-          if (maxH < bestY) { bestY = maxH; x = cx; }
-        }
-        item.x = x;
-        item.w = w;
-        item.y = bestY;
-        for (let c = x; c < x + w; c++) {
-          colHeights[c] = bestY + (item.h ?? 1);
-        }
-      }
-      return;
-    }
-
-    // Row-group-aware packing: group items by their input y, preserving
-    // the visual row layout.  Blocks that shared a row in the input stay
-    // together in the output, preventing greedy reordering.
-    const groupMap = new Map<number, T[]>();
-    for (const item of items) {
-      const y = item.y ?? 0;
-      let g = groupMap.get(y);
-      if (!g) { g = []; groupMap.set(y, g); }
-      g.push(item);
-    }
-
-    // Process groups by ascending input y; sort within group by x for
-    // left-to-right placement.
-    const groups = [...groupMap.values()];
-    groups.sort((a, b) => (a[0].y ?? 0) - (b[0].y ?? 0));
-    for (const g of groups) g.sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
-
-    for (const group of groups) {
-      // Find the earliest y where all blocks in this group fit (no overlap)
-      let rowY = 0;
-      for (const item of group) {
-        const w = Math.min(item.w ?? 1, safeCols);
-        const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
-        for (let c = x; c < x + w; c++) {
-          rowY = Math.max(rowY, colHeights[c] ?? 0);
-        }
-      }
-
-      // Place all items in the group at rowY, clamp x and w
-      for (const item of group) {
-        const w = Math.min(item.w ?? 1, safeCols);
-        item.w = w;
-        item.x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
-        item.y = rowY;
-      }
-
-      // Advance column heights (Math.max handles overlapping spans safely)
-      for (const item of group) {
-        const x = item.x ?? 0;
-        const w = item.w ?? 1;
-        const h = item.h ?? 1;
-        for (let c = x; c < x + w; c++) {
-          colHeights[c] = Math.max(colHeights[c] ?? 0, rowY + h);
-        }
-      }
-    }
-  }
-
-  /**
-   * After exiting edit mode, y-positions saved during editing reflect
-   * compact heights (COMPACT_EDIT_H) and may overlap at full view-mode
-   * heights.  Re-pack into a collision-free layout using real h values.
-   * Delegates to the row-group-aware packRows, which preserves visual
-   * row grouping from edit mode.
-   */
-  private static repackEditLayout(blocks: BlockInstance[], columns: number, priority: LayoutPriority = 'row'): BlockInstance[] {
-    const packed = blocks.map(b => ({ ...b }));
-    GridLayout.packRows(packed, columns, priority);
-    return packed;
-  }
+  // packRows + repackEditLayout extracted to src/grid/packing.ts (pure, tested).
 
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */
   repackGridNodes(): void {
-    // Wrap the static call in an arrow so `this` doesn't end up unbound
-    // when LayoutPersister invokes the function.
     this.persister.repackGridNodes((items, columns, priority) =>
-      GridLayout.packRows(items, columns, priority),
+      packRows(items, columns, priority),
     );
   }
 
-  // ── Block Interactions ─────────────────────────────────────────────────
-
-  private setupCollapseToggle(gsEl: HTMLElement, instance: BlockInstance, headerZone: HTMLElement): void {
-    attachCollapseToggle(this, gsEl, instance, headerZone);
-  }
-
-  // attachEditHandleBar + swapWithNeighbor moved to src/grid/EditHandleBar.ts
+  // attachCollapseToggle + attachEditHandleBar + swapWithNeighbor live in src/grid/.
 }

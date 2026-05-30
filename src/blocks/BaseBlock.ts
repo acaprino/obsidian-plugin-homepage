@@ -67,6 +67,19 @@ export abstract class BaseBlock extends Component {
     header.createSpan({ text: label });
   }
 
+  /**
+   * Render a polished error state (same visual language as the empty-hint)
+   * instead of bare error text, so a failed render reads as intentional rather
+   * than broken. Clears `el` first; the header lives in a separate zone and is
+   * unaffected.
+   */
+  protected renderErrorHint(el: HTMLElement, message: string): void {
+    el.empty();
+    const hint = el.createDiv({ cls: 'block-empty-hint block-error-hint' });
+    hint.createDiv({ cls: 'block-empty-hint-icon', text: '⚠' });
+    hint.createDiv({ cls: 'block-empty-hint-text', text: message });
+  }
+
   // ── Shared debounced re-render infrastructure ──────────────────────────────
 
   /**

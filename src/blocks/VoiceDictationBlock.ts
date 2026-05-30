@@ -4,15 +4,25 @@ import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 
 const CONSENT_STORAGE_KEY = 'hp-voice-consent';
 
+/**
+ * localStorage in Obsidian is per-app-install, not per-vault — so a single
+ * global consent flag would silence the prompt in every vault, including one
+ * that received a shared layout pointing at someone else's API endpoint. Scope
+ * the key to the vault so consent granted in vault A doesn't auto-apply in B.
+ */
+function consentKey(vaultId: string): string {
+  return `${CONSENT_STORAGE_KEY}:${vaultId}`;
+}
+
 function hasMediaRecorderSupport(): boolean {
   if (typeof MediaRecorder === 'undefined') return false;
   const md = (navigator as unknown as { mediaDevices?: { getUserMedia?: unknown } }).mediaDevices;
   return typeof md?.getUserMedia === 'function';
 }
 
-function hasConsent(provider: TranscriptionProvider): boolean {
+function hasConsent(provider: TranscriptionProvider, vaultId: string): boolean {
   try {
-    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(consentKey(vaultId));
     if (!raw) return false;
     const parsed = JSON.parse(raw) as Record<string, boolean>;
     return parsed[provider] === true;
@@ -21,12 +31,12 @@ function hasConsent(provider: TranscriptionProvider): boolean {
   }
 }
 
-function setConsent(provider: TranscriptionProvider): void {
+function setConsent(provider: TranscriptionProvider, vaultId: string): void {
   try {
-    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(consentKey(vaultId));
     const parsed = raw ? JSON.parse(raw) as Record<string, boolean> : {};
     parsed[provider] = true;
-    window.localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(parsed));
+    window.localStorage.setItem(consentKey(vaultId), JSON.stringify(parsed));
   } catch {
     /* localStorage may be unavailable — the user will re-consent next time */
   }
@@ -90,7 +100,12 @@ export class VoiceDictationBlock extends BaseBlock {
     const body = el.createDiv({ cls: 'voice-body' });
 
     // Status label
-    this.statusEl = body.createDiv({ cls: 'voice-status', text: 'Tap to record' });
+    this.statusEl = body.createDiv({
+      cls: 'voice-status',
+      text: 'Tap to record',
+      // Announce recording / transcribing / saved transitions to screen readers.
+      attr: { role: 'status', 'aria-live': 'polite' },
+    });
 
     // Mic zone
     const micZone = body.createDiv({ cls: 'voice-mic-zone' });
@@ -263,10 +278,11 @@ export class VoiceDictationBlock extends BaseBlock {
     }
 
     const provider = cfg.provider ?? 'whisper';
-    if (!hasConsent(provider)) {
+    const vaultId = this.app.vault.getName();
+    if (!hasConsent(provider, vaultId)) {
       const confirmed = await confirmVoiceConsent(this.app, provider);
       if (!confirmed) return;
-      setConsent(provider);
+      setConsent(provider, vaultId);
     }
 
     // Stop any previous stream before acquiring a new one
@@ -553,8 +569,8 @@ export class VoiceDictationBlock extends BaseBlock {
       new Setting(body)
         .setName('API key')
         .setDesc(isGemini
-          ? 'Google AI API key for Gemini. Stored in plaintext in your vault data folder.'
-          : 'OpenAI API key for Whisper. Stored in plaintext in your vault data folder.')
+          ? 'Google AI API key for Gemini. Encrypted at rest with a device-specific key; it cannot be decrypted on another device (re-enter it there), and it is never included in layout exports.'
+          : 'OpenAI API key for Whisper. Encrypted at rest with a device-specific key; it cannot be decrypted on another device (re-enter it there), and it is never included in layout exports.')
         .addText(t => {
           t.inputEl.type = 'password';
           t.setPlaceholder(isGemini ? 'AIza...' : 'sk-...')

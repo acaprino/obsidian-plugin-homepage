@@ -3,7 +3,6 @@ import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
 import { BlockInstance, LayoutConfig, LayoutPriority, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { BaseBlock } from './blocks/BaseBlock';
-import { applyBlockStyling } from './utils/blockStyling';
 import { Scheduler } from './utils/Scheduler';
 import { Phase } from './grid/phase';
 import { AutoHeightManager } from './grid/AutoHeight';
@@ -12,6 +11,7 @@ import { LayoutPersister } from './grid/LayoutPersister';
 import { attachCollapseToggle } from './grid/CollapseToggle';
 import { attachEditHandleBar } from './grid/EditHandleBar';
 import { packRows, repackEditLayout } from './grid/packing';
+import { buildBlockWrapper, createSkeleton, removeSkeleton, renderCompactPlaceholder, renderEmptyState } from './grid/BlockWrapper';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
@@ -152,7 +152,7 @@ export class GridLayout {
     }
 
     if (blocks.length === 0) {
-      this.renderEmptyState();
+      renderEmptyState(this.gridEl, { editMode: this.editMode, onRequestAddBlock: this.onRequestAddBlock });
       return;
     }
 
@@ -398,7 +398,7 @@ export class GridLayout {
       if (!(gsContent instanceof HTMLElement)) continue;
 
       const animDelayMs = isInitial ? ([0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240) : undefined;
-      const wrapper = this.buildBlockWrapper(gsContent, instance, animDelayMs);
+      const wrapper = buildBlockWrapper(gsContent, instance, animDelayMs);
 
       const headerZone = wrapper.querySelector('.block-header-zone');
       const contentEl = wrapper.querySelector('.block-content');
@@ -409,7 +409,7 @@ export class GridLayout {
 
       if (this.editMode) {
         // Symbolic compact card — no content rendering for easy drag & drop
-        this.renderCompactPlaceholder(headerZone, contentEl, factory, instance);
+        renderCompactPlaceholder(headerZone, contentEl, factory, instance);
         this.blocks.set(instance.id, { block: null, wrapper });
       } else {
         const block = factory.create(this.app, instance, this.plugin);
@@ -430,18 +430,18 @@ export class GridLayout {
           });
         }
         // Skeleton overlay: show shimmer placeholder during initial load
-        const skeletonEl = isInitial ? this.createSkeleton(wrapper) : null;
+        const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
         const result = block.render(contentEl);
         if (result instanceof Promise) {
           // After async render, wait one frame for the browser to lay out the new DOM,
           // then measure and resize the block to its natural content height.
           result
             .then(() => {
-              this.removeSkeleton(skeletonEl);
+              removeSkeleton(skeletonEl, this.scheduler);
               if (needsResize) this.requestAutoHeight(gsEl, instance);
             })
             .catch(e => {
-              this.removeSkeleton(skeletonEl);
+              removeSkeleton(skeletonEl, this.scheduler);
               console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
               contentEl.setText('Error rendering block. Check console for details.');
             });
@@ -517,93 +517,8 @@ export class GridLayout {
     });
   }
 
-  /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
-  private buildBlockWrapper(container: HTMLElement, instance: BlockInstance, animDelayMs?: number): HTMLElement {
-    const classes = ['homepage-block-wrapper'];
-    // Don't collapse blocks with hidden titles — there's no visible header
-    // to click for re-expansion, making them appear completely invisible.
-    const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
-    if (effectiveCollapsed) classes.push('block-collapsed');
-    const wrapper = container.createDiv({
-      cls: classes.join(' '),
-      attr: { 'data-block-id': instance.id },
-    });
-    applyBlockStyling(wrapper, instance.config);
-    if (animDelayMs !== undefined) {
-      wrapper.style.setProperty('--hp-card-anim-delay', `${animDelayMs}ms`);
-    }
-    const headerZone = wrapper.createDiv({
-      cls: 'block-header-zone',
-      attr: { role: 'button', tabindex: '0', 'aria-expanded': String(!effectiveCollapsed) },
-    });
-    headerZone.createSpan({
-      cls: 'block-collapse-chevron' + (effectiveCollapsed ? ' is-collapsed' : ''),
-      attr: { 'aria-hidden': 'true' },
-    });
-    if (instance.config._showDivider === true) {
-      wrapper.createDiv({ cls: 'block-header-divider' });
-    }
-    wrapper.createDiv({ cls: 'block-content' });
-    return wrapper;
-  }
-
-  /** Create a shimmer skeleton overlay inside the block wrapper for perceived loading speed. */
-  private createSkeleton(wrapper: HTMLElement): HTMLElement {
-    const overlay = wrapper.createDiv({ cls: 'hp-skeleton-overlay' });
-    overlay.createDiv({ cls: 'hp-skeleton-line' });
-    overlay.createDiv({ cls: 'hp-skeleton-line' });
-    overlay.createDiv({ cls: 'hp-skeleton-line' });
-    return overlay;
-  }
-
-  /** Fade out and remove a skeleton overlay. */
-  private removeSkeleton(el: HTMLElement | null): void {
-    if (!el?.isConnected) return;
-    el.classList.add('hp-skeleton-overlay--out');
-    // Short-lived timer; cleanup binds to GridLayout's scheduler so a teardown
-    // mid-fade doesn't leak a pending el.remove() on a detached node.
-    const token = `skeleton-${Math.random()}`;
-    this.scheduler.timeout(token, 200, () => el.remove());
-  }
-
-  /** Render a lightweight symbolic placeholder for edit mode (no real block content). */
-  private renderCompactPlaceholder(
-    headerZone: HTMLElement,
-    contentEl: HTMLElement,
-    factory: { displayName: string },
-    instance: BlockInstance,
-  ): void {
-    // Show block type name in header zone
-    const titleLabel = typeof instance.config._titleLabel === 'string' && instance.config._titleLabel
-      ? instance.config._titleLabel
-      : factory.displayName;
-    const emoji = typeof instance.config._titleEmoji === 'string' ? instance.config._titleEmoji : '';
-    const header = headerZone.createDiv({ cls: 'block-header' });
-    if (emoji) header.createEl('em', { cls: 'block-header-emoji', text: emoji });
-    header.createSpan({ text: titleLabel });
-
-    // Compact info in content area
-    const info = contentEl.createDiv({ cls: 'block-compact-info' });
-    info.createSpan({ cls: 'block-compact-type', text: instance.type });
-    info.createSpan({ cls: 'block-compact-size', text: `${instance.w}\u00D7${instance.h}` });
-  }
-
-  private renderEmptyState(): void {
-    this.gridEl.empty();
-    const empty = this.gridEl.createDiv({ cls: 'homepage-empty-state' });
-    empty.createDiv({ cls: 'homepage-empty-icon', text: '\u{1F3E0}' });
-    empty.createEl('p', { cls: 'homepage-empty-title', text: 'Your homepage is empty' });
-    empty.createEl('p', {
-      cls: 'homepage-empty-desc',
-      text: this.editMode
-        ? 'Click the button below to add your first block.'
-        : 'Toggle Edit mode in the toolbar to start adding blocks.',
-    });
-    if (this.editMode && this.onRequestAddBlock) {
-      const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add your first block' });
-      cta.addEventListener('click', () => { this.onRequestAddBlock?.(); });
-    }
-  }
+  // buildBlockWrapper / createSkeleton / removeSkeleton / renderCompactPlaceholder /
+  // renderEmptyState extracted to src/grid/BlockWrapper.ts (covered by render tests).
 
   /** Update all compact size labels to reflect current GridStack node dimensions. */
   private updateCompactSizeLabels(): void {

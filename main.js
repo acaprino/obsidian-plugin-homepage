@@ -5678,117 +5678,6 @@ var BlockRegistryClass = class {
 };
 var BlockRegistry = new BlockRegistryClass();
 
-// src/utils/blockStyling.ts
-var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-function hexChannelToLinear(c) {
-  const s = c / 255;
-  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-function getRelativeLuminance(hex) {
-  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
-  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
-  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-var VALID_BORDER_STYLES = ["solid", "dashed", "dotted"];
-var HP_BTN_KEY_RE = /^--hp-btn-[a-z0-9-]+$/;
-var UNSAFE_VALUE_RE = /\b(?:url|image|image-set|cross-fade|element|paint)\s*\(/i;
-function parseAllowlistedCustomCss(input) {
-  const out = [];
-  const stripped = input.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const raw of stripped.split(";")) {
-    const idx = raw.indexOf(":");
-    if (idx < 0) continue;
-    const key = raw.slice(0, idx).trim();
-    const value = raw.slice(idx + 1).trim();
-    if (!key || !value) continue;
-    if (!HP_BTN_KEY_RE.test(key)) continue;
-    if (UNSAFE_VALUE_RE.test(value)) continue;
-    if (/\p{Cc}/u.test(value)) continue;
-    out.push([key, value]);
-  }
-  return out;
-}
-function applyBlockStyling(el, config) {
-  const prevKeys = el.getAttribute("data-hp-custom-css-keys");
-  if (prevKeys) {
-    for (const k of prevKeys.split(",")) {
-      if (k) el.style.removeProperty(k);
-    }
-  }
-  const rawCustomCss = typeof config.customCss === "string" ? config.customCss : "";
-  const safeDecls = parseAllowlistedCustomCss(rawCustomCss);
-  for (const [k, v] of safeDecls) el.style.setProperty(k, v);
-  if (safeDecls.length > 0) {
-    el.setAttribute("data-hp-custom-css-keys", safeDecls.map(([k]) => k).join(","));
-  } else {
-    el.removeAttribute("data-hp-custom-css-keys");
-  }
-  const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
-  el.toggleClass("block-accented", !!accentColor);
-  el.toggleClass("block-no-header-accent", config._showHeaderAccent === false);
-  if (accentColor) {
-    el.style.setProperty("--block-accent", accentColor);
-    const intensity = typeof config._accentIntensity === "number" ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
-    if (intensity && intensity !== 15) {
-      el.style.setProperty("--block-accent-pct", `${intensity}%`);
-    } else {
-      el.style.removeProperty("--block-accent-pct");
-    }
-    const DARK_BASE_LUM = 0.05;
-    const BRIGHT_ACCENT_THRESHOLD = 0.18;
-    const effectiveIntensity = intensity || 15;
-    const ratio = effectiveIntensity / 100;
-    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
-    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
-    el.toggleClass("block-bright-accent", needsDarkText);
-  } else {
-    el.style.removeProperty("--block-accent");
-    el.style.removeProperty("--block-accent-pct");
-    el.toggleClass("block-bright-accent", false);
-  }
-  el.toggleClass("block-no-border", config._showBorder === false);
-  el.toggleClass("block-no-background", config._showBackground === false);
-  const pad = typeof config._cardPadding === "number" ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
-  if (pad) el.style.setProperty("--hp-card-padding", `${pad}px`);
-  else el.style.removeProperty("--hp-card-padding");
-  const gap = typeof config._titleGap === "number" ? Math.max(0, Math.min(48, config._titleGap)) : 0;
-  if (gap) el.style.setProperty("--hp-title-gap", `${gap}px`);
-  else el.style.removeProperty("--hp-title-gap");
-  for (let i = 1; i <= 3; i++) el.removeClass(`block-elevation-${i}`);
-  const elevation = typeof config._elevation === "number" ? Math.max(0, Math.min(3, config._elevation)) : 0;
-  if (elevation) el.addClass(`block-elevation-${elevation}`);
-  const borderRadius = typeof config._borderRadius === "number" ? Math.max(0, Math.min(24, config._borderRadius)) : 0;
-  if (borderRadius) el.style.setProperty("--hp-border-radius", `${borderRadius}px`);
-  else el.style.removeProperty("--hp-border-radius");
-  const bgOpacity = typeof config._bgOpacity === "number" ? Math.max(0, Math.min(100, config._bgOpacity)) : 100;
-  el.toggleClass("block-custom-opacity", bgOpacity < 100);
-  if (bgOpacity < 100) el.style.setProperty("--hp-bg-opacity", `${bgOpacity}%`);
-  else el.style.removeProperty("--hp-bg-opacity");
-  const backdropBlur = typeof config._backdropBlur === "number" ? Math.max(0, Math.min(20, config._backdropBlur)) : 0;
-  if (backdropBlur > 0 && bgOpacity < 100) {
-    el.style.setProperty("--hp-backdrop-blur", `blur(${backdropBlur}px)`);
-  } else {
-    el.style.removeProperty("--hp-backdrop-blur");
-  }
-  const gradStart = typeof config._gradientStart === "string" && HEX_COLOR_RE.test(config._gradientStart) ? config._gradientStart : "";
-  const gradEnd = typeof config._gradientEnd === "string" && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : "";
-  const gradAngle = typeof config._gradientAngle === "number" ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
-  if (gradStart && gradEnd && config._showBackground !== false) {
-    el.style.setProperty("--hp-bg-gradient", `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
-    el.toggleClass("block-has-gradient", true);
-  } else {
-    el.style.removeProperty("--hp-bg-gradient");
-    el.toggleClass("block-has-gradient", false);
-  }
-  const borderWidth = typeof config._borderWidth === "number" ? Math.max(0, Math.min(4, config._borderWidth)) : 0;
-  if (borderWidth) el.style.setProperty("--hp-border-width", `${borderWidth}px`);
-  else el.style.removeProperty("--hp-border-width");
-  const borderStyle = typeof config._borderStyle === "string" && VALID_BORDER_STYLES.includes(config._borderStyle) ? config._borderStyle : "";
-  if (borderStyle) el.style.setProperty("--hp-border-style", borderStyle);
-  else el.style.removeProperty("--hp-border-style");
-}
-
 // src/utils/Scheduler.ts
 var Scheduler = class {
   timers = /* @__PURE__ */ new Map();
@@ -6311,6 +6200,117 @@ var BaseBlock = class extends import_obsidian.Component {
     }
   }
 };
+
+// src/utils/blockStyling.ts
+var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+function hexChannelToLinear(c) {
+  const s = c / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+function getRelativeLuminance(hex) {
+  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
+  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
+  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+var VALID_BORDER_STYLES = ["solid", "dashed", "dotted"];
+var HP_BTN_KEY_RE = /^--hp-btn-[a-z0-9-]+$/;
+var UNSAFE_VALUE_RE = /\b(?:url|image|image-set|cross-fade|element|paint)\s*\(/i;
+function parseAllowlistedCustomCss(input) {
+  const out = [];
+  const stripped = input.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const raw of stripped.split(";")) {
+    const idx = raw.indexOf(":");
+    if (idx < 0) continue;
+    const key = raw.slice(0, idx).trim();
+    const value = raw.slice(idx + 1).trim();
+    if (!key || !value) continue;
+    if (!HP_BTN_KEY_RE.test(key)) continue;
+    if (UNSAFE_VALUE_RE.test(value)) continue;
+    if (/\p{Cc}/u.test(value)) continue;
+    out.push([key, value]);
+  }
+  return out;
+}
+function applyBlockStyling(el, config) {
+  const prevKeys = el.getAttribute("data-hp-custom-css-keys");
+  if (prevKeys) {
+    for (const k of prevKeys.split(",")) {
+      if (k) el.style.removeProperty(k);
+    }
+  }
+  const rawCustomCss = typeof config.customCss === "string" ? config.customCss : "";
+  const safeDecls = parseAllowlistedCustomCss(rawCustomCss);
+  for (const [k, v] of safeDecls) el.style.setProperty(k, v);
+  if (safeDecls.length > 0) {
+    el.setAttribute("data-hp-custom-css-keys", safeDecls.map(([k]) => k).join(","));
+  } else {
+    el.removeAttribute("data-hp-custom-css-keys");
+  }
+  const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
+  el.toggleClass("block-accented", !!accentColor);
+  el.toggleClass("block-no-header-accent", config._showHeaderAccent === false);
+  if (accentColor) {
+    el.style.setProperty("--block-accent", accentColor);
+    const intensity = typeof config._accentIntensity === "number" ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
+    if (intensity && intensity !== 15) {
+      el.style.setProperty("--block-accent-pct", `${intensity}%`);
+    } else {
+      el.style.removeProperty("--block-accent-pct");
+    }
+    const DARK_BASE_LUM = 0.05;
+    const BRIGHT_ACCENT_THRESHOLD = 0.18;
+    const effectiveIntensity = intensity || 15;
+    const ratio = effectiveIntensity / 100;
+    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
+    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
+    el.toggleClass("block-bright-accent", needsDarkText);
+  } else {
+    el.style.removeProperty("--block-accent");
+    el.style.removeProperty("--block-accent-pct");
+    el.toggleClass("block-bright-accent", false);
+  }
+  el.toggleClass("block-no-border", config._showBorder === false);
+  el.toggleClass("block-no-background", config._showBackground === false);
+  const pad = typeof config._cardPadding === "number" ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
+  if (pad) el.style.setProperty("--hp-card-padding", `${pad}px`);
+  else el.style.removeProperty("--hp-card-padding");
+  const gap = typeof config._titleGap === "number" ? Math.max(0, Math.min(48, config._titleGap)) : 0;
+  if (gap) el.style.setProperty("--hp-title-gap", `${gap}px`);
+  else el.style.removeProperty("--hp-title-gap");
+  for (let i = 1; i <= 3; i++) el.removeClass(`block-elevation-${i}`);
+  const elevation = typeof config._elevation === "number" ? Math.max(0, Math.min(3, config._elevation)) : 0;
+  if (elevation) el.addClass(`block-elevation-${elevation}`);
+  const borderRadius = typeof config._borderRadius === "number" ? Math.max(0, Math.min(24, config._borderRadius)) : 0;
+  if (borderRadius) el.style.setProperty("--hp-border-radius", `${borderRadius}px`);
+  else el.style.removeProperty("--hp-border-radius");
+  const bgOpacity = typeof config._bgOpacity === "number" ? Math.max(0, Math.min(100, config._bgOpacity)) : 100;
+  el.toggleClass("block-custom-opacity", bgOpacity < 100);
+  if (bgOpacity < 100) el.style.setProperty("--hp-bg-opacity", `${bgOpacity}%`);
+  else el.style.removeProperty("--hp-bg-opacity");
+  const backdropBlur = typeof config._backdropBlur === "number" ? Math.max(0, Math.min(20, config._backdropBlur)) : 0;
+  if (backdropBlur > 0 && bgOpacity < 100) {
+    el.style.setProperty("--hp-backdrop-blur", `blur(${backdropBlur}px)`);
+  } else {
+    el.style.removeProperty("--hp-backdrop-blur");
+  }
+  const gradStart = typeof config._gradientStart === "string" && HEX_COLOR_RE.test(config._gradientStart) ? config._gradientStart : "";
+  const gradEnd = typeof config._gradientEnd === "string" && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : "";
+  const gradAngle = typeof config._gradientAngle === "number" ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
+  if (gradStart && gradEnd && config._showBackground !== false) {
+    el.style.setProperty("--hp-bg-gradient", `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
+    el.toggleClass("block-has-gradient", true);
+  } else {
+    el.style.removeProperty("--hp-bg-gradient");
+    el.toggleClass("block-has-gradient", false);
+  }
+  const borderWidth = typeof config._borderWidth === "number" ? Math.max(0, Math.min(4, config._borderWidth)) : 0;
+  if (borderWidth) el.style.setProperty("--hp-border-width", `${borderWidth}px`);
+  else el.style.removeProperty("--hp-border-width");
+  const borderStyle = typeof config._borderStyle === "string" && VALID_BORDER_STYLES.includes(config._borderStyle) ? config._borderStyle : "";
+  if (borderStyle) el.style.setProperty("--hp-border-style", borderStyle);
+  else el.style.removeProperty("--hp-border-style");
+}
 
 // src/utils/emojis.ts
 var EMOJI_PICKER_SET = [
@@ -7372,6 +7372,73 @@ function repackEditLayout(blocks, columns, priority = "row") {
   return packed;
 }
 
+// src/grid/BlockWrapper.ts
+function buildBlockWrapper(container, instance, animDelayMs) {
+  const classes = ["homepage-block-wrapper"];
+  const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
+  if (effectiveCollapsed) classes.push("block-collapsed");
+  const wrapper = container.createDiv({
+    cls: classes.join(" "),
+    attr: { "data-block-id": instance.id }
+  });
+  applyBlockStyling(wrapper, instance.config);
+  if (animDelayMs !== void 0) {
+    wrapper.style.setProperty("--hp-card-anim-delay", `${animDelayMs}ms`);
+  }
+  const headerZone = wrapper.createDiv({
+    cls: "block-header-zone",
+    attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
+  });
+  headerZone.createSpan({
+    cls: "block-collapse-chevron" + (effectiveCollapsed ? " is-collapsed" : ""),
+    attr: { "aria-hidden": "true" }
+  });
+  if (instance.config._showDivider === true) {
+    wrapper.createDiv({ cls: "block-header-divider" });
+  }
+  wrapper.createDiv({ cls: "block-content" });
+  return wrapper;
+}
+function createSkeleton(wrapper) {
+  const overlay = wrapper.createDiv({ cls: "hp-skeleton-overlay" });
+  overlay.createDiv({ cls: "hp-skeleton-line" });
+  overlay.createDiv({ cls: "hp-skeleton-line" });
+  overlay.createDiv({ cls: "hp-skeleton-line" });
+  return overlay;
+}
+function removeSkeleton(el, scheduler) {
+  if (!el?.isConnected) return;
+  el.classList.add("hp-skeleton-overlay--out");
+  const token = `skeleton-${Math.random()}`;
+  scheduler.timeout(token, 200, () => el.remove());
+}
+function renderCompactPlaceholder(headerZone, contentEl, factory, instance) {
+  const titleLabel = typeof instance.config._titleLabel === "string" && instance.config._titleLabel ? instance.config._titleLabel : factory.displayName;
+  const emoji = typeof instance.config._titleEmoji === "string" ? instance.config._titleEmoji : "";
+  const header = headerZone.createDiv({ cls: "block-header" });
+  if (emoji) header.createEl("em", { cls: "block-header-emoji", text: emoji });
+  header.createSpan({ text: titleLabel });
+  const info = contentEl.createDiv({ cls: "block-compact-info" });
+  info.createSpan({ cls: "block-compact-type", text: instance.type });
+  info.createSpan({ cls: "block-compact-size", text: `${instance.w}\xD7${instance.h}` });
+}
+function renderEmptyState(gridEl, opts) {
+  gridEl.empty();
+  const empty = gridEl.createDiv({ cls: "homepage-empty-state" });
+  empty.createDiv({ cls: "homepage-empty-icon", text: "\u{1F3E0}" });
+  empty.createEl("p", { cls: "homepage-empty-title", text: "Your homepage is empty" });
+  empty.createEl("p", {
+    cls: "homepage-empty-desc",
+    text: opts.editMode ? "Click the button below to add your first block." : "Toggle Edit mode in the toolbar to start adding blocks."
+  });
+  if (opts.editMode && opts.onRequestAddBlock) {
+    const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add your first block" });
+    cta.addEventListener("click", () => {
+      opts.onRequestAddBlock?.();
+    });
+  }
+}
+
 // src/GridLayout.ts
 var COMPACT_EDIT_H = 2;
 var GridLayout = class {
@@ -7477,7 +7544,7 @@ var GridLayout = class {
       this.gridEl.removeClass("edit-mode");
     }
     if (blocks.length === 0) {
-      this.renderEmptyState();
+      renderEmptyState(this.gridEl, { editMode: this.editMode, onRequestAddBlock: this.onRequestAddBlock });
       return;
     }
     this.initGridStack(blocks, columns, isInitial);
@@ -7659,14 +7726,14 @@ var GridLayout = class {
       const gsContent = gsEl.querySelector(".grid-stack-item-content");
       if (!(gsContent instanceof HTMLElement)) continue;
       const animDelayMs = isInitial ? [0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240 : void 0;
-      const wrapper = this.buildBlockWrapper(gsContent, instance, animDelayMs);
+      const wrapper = buildBlockWrapper(gsContent, instance, animDelayMs);
       const headerZone = wrapper.querySelector(".block-header-zone");
       const contentEl = wrapper.querySelector(".block-content");
       if (!(contentEl instanceof HTMLElement) || !(headerZone instanceof HTMLElement)) continue;
       const factory = BlockRegistry.get(instance.type);
       if (!factory) continue;
       if (this.editMode) {
-        this.renderCompactPlaceholder(headerZone, contentEl, factory, instance);
+        renderCompactPlaceholder(headerZone, contentEl, factory, instance);
         this.blocks.set(instance.id, { block: null, wrapper });
       } else {
         const block = factory.create(this.app, instance, this.plugin);
@@ -7681,14 +7748,14 @@ var GridLayout = class {
             this.requestAutoHeight(gsEl, live);
           });
         }
-        const skeletonEl = isInitial ? this.createSkeleton(wrapper) : null;
+        const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
         const result = block.render(contentEl);
         if (result instanceof Promise) {
           result.then(() => {
-            this.removeSkeleton(skeletonEl);
+            removeSkeleton(skeletonEl, this.scheduler);
             if (needsResize) this.requestAutoHeight(gsEl, instance);
           }).catch((e) => {
-            this.removeSkeleton(skeletonEl);
+            removeSkeleton(skeletonEl, this.scheduler);
             console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
             contentEl.setText("Error rendering block. Check console for details.");
           });
@@ -7739,75 +7806,8 @@ var GridLayout = class {
       this.phase = Phase.Ready;
     });
   }
-  /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
-  buildBlockWrapper(container, instance, animDelayMs) {
-    const classes = ["homepage-block-wrapper"];
-    const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
-    if (effectiveCollapsed) classes.push("block-collapsed");
-    const wrapper = container.createDiv({
-      cls: classes.join(" "),
-      attr: { "data-block-id": instance.id }
-    });
-    applyBlockStyling(wrapper, instance.config);
-    if (animDelayMs !== void 0) {
-      wrapper.style.setProperty("--hp-card-anim-delay", `${animDelayMs}ms`);
-    }
-    const headerZone = wrapper.createDiv({
-      cls: "block-header-zone",
-      attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
-    });
-    headerZone.createSpan({
-      cls: "block-collapse-chevron" + (effectiveCollapsed ? " is-collapsed" : ""),
-      attr: { "aria-hidden": "true" }
-    });
-    if (instance.config._showDivider === true) {
-      wrapper.createDiv({ cls: "block-header-divider" });
-    }
-    wrapper.createDiv({ cls: "block-content" });
-    return wrapper;
-  }
-  /** Create a shimmer skeleton overlay inside the block wrapper for perceived loading speed. */
-  createSkeleton(wrapper) {
-    const overlay = wrapper.createDiv({ cls: "hp-skeleton-overlay" });
-    overlay.createDiv({ cls: "hp-skeleton-line" });
-    overlay.createDiv({ cls: "hp-skeleton-line" });
-    overlay.createDiv({ cls: "hp-skeleton-line" });
-    return overlay;
-  }
-  /** Fade out and remove a skeleton overlay. */
-  removeSkeleton(el) {
-    if (!el?.isConnected) return;
-    el.classList.add("hp-skeleton-overlay--out");
-    const token = `skeleton-${Math.random()}`;
-    this.scheduler.timeout(token, 200, () => el.remove());
-  }
-  /** Render a lightweight symbolic placeholder for edit mode (no real block content). */
-  renderCompactPlaceholder(headerZone, contentEl, factory, instance) {
-    const titleLabel = typeof instance.config._titleLabel === "string" && instance.config._titleLabel ? instance.config._titleLabel : factory.displayName;
-    const emoji = typeof instance.config._titleEmoji === "string" ? instance.config._titleEmoji : "";
-    const header = headerZone.createDiv({ cls: "block-header" });
-    if (emoji) header.createEl("em", { cls: "block-header-emoji", text: emoji });
-    header.createSpan({ text: titleLabel });
-    const info = contentEl.createDiv({ cls: "block-compact-info" });
-    info.createSpan({ cls: "block-compact-type", text: instance.type });
-    info.createSpan({ cls: "block-compact-size", text: `${instance.w}\xD7${instance.h}` });
-  }
-  renderEmptyState() {
-    this.gridEl.empty();
-    const empty = this.gridEl.createDiv({ cls: "homepage-empty-state" });
-    empty.createDiv({ cls: "homepage-empty-icon", text: "\u{1F3E0}" });
-    empty.createEl("p", { cls: "homepage-empty-title", text: "Your homepage is empty" });
-    empty.createEl("p", {
-      cls: "homepage-empty-desc",
-      text: this.editMode ? "Click the button below to add your first block." : "Toggle Edit mode in the toolbar to start adding blocks."
-    });
-    if (this.editMode && this.onRequestAddBlock) {
-      const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add your first block" });
-      cta.addEventListener("click", () => {
-        this.onRequestAddBlock?.();
-      });
-    }
-  }
+  // buildBlockWrapper / createSkeleton / removeSkeleton / renderCompactPlaceholder /
+  // renderEmptyState extracted to src/grid/BlockWrapper.ts (covered by render tests).
   /** Update all compact size labels to reflect current GridStack node dimensions. */
   updateCompactSizeLabels() {
     if (!this.gridStack) return;

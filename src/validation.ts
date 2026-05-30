@@ -127,8 +127,10 @@ export function migrateBlockInstance(b: Record<string, unknown>): Record<string,
   // "Only write if target unset" guard, mirroring the safer pattern used by the
   // _hideX/_showX migration below. A corrupted data.json with both `col` and
   // `x` (e.g. from a partial sync merge) would otherwise lose the valid `x`.
-  if (typeof m.col === 'number' && typeof m.x !== 'number') { m.x = m.col - 1; }
-  if (typeof m.row === 'number' && typeof m.y !== 'number') { m.y = m.row - 1; }
+  // Clamp to >= 0: a legacy col/row of 0 would map to -1 and then fail
+  // isValidBlockInstance (x/y >= 0), silently dropping the block.
+  if (typeof m.col === 'number' && typeof m.x !== 'number') { m.x = Math.max(0, m.col - 1); }
+  if (typeof m.row === 'number' && typeof m.y !== 'number') { m.y = Math.max(0, m.row - 1); }
   if (typeof m.colSpan === 'number' && typeof m.w !== 'number') { m.w = m.colSpan; }
   if (typeof m.rowSpan === 'number' && typeof m.h !== 'number') { m.h = m.rowSpan; }
   delete m.col;

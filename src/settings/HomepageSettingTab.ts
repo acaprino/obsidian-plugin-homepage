@@ -346,7 +346,15 @@ export class HomepageSettingTab extends PluginSettingTab {
           try {
             const text = await navigator.clipboard.readText();
             const parsed = JSON.parse(text) as unknown;
-            const validated = validateLayout(parsed);
+            // Well-formed JSON that isn't a layout object (a bare string, array
+            // or number) would otherwise validate to full defaults and silently
+            // overwrite the user's layout on confirm. Abort instead.
+            let corrupt = false;
+            const validated = validateLayout(parsed, () => { corrupt = true; });
+            if (corrupt) {
+              this.flashButton(btn, 'Not a layout', 'Import from clipboard');
+              return;
+            }
             // Scrub apiKey + unknown config fields from the imported layout.
             // Imported layouts must never carry credentials, and a hand-crafted
             // payload with extra keys would be trusted by the block-specific cast.

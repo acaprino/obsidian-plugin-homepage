@@ -7406,10 +7406,11 @@ function createSkeleton(wrapper) {
   overlay.createDiv({ cls: "hp-skeleton-line" });
   return overlay;
 }
+var skeletonSeq = 0;
 function removeSkeleton(el, scheduler) {
   if (!el?.isConnected) return;
   el.classList.add("hp-skeleton-overlay--out");
-  const token = `skeleton-${Math.random()}`;
+  const token = `skeleton-${skeletonSeq++}`;
   scheduler.timeout(token, 200, () => el.remove());
 }
 function renderCompactPlaceholder(headerZone, contentEl, factory, instance) {
@@ -8300,10 +8301,10 @@ var MAX_BLOCKS = 100;
 function migrateBlockInstance(b) {
   const m = { ...b };
   if (typeof m.col === "number" && typeof m.x !== "number") {
-    m.x = m.col - 1;
+    m.x = Math.max(0, m.col - 1);
   }
   if (typeof m.row === "number" && typeof m.y !== "number") {
-    m.y = m.row - 1;
+    m.y = Math.max(0, m.row - 1);
   }
   if (typeof m.colSpan === "number" && typeof m.w !== "number") {
     m.w = m.colSpan;
@@ -8795,7 +8796,14 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         try {
           const text = await navigator.clipboard.readText();
           const parsed = JSON.parse(text);
-          const validated = validateLayout(parsed);
+          let corrupt = false;
+          const validated = validateLayout(parsed, () => {
+            corrupt = true;
+          });
+          if (corrupt) {
+            this.flashButton(btn, "Not a layout", "Import from clipboard");
+            return;
+          }
           const { layout: safe, strippedCount } = sanitizeImportedLayout(validated);
           const blockTypes = safe.blocks.map((b) => b.type);
           const hadKey = [...this.plugin.layout.blocks, ...this.plugin.layout.mobileBlocks].some((b) => typeof b.config.apiKey === "string" && b.config.apiKey.length > 0);
@@ -9653,6 +9661,19 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
 
 // src/blocks/ButtonGridBlock.ts
 var import_obsidian14 = require("obsidian");
+
+// src/utils/urls.ts
+var DANGEROUS_SCHEMES = /* @__PURE__ */ new Set(["javascript:", "data:", "vbscript:", "file:", "blob:"]);
+function isDangerousUrl(value) {
+  if (typeof value !== "string" || !value) return false;
+  try {
+    return DANGEROUS_SCHEMES.has(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+// src/blocks/ButtonGridBlock.ts
 var ButtonGridBlock = class extends BaseBlock {
   render(el) {
     el.addClass("button-grid-block");
@@ -9677,6 +9698,10 @@ var ButtonGridBlock = class extends BaseBlock {
       btn.createSpan({ text: item.label });
       if (item.link) {
         btn.addEventListener("click", () => {
+          if (isDangerousUrl(item.link)) {
+            new import_obsidian14.Notice("Homepage blocks: blocked an unsafe link.");
+            return;
+          }
           void this.app.workspace.openLinkText(item.link, "");
         });
       } else {
@@ -9839,7 +9864,8 @@ var QuotesListBlock = class extends BaseBlock {
     const safeFontStyle = fontStyle === "serif" || fontStyle === "handwriting" ? fontStyle : "default";
     el.toggleClass("quote-font-serif", safeFontStyle === "serif");
     el.toggleClass("quote-font-handwriting", safeFontStyle === "handwriting");
-    const safeFont = typeof customFont === "string" && customFont.trim() && SAFE_FONT_RE.test(customFont.trim()) ? customFont.trim() : "";
+    const fontCandidate = typeof customFont === "string" ? customFont.trim().slice(0, 64) : "";
+    const safeFont = fontCandidate && SAFE_FONT_RE.test(fontCandidate) ? fontCandidate : "";
     if (safeFont) el.style.setProperty("--hp-quote-font", safeFont);
     else el.style.removeProperty("--hp-quote-font");
     el.toggleClass("quote-style-centered", false);
@@ -9943,7 +9969,8 @@ var QuotesListBlock = class extends BaseBlock {
         continue;
       }
       const { file, content, cache } = result.value;
-      const color = cache?.frontmatter?.color ?? "";
+      const rawColor = cache?.frontmatter?.color ?? "";
+      const color = typeof rawColor === "string" ? rawColor.slice(0, 64) : "";
       const body = this.extractBody(content, cache);
       if (!body) continue;
       const item = colsEl.createDiv({ cls: "quote-item" });
@@ -11142,6 +11169,10 @@ var BookmarkBlock = class extends BaseBlock {
           const parsed = new URL(item.url);
           if (parsed.protocol === "http:" || parsed.protocol === "https:") {
             window.open(item.url, "_blank", "noopener,noreferrer");
+            return;
+          }
+          if (isDangerousUrl(item.url)) {
+            new import_obsidian21.Notice("Homepage blocks: blocked an unsafe link.");
             return;
           }
         } catch {

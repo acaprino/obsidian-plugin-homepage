@@ -17,6 +17,22 @@ export class VaultSearchBlock extends BaseBlock {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private blurTimer: ReturnType<typeof setTimeout> | null = null;
   private results: { name: string; path: string }[] = [];
+  private repositionRaf = 0;
+  private viewportTracking = false;
+  /** rAF-throttled reposition so the fixed dropdown follows the input on scroll/resize. */
+  private readonly onViewportChange = (): void => {
+    cancelAnimationFrame(this.repositionRaf);
+    this.repositionRaf = requestAnimationFrame(() => this.positionDropdown());
+  };
+
+  /**
+   * The typed query lives only in the DOM <input> (never persisted), so a full
+   * rerender would wipe it mid-search. Opt into the rerender-suppression guard
+   * (BaseBlock contract) whenever the field has a non-empty query.
+   */
+  hasUnsavedInlineState(): boolean {
+    return !!this.inputEl && this.inputEl.value.trim().length > 0;
+  }
 
   render(el: HTMLElement): void {
     const cfg = this.instance.config as VaultSearchConfig;
@@ -46,6 +62,9 @@ export class VaultSearchBlock extends BaseBlock {
     this.dropdownEl = dropdown;
 
     this.register(() => { dropdown.remove(); });
+    // Safety net: if the block is torn down while the dropdown is open, drop the
+    // viewport listeners too.
+    this.register(() => this.stopViewportTracking());
 
     input.addEventListener('input', () => {
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
@@ -197,6 +216,7 @@ export class VaultSearchBlock extends BaseBlock {
     if (this.dropdownEl) {
       this.positionDropdown();
       this.dropdownEl.removeClass('vault-search-dropdown--hidden');
+      this.startViewportTracking();
     }
   }
 
@@ -204,8 +224,30 @@ export class VaultSearchBlock extends BaseBlock {
     if (this.dropdownEl) {
       this.dropdownEl.addClass('vault-search-dropdown--hidden');
     }
+    this.stopViewportTracking();
     this.selectedIndex = -1;
     this.results = [];
+  }
+
+  /**
+   * Track scroll/resize while the dropdown is open so the position:fixed
+   * dropdown stays glued to the input. Capture-phase scroll catches scrolling
+   * on any ancestor container, not just the window. Listeners are added only
+   * while open and removed on close (and on teardown via this.register).
+   */
+  private startViewportTracking(): void {
+    if (this.viewportTracking) return;
+    this.viewportTracking = true;
+    window.addEventListener('scroll', this.onViewportChange, true);
+    window.addEventListener('resize', this.onViewportChange);
+  }
+
+  private stopViewportTracking(): void {
+    if (!this.viewportTracking) return;
+    this.viewportTracking = false;
+    window.removeEventListener('scroll', this.onViewportChange, true);
+    window.removeEventListener('resize', this.onViewportChange);
+    cancelAnimationFrame(this.repositionRaf);
   }
 
   renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {

@@ -14,7 +14,7 @@ export class StaticTextBlock extends BaseBlock {
     el.addClass('static-text-block');
     this.renderContent(el).catch(e => {
       console.error('[Homepage Blocks] StaticTextBlock failed to render:', e);
-      el.setText('Error rendering content.');
+      this.renderErrorHint(el, 'Couldn’t render this content.');
     });
   }
 

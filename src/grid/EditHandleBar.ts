@@ -142,6 +142,9 @@ export function attachEditHandleBar(
     // two confirm modals racing the same removeWidget+compact pair.
     if (removeBtn.hasAttribute('data-remove-pending')) return;
     removeBtn.setAttribute('data-remove-pending', '1');
+    const label = (typeof instance.config._titleLabel === 'string' && instance.config._titleLabel.trim())
+      ? instance.config._titleLabel.trim()
+      : instance.type;
     const modal = new RemoveBlockConfirmModal(host.app, () => {
       removeBtn.removeAttribute('data-remove-pending');
       // Wrap the removeWidget + compact pair in batchUpdate so GridStack
@@ -190,7 +193,7 @@ export function attachEditHandleBar(
         return { ...b, ...update };
       });
       host.emitLayout(host.buildLayoutUpdate(newBlocks));
-    });
+    }, label);
     // Clear the pending flag on cancel/close as well, otherwise a user who
     // clicks X then dismisses can never click X again.
     const originalOnClose = modal.onClose.bind(modal);

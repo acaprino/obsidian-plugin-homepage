@@ -7,6 +7,30 @@
   --hp-padding: clamp(8px, 1.5cqi, 16px);
   --hp-card-padding: clamp(6px, 1.5cqi, 12px);
   --hp-content-max-width: 1400px;
+
+  /* ── Design tokens ──────────────────────────────────────
+     A single scale for spacing, motion and elevation so the UI reads as
+     authored rather than hand-tuned. Prefer these over ad-hoc literals. */
+  /* Spacing (8px rhythm) */
+  --hp-space-1: 2px;
+  --hp-space-2: 4px;
+  --hp-space-3: 8px;
+  --hp-space-4: 12px;
+  --hp-space-5: 16px;
+  --hp-space-6: 24px;
+  /* Motion */
+  --hp-dur-fast: 0.12s;
+  --hp-dur-base: 0.2s;
+  --hp-dur-slow: 0.3s;
+  --hp-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --hp-ease-out: ease-out;
+  /* Elevation — single source of truth for the .block-elevation-* presets
+     and every transient shadow (hover, drag, popovers). */
+  --hp-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --hp-elevation-2: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --hp-elevation-3: 0 10px 30px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.08);
+  --hp-elevation-drag: 0 16px 40px rgba(0, 0, 0, 0.28), 0 6px 16px rgba(0, 0, 0, 0.2);
+
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -282,6 +306,11 @@
 }
 
 .accent-preset-swatch {
+  /* Rendered as a <button> for keyboard access — reset the UA button chrome. */
+  appearance: none;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -512,6 +541,15 @@
 .block-empty-hint-text {
   font-size: var(--font-interface-size, 0.8125rem);
   line-height: 1.5;
+}
+
+/* Error variant of the empty-hint — a failed render reads as intentional. */
+.block-error-hint .block-empty-hint-icon {
+  color: var(--text-error);
+  opacity: 0.8;
+}
+.block-error-hint .block-empty-hint-text {
+  color: var(--text-muted);
 }
 
 /* ── Block Loading Placeholder ──────────────────────────── */
@@ -1124,7 +1162,9 @@
 .voice-block {
   container-type: size;
   height: 100%;
-  --voice-recording-color: hsl(0, 72%, 56%);
+  /* Use the theme's red so the recording indicator matches high-contrast /
+     colorblind themes; fall back to a fixed red only if the theme omits it. */
+  --voice-recording-color: var(--color-red, hsl(0, 72%, 56%));
 }
 .voice-body {
   display: flex;
@@ -2612,81 +2652,57 @@
   transform: scale(0.95);
 }
 
-/* GridStack drag styling */
+/* Dim the non-dragged blocks so the picked-up card stands out. */
+.homepage-grid.grid-stack:has(.ui-draggable-dragging) .grid-stack-item:not(.ui-draggable-dragging) {
+  opacity: 0.5;
+  transition: opacity var(--hp-dur-base, 0.2s) var(--hp-ease-out, ease-out);
+}
+
+/* GridStack drag styling — same elevation language as the .block-elevation-* scale */
 .grid-stack-item.ui-draggable-dragging > .grid-stack-item-content .homepage-block-wrapper {
   box-shadow:
     0 0 0 1px var(--background-modifier-border),
-    0 20px 48px rgba(0, 0, 0, 0.35),
-    0 8px 20px rgba(0, 0, 0, 0.25);
+    var(--hp-elevation-drag);
   border-color: color-mix(in srgb, var(--color-accent) 25%, transparent);
   opacity: 0.95;
 }
 
-/* ── Add Block Modal ────────────────────────────────────── */
-.add-block-modal-title {
-  margin-bottom: 16px;
-}
-
-.add-block-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.add-block-option {
+/* ── Add Block picker (command-palette-style SuggestModal) ─────────── */
+.add-block-suggestion {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m, 8px);
-  padding: 16px 12px;
-  cursor: pointer;
-  font-size: inherit;
-  color: var(--text-normal);
-  transition:
-    background 0.15s ease-out,
-    border-color 0.15s ease-out,
-    transform 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.15s ease-out;
-  text-align: center;
-  width: 100%;
-  overflow: hidden;
-  min-height: 88px;
+  gap: var(--hp-space-4, 12px);
 }
 
-.add-block-option:hover {
-  background: var(--background-modifier-hover);
-  border-color: var(--color-accent);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.add-block-option:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow: none;
-}
-
-.add-block-icon {
-  font-size: 1.5rem;
+.add-block-suggestion-icon {
+  font-size: 1.4rem;
   line-height: 1;
-  color: var(--text-normal);
+  width: 1.6rem;
+  text-align: center;
+  flex: 0 0 auto;
   font-style: normal;
 }
 
-.add-block-name {
+.add-block-suggestion-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hp-space-1, 2px);
+  min-width: 0;
+}
+
+.add-block-suggestion-name {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-normal);
   font-weight: 500;
 }
 
-.add-block-desc {
+.add-block-suggestion-desc {
   font-size: 0.6875rem;
   color: var(--text-muted);
   line-height: 1.4;
-  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Block header emoji ─────────────────────────────────── */
@@ -3179,15 +3195,15 @@
   }
 }
 
-/* ── Elevation Presets ──────────────────────────────────── */
+/* ── Elevation Presets (driven by the --hp-elevation-* tokens) ─────── */
 .block-elevation-1 {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--hp-elevation-1);
 }
 .block-elevation-2 {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--hp-elevation-2);
 }
 .block-elevation-3 {
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--hp-elevation-3);
 }
 
 /* ── Background Opacity ────────────────────────────────── */

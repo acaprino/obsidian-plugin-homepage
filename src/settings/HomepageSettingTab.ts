@@ -1,6 +1,6 @@
 import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from '../HomepageView';
-import { IHomepagePlugin } from '../types';
+import { IHomepagePlugin, LayoutConfig } from '../types';
 import { getDefaultLayout, isOpenMode, isResponsiveMode, validateLayout } from '../validation';
 import { ConfirmPresetModal } from '../modals/ConfirmPresetModal';
 import { sanitizeImportedLayout } from '../utils/importSanitizer';
@@ -194,12 +194,22 @@ export class HomepageSettingTab extends PluginSettingTab {
         btn.setButtonText('Copy to mobile').onClick(() => void (async () => {
           const desktopBlocks = structuredClone(this.plugin.layout.blocks);
           const mobileCols = this.plugin.layout.mobileColumns;
-          const clamped = desktopBlocks.map(b => ({
-            ...b,
-            id: newId(),
-            w: Math.min(b.w, mobileCols),
-            x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols))),
-          }));
+          const clamped = desktopBlocks.map(b => {
+            // Drop any apiKey: the desktop device-key ciphertext can't be
+            // decrypted on another device anyway, and carrying the in-memory
+            // plaintext here would leak it into the synced mobile layout (and,
+            // under a transient WebCrypto failure, persist it as plaintext at
+            // rest). The user re-enters the key on mobile.
+            const config = { ...b.config };
+            if ('apiKey' in config) config.apiKey = '';
+            return {
+              ...b,
+              id: newId(),
+              w: Math.min(b.w, mobileCols),
+              x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols))),
+              config,
+            };
+          });
           await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: clamped });
           await this.reloadOpenHomepages();
           this.flashButton(btn, 'Copied!', 'Copy to mobile');
@@ -260,19 +270,33 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Restore all blocks to the default layout. This can’t be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
-          // Preserve the inactive-platform's blocks. Previously the reset
-          // wiped both desktop and mobile layouts, so a desktop-side reset
-          // silently emptied the user's mobile layout under
-          // responsiveMode === 'separate'.
+          // Reset ONLY the active platform's slice, preserving the inactive
+          // one. The reset must pivot on isMobileActive(), not just
+          // responsiveMode: a reset issued from a mobile device (separate mode)
+          // would otherwise replace the desktop `blocks` with template defaults
+          // and silently wipe the user's synced desktop layout.
           const fresh = getDefaultLayout();
-          const next = this.plugin.layout.responsiveMode === 'separate'
-            ? {
-                ...fresh,
-                mobileBlocks: this.plugin.layout.mobileBlocks,
-                mobileColumns: this.plugin.layout.mobileColumns,
-                mobileLayoutPriority: this.plugin.layout.mobileLayoutPriority,
-              }
-            : fresh;
+          const layout = this.plugin.layout;
+          let next: LayoutConfig;
+          if (layout.responsiveMode !== 'separate') {
+            next = fresh;
+          } else if (this.plugin.isMobileActive()) {
+            // Mobile-issued reset: reset the mobile slice, keep desktop intact.
+            next = {
+              ...layout,
+              mobileBlocks: fresh.mobileBlocks,
+              mobileColumns: fresh.mobileColumns,
+              mobileLayoutPriority: fresh.mobileLayoutPriority,
+            };
+          } else {
+            // Desktop-issued reset: reset desktop, keep the mobile layout.
+            next = {
+              ...fresh,
+              mobileBlocks: layout.mobileBlocks,
+              mobileColumns: layout.mobileColumns,
+              mobileLayoutPriority: layout.mobileLayoutPriority,
+            };
+          }
           await this.plugin.saveLayout(next);
           await this.reloadOpenHomepages();
         })()),
@@ -328,8 +352,14 @@ export class HomepageSettingTab extends PluginSettingTab {
             // payload with extra keys would be trusted by the block-specific cast.
             const { layout: safe, strippedCount } = sanitizeImportedLayout(validated);
             const blockTypes = safe.blocks.map(b => b.type);
+            // Import replaces the whole layout, including any block that holds a
+            // saved (encrypted) API key. Warn so the user isn't surprised that
+            // importing silently drops a stored credential.
+            const hadKey = [...this.plugin.layout.blocks, ...this.plugin.layout.mobileBlocks]
+              .some(b => typeof b.config.apiKey === 'string' && b.config.apiKey.length > 0);
             const summary = `${safe.blocks.length} block(s): ${[...new Set(blockTypes)].join(', ')}`
-              + (strippedCount > 0 ? ` · stripped ${strippedCount} unsafe / unknown field(s)` : '');
+              + (strippedCount > 0 ? ` · stripped ${strippedCount} unsafe / unknown field(s)` : '')
+              + (hadKey ? ' · your saved API key will be removed' : '');
             new ConfirmPresetModal(this.app, `Import (${summary})`, async () => {
               await this.plugin.saveLayout(safe);
               await this.reloadOpenHomepages();

@@ -20,7 +20,7 @@ const BLOCK_SETTINGS_TABS: { id: BlockSettingsTab; label: string }[] = [
   { id: 'content', label: 'Content' },
 ];
 
-export const ACCENT_PRESETS = [
+const ACCENT_PRESETS = [
   '#c0392b', '#e67e22', '#f1c40f', '#ffef3a', '#27ae60', '#16a085',
   '#2980b9', '#8e44ad', '#e84393', '#6c5ce7', '#636e72',
 ];
@@ -312,9 +312,14 @@ export class BlockSettingsModal extends Modal {
 
     const swatchRow = body.createDiv({ cls: 'accent-preset-row' });
     for (const hex of ACCENT_PRESETS) {
-      const swatch = swatchRow.createDiv({ cls: 'accent-preset-swatch' });
+      // <button> (not <div>) so the presets are natively keyboard-focusable
+      // and respond to Enter/Space + the focus-visible ring, like every other
+      // control in the plugin.
+      const swatch = swatchRow.createEl('button', {
+        cls: 'accent-preset-swatch',
+        attr: { type: 'button', 'aria-label': `Accent ${hex}` },
+      });
       swatch.style.setProperty('--hp-swatch-bg', hex);
-      swatch.setAttribute('aria-label', hex);
       swatch.addEventListener('click', () => {
         this.draft._accentColor = hex;
         this.accentDirty = true;

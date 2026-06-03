@@ -5678,117 +5678,6 @@ var BlockRegistryClass = class {
 };
 var BlockRegistry = new BlockRegistryClass();
 
-// src/utils/blockStyling.ts
-var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-function hexChannelToLinear(c) {
-  const s = c / 255;
-  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-function getRelativeLuminance(hex) {
-  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
-  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
-  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-var VALID_BORDER_STYLES = ["solid", "dashed", "dotted"];
-var HP_BTN_KEY_RE = /^--hp-btn-[a-z0-9-]+$/;
-var UNSAFE_VALUE_RE = /\b(?:url|image|image-set|cross-fade|element|paint)\s*\(/i;
-function parseAllowlistedCustomCss(input) {
-  const out = [];
-  const stripped = input.replace(/\/\*[\s\S]*?\*\//g, "");
-  for (const raw of stripped.split(";")) {
-    const idx = raw.indexOf(":");
-    if (idx < 0) continue;
-    const key = raw.slice(0, idx).trim();
-    const value = raw.slice(idx + 1).trim();
-    if (!key || !value) continue;
-    if (!HP_BTN_KEY_RE.test(key)) continue;
-    if (UNSAFE_VALUE_RE.test(value)) continue;
-    if (/\p{Cc}/u.test(value)) continue;
-    out.push([key, value]);
-  }
-  return out;
-}
-function applyBlockStyling(el, config) {
-  const prevKeys = el.getAttribute("data-hp-custom-css-keys");
-  if (prevKeys) {
-    for (const k of prevKeys.split(",")) {
-      if (k) el.style.removeProperty(k);
-    }
-  }
-  const rawCustomCss = typeof config.customCss === "string" ? config.customCss : "";
-  const safeDecls = parseAllowlistedCustomCss(rawCustomCss);
-  for (const [k, v] of safeDecls) el.style.setProperty(k, v);
-  if (safeDecls.length > 0) {
-    el.setAttribute("data-hp-custom-css-keys", safeDecls.map(([k]) => k).join(","));
-  } else {
-    el.removeAttribute("data-hp-custom-css-keys");
-  }
-  const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
-  el.toggleClass("block-accented", !!accentColor);
-  el.toggleClass("block-no-header-accent", config._showHeaderAccent === false);
-  if (accentColor) {
-    el.style.setProperty("--block-accent", accentColor);
-    const intensity = typeof config._accentIntensity === "number" ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
-    if (intensity && intensity !== 15) {
-      el.style.setProperty("--block-accent-pct", `${intensity}%`);
-    } else {
-      el.style.removeProperty("--block-accent-pct");
-    }
-    const DARK_BASE_LUM = 0.05;
-    const BRIGHT_ACCENT_THRESHOLD = 0.18;
-    const effectiveIntensity = intensity || 15;
-    const ratio = effectiveIntensity / 100;
-    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
-    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
-    el.toggleClass("block-bright-accent", needsDarkText);
-  } else {
-    el.style.removeProperty("--block-accent");
-    el.style.removeProperty("--block-accent-pct");
-    el.toggleClass("block-bright-accent", false);
-  }
-  el.toggleClass("block-no-border", config._showBorder === false);
-  el.toggleClass("block-no-background", config._showBackground === false);
-  const pad = typeof config._cardPadding === "number" ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
-  if (pad) el.style.setProperty("--hp-card-padding", `${pad}px`);
-  else el.style.removeProperty("--hp-card-padding");
-  const gap = typeof config._titleGap === "number" ? Math.max(0, Math.min(48, config._titleGap)) : 0;
-  if (gap) el.style.setProperty("--hp-title-gap", `${gap}px`);
-  else el.style.removeProperty("--hp-title-gap");
-  for (let i = 1; i <= 3; i++) el.removeClass(`block-elevation-${i}`);
-  const elevation = typeof config._elevation === "number" ? Math.max(0, Math.min(3, config._elevation)) : 0;
-  if (elevation) el.addClass(`block-elevation-${elevation}`);
-  const borderRadius = typeof config._borderRadius === "number" ? Math.max(0, Math.min(24, config._borderRadius)) : 0;
-  if (borderRadius) el.style.setProperty("--hp-border-radius", `${borderRadius}px`);
-  else el.style.removeProperty("--hp-border-radius");
-  const bgOpacity = typeof config._bgOpacity === "number" ? Math.max(0, Math.min(100, config._bgOpacity)) : 100;
-  el.toggleClass("block-custom-opacity", bgOpacity < 100);
-  if (bgOpacity < 100) el.style.setProperty("--hp-bg-opacity", `${bgOpacity}%`);
-  else el.style.removeProperty("--hp-bg-opacity");
-  const backdropBlur = typeof config._backdropBlur === "number" ? Math.max(0, Math.min(20, config._backdropBlur)) : 0;
-  if (backdropBlur > 0 && bgOpacity < 100) {
-    el.style.setProperty("--hp-backdrop-blur", `blur(${backdropBlur}px)`);
-  } else {
-    el.style.removeProperty("--hp-backdrop-blur");
-  }
-  const gradStart = typeof config._gradientStart === "string" && HEX_COLOR_RE.test(config._gradientStart) ? config._gradientStart : "";
-  const gradEnd = typeof config._gradientEnd === "string" && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : "";
-  const gradAngle = typeof config._gradientAngle === "number" ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
-  if (gradStart && gradEnd && config._showBackground !== false) {
-    el.style.setProperty("--hp-bg-gradient", `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
-    el.toggleClass("block-has-gradient", true);
-  } else {
-    el.style.removeProperty("--hp-bg-gradient");
-    el.toggleClass("block-has-gradient", false);
-  }
-  const borderWidth = typeof config._borderWidth === "number" ? Math.max(0, Math.min(4, config._borderWidth)) : 0;
-  if (borderWidth) el.style.setProperty("--hp-border-width", `${borderWidth}px`);
-  else el.style.removeProperty("--hp-border-width");
-  const borderStyle = typeof config._borderStyle === "string" && VALID_BORDER_STYLES.includes(config._borderStyle) ? config._borderStyle : "";
-  if (borderStyle) el.style.setProperty("--hp-border-style", borderStyle);
-  else el.style.removeProperty("--hp-border-style");
-}
-
 // src/utils/Scheduler.ts
 var Scheduler = class {
   timers = /* @__PURE__ */ new Map();
@@ -6109,7 +5998,7 @@ var LayoutPersister = class {
    * by auto-height shrinks. Called from AutoHeightManager.runBatch after any
    * measurement changes a row count.
    */
-  repackGridNodes(packRows) {
+  repackGridNodes(packRows2) {
     const { gridStack, plugin, effectiveColumns } = this.host;
     if (!gridStack) return;
     const nodeItems = [];
@@ -6118,7 +6007,7 @@ var LayoutPersister = class {
       if (!node) continue;
       nodeItems.push({ el: gsEl, x: node.x ?? 0, y: node.y ?? 0, w: node.w ?? 1, h: node.h ?? 1 });
     }
-    packRows(nodeItems, effectiveColumns, plugin.activeLayoutPriority());
+    packRows2(nodeItems, effectiveColumns, plugin.activeLayoutPriority());
     gridStack.batchUpdate();
     for (const item of nodeItems) {
       gridStack.update(item.el, { y: item.y });
@@ -6231,6 +6120,18 @@ var BaseBlock = class extends import_obsidian.Component {
     }
     header.createSpan({ text: label });
   }
+  /**
+   * Render a polished error state (same visual language as the empty-hint)
+   * instead of bare error text, so a failed render reads as intentional rather
+   * than broken. Clears `el` first; the header lives in a separate zone and is
+   * unaffected.
+   */
+  renderErrorHint(el, message) {
+    el.empty();
+    const hint = el.createDiv({ cls: "block-empty-hint block-error-hint" });
+    hint.createDiv({ cls: "block-empty-hint-icon", text: "\u26A0" });
+    hint.createDiv({ cls: "block-empty-hint-text", text: message });
+  }
   // ── Shared debounced re-render infrastructure ──────────────────────────────
   /**
    * Schedule a debounced re-render. Guards against detached DOM nodes
@@ -6299,6 +6200,117 @@ var BaseBlock = class extends import_obsidian.Component {
     }
   }
 };
+
+// src/utils/blockStyling.ts
+var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+function hexChannelToLinear(c) {
+  const s = c / 255;
+  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+}
+function getRelativeLuminance(hex) {
+  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
+  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
+  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+var VALID_BORDER_STYLES = ["solid", "dashed", "dotted"];
+var HP_BTN_KEY_RE = /^--hp-btn-[a-z0-9-]+$/;
+var UNSAFE_VALUE_RE = /\b(?:url|image|image-set|cross-fade|element|paint)\s*\(/i;
+function parseAllowlistedCustomCss(input) {
+  const out = [];
+  const stripped = input.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const raw of stripped.split(";")) {
+    const idx = raw.indexOf(":");
+    if (idx < 0) continue;
+    const key = raw.slice(0, idx).trim();
+    const value = raw.slice(idx + 1).trim();
+    if (!key || !value) continue;
+    if (!HP_BTN_KEY_RE.test(key)) continue;
+    if (UNSAFE_VALUE_RE.test(value)) continue;
+    if (/\p{Cc}/u.test(value)) continue;
+    out.push([key, value]);
+  }
+  return out;
+}
+function applyBlockStyling(el, config) {
+  const prevKeys = el.getAttribute("data-hp-custom-css-keys");
+  if (prevKeys) {
+    for (const k of prevKeys.split(",")) {
+      if (k) el.style.removeProperty(k);
+    }
+  }
+  const rawCustomCss = typeof config.customCss === "string" ? config.customCss : "";
+  const safeDecls = parseAllowlistedCustomCss(rawCustomCss);
+  for (const [k, v] of safeDecls) el.style.setProperty(k, v);
+  if (safeDecls.length > 0) {
+    el.setAttribute("data-hp-custom-css-keys", safeDecls.map(([k]) => k).join(","));
+  } else {
+    el.removeAttribute("data-hp-custom-css-keys");
+  }
+  const accentColor = typeof config._accentColor === "string" && HEX_COLOR_RE.test(config._accentColor) ? config._accentColor : "";
+  el.toggleClass("block-accented", !!accentColor);
+  el.toggleClass("block-no-header-accent", config._showHeaderAccent === false);
+  if (accentColor) {
+    el.style.setProperty("--block-accent", accentColor);
+    const intensity = typeof config._accentIntensity === "number" ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
+    if (intensity && intensity !== 15) {
+      el.style.setProperty("--block-accent-pct", `${intensity}%`);
+    } else {
+      el.style.removeProperty("--block-accent-pct");
+    }
+    const DARK_BASE_LUM = 0.05;
+    const BRIGHT_ACCENT_THRESHOLD = 0.18;
+    const effectiveIntensity = intensity || 15;
+    const ratio = effectiveIntensity / 100;
+    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
+    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
+    el.toggleClass("block-bright-accent", needsDarkText);
+  } else {
+    el.style.removeProperty("--block-accent");
+    el.style.removeProperty("--block-accent-pct");
+    el.toggleClass("block-bright-accent", false);
+  }
+  el.toggleClass("block-no-border", config._showBorder === false);
+  el.toggleClass("block-no-background", config._showBackground === false);
+  const pad = typeof config._cardPadding === "number" ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
+  if (pad) el.style.setProperty("--hp-card-padding", `${pad}px`);
+  else el.style.removeProperty("--hp-card-padding");
+  const gap = typeof config._titleGap === "number" ? Math.max(0, Math.min(48, config._titleGap)) : 0;
+  if (gap) el.style.setProperty("--hp-title-gap", `${gap}px`);
+  else el.style.removeProperty("--hp-title-gap");
+  for (let i = 1; i <= 3; i++) el.removeClass(`block-elevation-${i}`);
+  const elevation = typeof config._elevation === "number" ? Math.max(0, Math.min(3, config._elevation)) : 0;
+  if (elevation) el.addClass(`block-elevation-${elevation}`);
+  const borderRadius = typeof config._borderRadius === "number" ? Math.max(0, Math.min(24, config._borderRadius)) : 0;
+  if (borderRadius) el.style.setProperty("--hp-border-radius", `${borderRadius}px`);
+  else el.style.removeProperty("--hp-border-radius");
+  const bgOpacity = typeof config._bgOpacity === "number" ? Math.max(0, Math.min(100, config._bgOpacity)) : 100;
+  el.toggleClass("block-custom-opacity", bgOpacity < 100);
+  if (bgOpacity < 100) el.style.setProperty("--hp-bg-opacity", `${bgOpacity}%`);
+  else el.style.removeProperty("--hp-bg-opacity");
+  const backdropBlur = typeof config._backdropBlur === "number" ? Math.max(0, Math.min(20, config._backdropBlur)) : 0;
+  if (backdropBlur > 0 && bgOpacity < 100) {
+    el.style.setProperty("--hp-backdrop-blur", `blur(${backdropBlur}px)`);
+  } else {
+    el.style.removeProperty("--hp-backdrop-blur");
+  }
+  const gradStart = typeof config._gradientStart === "string" && HEX_COLOR_RE.test(config._gradientStart) ? config._gradientStart : "";
+  const gradEnd = typeof config._gradientEnd === "string" && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : "";
+  const gradAngle = typeof config._gradientAngle === "number" ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
+  if (gradStart && gradEnd && config._showBackground !== false) {
+    el.style.setProperty("--hp-bg-gradient", `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
+    el.toggleClass("block-has-gradient", true);
+  } else {
+    el.style.removeProperty("--hp-bg-gradient");
+    el.toggleClass("block-has-gradient", false);
+  }
+  const borderWidth = typeof config._borderWidth === "number" ? Math.max(0, Math.min(4, config._borderWidth)) : 0;
+  if (borderWidth) el.style.setProperty("--hp-border-width", `${borderWidth}px`);
+  else el.style.removeProperty("--hp-border-width");
+  const borderStyle = typeof config._borderStyle === "string" && VALID_BORDER_STYLES.includes(config._borderStyle) ? config._borderStyle : "";
+  if (borderStyle) el.style.setProperty("--hp-border-style", borderStyle);
+  else el.style.removeProperty("--hp-border-style");
+}
 
 // src/utils/emojis.ts
 var EMOJI_PICKER_SET = [
@@ -7015,9 +7027,11 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     );
     const swatchRow = body.createDiv({ cls: "accent-preset-row" });
     for (const hex of ACCENT_PRESETS) {
-      const swatch = swatchRow.createDiv({ cls: "accent-preset-swatch" });
+      const swatch = swatchRow.createEl("button", {
+        cls: "accent-preset-swatch",
+        attr: { type: "button", "aria-label": `Accent ${hex}` }
+      });
       swatch.style.setProperty("--hp-swatch-bg", hex);
-      swatch.setAttribute("aria-label", hex);
       swatch.addEventListener("click", () => {
         this.draft._accentColor = hex;
         this.accentDirty = true;
@@ -7094,22 +7108,25 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
 // src/modals/RemoveBlockConfirmModal.ts
 var import_obsidian3 = require("obsidian");
 var RemoveBlockConfirmModal = class extends import_obsidian3.Modal {
-  constructor(app, onConfirm) {
+  constructor(app, onConfirm, blockLabel) {
     super(app);
     this.onConfirm = onConfirm;
+    this.blockLabel = blockLabel;
   }
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
     new import_obsidian3.Setting(contentEl).setName("Remove block?").setHeading();
-    contentEl.createEl("p", { text: "This will remove the block from your homepage." });
-    new import_obsidian3.Setting(contentEl).addButton(
+    const what = this.blockLabel ? `the \u201C${this.blockLabel}\u201D block` : "this block";
+    contentEl.createEl("p", { text: `This will remove ${what} from your homepage.` });
+    new import_obsidian3.Setting(contentEl).addButton((btn) => {
+      btn.setButtonText("Cancel").setCta().onClick(() => this.close());
+      window.setTimeout(() => btn.buttonEl.focus(), 0);
+    }).addButton(
       (btn) => btn.setButtonText("Remove").setWarning().onClick(() => {
         this.onConfirm();
         this.close();
       })
-    ).addButton(
-      (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
     );
   }
   onClose() {
@@ -7201,6 +7218,7 @@ function attachEditHandleBar(host, wrapper, instance) {
     e.stopPropagation();
     if (removeBtn.hasAttribute("data-remove-pending")) return;
     removeBtn.setAttribute("data-remove-pending", "1");
+    const label = typeof instance.config._titleLabel === "string" && instance.config._titleLabel.trim() ? instance.config._titleLabel.trim() : instance.type;
     const modal = new RemoveBlockConfirmModal(host.app, () => {
       removeBtn.removeAttribute("data-remove-pending");
       const gsItem = host.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
@@ -7244,7 +7262,7 @@ function attachEditHandleBar(host, wrapper, instance) {
         return { ...b, ...update };
       });
       host.emitLayout(host.buildLayoutUpdate(newBlocks));
-    });
+    }, label);
     const originalOnClose = modal.onClose.bind(modal);
     modal.onClose = () => {
       removeBtn.removeAttribute("data-remove-pending");
@@ -7279,9 +7297,152 @@ function swapWithNeighbor(host, instance, direction) {
   host.triggerRerender();
 }
 
+// src/grid/packing.ts
+function packRows(items, columns, _priority = "row", reflow = false) {
+  const safeCols = Math.max(1, columns);
+  const colHeights = new Array(safeCols).fill(0);
+  if (reflow) {
+    items.sort(
+      (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0)
+    );
+    for (const item of items) {
+      const w = Math.min(item.w ?? 1, safeCols);
+      let x = 0;
+      let bestY = Infinity;
+      for (let cx = 0; cx <= safeCols - w; cx++) {
+        let maxH = 0;
+        for (let c = cx; c < cx + w; c++) {
+          maxH = Math.max(maxH, colHeights[c] ?? 0);
+        }
+        if (maxH < bestY) {
+          bestY = maxH;
+          x = cx;
+        }
+      }
+      item.x = x;
+      item.w = w;
+      item.y = bestY;
+      for (let c = x; c < x + w; c++) {
+        colHeights[c] = bestY + (item.h ?? 1);
+      }
+    }
+    return;
+  }
+  const groupMap = /* @__PURE__ */ new Map();
+  for (const item of items) {
+    const y = item.y ?? 0;
+    let g = groupMap.get(y);
+    if (!g) {
+      g = [];
+      groupMap.set(y, g);
+    }
+    g.push(item);
+  }
+  const groups = [...groupMap.values()];
+  groups.sort((a, b) => (a[0].y ?? 0) - (b[0].y ?? 0));
+  for (const g of groups) g.sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+  for (const group of groups) {
+    let rowY = 0;
+    for (const item of group) {
+      const w = Math.min(item.w ?? 1, safeCols);
+      const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      for (let c = x; c < x + w; c++) {
+        rowY = Math.max(rowY, colHeights[c] ?? 0);
+      }
+    }
+    for (const item of group) {
+      const w = Math.min(item.w ?? 1, safeCols);
+      item.w = w;
+      item.x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
+      item.y = rowY;
+    }
+    for (const item of group) {
+      const x = item.x ?? 0;
+      const w = item.w ?? 1;
+      const h = item.h ?? 1;
+      for (let c = x; c < x + w; c++) {
+        colHeights[c] = Math.max(colHeights[c] ?? 0, rowY + h);
+      }
+    }
+  }
+}
+function repackEditLayout(blocks, columns, priority = "row") {
+  const packed = blocks.map((b) => ({ ...b }));
+  packRows(packed, columns, priority);
+  return packed;
+}
+
+// src/grid/BlockWrapper.ts
+function buildBlockWrapper(container, instance, animDelayMs) {
+  const classes = ["homepage-block-wrapper"];
+  const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
+  if (effectiveCollapsed) classes.push("block-collapsed");
+  const wrapper = container.createDiv({
+    cls: classes.join(" "),
+    attr: { "data-block-id": instance.id }
+  });
+  applyBlockStyling(wrapper, instance.config);
+  if (animDelayMs !== void 0) {
+    wrapper.style.setProperty("--hp-card-anim-delay", `${animDelayMs}ms`);
+  }
+  const headerZone = wrapper.createDiv({
+    cls: "block-header-zone",
+    attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
+  });
+  headerZone.createSpan({
+    cls: "block-collapse-chevron" + (effectiveCollapsed ? " is-collapsed" : ""),
+    attr: { "aria-hidden": "true" }
+  });
+  if (instance.config._showDivider === true) {
+    wrapper.createDiv({ cls: "block-header-divider" });
+  }
+  wrapper.createDiv({ cls: "block-content" });
+  return wrapper;
+}
+function createSkeleton(wrapper) {
+  const overlay = wrapper.createDiv({ cls: "hp-skeleton-overlay" });
+  overlay.createDiv({ cls: "hp-skeleton-line" });
+  overlay.createDiv({ cls: "hp-skeleton-line" });
+  overlay.createDiv({ cls: "hp-skeleton-line" });
+  return overlay;
+}
+var skeletonSeq = 0;
+function removeSkeleton(el, scheduler) {
+  if (!el?.isConnected) return;
+  el.classList.add("hp-skeleton-overlay--out");
+  const token = `skeleton-${skeletonSeq++}`;
+  scheduler.timeout(token, 200, () => el.remove());
+}
+function renderCompactPlaceholder(headerZone, contentEl, factory, instance) {
+  const titleLabel = typeof instance.config._titleLabel === "string" && instance.config._titleLabel ? instance.config._titleLabel : factory.displayName;
+  const emoji = typeof instance.config._titleEmoji === "string" ? instance.config._titleEmoji : "";
+  const header = headerZone.createDiv({ cls: "block-header" });
+  if (emoji) header.createEl("em", { cls: "block-header-emoji", text: emoji });
+  header.createSpan({ text: titleLabel });
+  const info = contentEl.createDiv({ cls: "block-compact-info" });
+  info.createSpan({ cls: "block-compact-type", text: instance.type });
+  info.createSpan({ cls: "block-compact-size", text: `${instance.w}\xD7${instance.h}` });
+}
+function renderEmptyState(gridEl, opts) {
+  gridEl.empty();
+  const empty = gridEl.createDiv({ cls: "homepage-empty-state" });
+  empty.createDiv({ cls: "homepage-empty-icon", text: "\u{1F3E0}" });
+  empty.createEl("p", { cls: "homepage-empty-title", text: "Your homepage is empty" });
+  empty.createEl("p", {
+    cls: "homepage-empty-desc",
+    text: opts.editMode ? "Click the button below to add your first block." : "Toggle Edit mode in the toolbar to start adding blocks."
+  });
+  if (opts.editMode && opts.onRequestAddBlock) {
+    const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add your first block" });
+    cta.addEventListener("click", () => {
+      opts.onRequestAddBlock?.();
+    });
+  }
+}
+
 // src/GridLayout.ts
 var COMPACT_EDIT_H = 2;
-var GridLayout = class _GridLayout {
+var GridLayout = class {
   // ── Public API ─────────────────────────────────────────────────────────
   constructor(containerEl, app, plugin, onLayoutChange) {
     this.app = app;
@@ -7349,7 +7510,7 @@ var GridLayout = class _GridLayout {
   }
   /** Expose packRows as an instance method so ResponsiveColumnsManager can call it. */
   packRows(items, columns, priority, reflow) {
-    _GridLayout.packRows(items, columns, priority, reflow);
+    packRows(items, columns, priority, reflow);
   }
   /** Determine if a block should auto-expand beyond its grid cell height. */
   shouldAutoHeight(instance) {
@@ -7384,7 +7545,7 @@ var GridLayout = class _GridLayout {
       this.gridEl.removeClass("edit-mode");
     }
     if (blocks.length === 0) {
-      this.renderEmptyState();
+      renderEmptyState(this.gridEl, { editMode: this.editMode, onRequestAddBlock: this.onRequestAddBlock });
       return;
     }
     this.initGridStack(blocks, columns, isInitial);
@@ -7395,16 +7556,16 @@ var GridLayout = class _GridLayout {
     this.teardown();
     this.gridEl.remove();
   }
-  setEditMode(enabled, skipRepack = false) {
+  setEditMode(enabled, skipRepack = false, flushInFlight = true) {
     if (this.phase === Phase.Destroyed) return;
-    if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
+    if (flushInFlight && this.editMode && this.gridStack && this.phase === Phase.Ready) {
       try {
         this.persistLayout();
       } catch {
       }
     }
     if (!enabled && this.editMode && !skipRepack) {
-      const repacked = _GridLayout.repackEditLayout(
+      const repacked = repackEditLayout(
         this.plugin.activeBlocks(),
         this.canonicalColumns,
         this.plugin.activeLayoutPriority()
@@ -7418,10 +7579,20 @@ var GridLayout = class _GridLayout {
     if (this.gridStack) {
       this.gridStack.setStatic(!enabled);
     }
-    this.rerender();
+    this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
     if (!enabled) {
       this.setZoom(1);
     }
+  }
+  /**
+   * Cancel any queued debounced layout persist + auto-height measurement.
+   * Called by Discard so a late write (a 50ms `sync` debounce or a queued
+   * auto-height rAF) can't resurrect the discarded positions after the
+   * pre-edit snapshot has been restored.
+   */
+  cancelPendingPersist() {
+    this.scheduler.cancelTimeout("sync");
+    this.clearPendingResizes();
   }
   /** Update column count, clamping each block's w to fit. */
   setColumns(n) {
@@ -7526,7 +7697,7 @@ var GridLayout = class _GridLayout {
       };
     });
     if (this.editMode || this.plugin.layout.compactLayout) {
-      _GridLayout.packRows(items, columns, this.plugin.activeLayoutPriority());
+      packRows(items, columns, this.plugin.activeLayoutPriority());
     }
     this.effectiveColumns = columns;
     this.gridEl.classList.toggle("hp-single-column", columns === 1);
@@ -7556,14 +7727,14 @@ var GridLayout = class _GridLayout {
       const gsContent = gsEl.querySelector(".grid-stack-item-content");
       if (!(gsContent instanceof HTMLElement)) continue;
       const animDelayMs = isInitial ? [0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240 : void 0;
-      const wrapper = this.buildBlockWrapper(gsContent, instance, animDelayMs);
+      const wrapper = buildBlockWrapper(gsContent, instance, animDelayMs);
       const headerZone = wrapper.querySelector(".block-header-zone");
       const contentEl = wrapper.querySelector(".block-content");
       if (!(contentEl instanceof HTMLElement) || !(headerZone instanceof HTMLElement)) continue;
       const factory = BlockRegistry.get(instance.type);
       if (!factory) continue;
       if (this.editMode) {
-        this.renderCompactPlaceholder(headerZone, contentEl, factory, instance);
+        renderCompactPlaceholder(headerZone, contentEl, factory, instance);
         this.blocks.set(instance.id, { block: null, wrapper });
       } else {
         const block = factory.create(this.app, instance, this.plugin);
@@ -7578,14 +7749,14 @@ var GridLayout = class _GridLayout {
             this.requestAutoHeight(gsEl, live);
           });
         }
-        const skeletonEl = isInitial ? this.createSkeleton(wrapper) : null;
+        const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
         const result = block.render(contentEl);
         if (result instanceof Promise) {
           result.then(() => {
-            this.removeSkeleton(skeletonEl);
+            removeSkeleton(skeletonEl, this.scheduler);
             if (needsResize) this.requestAutoHeight(gsEl, instance);
           }).catch((e) => {
-            this.removeSkeleton(skeletonEl);
+            removeSkeleton(skeletonEl, this.scheduler);
             console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
             contentEl.setText("Error rendering block. Check console for details.");
           });
@@ -7595,7 +7766,7 @@ var GridLayout = class _GridLayout {
         }
         this.blocks.set(instance.id, { block, wrapper });
       }
-      this.setupCollapseToggle(gsEl, instance, headerZone);
+      attachCollapseToggle(this, gsEl, instance, headerZone);
       if (this.editMode) {
         attachEditHandleBar(this, wrapper, instance);
       }
@@ -7636,75 +7807,8 @@ var GridLayout = class _GridLayout {
       this.phase = Phase.Ready;
     });
   }
-  /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
-  buildBlockWrapper(container, instance, animDelayMs) {
-    const classes = ["homepage-block-wrapper"];
-    const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
-    if (effectiveCollapsed) classes.push("block-collapsed");
-    const wrapper = container.createDiv({
-      cls: classes.join(" "),
-      attr: { "data-block-id": instance.id }
-    });
-    applyBlockStyling(wrapper, instance.config);
-    if (animDelayMs !== void 0) {
-      wrapper.style.setProperty("--hp-card-anim-delay", `${animDelayMs}ms`);
-    }
-    const headerZone = wrapper.createDiv({
-      cls: "block-header-zone",
-      attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
-    });
-    headerZone.createSpan({
-      cls: "block-collapse-chevron" + (effectiveCollapsed ? " is-collapsed" : ""),
-      attr: { "aria-hidden": "true" }
-    });
-    if (instance.config._showDivider === true) {
-      wrapper.createDiv({ cls: "block-header-divider" });
-    }
-    wrapper.createDiv({ cls: "block-content" });
-    return wrapper;
-  }
-  /** Create a shimmer skeleton overlay inside the block wrapper for perceived loading speed. */
-  createSkeleton(wrapper) {
-    const overlay = wrapper.createDiv({ cls: "hp-skeleton-overlay" });
-    overlay.createDiv({ cls: "hp-skeleton-line" });
-    overlay.createDiv({ cls: "hp-skeleton-line" });
-    overlay.createDiv({ cls: "hp-skeleton-line" });
-    return overlay;
-  }
-  /** Fade out and remove a skeleton overlay. */
-  removeSkeleton(el) {
-    if (!el?.isConnected) return;
-    el.classList.add("hp-skeleton-overlay--out");
-    const token = `skeleton-${Math.random()}`;
-    this.scheduler.timeout(token, 200, () => el.remove());
-  }
-  /** Render a lightweight symbolic placeholder for edit mode (no real block content). */
-  renderCompactPlaceholder(headerZone, contentEl, factory, instance) {
-    const titleLabel = typeof instance.config._titleLabel === "string" && instance.config._titleLabel ? instance.config._titleLabel : factory.displayName;
-    const emoji = typeof instance.config._titleEmoji === "string" ? instance.config._titleEmoji : "";
-    const header = headerZone.createDiv({ cls: "block-header" });
-    if (emoji) header.createEl("em", { cls: "block-header-emoji", text: emoji });
-    header.createSpan({ text: titleLabel });
-    const info = contentEl.createDiv({ cls: "block-compact-info" });
-    info.createSpan({ cls: "block-compact-type", text: instance.type });
-    info.createSpan({ cls: "block-compact-size", text: `${instance.w}\xD7${instance.h}` });
-  }
-  renderEmptyState() {
-    this.gridEl.empty();
-    const empty = this.gridEl.createDiv({ cls: "homepage-empty-state" });
-    empty.createDiv({ cls: "homepage-empty-icon", text: "\u{1F3E0}" });
-    empty.createEl("p", { cls: "homepage-empty-title", text: "Your homepage is empty" });
-    empty.createEl("p", {
-      cls: "homepage-empty-desc",
-      text: this.editMode ? "Click the button below to add your first block." : "Toggle Edit mode in the toolbar to start adding blocks."
-    });
-    if (this.editMode && this.onRequestAddBlock) {
-      const cta = empty.createEl("button", { cls: "homepage-empty-cta", text: "Add your first block" });
-      cta.addEventListener("click", () => {
-        this.onRequestAddBlock?.();
-      });
-    }
-  }
+  // buildBlockWrapper / createSkeleton / removeSkeleton / renderCompactPlaceholder /
+  // renderEmptyState extracted to src/grid/BlockWrapper.ts (covered by render tests).
   /** Update all compact size labels to reflect current GridStack node dimensions. */
   updateCompactSizeLabels() {
     if (!this.gridStack) return;
@@ -7748,112 +7852,15 @@ var GridLayout = class _GridLayout {
   persistLayoutDebounced() {
     this.persister.persistDebounced();
   }
-  /** True when the grid is showing a responsive (narrowed) layout. */
-  get isResponsive() {
-    return this.persister.isResponsive();
-  }
   // ── Layout Utilities ───────────────────────────────────────────────────
-  /**
-   * Row-group-aware packing: items sharing the same y form a "row group" and
-   * stay on the same row in the output, preserving visual row grouping.
-   * Mutates items in place.  Works on any object with { x, y, w, h }.
-   *
-   * When `reflow=true` (responsive column change), falls back to greedy
-   * column-height packing: each item is assigned the x with the lowest max
-   * height.  Row groups don't apply because old x positions are meaningless
-   * after a column count change.
-   *
-   * @param priority Reserved for future use; grouping is always by y.
-   */
-  static packRows(items, columns, _priority = "row", reflow = false) {
-    const safeCols = Math.max(1, columns);
-    const colHeights = new Array(safeCols).fill(0);
-    if (reflow) {
-      items.sort(
-        (a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0)
-      );
-      for (const item of items) {
-        const w = Math.min(item.w ?? 1, safeCols);
-        let x = 0;
-        let bestY = Infinity;
-        for (let cx = 0; cx <= safeCols - w; cx++) {
-          let maxH = 0;
-          for (let c = cx; c < cx + w; c++) {
-            maxH = Math.max(maxH, colHeights[c] ?? 0);
-          }
-          if (maxH < bestY) {
-            bestY = maxH;
-            x = cx;
-          }
-        }
-        item.x = x;
-        item.w = w;
-        item.y = bestY;
-        for (let c = x; c < x + w; c++) {
-          colHeights[c] = bestY + (item.h ?? 1);
-        }
-      }
-      return;
-    }
-    const groupMap = /* @__PURE__ */ new Map();
-    for (const item of items) {
-      const y = item.y ?? 0;
-      let g = groupMap.get(y);
-      if (!g) {
-        g = [];
-        groupMap.set(y, g);
-      }
-      g.push(item);
-    }
-    const groups = [...groupMap.values()];
-    groups.sort((a, b) => (a[0].y ?? 0) - (b[0].y ?? 0));
-    for (const g of groups) g.sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
-    for (const group of groups) {
-      let rowY = 0;
-      for (const item of group) {
-        const w = Math.min(item.w ?? 1, safeCols);
-        const x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
-        for (let c = x; c < x + w; c++) {
-          rowY = Math.max(rowY, colHeights[c] ?? 0);
-        }
-      }
-      for (const item of group) {
-        const w = Math.min(item.w ?? 1, safeCols);
-        item.w = w;
-        item.x = Math.max(0, Math.min(item.x ?? 0, safeCols - w));
-        item.y = rowY;
-      }
-      for (const item of group) {
-        const x = item.x ?? 0;
-        const w = item.w ?? 1;
-        const h = item.h ?? 1;
-        for (let c = x; c < x + w; c++) {
-          colHeights[c] = Math.max(colHeights[c] ?? 0, rowY + h);
-        }
-      }
-    }
-  }
-  /**
-   * After exiting edit mode, y-positions saved during editing reflect
-   * compact heights (COMPACT_EDIT_H) and may overlap at full view-mode
-   * heights.  Re-pack into a collision-free layout using real h values.
-   * Delegates to the row-group-aware packRows, which preserves visual
-   * row grouping from edit mode.
-   */
-  static repackEditLayout(blocks, columns, priority = "row") {
-    const packed = blocks.map((b) => ({ ...b }));
-    _GridLayout.packRows(packed, columns, priority);
-    return packed;
-  }
+  // packRows + repackEditLayout extracted to src/grid/packing.ts (pure, tested).
   /** Repack all GridStack nodes so blocks shift up to fill vertical gaps. */
   repackGridNodes() {
-    this.persister.repackGridNodes(_GridLayout.packRows);
+    this.persister.repackGridNodes(
+      (items, columns, priority) => packRows(items, columns, priority)
+    );
   }
-  // ── Block Interactions ─────────────────────────────────────────────────
-  setupCollapseToggle(gsEl, instance, headerZone) {
-    attachCollapseToggle(this, gsEl, instance, headerZone);
-  }
-  // attachEditHandleBar + swapWithNeighbor moved to src/grid/EditHandleBar.ts
+  // attachCollapseToggle + attachEditHandleBar + swapWithNeighbor live in src/grid/.
 };
 
 // src/EditToolbar.ts
@@ -7892,7 +7899,7 @@ var EditToolbar = class {
     this.fabEl.setAttribute("role", "button");
     this.fabEl.setAttribute("tabindex", "0");
     this.fabEl.setAttribute("aria-label", "Enter edit mode");
-    this.fabEl.setText("\u270F");
+    (0, import_obsidian5.setIcon)(this.fabEl, "pencil");
     this.fabEl.addEventListener("click", () => this.toggleEditMode());
     this.fabEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -7934,6 +7941,7 @@ var EditToolbar = class {
   /** Exit edit mode and revert all block changes made during this edit session. */
   discardChanges() {
     if (!this.editMode) return;
+    this.grid.cancelPendingPersist();
     if (this.blocksSnapshot) {
       const restored = this.grid.buildLayoutUpdate(this.blocksSnapshot);
       this.plugin.layout = restored;
@@ -7942,7 +7950,7 @@ var EditToolbar = class {
     }
     this.editMode = false;
     this.zoomScale = 1;
-    this.grid.setEditMode(false, true);
+    this.grid.setEditMode(false, true, false);
     this.syncVisibility();
     this.renderToolbar();
   }
@@ -8046,32 +8054,34 @@ var EditToolbar = class {
     this.toolbarEl.remove();
   }
 };
-var AddBlockModal = class extends import_obsidian5.Modal {
+var AddBlockModal = class extends import_obsidian5.SuggestModal {
   constructor(app, onSelect) {
     super(app);
     this.onSelect = onSelect;
+    this.setPlaceholder("Search blocks\u2026");
+    this.modalEl.addClass("add-block-suggest");
   }
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    new import_obsidian5.Setting(contentEl).setName("Add block").setHeading().settingEl.addClass("add-block-modal-title");
-    const grid = contentEl.createDiv({ cls: "add-block-grid" });
-    for (const factory of BlockRegistry.getAll()) {
-      const meta = BLOCK_META[factory.type];
-      const btn = grid.createEl("button", { cls: "add-block-option" });
-      btn.createSpan({ cls: "add-block-icon", text: meta?.icon ?? "\u25AA" });
-      btn.createSpan({ cls: "add-block-name", text: factory.displayName });
-      if (meta?.desc) {
-        btn.createSpan({ cls: "add-block-desc", text: meta.desc });
-      }
-      btn.addEventListener("click", () => {
-        this.onSelect(factory.type);
-        this.close();
-      });
+  getSuggestions(query) {
+    const q = query.trim().toLowerCase();
+    const all = BlockRegistry.getAll();
+    if (!q) return all;
+    return all.filter((f) => {
+      const meta = BLOCK_META[f.type];
+      return `${f.displayName} ${f.type} ${meta?.desc ?? ""}`.toLowerCase().includes(q);
+    });
+  }
+  renderSuggestion(factory, el) {
+    el.addClass("add-block-suggestion");
+    const meta = BLOCK_META[factory.type];
+    el.createSpan({ cls: "add-block-suggestion-icon", text: meta?.icon ?? "\u25AA" });
+    const text = el.createDiv({ cls: "add-block-suggestion-text" });
+    text.createDiv({ cls: "add-block-suggestion-name", text: factory.displayName });
+    if (meta?.desc) {
+      text.createDiv({ cls: "add-block-suggestion-desc", text: meta.desc });
     }
   }
-  onClose() {
-    this.contentEl.empty();
+  onChooseSuggestion(factory) {
+    this.onSelect(factory.type);
   }
 };
 
@@ -8093,11 +8103,10 @@ var HomepageView = class extends import_obsidian6.ItemView {
   getIcon() {
     return "home";
   }
-  // Async by contract: `reload()` awaits onOpen, and any future async work in
-  // this method (e.g., loading per-leaf state, awaiting an editor-ready signal)
-  // MUST be awaited inside the function body so `reload()` callers don't proceed
-  // before render is actually complete.
-  async onOpen() {
+  // Returns Promise<void> to match ItemView.onOpen and keep `reload()`'s await
+  // meaningful. If future work needs awaiting (per-leaf state, editor-ready
+  // signal), switch this back to `async` and await inside the body.
+  onOpen() {
     this.grid?.destroy();
     this.toolbar?.destroy();
     const { contentEl } = this;
@@ -8122,6 +8131,7 @@ var HomepageView = class extends import_obsidian6.ItemView {
     contentEl.insertBefore(this.toolbar.getElement(), this.grid.getElement());
     contentEl.insertBefore(this.toolbar.getFabElement(), this.toolbar.getElement());
     this.grid.render(this.plugin.activeBlocks(), this.plugin.activeColumns(), true);
+    return Promise.resolve();
   }
   onClose() {
     this.grid?.destroy();
@@ -8188,6 +8198,12 @@ var DEFAULT_LAYOUT_DATA = {
   manualOpenMode: "retain",
   openWhenEmpty: false,
   pin: false,
+  separateStartup: false,
+  mobileOpenOnStartup: false,
+  mobileOpenMode: "retain",
+  mobileManualOpenMode: "retain",
+  mobileOpenWhenEmpty: false,
+  mobilePin: false,
   showScrollbar: true,
   compactLayout: true,
   hoverHighlight: true,
@@ -8291,10 +8307,10 @@ var MAX_BLOCKS = 100;
 function migrateBlockInstance(b) {
   const m = { ...b };
   if (typeof m.col === "number" && typeof m.x !== "number") {
-    m.x = m.col - 1;
+    m.x = Math.max(0, m.col - 1);
   }
   if (typeof m.row === "number" && typeof m.y !== "number") {
-    m.y = m.row - 1;
+    m.y = Math.max(0, m.row - 1);
   }
   if (typeof m.colSpan === "number" && typeof m.w !== "number") {
     m.w = m.colSpan;
@@ -8404,6 +8420,12 @@ function validateLayout(raw, onTopLevelCorruption) {
   const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
   const openWhenEmpty = typeof r.openWhenEmpty === "boolean" ? r.openWhenEmpty : defaults.openWhenEmpty;
   const pin = typeof r.pin === "boolean" ? r.pin : defaults.pin;
+  const separateStartup = typeof r.separateStartup === "boolean" ? r.separateStartup : defaults.separateStartup;
+  const mobileOpenOnStartup = typeof r.mobileOpenOnStartup === "boolean" ? r.mobileOpenOnStartup : openOnStartup;
+  const mobileOpenMode = isOpenMode(r.mobileOpenMode) ? r.mobileOpenMode : openMode;
+  const mobileManualOpenMode = isOpenMode(r.mobileManualOpenMode) ? r.mobileManualOpenMode : manualOpenMode;
+  const mobileOpenWhenEmpty = typeof r.mobileOpenWhenEmpty === "boolean" ? r.mobileOpenWhenEmpty : openWhenEmpty;
+  const mobilePin = typeof r.mobilePin === "boolean" ? r.mobilePin : pin;
   const showScrollbar = typeof r.showScrollbar === "boolean" ? r.showScrollbar : typeof r.hideScrollbar === "boolean" ? !r.hideScrollbar : defaults.showScrollbar;
   const compactLayout = typeof r.compactLayout === "boolean" ? r.compactLayout : defaults.compactLayout;
   const hoverHighlight = typeof r.hoverHighlight === "boolean" ? r.hoverHighlight : defaults.hoverHighlight;
@@ -8421,6 +8443,12 @@ function validateLayout(raw, onTopLevelCorruption) {
     manualOpenMode,
     openWhenEmpty,
     pin,
+    separateStartup,
+    mobileOpenOnStartup,
+    mobileOpenMode,
+    mobileManualOpenMode,
+    mobileOpenWhenEmpty,
+    mobilePin,
     showScrollbar,
     compactLayout,
     hoverHighlight,
@@ -8430,6 +8458,41 @@ function validateLayout(raw, onTopLevelCorruption) {
 
 // src/settings/HomepageSettingTab.ts
 var import_obsidian8 = require("obsidian");
+
+// src/utils/layoutReset.ts
+var MOBILE_LAYOUT_FIELDS = [
+  "mobileBlocks",
+  "mobileColumns",
+  "mobileLayoutPriority"
+];
+var STARTUP_FIELDS = [
+  "openOnStartup",
+  "openMode",
+  "manualOpenMode",
+  "openWhenEmpty",
+  "pin",
+  "separateStartup",
+  "mobileOpenOnStartup",
+  "mobileOpenMode",
+  "mobileManualOpenMode",
+  "mobileOpenWhenEmpty",
+  "mobilePin"
+];
+function pickFields(src, keys) {
+  const out = {};
+  for (const k of keys) out[k] = src[k];
+  return out;
+}
+function buildResetLayout(current, fresh, isMobileActive) {
+  const keepStartup = pickFields(current, STARTUP_FIELDS);
+  if (current.responsiveMode !== "separate") {
+    return { ...fresh, ...keepStartup };
+  }
+  if (isMobileActive) {
+    return { ...current, ...pickFields(fresh, MOBILE_LAYOUT_FIELDS) };
+  }
+  return { ...fresh, ...pickFields(current, MOBILE_LAYOUT_FIELDS), ...keepStartup };
+}
 
 // src/modals/ConfirmPresetModal.ts
 var import_obsidian7 = require("obsidian");
@@ -8610,41 +8673,90 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
   }
   // ── Section renderers ──────────────────────────────────────────────────────
   renderStartupSection(root) {
-    new import_obsidian8.Setting(root).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.openOnStartup).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
+    const separate = this.plugin.layout.separateStartup;
+    new import_obsidian8.Setting(root).setName("Separate startup for mobile").setDesc("Use different startup settings on mobile devices \u2014 for example, open the homepage on startup only on desktop. Independent of the layout responsive mode below.").addToggle(
+      (toggle) => toggle.setValue(separate).onChange((value) => {
+        const base = this.plugin.layout;
+        const mobileMirrorsDesktop = base.mobileOpenOnStartup === base.openOnStartup && base.mobileOpenMode === base.openMode && base.mobileManualOpenMode === base.manualOpenMode && base.mobileOpenWhenEmpty === base.openWhenEmpty && base.mobilePin === base.pin;
+        let next;
+        if (!value) {
+          next = { ...base, separateStartup: false };
+        } else if (mobileMirrorsDesktop) {
+          next = {
+            ...base,
+            separateStartup: true,
+            mobileOpenOnStartup: base.openOnStartup,
+            mobileOpenMode: base.openMode,
+            mobileManualOpenMode: base.manualOpenMode,
+            mobileOpenWhenEmpty: base.openWhenEmpty,
+            mobilePin: base.pin
+          };
+        } else {
+          next = { ...base, separateStartup: true };
+        }
+        void this.plugin.saveLayout(next).then(() => this.display());
       })
     );
-    if (this.plugin.layout.openOnStartup) {
+    if (separate) new import_obsidian8.Setting(root).setName("Desktop startup").setHeading();
+    this.renderStartupControls(root, false);
+    if (separate) {
+      new import_obsidian8.Setting(root).setName("Mobile startup").setHeading();
+      this.renderStartupControls(root, true);
+    }
+  }
+  /**
+   * Render the five startup controls bound to either the desktop fields or the
+   * `mobile*` overrides. `mobile=false` reads/writes `openOnStartup`, `openMode`,
+   * …; `mobile=true` reads/writes `mobileOpenOnStartup`, `mobileOpenMode`, … so
+   * the same UI serves both the unified case and each half of the split.
+   */
+  renderStartupControls(root, mobile) {
+    const L = this.plugin.layout;
+    const openOnStartup = mobile ? L.mobileOpenOnStartup : L.openOnStartup;
+    const openMode = mobile ? L.mobileOpenMode : L.openMode;
+    const openWhenEmpty = mobile ? L.mobileOpenWhenEmpty : L.openWhenEmpty;
+    const manualOpenMode = mobile ? L.mobileManualOpenMode : L.manualOpenMode;
+    const pin = mobile ? L.mobilePin : L.pin;
+    new import_obsidian8.Setting(root).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
+      (toggle) => toggle.setValue(openOnStartup).onChange((value) => {
+        const patch = mobile ? { mobileOpenOnStartup: value } : { openOnStartup: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch }).then(() => this.display());
+      })
+    );
+    if (openOnStartup) {
       new import_obsidian8.Setting(root).setName("Startup open mode").setDesc("What to do with existing tabs on startup.").addDropdown((drop) => {
         for (const [value, label] of Object.entries(OPEN_MODE_LABELS)) {
           drop.addOption(value, label);
         }
-        drop.setValue(this.plugin.layout.openMode).onChange((value) => {
+        drop.setValue(openMode).onChange((value) => {
           if (!isOpenMode(value)) return;
-          void this.plugin.saveLayout({ ...this.plugin.layout, openMode: value });
+          const patch = mobile ? { mobileOpenMode: value } : { openMode: value };
+          void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
         });
       });
     }
     new import_obsidian8.Setting(root).setName("Open when empty").setDesc("Open the homepage when all tabs are closed.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.openWhenEmpty).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
+      (toggle) => toggle.setValue(openWhenEmpty).onChange((value) => {
+        const patch = mobile ? { mobileOpenWhenEmpty: value } : { openWhenEmpty: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
       })
     );
     new import_obsidian8.Setting(root).setName("Manual open mode").setDesc("What to do with existing tabs when you open the homepage manually.").addDropdown((drop) => {
       for (const [value, label] of Object.entries(OPEN_MODE_LABELS)) {
         drop.addOption(value, label);
       }
-      drop.setValue(this.plugin.layout.manualOpenMode).onChange((value) => {
+      drop.setValue(manualOpenMode).onChange((value) => {
         if (!isOpenMode(value)) return;
-        void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
+        const patch = mobile ? { mobileManualOpenMode: value } : { manualOpenMode: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
       });
     });
     new import_obsidian8.Setting(root).setName("Pin homepage tab").setDesc("Prevent the homepage tab from being closed.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.pin).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
+      (toggle) => toggle.setValue(pin).onChange((value) => {
+        const patch = mobile ? { mobilePin: value } : { pin: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-          leaf.setPinned(value);
+          leaf.setPinned(this.plugin.activePin());
         }
       })
     );
@@ -8680,12 +8792,17 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
       (btn) => btn.setButtonText("Copy to mobile").onClick(() => void (async () => {
         const desktopBlocks = structuredClone(this.plugin.layout.blocks);
         const mobileCols = this.plugin.layout.mobileColumns;
-        const clamped = desktopBlocks.map((b) => ({
-          ...b,
-          id: newId(),
-          w: Math.min(b.w, mobileCols),
-          x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols)))
-        }));
+        const clamped = desktopBlocks.map((b) => {
+          const config = { ...b.config };
+          if ("apiKey" in config) config.apiKey = "";
+          return {
+            ...b,
+            id: newId(),
+            w: Math.min(b.w, mobileCols),
+            x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols))),
+            config
+          };
+        });
         await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: clamped });
         await this.reloadOpenHomepages();
         this.flashButton(btn, "Copied!", "Copy to mobile");
@@ -8721,13 +8838,11 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     );
     new import_obsidian8.Setting(root).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
-        const fresh = getDefaultLayout();
-        const next = this.plugin.layout.responsiveMode === "separate" ? {
-          ...fresh,
-          mobileBlocks: this.plugin.layout.mobileBlocks,
-          mobileColumns: this.plugin.layout.mobileColumns,
-          mobileLayoutPriority: this.plugin.layout.mobileLayoutPriority
-        } : fresh;
+        const next = buildResetLayout(
+          this.plugin.layout,
+          getDefaultLayout(),
+          this.plugin.isMobileActive()
+        );
         await this.plugin.saveLayout(next);
         await this.reloadOpenHomepages();
       })())
@@ -8768,10 +8883,18 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         try {
           const text = await navigator.clipboard.readText();
           const parsed = JSON.parse(text);
-          const validated = validateLayout(parsed);
+          let corrupt = false;
+          const validated = validateLayout(parsed, () => {
+            corrupt = true;
+          });
+          if (corrupt) {
+            this.flashButton(btn, "Not a layout", "Import from clipboard");
+            return;
+          }
           const { layout: safe, strippedCount } = sanitizeImportedLayout(validated);
           const blockTypes = safe.blocks.map((b) => b.type);
-          const summary = `${safe.blocks.length} block(s): ${[...new Set(blockTypes)].join(", ")}` + (strippedCount > 0 ? ` \xB7 stripped ${strippedCount} unsafe / unknown field(s)` : "");
+          const hadKey = [...this.plugin.layout.blocks, ...this.plugin.layout.mobileBlocks].some((b) => typeof b.config.apiKey === "string" && b.config.apiKey.length > 0);
+          const summary = `${safe.blocks.length} block(s): ${[...new Set(blockTypes)].join(", ")}` + (strippedCount > 0 ? ` \xB7 stripped ${strippedCount} unsafe / unknown field(s)` : "") + (hadKey ? " \xB7 your saved API key will be removed" : "");
           new ConfirmPresetModal(this.app, `Import (${summary})`, async () => {
             await this.plugin.saveLayout(safe);
             await this.reloadOpenHomepages();
@@ -8832,7 +8955,6 @@ var DB_STORE = "keys";
 var DB_RECORD = "apiKeyDeviceKey";
 var PREFIX = "enc:v1:";
 var cachedKey = null;
-var lastKeyLoadError = false;
 function hasWebCrypto() {
   return typeof globalThis.crypto?.subtle?.generateKey === "function" && typeof indexedDB !== "undefined";
 }
@@ -8863,22 +8985,15 @@ function idbSet(db, key, value) {
   });
 }
 async function loadDeviceKey() {
-  if (cachedKey) {
-    lastKeyLoadError = false;
-    return cachedKey;
-  }
-  if (!hasWebCrypto()) {
-    lastKeyLoadError = false;
-    return null;
-  }
+  if (cachedKey) return { key: cachedKey, transient: false };
+  if (!hasWebCrypto()) return { key: null, transient: false };
   try {
     const db = await openDb();
     try {
       const existing = await idbGet(db, DB_RECORD);
       if (existing instanceof CryptoKey) {
         cachedKey = existing;
-        lastKeyLoadError = false;
-        return existing;
+        return { key: existing, transient: false };
       }
       const fresh = await crypto.subtle.generateKey(
         { name: "AES-GCM", length: 256 },
@@ -8888,19 +9003,14 @@ async function loadDeviceKey() {
       );
       await idbSet(db, DB_RECORD, fresh);
       cachedKey = fresh;
-      lastKeyLoadError = false;
-      return fresh;
+      return { key: fresh, transient: false };
     } finally {
       db.close();
     }
   } catch (err) {
-    lastKeyLoadError = true;
     console.error("[Homepage Blocks] device key unavailable (transient)", err instanceof Error ? err.message : "unknown error");
-    return null;
+    return { key: null, transient: true };
   }
-}
-function lastLoadWasTransient() {
-  return lastKeyLoadError;
 }
 function toBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -8920,10 +9030,12 @@ function isEncrypted(value) {
 async function encryptStringEx(plaintext) {
   if (!plaintext) return { ok: true, value: plaintext };
   if (isEncrypted(plaintext)) return { ok: true, value: plaintext };
-  const key = await loadDeviceKey();
+  const { key, transient } = await loadDeviceKey();
   if (!key) {
-    console.warn("[Homepage Blocks] WebCrypto unavailable \u2014 apiKey will be stored in plaintext on disk");
-    return { ok: false, reason: "fallback-plaintext", value: plaintext };
+    if (!transient) {
+      console.warn("[Homepage Blocks] WebCrypto unavailable \u2014 apiKey will be stored in plaintext on disk");
+    }
+    return { ok: false, reason: "fallback-plaintext", value: plaintext, transient };
   }
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -8931,14 +9043,14 @@ async function encryptStringEx(plaintext) {
     return { ok: true, value: `${PREFIX}${toBase64(iv)}:${toBase64(ct)}` };
   } catch (err) {
     console.error("[Homepage Blocks] API key encryption failed \u2014 storing plaintext", err instanceof Error ? err.message : "unknown error");
-    return { ok: false, reason: "crypto-error", value: plaintext };
+    return { ok: false, reason: "crypto-error", value: plaintext, transient: false };
   }
 }
 async function decryptStringEx(value) {
   if (!isEncrypted(value)) return { ok: true, plaintext: value };
-  const key = await loadDeviceKey();
+  const { key, transient } = await loadDeviceKey();
   if (!key) {
-    return { ok: false, reason: "no-key", transient: lastLoadWasTransient() };
+    return { ok: false, reason: "no-key", transient };
   }
   const body = value.slice(PREFIX.length);
   const sep = body.indexOf(":");
@@ -8960,6 +9072,21 @@ async function decryptStringEx(value) {
 }
 function _resetDeviceKeyCache() {
   cachedKey = null;
+}
+
+// src/utils/startupResolver.ts
+function mobileStartupActive(layout, isMobile) {
+  return isMobile && layout.separateStartup;
+}
+function resolveStartup(layout, isMobile) {
+  const mobile = mobileStartupActive(layout, isMobile);
+  return {
+    openOnStartup: mobile ? layout.mobileOpenOnStartup : layout.openOnStartup,
+    openMode: mobile ? layout.mobileOpenMode : layout.openMode,
+    manualOpenMode: mobile ? layout.mobileManualOpenMode : layout.manualOpenMode,
+    openWhenEmpty: mobile ? layout.mobileOpenWhenEmpty : layout.openWhenEmpty,
+    pin: mobile ? layout.mobilePin : layout.pin
+  };
 }
 
 // src/blocks/GreetingBlock.ts
@@ -9636,6 +9763,19 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
 
 // src/blocks/ButtonGridBlock.ts
 var import_obsidian14 = require("obsidian");
+
+// src/utils/urls.ts
+var DANGEROUS_SCHEMES = /* @__PURE__ */ new Set(["javascript:", "data:", "vbscript:", "file:", "blob:"]);
+function isDangerousUrl(value) {
+  if (typeof value !== "string" || !value) return false;
+  try {
+    return DANGEROUS_SCHEMES.has(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
+// src/blocks/ButtonGridBlock.ts
 var ButtonGridBlock = class extends BaseBlock {
   render(el) {
     el.addClass("button-grid-block");
@@ -9660,6 +9800,10 @@ var ButtonGridBlock = class extends BaseBlock {
       btn.createSpan({ text: item.label });
       if (item.link) {
         btn.addEventListener("click", () => {
+          if (isDangerousUrl(item.link)) {
+            new import_obsidian14.Notice("Homepage blocks: blocked an unsafe link.");
+            return;
+          }
           void this.app.workspace.openLinkText(item.link, "");
         });
       } else {
@@ -9795,7 +9939,7 @@ var QuotesListBlock = class extends BaseBlock {
     }));
     return this.loadAndRender(el).catch((e) => {
       console.error("[Homepage Blocks] QuotesListBlock failed to render:", e);
-      el.setText("Error loading quotes. Check console for details.");
+      this.renderErrorHint(el, "Couldn\u2019t load quotes \u2014 check the console for details.");
     });
   }
   async loadAndRender(el) {
@@ -9822,7 +9966,8 @@ var QuotesListBlock = class extends BaseBlock {
     const safeFontStyle = fontStyle === "serif" || fontStyle === "handwriting" ? fontStyle : "default";
     el.toggleClass("quote-font-serif", safeFontStyle === "serif");
     el.toggleClass("quote-font-handwriting", safeFontStyle === "handwriting");
-    const safeFont = typeof customFont === "string" && customFont.trim() && SAFE_FONT_RE.test(customFont.trim()) ? customFont.trim() : "";
+    const fontCandidate = typeof customFont === "string" ? customFont.trim().slice(0, 64) : "";
+    const safeFont = fontCandidate && SAFE_FONT_RE.test(fontCandidate) ? fontCandidate : "";
     if (safeFont) el.style.setProperty("--hp-quote-font", safeFont);
     else el.style.removeProperty("--hp-quote-font");
     el.toggleClass("quote-style-centered", false);
@@ -9926,7 +10071,8 @@ var QuotesListBlock = class extends BaseBlock {
         continue;
       }
       const { file, content, cache } = result.value;
-      const color = cache?.frontmatter?.color ?? "";
+      const rawColor = cache?.frontmatter?.color ?? "";
+      const color = typeof rawColor === "string" ? rawColor.slice(0, 64) : "";
       const body = this.extractBody(content, cache);
       if (!body) continue;
       const item = colsEl.createDiv({ cls: "quote-item" });
@@ -10273,11 +10419,16 @@ function abortActiveLightbox() {
 }
 function openMediaLightbox(items, startIndex) {
   if (items.length === 0) return null;
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   abortActiveLightbox();
   const ac = new AbortController();
   const { signal } = ac;
   let current = startIndex;
   const overlay = document.body.createDiv({ cls: "gallery-lightbox" });
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Image viewer");
+  overlay.tabIndex = -1;
   activeLightbox = { ac, overlay };
   const prevBtn = overlay.createEl("button", { cls: "gallery-lightbox-prev", attr: { "aria-label": "Previous" } });
   (0, import_obsidian16.setIcon)(prevBtn, "chevron-left");
@@ -10325,7 +10476,9 @@ function openMediaLightbox(items, startIndex) {
     overlay.remove();
     ac.abort();
     if (activeLightbox?.ac === ac) activeLightbox = null;
+    if (opener && opener.isConnected) opener.focus();
   };
+  const focusables = () => [prevBtn, nextBtn].filter((b) => !b.hasClass("gallery-lightbox-nav-hidden"));
   prevBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     showItem(current - 1);
@@ -10355,6 +10508,16 @@ function openMediaLightbox(items, startIndex) {
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
       showItem(current + 1);
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      const f = focusables();
+      if (f.length === 0) {
+        overlay.focus();
+        return;
+      }
+      const idx = f.indexOf(active);
+      const nextIdx = e.shiftKey ? idx <= 0 ? f.length - 1 : idx - 1 : idx === f.length - 1 ? 0 : idx + 1;
+      f[nextIdx].focus();
     }
   }, { signal });
   let touchStartX = 0;
@@ -10377,6 +10540,7 @@ function openMediaLightbox(items, startIndex) {
     }
   }, { signal });
   showItem(current);
+  (focusables()[0] ?? overlay).focus();
   return ac;
 }
 function waitForImage(img) {
@@ -10437,7 +10601,7 @@ var ImageGalleryBlock = class extends BaseBlock {
     });
     return this.loadAndRender(el).catch((e) => {
       console.error("[Homepage Blocks] ImageGalleryBlock failed to render:", e);
-      el.setText("Error loading gallery. Check console for details.");
+      this.renderErrorHint(el, "Couldn\u2019t load this gallery \u2014 check the console for details.");
     });
   }
   isRelevantMedia(path) {
@@ -10668,7 +10832,7 @@ var EmbeddedNoteBlock = class extends BaseBlock {
     }));
     return this.renderContent(el).catch((e) => {
       console.error("[Homepage Blocks] EmbeddedNoteBlock failed to render:", e);
-      el.setText("Error rendering file. Check console for details.");
+      this.renderErrorHint(el, "Couldn\u2019t render this note \u2014 check the console for details.");
     });
   }
   async renderContent(el) {
@@ -10758,7 +10922,7 @@ var StaticTextBlock = class extends BaseBlock {
     el.addClass("static-text-block");
     this.renderContent(el).catch((e) => {
       console.error("[Homepage Blocks] StaticTextBlock failed to render:", e);
-      el.setText("Error rendering content.");
+      this.renderErrorHint(el, "Couldn\u2019t render this content.");
     });
   }
   async renderContent(el) {
@@ -10880,7 +11044,7 @@ var HtmlBlock = class extends BaseBlock {
   }
   /** Render full HTML documents inside a sandboxed iframe with Obsidian CSS variable bridging. */
   renderIframe(contentEl, html) {
-    const DANGEROUS_IFRAME_TAGS_RE = /<\/?\s*(script|iframe|object|embed|form|meta|link|base)\b[^>]*>/gi;
+    const DANGEROUS_IFRAME_TAGS_RE = /<\/?\s*(script|iframe|object|embed|form|meta|link|base|svg)\b[^>]*>/gi;
     let safe = html;
     let prev;
     do {
@@ -10904,7 +11068,8 @@ var HtmlBlock = class extends BaseBlock {
       }).filter(Boolean);
       if (pairs.length > 0) bridgeParts.unshift(`:root{${pairs.join(";")}}`);
     }
-    const bridge = `<style>${bridgeParts.join("")}</style>`;
+    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; media-src data: https:; font-src data: https:;">`;
+    const bridge = `${csp}<style>${bridgeParts.join("")}</style>`;
     const headMatch = safe.match(/<head\b[^>]*>/i);
     if (headMatch && headMatch.index !== void 0) {
       const pos = headMatch.index + headMatch[0].length;
@@ -10914,6 +11079,7 @@ var HtmlBlock = class extends BaseBlock {
     }
     const iframe = document.createElement("iframe");
     iframe.setAttribute("sandbox", "allow-same-origin");
+    iframe.setAttribute("referrerpolicy", "no-referrer");
     iframe.srcdoc = safe;
     iframe.addClass("hp-html-iframe");
     contentEl.appendChild(iframe);
@@ -11105,6 +11271,10 @@ var BookmarkBlock = class extends BaseBlock {
           const parsed = new URL(item.url);
           if (parsed.protocol === "http:" || parsed.protocol === "https:") {
             window.open(item.url, "_blank", "noopener,noreferrer");
+            return;
+          }
+          if (isDangerousUrl(item.url)) {
+            new import_obsidian21.Notice("Homepage blocks: blocked an unsafe link.");
             return;
           }
         } catch {
@@ -11632,7 +11802,7 @@ var RandomNoteBlock = class extends BaseBlock {
     }));
     this.loadAndRender(el).catch((e) => {
       console.error("[Homepage Blocks] RandomNoteBlock failed to render:", e);
-      el.setText("Error loading random note. Check console for details.");
+      this.renderErrorHint(el, "Couldn\u2019t load a random note \u2014 check the console for details.");
     });
   }
   async loadAndRender(el) {
@@ -11786,14 +11956,17 @@ var RandomNoteBlock = class extends BaseBlock {
 // src/blocks/VoiceDictationBlock.ts
 var import_obsidian25 = require("obsidian");
 var CONSENT_STORAGE_KEY = "hp-voice-consent";
+function consentKey(vaultId) {
+  return `${CONSENT_STORAGE_KEY}:${vaultId}`;
+}
 function hasMediaRecorderSupport() {
   if (typeof MediaRecorder === "undefined") return false;
   const md = navigator.mediaDevices;
   return typeof md?.getUserMedia === "function";
 }
-function hasConsent(provider) {
+function hasConsent(provider, vaultId) {
   try {
-    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(consentKey(vaultId));
     if (!raw) return false;
     const parsed = JSON.parse(raw);
     return parsed[provider] === true;
@@ -11801,12 +11974,12 @@ function hasConsent(provider) {
     return false;
   }
 }
-function setConsent(provider) {
+function setConsent(provider, vaultId) {
   try {
-    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(consentKey(vaultId));
     const parsed = raw ? JSON.parse(raw) : {};
     parsed[provider] = true;
-    window.localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(parsed));
+    window.localStorage.setItem(consentKey(vaultId), JSON.stringify(parsed));
   } catch {
   }
 }
@@ -11844,7 +12017,12 @@ var VoiceDictationBlock = class extends BaseBlock {
     this.register(() => this.stopActiveStream());
     this.renderHeader(el, "Voice notes");
     const body = el.createDiv({ cls: "voice-body" });
-    this.statusEl = body.createDiv({ cls: "voice-status", text: "Tap to record" });
+    this.statusEl = body.createDiv({
+      cls: "voice-status",
+      text: "Tap to record",
+      // Announce recording / transcribing / saved transitions to screen readers.
+      attr: { role: "status", "aria-live": "polite" }
+    });
     const micZone = body.createDiv({ cls: "voice-mic-zone" });
     this.micBtn = micZone.createEl("button", { cls: "voice-mic" });
     this.micBtn.setAttribute("aria-label", "Start recording voice note");
@@ -11978,10 +12156,11 @@ var VoiceDictationBlock = class extends BaseBlock {
       return;
     }
     const provider = cfg.provider ?? "whisper";
-    if (!hasConsent(provider)) {
+    const vaultId = this.app.vault.getName();
+    if (!hasConsent(provider, vaultId)) {
       const confirmed = await confirmVoiceConsent(this.app, provider);
       if (!confirmed) return;
-      setConsent(provider);
+      setConsent(provider, vaultId);
     }
     this.stopActiveStream();
     let stream;
@@ -12192,7 +12371,7 @@ Content-Type: ${mimeType}\r
         });
       });
       const isGemini = (cfg.provider ?? "whisper") === "gemini";
-      new import_obsidian25.Setting(body).setName("API key").setDesc(isGemini ? "Google AI API key for Gemini. Stored in plaintext in your vault data folder." : "OpenAI API key for Whisper. Stored in plaintext in your vault data folder.").addText((t) => {
+      new import_obsidian25.Setting(body).setName("API key").setDesc(isGemini ? "Google AI API key for Gemini. Encrypted at rest with a device-specific key; it cannot be decrypted on another device (re-enter it there), and it is never included in layout exports." : "OpenAI API key for Whisper. Encrypted at rest with a device-specific key; it cannot be decrypted on another device (re-enter it there), and it is never included in layout exports.").addText((t) => {
         t.inputEl.type = "password";
         t.setPlaceholder(isGemini ? "AIza..." : "sk-...").setValue(cfg.apiKey ?? "").onChange((v) => {
           cfg.apiKey = v.trim();
@@ -12280,6 +12459,21 @@ var VaultSearchBlock = class extends BaseBlock {
   debounceTimer = null;
   blurTimer = null;
   results = [];
+  repositionRaf = 0;
+  viewportTracking = false;
+  /** rAF-throttled reposition so the fixed dropdown follows the input on scroll/resize. */
+  onViewportChange = () => {
+    cancelAnimationFrame(this.repositionRaf);
+    this.repositionRaf = requestAnimationFrame(() => this.positionDropdown());
+  };
+  /**
+   * The typed query lives only in the DOM <input> (never persisted), so a full
+   * rerender would wipe it mid-search. Opt into the rerender-suppression guard
+   * (BaseBlock contract) whenever the field has a non-empty query.
+   */
+  hasUnsavedInlineState() {
+    return !!this.inputEl && this.inputEl.value.trim().length > 0;
+  }
   render(el) {
     const cfg = this.instance.config;
     el.addClass("vault-search-block");
@@ -12303,6 +12497,7 @@ var VaultSearchBlock = class extends BaseBlock {
     this.register(() => {
       dropdown.remove();
     });
+    this.register(() => this.stopViewportTracking());
     input.addEventListener("input", () => {
       if (this.debounceTimer) clearTimeout(this.debounceTimer);
       this.debounceTimer = setTimeout(() => {
@@ -12432,14 +12627,35 @@ var VaultSearchBlock = class extends BaseBlock {
     if (this.dropdownEl) {
       this.positionDropdown();
       this.dropdownEl.removeClass("vault-search-dropdown--hidden");
+      this.startViewportTracking();
     }
   }
   closeDropdown() {
     if (this.dropdownEl) {
       this.dropdownEl.addClass("vault-search-dropdown--hidden");
     }
+    this.stopViewportTracking();
     this.selectedIndex = -1;
     this.results = [];
+  }
+  /**
+   * Track scroll/resize while the dropdown is open so the position:fixed
+   * dropdown stays glued to the input. Capture-phase scroll catches scrolling
+   * on any ancestor container, not just the window. Listeners are added only
+   * while open and removed on close (and on teardown via this.register).
+   */
+  startViewportTracking() {
+    if (this.viewportTracking) return;
+    this.viewportTracking = true;
+    window.addEventListener("scroll", this.onViewportChange, true);
+    window.addEventListener("resize", this.onViewportChange);
+  }
+  stopViewportTracking() {
+    if (!this.viewportTracking) return;
+    this.viewportTracking = false;
+    window.removeEventListener("scroll", this.onViewportChange, true);
+    window.removeEventListener("resize", this.onViewportChange);
+    cancelAnimationFrame(this.repositionRaf);
   }
   renderContentSettings(body, draft) {
     const cfg = draft;
@@ -12609,6 +12825,9 @@ async function encryptApiKeys(layout, priorOnDisk) {
       if (typeof previously === "string" && isEncrypted(previously)) {
         return { ...b, config: { ...b.config, apiKey: previously } };
       }
+      if (r.transient) {
+        return { ...b, config: { ...b.config, apiKey: "" } };
+      }
     }
     return { ...b, config: { ...b.config, apiKey: r.value } };
   }));
@@ -12620,6 +12839,8 @@ async function encryptApiKeys(layout, priorOnDisk) {
 }
 async function decryptApiKeys(layout) {
   let stable = true;
+  let notifiedTransient = false;
+  let notifiedPermanent = false;
   const decryptBlocks = async (blocks) => {
     const out = [];
     for (const b of blocks) {
@@ -12633,11 +12854,17 @@ async function decryptApiKeys(layout) {
         out.push({ ...b, config: { ...b.config, apiKey: r.plaintext } });
       } else if (r.reason === "no-key" && r.transient) {
         stable = false;
-        new import_obsidian27.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
+        if (!notifiedTransient) {
+          notifiedTransient = true;
+          new import_obsidian27.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
+        }
         out.push(b);
       } else {
         out.push({ ...b, config: { ...b.config, apiKey: "" } });
-        new import_obsidian27.Notice("Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.", 1e4);
+        if (!notifiedPermanent) {
+          notifiedPermanent = true;
+          new import_obsidian27.Notice("Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.", 1e4);
+        }
       }
     }
     return out;
@@ -12671,7 +12898,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
       id: "open-homepage",
       name: "Open homepage",
       callback: () => {
-        void this.openHomepage(this.layout.manualOpenMode);
+        void this.openHomepage(this.activeManualOpenMode());
       }
     });
     this.addCommand({
@@ -12699,14 +12926,14 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
       }
     });
     this.addRibbonIcon("home", "Open homepage", () => {
-      void this.openHomepage(this.layout.manualOpenMode);
+      void this.openHomepage(this.activeManualOpenMode());
     });
     this.addSettingTab(new HomepageSettingTab(this.app, this));
     let layoutReady = false;
     this.app.workspace.onLayoutReady(() => {
       layoutReady = true;
-      if (this.layout.openOnStartup) {
-        void this.openHomepage(this.layout.openMode);
+      if (this.activeOpenOnStartup()) {
+        void this.openHomepage(this.activeOpenMode());
       }
     });
     let emptyCheckTimer = null;
@@ -12716,7 +12943,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     });
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
-        if (!layoutReady || !this.layout.openWhenEmpty) return;
+        if (!layoutReady || !this.activeOpenWhenEmpty()) return;
         if (emptyCheckTimer) clearTimeout(emptyCheckTimer);
         emptyCheckTimer = setTimeout(() => {
           emptyCheckTimer = null;
@@ -12761,7 +12988,14 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
         serialized = String(badRaw);
       }
     }
-    const target = `${dir}/data.json.invalid`;
+    const base = `${dir}/data.json.invalid`;
+    let target = base;
+    try {
+      if (await this.app.vault.adapter.exists(base)) {
+        target = `${base}.${Date.now()}`;
+      }
+    } catch {
+    }
     await this.app.vault.adapter.write(target, serialized);
   }
   // ── Platform-aware layout helpers ─────────────────────────────────
@@ -12776,6 +13010,30 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
   }
   activeLayoutPriority() {
     return this.isMobileActive() ? this.layout.mobileLayoutPriority : this.layout.layoutPriority;
+  }
+  // ── Platform-aware startup helpers ────────────────────────────────
+  //
+  // Gated on `separateStartup` (NOT `responsiveMode`): startup behaviour can
+  // diverge per platform even with a single unified layout. When the gate is
+  // off, every accessor returns the desktop value, so existing vaults behave
+  // exactly as before.
+  isMobileStartupActive() {
+    return mobileStartupActive(this.layout, import_obsidian27.Platform.isMobile);
+  }
+  activeOpenOnStartup() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).openOnStartup;
+  }
+  activeOpenMode() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).openMode;
+  }
+  activeManualOpenMode() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).manualOpenMode;
+  }
+  activeOpenWhenEmpty() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).openWhenEmpty;
+  }
+  activePin() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).pin;
   }
   // ── Persistence ───────────────────────────────────────────────────
   savePromise = Promise.resolve();
@@ -12827,7 +13085,10 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     } catch {
     }
     const live = this.activeBlocks();
-    if (!live.some((b) => b.id === id)) return;
+    if (!live.some((b) => b.id === id)) {
+      console.warn(`[Homepage Blocks] updateBlockConfig: block ${id} no longer exists; config patch dropped`);
+      return;
+    }
     const next = live.map(
       (b) => b.id === id ? { ...b, config: { ...b.config, ...patch } } : b
     );
@@ -12838,7 +13099,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     const existing = workspace.getLeavesOfType(VIEW_TYPE);
     if (existing.length > 0) {
       await workspace.revealLeaf(existing[0]);
-      if (this.layout.pin) existing[0].setPinned(true);
+      if (this.activePin()) existing[0].setPinned(true);
       return;
     }
     let leaf;
@@ -12856,7 +13117,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     }
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     await workspace.revealLeaf(leaf);
-    if (this.layout.pin) leaf.setPinned(true);
+    if (this.activePin()) leaf.setPinned(true);
   }
 };
 /*! Bundled license information:

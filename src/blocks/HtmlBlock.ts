@@ -40,10 +40,13 @@ export class HtmlBlock extends BaseBlock {
 
   /** Render full HTML documents inside a sandboxed iframe with Obsidian CSS variable bridging. */
   private renderIframe(contentEl: HTMLElement, html: string): void {
-    // Strip script tags AND other navigation/exfil vectors for defense-in-depth
-    // (sandbox also blocks execution, but <meta refresh> / <base> / <link> can still
-    // leak requests or redirect even without scripts).
-    const DANGEROUS_IFRAME_TAGS_RE = /<\/?\s*(script|iframe|object|embed|form|meta|link|base)\b[^>]*>/gi;
+    // Strip script tags AND other navigation/exfil vectors. This regex is only
+    // defense-in-depth and is NOT the security boundary — the real boundaries are
+    // (1) the sandbox (no allow-scripts ⇒ no JS) and (2) the injected CSP below
+    // (default-src 'none' ⇒ no fetch/XHR/beacon/script even if the sandbox were
+    // ever loosened). `svg` is included because <svg><animate onbegin> would
+    // otherwise survive into srcdoc.
+    const DANGEROUS_IFRAME_TAGS_RE = /<\/?\s*(script|iframe|object|embed|form|meta|link|base|svg)\b[^>]*>/gi;
     let safe = html;
     let prev: string;
     do { prev = safe; safe = safe.replace(DANGEROUS_IFRAME_TAGS_RE, ''); } while (safe !== prev);
@@ -75,7 +78,16 @@ export class HtmlBlock extends BaseBlock {
         .filter(Boolean);
       if (pairs.length > 0) bridgeParts.unshift(`:root{${pairs.join(';')}}`);
     }
-    const bridge = `<style>${bridgeParts.join('')}</style>`;
+    // CSP is the security boundary (not the regex above). default-src 'none'
+    // blocks scripts, fetch/XHR, websockets, frames, forms and objects — so a
+    // hostile imported layout can neither run code (even if the sandbox were
+    // ever given allow-scripts) nor open an active exfil channel. Passive
+    // images/media/fonts are allowed for legitimate styling; referrerpolicy
+    // strips the referer so any remaining passive request leaks no vault path.
+    const csp = '<meta http-equiv="Content-Security-Policy" content="'
+      + "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; "
+      + 'media-src data: https:; font-src data: https:;">';
+    const bridge = `${csp}<style>${bridgeParts.join('')}</style>`;
     const headMatch = safe.match(/<head\b[^>]*>/i);
     if (headMatch && headMatch.index !== undefined) {
       const pos = headMatch.index + headMatch[0].length;
@@ -85,7 +97,11 @@ export class HtmlBlock extends BaseBlock {
     }
 
     const iframe = document.createElement('iframe');
+    // allow-same-origin is required for the auto-scale load handler to read
+    // contentDocument; the injected CSP (not the sandbox) is what blocks script
+    // execution and active network access.
     iframe.setAttribute('sandbox', 'allow-same-origin');
+    iframe.setAttribute('referrerpolicy', 'no-referrer');
     iframe.srcdoc = safe;
     iframe.addClass('hp-html-iframe');
 

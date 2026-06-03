@@ -48,7 +48,7 @@ export class RandomNoteBlock extends BaseBlock {
 
     this.loadAndRender(el).catch(e => {
       console.error('[Homepage Blocks] RandomNoteBlock failed to render:', e);
-      el.setText('Error loading random note. Check console for details.');
+      this.renderErrorHint(el, 'Couldn’t load a random note — check the console for details.');
     });
   }
 

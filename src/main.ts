@@ -6,6 +6,7 @@ import { BlockRegistry } from './BlockRegistry';
 import { HomepageSettingTab } from './settings/HomepageSettingTab';
 import { installTagCacheListeners } from './utils/tags';
 import { decryptStringEx, encryptStringEx, isEncrypted, _resetDeviceKeyCache } from './utils/apiKeyCrypto';
+import { mobileStartupActive, resolveStartup } from './utils/startupResolver';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
 import { FolderLinksBlock } from './blocks/FolderLinksBlock';
@@ -225,8 +226,18 @@ async function encryptApiKeys(layout: LayoutConfig, priorOnDisk: LayoutConfig | 
         if (typeof previously === 'string' && isEncrypted(previously)) {
           return { ...b, config: { ...b.config, apiKey: previously } };
         }
-        // No prior ciphertext on disk: there's nothing to protect, so we let the
-        // plaintext fallback proceed (the warn is logged inside encryptStringEx).
+        // Transient WebCrypto/IndexedDB failure with no prior ciphertext to
+        // fall back to (e.g. import / copy-to-mobile re-minted the id, so the
+        // refuse-to-downgrade lookup above missed). Never write plaintext at
+        // rest just because crypto hiccupped: drop the key from the persisted
+        // copy. The runtime in-memory layout keeps it, and the next save once
+        // WebCrypto recovers will encrypt it properly.
+        if (r.transient) {
+          return { ...b, config: { ...b.config, apiKey: '' } };
+        }
+        // Permanent (no WebCrypto on this platform) with no prior ciphertext:
+        // nothing to protect, so let the plaintext fallback proceed (the warn
+        // is logged inside encryptStringEx).
       }
       return { ...b, config: { ...b.config, apiKey: r.value } };
     }));
@@ -252,6 +263,10 @@ async function encryptApiKeys(layout: LayoutConfig, priorOnDisk: LayoutConfig | 
  */
 async function decryptApiKeys(layout: LayoutConfig): Promise<{ stable: boolean }> {
   let stable = true;
+  // One Notice per failure class, hoisted across the desktop + mobile loops so
+  // a layout with N voice blocks doesn't spam N identical toasts.
+  let notifiedTransient = false;
+  let notifiedPermanent = false;
 
   const decryptBlocks = async (blocks: BlockInstance[]): Promise<BlockInstance[]> => {
     const out: BlockInstance[] = [];
@@ -270,13 +285,19 @@ async function decryptApiKeys(layout: LayoutConfig): Promise<{ stable: boolean }
         // the encrypted form, which is benign — the dictation block will fail
         // with a clear "key invalid" path until next launch retries decrypt).
         stable = false;
-        new Notice('Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.', 10_000);
+        if (!notifiedTransient) {
+          notifiedTransient = true;
+          new Notice('Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.', 10_000);
+        }
         out.push(b);
       } else {
         // Permanent failure: corrupt ciphertext, missing WebCrypto entirely,
         // or wrong device. Clearing forces the user to re-enter on this device.
         out.push({ ...b, config: { ...b.config, apiKey: '' } });
-        new Notice('Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.', 10_000);
+        if (!notifiedPermanent) {
+          notifiedPermanent = true;
+          new Notice('Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.', 10_000);
+        }
       }
     }
     return out;
@@ -333,7 +354,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     this.addCommand({
       id: 'open-homepage',
       name: 'Open homepage',
-      callback: () => { void this.openHomepage(this.layout.manualOpenMode); },
+      callback: () => { void this.openHomepage(this.activeManualOpenMode()); },
     });
 
     this.addCommand({
@@ -362,15 +383,15 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       },
     });
 
-    this.addRibbonIcon('home', 'Open homepage', () => { void this.openHomepage(this.layout.manualOpenMode); });
+    this.addRibbonIcon('home', 'Open homepage', () => { void this.openHomepage(this.activeManualOpenMode()); });
 
     this.addSettingTab(new HomepageSettingTab(this.app, this));
 
     let layoutReady = false;
     this.app.workspace.onLayoutReady(() => {
       layoutReady = true;
-      if (this.layout.openOnStartup) {
-        void this.openHomepage(this.layout.openMode);
+      if (this.activeOpenOnStartup()) {
+        void this.openHomepage(this.activeOpenMode());
       }
     });
 
@@ -379,7 +400,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     this.register(() => { if (emptyCheckTimer) clearTimeout(emptyCheckTimer); });
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
-        if (!layoutReady || !this.layout.openWhenEmpty) return;
+        if (!layoutReady || !this.activeOpenWhenEmpty()) return;
         if (emptyCheckTimer) clearTimeout(emptyCheckTimer);
         emptyCheckTimer = setTimeout(() => {
           emptyCheckTimer = null;
@@ -431,7 +452,19 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
         serialized = String(badRaw);
       }
     }
-    const target = `${dir}/data.json.invalid`;
+    const base = `${dir}/data.json.invalid`;
+    // Never clobber an earlier backup: if data.json.invalid already exists, the
+    // user's real layout may already be stashed there (a prior corruption could
+    // since have been round-tripped to defaults). Write a timestamped sibling so
+    // a *second* corruption can't destroy the first, only recoverable copy.
+    let target = base;
+    try {
+      if (await this.app.vault.adapter.exists(base)) {
+        target = `${base}.${Date.now()}`;
+      }
+    } catch {
+      // exists() failed — fall back to the base name rather than refusing to stash.
+    }
     await this.app.vault.adapter.write(target, serialized);
   }
 
@@ -451,6 +484,37 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
   activeLayoutPriority(): LayoutPriority {
     return this.isMobileActive() ? this.layout.mobileLayoutPriority : this.layout.layoutPriority;
+  }
+
+  // ── Platform-aware startup helpers ────────────────────────────────
+  //
+  // Gated on `separateStartup` (NOT `responsiveMode`): startup behaviour can
+  // diverge per platform even with a single unified layout. When the gate is
+  // off, every accessor returns the desktop value, so existing vaults behave
+  // exactly as before.
+
+  isMobileStartupActive(): boolean {
+    return mobileStartupActive(this.layout, Platform.isMobile);
+  }
+
+  activeOpenOnStartup(): boolean {
+    return resolveStartup(this.layout, Platform.isMobile).openOnStartup;
+  }
+
+  activeOpenMode(): OpenMode {
+    return resolveStartup(this.layout, Platform.isMobile).openMode;
+  }
+
+  activeManualOpenMode(): OpenMode {
+    return resolveStartup(this.layout, Platform.isMobile).manualOpenMode;
+  }
+
+  activeOpenWhenEmpty(): boolean {
+    return resolveStartup(this.layout, Platform.isMobile).openWhenEmpty;
+  }
+
+  activePin(): boolean {
+    return resolveStartup(this.layout, Platform.isMobile).pin;
   }
 
   // ── Persistence ───────────────────────────────────────────────────
@@ -527,7 +591,13 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       // reading the current in-memory layout is still the right move.
     }
     const live = this.activeBlocks();
-    if (!live.some(b => b.id === id)) return;
+    if (!live.some(b => b.id === id)) {
+      // The block was removed (or its id re-minted by an import / copy-to-mobile)
+      // while we awaited the save chain. Drop the patch, but make it observable
+      // rather than a silent no-op so a lost rename surfaces in the console.
+      console.warn(`[Homepage Blocks] updateBlockConfig: block ${id} no longer exists; config patch dropped`);
+      return;
+    }
     const next = live.map(b =>
       b.id === id ? { ...b, config: { ...b.config, ...patch } } : b,
     );
@@ -539,7 +609,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     const existing = workspace.getLeavesOfType(VIEW_TYPE);
     if (existing.length > 0) {
       await workspace.revealLeaf(existing[0]);
-      if (this.layout.pin) existing[0].setPinned(true);
+      if (this.activePin()) existing[0].setPinned(true);
       return;
     }
 
@@ -560,6 +630,6 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     await workspace.revealLeaf(leaf);
 
-    if (this.layout.pin) leaf.setPinned(true);
+    if (this.activePin()) leaf.setPinned(true);
   }
 }

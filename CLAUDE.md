@@ -64,6 +64,8 @@ npx tsc --noEmit       # type-check (run after every .ts change)
 - `manualOpenMode` -- how homepage opens from ribbon/command (same `OpenMode` values)
 - `openWhenEmpty` -- open homepage when no other tabs are open
 - `pin` -- prevent the homepage tab from being closed
+- `separateStartup` -- when `true`, mobile devices use the `mobile*` startup overrides below instead of the desktop startup settings (default `false`). Independent of `responsiveMode` (gated on `Platform.isMobile` only), so startup behaviour can diverge per platform even with a unified layout
+- `mobileOpenOnStartup` / `mobileOpenMode` / `mobileManualOpenMode` / `mobileOpenWhenEmpty` / `mobilePin` -- per-platform startup overrides applied on mobile when `separateStartup` is `true`. Validation defaults each to the resolved desktop value (so old `data.json` mirrors desktop until diverged)
 - `showScrollbar` -- show the homepage scroll bar (default `true`; `false` hides it)
 - `compactLayout` -- remove vertical gaps between blocks in view mode (default `true`); when `false`, y-packing is skipped so intentional gaps survive
 - `hoverHighlight` -- subtly lift blocks on hover and reveal the collapse toggle (default `true`)
@@ -95,6 +97,13 @@ void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
 - `activeLayoutPriority()` -- returns `mobileLayoutPriority` or `layoutPriority`
 
 All grid/toolbar code uses these accessors instead of reading `layout.blocks` directly.
+
+### Per-Platform Startup
+Startup behaviour is gated separately from layout via `separateStartup` (NOT `responsiveMode`). `IHomepagePlugin` exposes a parallel accessor set:
+- `isMobileStartupActive()` -- true when `Platform.isMobile && separateStartup`
+- `activeOpenOnStartup()` / `activeOpenMode()` / `activeManualOpenMode()` / `activeOpenWhenEmpty()` / `activePin()` -- each returns the `mobile*` override when `isMobileStartupActive()`, else the desktop value
+
+All startup sites in `main.ts` (onLayoutReady, the open-when-empty `layout-change` handler, the open-homepage command + ribbon, and `openHomepage`'s pin) read through these accessors -- never `layout.openOnStartup` etc. directly. The settings tab (`renderStartupControls(root, mobile)`) reads the raw fields because it renders both halves explicitly.
 
 ### BaseBlock (`src/blocks/BaseBlock.ts`)
 - Extends Obsidian `Component` -- use `this.registerInterval()`, `this.registerEvent()`, `this.register()` for auto-cleanup. Never raw `setInterval`/`vault.on`.

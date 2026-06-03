@@ -54,6 +54,23 @@ export interface LayoutConfig {
   manualOpenMode: OpenMode;
   openWhenEmpty: boolean;
   pin: boolean;
+  /**
+   * When true, mobile devices use the `mobile*` startup overrides below instead
+   * of the desktop startup settings (e.g. open the homepage on startup only on
+   * desktop). Independent of `responsiveMode` — you can keep a unified layout
+   * but still diverge the startup behaviour per platform.
+   */
+  separateStartup: boolean;
+  /** Open-on-startup used on mobile when `separateStartup` is true. */
+  mobileOpenOnStartup: boolean;
+  /** Startup open mode used on mobile when `separateStartup` is true. */
+  mobileOpenMode: OpenMode;
+  /** Manual open mode used on mobile when `separateStartup` is true. */
+  mobileManualOpenMode: OpenMode;
+  /** Open-when-empty used on mobile when `separateStartup` is true. */
+  mobileOpenWhenEmpty: boolean;
+  /** Pin homepage tab used on mobile when `separateStartup` is true. */
+  mobilePin: boolean;
   showScrollbar: boolean;
   compactLayout: boolean;
   /** Show a subtle hover lift on blocks and reveal the collapse chevron on hover. */
@@ -94,4 +111,16 @@ export interface IHomepagePlugin {
   activeColumns(): number;
   /** Resolved layout priority for the current platform. */
   activeLayoutPriority(): LayoutPriority;
+  /** True when running on a mobile device AND separateStartup is true. */
+  isMobileStartupActive(): boolean;
+  /** Resolved open-on-startup flag for the current platform. */
+  activeOpenOnStartup(): boolean;
+  /** Resolved startup open mode for the current platform. */
+  activeOpenMode(): OpenMode;
+  /** Resolved manual open mode for the current platform. */
+  activeManualOpenMode(): OpenMode;
+  /** Resolved open-when-empty flag for the current platform. */
+  activeOpenWhenEmpty(): boolean;
+  /** Resolved pin-tab flag for the current platform. */
+  activePin(): boolean;
 }

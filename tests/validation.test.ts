@@ -331,6 +331,71 @@ describe('validateLayout', () => {
     expect(validateLayout(defaults)).toStrictEqual(defaults);
   });
 
+  describe('separate startup overrides', () => {
+    it('defaults separateStartup to false and drops a non-boolean back to default', () => {
+      expect(validateLayout({}).separateStartup).toBe(false);
+      expect(validateLayout({ separateStartup: 'yes' }).separateStartup).toBe(false);
+      expect(validateLayout({ separateStartup: true }).separateStartup).toBe(true);
+    });
+
+    it('defaults missing mobile startup overrides to the resolved desktop value', () => {
+      // A data.json written before this feature has no mobile* startup keys; the
+      // mobile overrides must mirror the desktop settings so behaviour is unchanged.
+      const result = validateLayout({
+        openOnStartup: true,
+        openMode: 'replace-all',
+        manualOpenMode: 'replace-last',
+        openWhenEmpty: true,
+        pin: true,
+      });
+      expect(result.mobileOpenOnStartup).toBe(true);
+      expect(result.mobileOpenMode).toBe('replace-all');
+      expect(result.mobileManualOpenMode).toBe('replace-last');
+      expect(result.mobileOpenWhenEmpty).toBe(true);
+      expect(result.mobilePin).toBe(true);
+    });
+
+    it('preserves explicit mobile startup overrides independent of desktop', () => {
+      const result = validateLayout({
+        openOnStartup: true,
+        openMode: 'replace-all',
+        pin: true,
+        mobileOpenOnStartup: false,
+        mobileOpenMode: 'retain',
+        mobilePin: false,
+      });
+      expect(result.openOnStartup).toBe(true);
+      expect(result.mobileOpenOnStartup).toBe(false);
+      expect(result.openMode).toBe('replace-all');
+      expect(result.mobileOpenMode).toBe('retain');
+      expect(result.pin).toBe(true);
+      expect(result.mobilePin).toBe(false);
+    });
+
+    it('drops invalid mobile open modes back to the desktop value', () => {
+      const result = validateLayout({ openMode: 'replace-all', mobileOpenMode: 'nope' });
+      expect(result.mobileOpenMode).toBe('replace-all');
+    });
+
+    it('is a fixed point once mobile* fields are materialized from divergent desktop values', () => {
+      // The generic fixed-point test only feeds inputs where mobile*===desktop===default.
+      // This locks the feature's real round trip: pass 1 materializes the absent
+      // mobile* keys (mirroring divergent desktop startup), pass 2 must take the
+      // explicit-r.mobileX branch and NOT re-default. The load->resave funnel
+      // (main.ts) re-saves the validated layout on every load, so a non-fixed-point
+      // here would silently rewrite data.json on each launch.
+      const inputs: unknown[] = [
+        { openOnStartup: true, openMode: 'replace-all', manualOpenMode: 'replace-last', openWhenEmpty: true, pin: true },
+        { openMode: 'replace-all', mobileOpenMode: 'retain', openOnStartup: true, mobileOpenOnStartup: false },
+        { separateStartup: true, openOnStartup: true, openMode: 'replace-all', pin: true },
+      ];
+      for (const raw of inputs) {
+        const once = validateLayout(raw);
+        expect(validateLayout(once)).toStrictEqual(once);
+      }
+    });
+  });
+
   it('is a fixed point (validateLayout ∘ validateLayout = validateLayout)', () => {
     // This is the contract the plugin relies on: on every load we validate and
     // immediately re-save, so a non-idempotent validator would corrupt data.json.

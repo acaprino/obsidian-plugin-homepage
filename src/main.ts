@@ -6,6 +6,7 @@ import { BlockRegistry } from './BlockRegistry';
 import { HomepageSettingTab } from './settings/HomepageSettingTab';
 import { installTagCacheListeners } from './utils/tags';
 import { decryptStringEx, encryptStringEx, isEncrypted, _resetDeviceKeyCache } from './utils/apiKeyCrypto';
+import { mobileStartupActive, resolveStartup } from './utils/startupResolver';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
 import { FolderLinksBlock } from './blocks/FolderLinksBlock';
@@ -353,7 +354,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     this.addCommand({
       id: 'open-homepage',
       name: 'Open homepage',
-      callback: () => { void this.openHomepage(this.layout.manualOpenMode); },
+      callback: () => { void this.openHomepage(this.activeManualOpenMode()); },
     });
 
     this.addCommand({
@@ -382,15 +383,15 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       },
     });
 
-    this.addRibbonIcon('home', 'Open homepage', () => { void this.openHomepage(this.layout.manualOpenMode); });
+    this.addRibbonIcon('home', 'Open homepage', () => { void this.openHomepage(this.activeManualOpenMode()); });
 
     this.addSettingTab(new HomepageSettingTab(this.app, this));
 
     let layoutReady = false;
     this.app.workspace.onLayoutReady(() => {
       layoutReady = true;
-      if (this.layout.openOnStartup) {
-        void this.openHomepage(this.layout.openMode);
+      if (this.activeOpenOnStartup()) {
+        void this.openHomepage(this.activeOpenMode());
       }
     });
 
@@ -399,7 +400,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     this.register(() => { if (emptyCheckTimer) clearTimeout(emptyCheckTimer); });
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
-        if (!layoutReady || !this.layout.openWhenEmpty) return;
+        if (!layoutReady || !this.activeOpenWhenEmpty()) return;
         if (emptyCheckTimer) clearTimeout(emptyCheckTimer);
         emptyCheckTimer = setTimeout(() => {
           emptyCheckTimer = null;
@@ -483,6 +484,37 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
   activeLayoutPriority(): LayoutPriority {
     return this.isMobileActive() ? this.layout.mobileLayoutPriority : this.layout.layoutPriority;
+  }
+
+  // ── Platform-aware startup helpers ────────────────────────────────
+  //
+  // Gated on `separateStartup` (NOT `responsiveMode`): startup behaviour can
+  // diverge per platform even with a single unified layout. When the gate is
+  // off, every accessor returns the desktop value, so existing vaults behave
+  // exactly as before.
+
+  isMobileStartupActive(): boolean {
+    return mobileStartupActive(this.layout, Platform.isMobile);
+  }
+
+  activeOpenOnStartup(): boolean {
+    return resolveStartup(this.layout, Platform.isMobile).openOnStartup;
+  }
+
+  activeOpenMode(): OpenMode {
+    return resolveStartup(this.layout, Platform.isMobile).openMode;
+  }
+
+  activeManualOpenMode(): OpenMode {
+    return resolveStartup(this.layout, Platform.isMobile).manualOpenMode;
+  }
+
+  activeOpenWhenEmpty(): boolean {
+    return resolveStartup(this.layout, Platform.isMobile).openWhenEmpty;
+  }
+
+  activePin(): boolean {
+    return resolveStartup(this.layout, Platform.isMobile).pin;
   }
 
   // ── Persistence ───────────────────────────────────────────────────
@@ -577,7 +609,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     const existing = workspace.getLeavesOfType(VIEW_TYPE);
     if (existing.length > 0) {
       await workspace.revealLeaf(existing[0]);
-      if (this.layout.pin) existing[0].setPinned(true);
+      if (this.activePin()) existing[0].setPinned(true);
       return;
     }
 
@@ -598,6 +630,6 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     await workspace.revealLeaf(leaf);
 
-    if (this.layout.pin) leaf.setPinned(true);
+    if (this.activePin()) leaf.setPinned(true);
   }
 }

@@ -2,6 +2,7 @@ import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from '../HomepageView';
 import { IHomepagePlugin, LayoutConfig } from '../types';
 import { getDefaultLayout, isOpenMode, isResponsiveMode, validateLayout } from '../validation';
+import { buildResetLayout } from '../utils/layoutReset';
 import { ConfirmPresetModal } from '../modals/ConfirmPresetModal';
 import { sanitizeImportedLayout } from '../utils/importSanitizer';
 import { newId } from '../utils/ids';
@@ -59,18 +60,84 @@ export class HomepageSettingTab extends PluginSettingTab {
   // ── Section renderers ──────────────────────────────────────────────────────
 
   private renderStartupSection(root: HTMLElement): void {
+    const separate = this.plugin.layout.separateStartup;
+
+    new Setting(root)
+      .setName('Separate startup for mobile')
+      .setDesc('Use different startup settings on mobile devices — for example, open the homepage on startup only on desktop. Independent of the layout responsive mode below.')
+      .addToggle(toggle =>
+        toggle
+          .setValue(separate)
+          .onChange((value) => {
+            const base = this.plugin.layout;
+            // Enabling: if the stored mobile overrides still mirror the desktop
+            // settings (never diverged), snapshot desktop -> mobile so mobile
+            // starts from an identical baseline. If the user already diverged
+            // them (configured them, then disabled the toggle), keep their
+            // values — re-enabling must not clobber a config they built.
+            // Disabling leaves the stored mobile values untouched (ignored).
+            const mobileMirrorsDesktop =
+              base.mobileOpenOnStartup === base.openOnStartup &&
+              base.mobileOpenMode === base.openMode &&
+              base.mobileManualOpenMode === base.manualOpenMode &&
+              base.mobileOpenWhenEmpty === base.openWhenEmpty &&
+              base.mobilePin === base.pin;
+            let next: LayoutConfig;
+            if (!value) {
+              next = { ...base, separateStartup: false };
+            } else if (mobileMirrorsDesktop) {
+              next = {
+                ...base,
+                separateStartup: true,
+                mobileOpenOnStartup: base.openOnStartup,
+                mobileOpenMode: base.openMode,
+                mobileManualOpenMode: base.manualOpenMode,
+                mobileOpenWhenEmpty: base.openWhenEmpty,
+                mobilePin: base.pin,
+              };
+            } else {
+              next = { ...base, separateStartup: true };
+            }
+            void this.plugin.saveLayout(next).then(() => this.display());
+          }),
+      );
+
+    if (separate) new Setting(root).setName('Desktop startup').setHeading();
+    this.renderStartupControls(root, false);
+
+    if (separate) {
+      new Setting(root).setName('Mobile startup').setHeading();
+      this.renderStartupControls(root, true);
+    }
+  }
+
+  /**
+   * Render the five startup controls bound to either the desktop fields or the
+   * `mobile*` overrides. `mobile=false` reads/writes `openOnStartup`, `openMode`,
+   * …; `mobile=true` reads/writes `mobileOpenOnStartup`, `mobileOpenMode`, … so
+   * the same UI serves both the unified case and each half of the split.
+   */
+  private renderStartupControls(root: HTMLElement, mobile: boolean): void {
+    const L = this.plugin.layout;
+    const openOnStartup = mobile ? L.mobileOpenOnStartup : L.openOnStartup;
+    const openMode = mobile ? L.mobileOpenMode : L.openMode;
+    const openWhenEmpty = mobile ? L.mobileOpenWhenEmpty : L.openWhenEmpty;
+    const manualOpenMode = mobile ? L.mobileManualOpenMode : L.manualOpenMode;
+    const pin = mobile ? L.mobilePin : L.pin;
+
     new Setting(root)
       .setName('Open on startup')
       .setDesc('Open the homepage when Obsidian starts.')
       .addToggle(toggle =>
         toggle
-          .setValue(this.plugin.layout.openOnStartup)
+          .setValue(openOnStartup)
           .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
+            const patch = mobile ? { mobileOpenOnStartup: value } : { openOnStartup: value };
+            void this.plugin.saveLayout({ ...this.plugin.layout, ...patch }).then(() => this.display());
           }),
       );
 
-    if (this.plugin.layout.openOnStartup) {
+    if (openOnStartup) {
       new Setting(root)
         .setName('Startup open mode')
         .setDesc('What to do with existing tabs on startup.')
@@ -79,10 +146,11 @@ export class HomepageSettingTab extends PluginSettingTab {
             drop.addOption(value, label);
           }
           drop
-            .setValue(this.plugin.layout.openMode)
+            .setValue(openMode)
             .onChange((value) => {
               if (!isOpenMode(value)) return;
-              void this.plugin.saveLayout({ ...this.plugin.layout, openMode: value });
+              const patch = mobile ? { mobileOpenMode: value } : { openMode: value };
+              void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
             });
         });
     }
@@ -92,9 +160,10 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Open the homepage when all tabs are closed.')
       .addToggle(toggle =>
         toggle
-          .setValue(this.plugin.layout.openWhenEmpty)
+          .setValue(openWhenEmpty)
           .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
+            const patch = mobile ? { mobileOpenWhenEmpty: value } : { openWhenEmpty: value };
+            void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
           }),
       );
 
@@ -106,10 +175,11 @@ export class HomepageSettingTab extends PluginSettingTab {
           drop.addOption(value, label);
         }
         drop
-          .setValue(this.plugin.layout.manualOpenMode)
+          .setValue(manualOpenMode)
           .onChange((value) => {
             if (!isOpenMode(value)) return;
-            void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
+            const patch = mobile ? { mobileManualOpenMode: value } : { manualOpenMode: value };
+            void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
           });
       });
 
@@ -118,12 +188,16 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Prevent the homepage tab from being closed.')
       .addToggle(toggle =>
         toggle
-          .setValue(this.plugin.layout.pin)
+          .setValue(pin)
           .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
-            // Apply pin state to any existing homepage leaves immediately
+            const patch = mobile ? { mobilePin: value } : { pin: value };
+            void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
+            // Apply the resolved pin state for THIS platform to open homepage
+            // leaves immediately. saveLayout updates plugin.layout synchronously,
+            // so activePin() already reflects the change. Editing the inactive
+            // platform's control is a harmless re-apply of the unchanged value.
             for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              leaf.setPinned(value);
+              leaf.setPinned(this.plugin.activePin());
             }
           }),
       );
@@ -270,33 +344,16 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Restore all blocks to the default layout. This can’t be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
-          // Reset ONLY the active platform's slice, preserving the inactive
-          // one. The reset must pivot on isMobileActive(), not just
-          // responsiveMode: a reset issued from a mobile device (separate mode)
-          // would otherwise replace the desktop `blocks` with template defaults
-          // and silently wipe the user's synced desktop layout.
-          const fresh = getDefaultLayout();
-          const layout = this.plugin.layout;
-          let next: LayoutConfig;
-          if (layout.responsiveMode !== 'separate') {
-            next = fresh;
-          } else if (this.plugin.isMobileActive()) {
-            // Mobile-issued reset: reset the mobile slice, keep desktop intact.
-            next = {
-              ...layout,
-              mobileBlocks: fresh.mobileBlocks,
-              mobileColumns: fresh.mobileColumns,
-              mobileLayoutPriority: fresh.mobileLayoutPriority,
-            };
-          } else {
-            // Desktop-issued reset: reset desktop, keep the mobile layout.
-            next = {
-              ...fresh,
-              mobileBlocks: layout.mobileBlocks,
-              mobileColumns: layout.mobileColumns,
-              mobileLayoutPriority: layout.mobileLayoutPriority,
-            };
-          }
+          // Reset ONLY the active platform's layout slice. buildResetLayout
+          // pivots on isMobileActive() (not just responsiveMode) so a reset
+          // issued from a mobile device can't wipe the synced desktop layout,
+          // and preserves the inactive platform's layout AND the whole startup
+          // config (independent of responsiveMode) in every branch.
+          const next = buildResetLayout(
+            this.plugin.layout,
+            getDefaultLayout(),
+            this.plugin.isMobileActive(),
+          );
           await this.plugin.saveLayout(next);
           await this.reloadOpenHomepages();
         })()),

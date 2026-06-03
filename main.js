@@ -8198,6 +8198,12 @@ var DEFAULT_LAYOUT_DATA = {
   manualOpenMode: "retain",
   openWhenEmpty: false,
   pin: false,
+  separateStartup: false,
+  mobileOpenOnStartup: false,
+  mobileOpenMode: "retain",
+  mobileManualOpenMode: "retain",
+  mobileOpenWhenEmpty: false,
+  mobilePin: false,
   showScrollbar: true,
   compactLayout: true,
   hoverHighlight: true,
@@ -8414,6 +8420,12 @@ function validateLayout(raw, onTopLevelCorruption) {
   const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
   const openWhenEmpty = typeof r.openWhenEmpty === "boolean" ? r.openWhenEmpty : defaults.openWhenEmpty;
   const pin = typeof r.pin === "boolean" ? r.pin : defaults.pin;
+  const separateStartup = typeof r.separateStartup === "boolean" ? r.separateStartup : defaults.separateStartup;
+  const mobileOpenOnStartup = typeof r.mobileOpenOnStartup === "boolean" ? r.mobileOpenOnStartup : openOnStartup;
+  const mobileOpenMode = isOpenMode(r.mobileOpenMode) ? r.mobileOpenMode : openMode;
+  const mobileManualOpenMode = isOpenMode(r.mobileManualOpenMode) ? r.mobileManualOpenMode : manualOpenMode;
+  const mobileOpenWhenEmpty = typeof r.mobileOpenWhenEmpty === "boolean" ? r.mobileOpenWhenEmpty : openWhenEmpty;
+  const mobilePin = typeof r.mobilePin === "boolean" ? r.mobilePin : pin;
   const showScrollbar = typeof r.showScrollbar === "boolean" ? r.showScrollbar : typeof r.hideScrollbar === "boolean" ? !r.hideScrollbar : defaults.showScrollbar;
   const compactLayout = typeof r.compactLayout === "boolean" ? r.compactLayout : defaults.compactLayout;
   const hoverHighlight = typeof r.hoverHighlight === "boolean" ? r.hoverHighlight : defaults.hoverHighlight;
@@ -8431,6 +8443,12 @@ function validateLayout(raw, onTopLevelCorruption) {
     manualOpenMode,
     openWhenEmpty,
     pin,
+    separateStartup,
+    mobileOpenOnStartup,
+    mobileOpenMode,
+    mobileManualOpenMode,
+    mobileOpenWhenEmpty,
+    mobilePin,
     showScrollbar,
     compactLayout,
     hoverHighlight,
@@ -8440,6 +8458,41 @@ function validateLayout(raw, onTopLevelCorruption) {
 
 // src/settings/HomepageSettingTab.ts
 var import_obsidian8 = require("obsidian");
+
+// src/utils/layoutReset.ts
+var MOBILE_LAYOUT_FIELDS = [
+  "mobileBlocks",
+  "mobileColumns",
+  "mobileLayoutPriority"
+];
+var STARTUP_FIELDS = [
+  "openOnStartup",
+  "openMode",
+  "manualOpenMode",
+  "openWhenEmpty",
+  "pin",
+  "separateStartup",
+  "mobileOpenOnStartup",
+  "mobileOpenMode",
+  "mobileManualOpenMode",
+  "mobileOpenWhenEmpty",
+  "mobilePin"
+];
+function pickFields(src, keys) {
+  const out = {};
+  for (const k of keys) out[k] = src[k];
+  return out;
+}
+function buildResetLayout(current, fresh, isMobileActive) {
+  const keepStartup = pickFields(current, STARTUP_FIELDS);
+  if (current.responsiveMode !== "separate") {
+    return { ...fresh, ...keepStartup };
+  }
+  if (isMobileActive) {
+    return { ...current, ...pickFields(fresh, MOBILE_LAYOUT_FIELDS) };
+  }
+  return { ...fresh, ...pickFields(current, MOBILE_LAYOUT_FIELDS), ...keepStartup };
+}
 
 // src/modals/ConfirmPresetModal.ts
 var import_obsidian7 = require("obsidian");
@@ -8620,41 +8673,90 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
   }
   // ── Section renderers ──────────────────────────────────────────────────────
   renderStartupSection(root) {
-    new import_obsidian8.Setting(root).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.openOnStartup).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, openOnStartup: value }).then(() => this.display());
+    const separate = this.plugin.layout.separateStartup;
+    new import_obsidian8.Setting(root).setName("Separate startup for mobile").setDesc("Use different startup settings on mobile devices \u2014 for example, open the homepage on startup only on desktop. Independent of the layout responsive mode below.").addToggle(
+      (toggle) => toggle.setValue(separate).onChange((value) => {
+        const base = this.plugin.layout;
+        const mobileMirrorsDesktop = base.mobileOpenOnStartup === base.openOnStartup && base.mobileOpenMode === base.openMode && base.mobileManualOpenMode === base.manualOpenMode && base.mobileOpenWhenEmpty === base.openWhenEmpty && base.mobilePin === base.pin;
+        let next;
+        if (!value) {
+          next = { ...base, separateStartup: false };
+        } else if (mobileMirrorsDesktop) {
+          next = {
+            ...base,
+            separateStartup: true,
+            mobileOpenOnStartup: base.openOnStartup,
+            mobileOpenMode: base.openMode,
+            mobileManualOpenMode: base.manualOpenMode,
+            mobileOpenWhenEmpty: base.openWhenEmpty,
+            mobilePin: base.pin
+          };
+        } else {
+          next = { ...base, separateStartup: true };
+        }
+        void this.plugin.saveLayout(next).then(() => this.display());
       })
     );
-    if (this.plugin.layout.openOnStartup) {
+    if (separate) new import_obsidian8.Setting(root).setName("Desktop startup").setHeading();
+    this.renderStartupControls(root, false);
+    if (separate) {
+      new import_obsidian8.Setting(root).setName("Mobile startup").setHeading();
+      this.renderStartupControls(root, true);
+    }
+  }
+  /**
+   * Render the five startup controls bound to either the desktop fields or the
+   * `mobile*` overrides. `mobile=false` reads/writes `openOnStartup`, `openMode`,
+   * …; `mobile=true` reads/writes `mobileOpenOnStartup`, `mobileOpenMode`, … so
+   * the same UI serves both the unified case and each half of the split.
+   */
+  renderStartupControls(root, mobile) {
+    const L = this.plugin.layout;
+    const openOnStartup = mobile ? L.mobileOpenOnStartup : L.openOnStartup;
+    const openMode = mobile ? L.mobileOpenMode : L.openMode;
+    const openWhenEmpty = mobile ? L.mobileOpenWhenEmpty : L.openWhenEmpty;
+    const manualOpenMode = mobile ? L.mobileManualOpenMode : L.manualOpenMode;
+    const pin = mobile ? L.mobilePin : L.pin;
+    new import_obsidian8.Setting(root).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
+      (toggle) => toggle.setValue(openOnStartup).onChange((value) => {
+        const patch = mobile ? { mobileOpenOnStartup: value } : { openOnStartup: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch }).then(() => this.display());
+      })
+    );
+    if (openOnStartup) {
       new import_obsidian8.Setting(root).setName("Startup open mode").setDesc("What to do with existing tabs on startup.").addDropdown((drop) => {
         for (const [value, label] of Object.entries(OPEN_MODE_LABELS)) {
           drop.addOption(value, label);
         }
-        drop.setValue(this.plugin.layout.openMode).onChange((value) => {
+        drop.setValue(openMode).onChange((value) => {
           if (!isOpenMode(value)) return;
-          void this.plugin.saveLayout({ ...this.plugin.layout, openMode: value });
+          const patch = mobile ? { mobileOpenMode: value } : { openMode: value };
+          void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
         });
       });
     }
     new import_obsidian8.Setting(root).setName("Open when empty").setDesc("Open the homepage when all tabs are closed.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.openWhenEmpty).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, openWhenEmpty: value });
+      (toggle) => toggle.setValue(openWhenEmpty).onChange((value) => {
+        const patch = mobile ? { mobileOpenWhenEmpty: value } : { openWhenEmpty: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
       })
     );
     new import_obsidian8.Setting(root).setName("Manual open mode").setDesc("What to do with existing tabs when you open the homepage manually.").addDropdown((drop) => {
       for (const [value, label] of Object.entries(OPEN_MODE_LABELS)) {
         drop.addOption(value, label);
       }
-      drop.setValue(this.plugin.layout.manualOpenMode).onChange((value) => {
+      drop.setValue(manualOpenMode).onChange((value) => {
         if (!isOpenMode(value)) return;
-        void this.plugin.saveLayout({ ...this.plugin.layout, manualOpenMode: value });
+        const patch = mobile ? { mobileManualOpenMode: value } : { manualOpenMode: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
       });
     });
     new import_obsidian8.Setting(root).setName("Pin homepage tab").setDesc("Prevent the homepage tab from being closed.").addToggle(
-      (toggle) => toggle.setValue(this.plugin.layout.pin).onChange((value) => {
-        void this.plugin.saveLayout({ ...this.plugin.layout, pin: value });
+      (toggle) => toggle.setValue(pin).onChange((value) => {
+        const patch = mobile ? { mobilePin: value } : { pin: value };
+        void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-          leaf.setPinned(value);
+          leaf.setPinned(this.plugin.activePin());
         }
       })
     );
@@ -8736,26 +8838,11 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     );
     new import_obsidian8.Setting(root).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
       (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
-        const fresh = getDefaultLayout();
-        const layout = this.plugin.layout;
-        let next;
-        if (layout.responsiveMode !== "separate") {
-          next = fresh;
-        } else if (this.plugin.isMobileActive()) {
-          next = {
-            ...layout,
-            mobileBlocks: fresh.mobileBlocks,
-            mobileColumns: fresh.mobileColumns,
-            mobileLayoutPriority: fresh.mobileLayoutPriority
-          };
-        } else {
-          next = {
-            ...fresh,
-            mobileBlocks: layout.mobileBlocks,
-            mobileColumns: layout.mobileColumns,
-            mobileLayoutPriority: layout.mobileLayoutPriority
-          };
-        }
+        const next = buildResetLayout(
+          this.plugin.layout,
+          getDefaultLayout(),
+          this.plugin.isMobileActive()
+        );
         await this.plugin.saveLayout(next);
         await this.reloadOpenHomepages();
       })())
@@ -8985,6 +9072,21 @@ async function decryptStringEx(value) {
 }
 function _resetDeviceKeyCache() {
   cachedKey = null;
+}
+
+// src/utils/startupResolver.ts
+function mobileStartupActive(layout, isMobile) {
+  return isMobile && layout.separateStartup;
+}
+function resolveStartup(layout, isMobile) {
+  const mobile = mobileStartupActive(layout, isMobile);
+  return {
+    openOnStartup: mobile ? layout.mobileOpenOnStartup : layout.openOnStartup,
+    openMode: mobile ? layout.mobileOpenMode : layout.openMode,
+    manualOpenMode: mobile ? layout.mobileManualOpenMode : layout.manualOpenMode,
+    openWhenEmpty: mobile ? layout.mobileOpenWhenEmpty : layout.openWhenEmpty,
+    pin: mobile ? layout.mobilePin : layout.pin
+  };
 }
 
 // src/blocks/GreetingBlock.ts
@@ -12796,7 +12898,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
       id: "open-homepage",
       name: "Open homepage",
       callback: () => {
-        void this.openHomepage(this.layout.manualOpenMode);
+        void this.openHomepage(this.activeManualOpenMode());
       }
     });
     this.addCommand({
@@ -12824,14 +12926,14 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
       }
     });
     this.addRibbonIcon("home", "Open homepage", () => {
-      void this.openHomepage(this.layout.manualOpenMode);
+      void this.openHomepage(this.activeManualOpenMode());
     });
     this.addSettingTab(new HomepageSettingTab(this.app, this));
     let layoutReady = false;
     this.app.workspace.onLayoutReady(() => {
       layoutReady = true;
-      if (this.layout.openOnStartup) {
-        void this.openHomepage(this.layout.openMode);
+      if (this.activeOpenOnStartup()) {
+        void this.openHomepage(this.activeOpenMode());
       }
     });
     let emptyCheckTimer = null;
@@ -12841,7 +12943,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     });
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
-        if (!layoutReady || !this.layout.openWhenEmpty) return;
+        if (!layoutReady || !this.activeOpenWhenEmpty()) return;
         if (emptyCheckTimer) clearTimeout(emptyCheckTimer);
         emptyCheckTimer = setTimeout(() => {
           emptyCheckTimer = null;
@@ -12909,6 +13011,30 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
   activeLayoutPriority() {
     return this.isMobileActive() ? this.layout.mobileLayoutPriority : this.layout.layoutPriority;
   }
+  // ── Platform-aware startup helpers ────────────────────────────────
+  //
+  // Gated on `separateStartup` (NOT `responsiveMode`): startup behaviour can
+  // diverge per platform even with a single unified layout. When the gate is
+  // off, every accessor returns the desktop value, so existing vaults behave
+  // exactly as before.
+  isMobileStartupActive() {
+    return mobileStartupActive(this.layout, import_obsidian27.Platform.isMobile);
+  }
+  activeOpenOnStartup() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).openOnStartup;
+  }
+  activeOpenMode() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).openMode;
+  }
+  activeManualOpenMode() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).manualOpenMode;
+  }
+  activeOpenWhenEmpty() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).openWhenEmpty;
+  }
+  activePin() {
+    return resolveStartup(this.layout, import_obsidian27.Platform.isMobile).pin;
+  }
   // ── Persistence ───────────────────────────────────────────────────
   savePromise = Promise.resolve();
   saveErrorNotified = false;
@@ -12973,7 +13099,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     const existing = workspace.getLeavesOfType(VIEW_TYPE);
     if (existing.length > 0) {
       await workspace.revealLeaf(existing[0]);
-      if (this.layout.pin) existing[0].setPinned(true);
+      if (this.activePin()) existing[0].setPinned(true);
       return;
     }
     let leaf;
@@ -12991,7 +13117,7 @@ var HomepagePlugin = class extends import_obsidian27.Plugin {
     }
     await leaf.setViewState({ type: VIEW_TYPE, active: true });
     await workspace.revealLeaf(leaf);
-    if (this.layout.pin) leaf.setPinned(true);
+    if (this.activePin()) leaf.setPinned(true);
   }
 };
 /*! Bundled license information:

@@ -1,5 +1,5 @@
-import { App, Modal, Setting } from 'obsidian';
-import { BlockInstance, BlockType, IHomepagePlugin } from './types';
+import { App, SuggestModal, setIcon } from 'obsidian';
+import { BlockInstance, BlockType, BlockFactory, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { GridLayout } from './GridLayout';
 import { BLOCK_META } from './blockMeta';
@@ -25,7 +25,7 @@ export class EditToolbar {
     this.fabEl.setAttribute('role', 'button');
     this.fabEl.setAttribute('tabindex', '0');
     this.fabEl.setAttribute('aria-label', 'Enter edit mode');
-    this.fabEl.setText('✏');
+    setIcon(this.fabEl, 'pencil');
     this.fabEl.addEventListener('click', () => this.toggleEditMode());
     this.fabEl.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.toggleEditMode(); }
@@ -63,6 +63,10 @@ export class EditToolbar {
   /** Exit edit mode and revert all block changes made during this edit session. */
   private discardChanges(): void {
     if (!this.editMode) return; // re-entrancy guard
+    // Cancel any in-flight debounced/raf persist FIRST so a late auto-height
+    // write can't land after we restore the snapshot and resurrect the very
+    // positions we're discarding.
+    this.grid.cancelPendingPersist();
     if (this.blocksSnapshot) {
       // Route restored blocks through GridLayout.buildLayoutUpdate so the
       // mobile/desktop split (and any future per-platform fields) is owned by
@@ -77,7 +81,11 @@ export class EditToolbar {
     }
     this.editMode = false;
     this.zoomScale = 1;
-    this.grid.setEditMode(false, true); // skipRepack — snapshot is already at correct positions
+    // skipRepack — snapshot is already at correct view-mode positions.
+    // flushInFlight=false — CRITICAL: do NOT re-persist the live edited grid;
+    // we just restored the snapshot above and a flush would overwrite it with
+    // the edited positions (turning Discard into Save).
+    this.grid.setEditMode(false, true, false);
     this.syncVisibility();
     this.renderToolbar();
   }
@@ -210,35 +218,44 @@ export class EditToolbar {
 }
 
 
-class AddBlockModal extends Modal {
+/**
+ * Command-palette-style block picker: a searchable, arrow-navigable list
+ * (extends Obsidian's SuggestModal for free fuzzy filtering + keyboard nav)
+ * instead of a flat 17-item grid. Matches against display name, type, and
+ * description.
+ */
+class AddBlockModal extends SuggestModal<BlockFactory> {
   constructor(
     app: App,
     private onSelect: (type: BlockType) => void,
   ) {
     super(app);
+    this.setPlaceholder('Search blocks\u2026');
+    this.modalEl.addClass('add-block-suggest');
   }
 
-  onOpen(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    new Setting(contentEl).setName('Add block').setHeading().settingEl.addClass('add-block-modal-title');
+  getSuggestions(query: string): BlockFactory[] {
+    const q = query.trim().toLowerCase();
+    const all = BlockRegistry.getAll();
+    if (!q) return all;
+    return all.filter((f) => {
+      const meta = BLOCK_META[f.type];
+      return `${f.displayName} ${f.type} ${meta?.desc ?? ''}`.toLowerCase().includes(q);
+    });
+  }
 
-    const grid = contentEl.createDiv({ cls: 'add-block-grid' });
-
-    for (const factory of BlockRegistry.getAll()) {
-      const meta = BLOCK_META[factory.type];
-      const btn = grid.createEl('button', { cls: 'add-block-option' });
-      btn.createSpan({ cls: 'add-block-icon', text: meta?.icon ?? '\u25AA' });
-      btn.createSpan({ cls: 'add-block-name', text: factory.displayName });
-      if (meta?.desc) {
-        btn.createSpan({ cls: 'add-block-desc', text: meta.desc });
-      }
-      btn.addEventListener('click', () => {
-        this.onSelect(factory.type);
-        this.close();
-      });
+  renderSuggestion(factory: BlockFactory, el: HTMLElement): void {
+    el.addClass('add-block-suggestion');
+    const meta = BLOCK_META[factory.type];
+    el.createSpan({ cls: 'add-block-suggestion-icon', text: meta?.icon ?? '\u25AA' });
+    const text = el.createDiv({ cls: 'add-block-suggestion-text' });
+    text.createDiv({ cls: 'add-block-suggestion-name', text: factory.displayName });
+    if (meta?.desc) {
+      text.createDiv({ cls: 'add-block-suggestion-desc', text: meta.desc });
     }
   }
 
-  onClose(): void { this.contentEl.empty(); }
+  onChooseSuggestion(factory: BlockFactory): void {
+    this.onSelect(factory.type);
+  }
 }

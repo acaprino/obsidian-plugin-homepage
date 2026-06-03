@@ -85,7 +85,7 @@ export class QuotesListBlock extends BaseBlock {
 
     return this.loadAndRender(el).catch(e => {
       console.error('[Homepage Blocks] QuotesListBlock failed to render:', e);
-      el.setText('Error loading quotes. Check console for details.');
+      this.renderErrorHint(el, 'Couldn’t load quotes — check the console for details.');
     });
   }
 
@@ -116,8 +116,11 @@ export class QuotesListBlock extends BaseBlock {
     el.toggleClass('quote-font-handwriting', safeFontStyle === 'handwriting');
 
     // Custom font overrides the preset via a CSS variable on the block element.
-    const safeFont = typeof customFont === 'string' && customFont.trim() && SAFE_FONT_RE.test(customFont.trim())
-      ? customFont.trim() : '';
+    // Cap length before the regex test so a multi-MB tampered value can't be
+    // stored/applied (the regexes are unbounded; CSS injection is already
+    // prevented by setProperty, this is a memory/DoS guard).
+    const fontCandidate = typeof customFont === 'string' ? customFont.trim().slice(0, 64) : '';
+    const safeFont = fontCandidate && SAFE_FONT_RE.test(fontCandidate) ? fontCandidate : '';
     if (safeFont) el.style.setProperty('--hp-quote-font', safeFont);
     else el.style.removeProperty('--hp-quote-font');
 
@@ -251,7 +254,10 @@ export class QuotesListBlock extends BaseBlock {
       }
 
       const { file, content, cache } = result.value;
-      const color = cache?.frontmatter?.color as string ?? '';
+      // Cap length before the regex test (unbounded regex; setProperty already
+      // blocks CSS injection — this guards against a multi-MB tampered value).
+      const rawColor = cache?.frontmatter?.color as string ?? '';
+      const color = typeof rawColor === 'string' ? rawColor.slice(0, 64) : '';
       const body = this.extractBody(content, cache);
       if (!body) continue;
 

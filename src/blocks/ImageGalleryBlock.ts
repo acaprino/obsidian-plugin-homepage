@@ -29,6 +29,9 @@ export function abortActiveLightbox(): void {
 
 function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortController | null {
   if (items.length === 0) return null;
+  // Remember the element that opened the lightbox (the gallery thumbnail) so
+  // focus can be restored there on close.
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   // Abort previous lightbox listeners and remove ONLY the overlay we own
   abortActiveLightbox();
 
@@ -37,6 +40,11 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
 
   let current = startIndex;
   const overlay = document.body.createDiv({ cls: 'gallery-lightbox' });
+  // Treat the overlay as a modal dialog for assistive tech.
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Image viewer');
+  overlay.tabIndex = -1;
   activeLightbox = { ac, overlay };
 
   const prevBtn = overlay.createEl('button', { cls: 'gallery-lightbox-prev', attr: { 'aria-label': 'Previous' } });
@@ -87,7 +95,13 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
     overlay.remove();
     ac.abort();
     if (activeLightbox?.ac === ac) activeLightbox = null;
+    // Return focus to the opener so keyboard users land back where they were.
+    if (opener && opener.isConnected) opener.focus();
   };
+
+  // Focusable controls inside the overlay (nav buttons that aren't hidden).
+  const focusables = (): HTMLElement[] =>
+    [prevBtn, nextBtn].filter(b => !b.hasClass('gallery-lightbox-nav-hidden'));
 
   prevBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current - 1); }, { signal });
   nextBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current + 1); }, { signal });
@@ -116,6 +130,17 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); showItem(current - 1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); showItem(current + 1); }
+    else if (e.key === 'Tab') {
+      // Trap Tab within the overlay so focus can't escape behind the modal.
+      e.preventDefault();
+      const f = focusables();
+      if (f.length === 0) { overlay.focus(); return; }
+      const idx = f.indexOf(active as HTMLElement);
+      const nextIdx = e.shiftKey
+        ? (idx <= 0 ? f.length - 1 : idx - 1)
+        : (idx === f.length - 1 ? 0 : idx + 1);
+      f[nextIdx].focus();
+    }
   }, { signal });
 
   // Swipe navigation for touch devices
@@ -141,6 +166,8 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
   }, { signal });
 
   showItem(current);
+  // Move focus into the overlay so keyboard/AT users aren't stranded behind it.
+  (focusables()[0] ?? overlay).focus();
   return ac;
 }
 
@@ -197,7 +224,7 @@ export class ImageGalleryBlock extends BaseBlock {
 
     return this.loadAndRender(el).catch(e => {
       console.error('[Homepage Blocks] ImageGalleryBlock failed to render:', e);
-      el.setText('Error loading gallery. Check console for details.');
+      this.renderErrorHint(el, 'Couldn’t load this gallery — check the console for details.');
     });
   }
 

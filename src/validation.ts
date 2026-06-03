@@ -33,6 +33,12 @@ export const DEFAULT_LAYOUT_DATA: LayoutConfig = {
   manualOpenMode: 'retain',
   openWhenEmpty: false,
   pin: false,
+  separateStartup: false,
+  mobileOpenOnStartup: false,
+  mobileOpenMode: 'retain',
+  mobileManualOpenMode: 'retain',
+  mobileOpenWhenEmpty: false,
+  mobilePin: false,
   showScrollbar: true,
   compactLayout: true,
   hoverHighlight: true,
@@ -127,8 +133,10 @@ export function migrateBlockInstance(b: Record<string, unknown>): Record<string,
   // "Only write if target unset" guard, mirroring the safer pattern used by the
   // _hideX/_showX migration below. A corrupted data.json with both `col` and
   // `x` (e.g. from a partial sync merge) would otherwise lose the valid `x`.
-  if (typeof m.col === 'number' && typeof m.x !== 'number') { m.x = m.col - 1; }
-  if (typeof m.row === 'number' && typeof m.y !== 'number') { m.y = m.row - 1; }
+  // Clamp to >= 0: a legacy col/row of 0 would map to -1 and then fail
+  // isValidBlockInstance (x/y >= 0), silently dropping the block.
+  if (typeof m.col === 'number' && typeof m.x !== 'number') { m.x = Math.max(0, m.col - 1); }
+  if (typeof m.row === 'number' && typeof m.y !== 'number') { m.y = Math.max(0, m.row - 1); }
   if (typeof m.colSpan === 'number' && typeof m.w !== 'number') { m.w = m.colSpan; }
   if (typeof m.rowSpan === 'number' && typeof m.h !== 'number') { m.h = m.rowSpan; }
   delete m.col;
@@ -301,6 +309,27 @@ export function validateLayout(
   const pin = typeof r.pin === 'boolean'
     ? r.pin
     : defaults.pin;
+  const separateStartup = typeof r.separateStartup === 'boolean'
+    ? r.separateStartup
+    : defaults.separateStartup;
+  // Mobile startup overrides default to the resolved DESKTOP value (not a fixed
+  // constant) so a data.json written before this feature existed transparently
+  // mirrors the desktop startup behaviour on mobile until the user diverges it.
+  const mobileOpenOnStartup = typeof r.mobileOpenOnStartup === 'boolean'
+    ? r.mobileOpenOnStartup
+    : openOnStartup;
+  const mobileOpenMode = isOpenMode(r.mobileOpenMode)
+    ? r.mobileOpenMode
+    : openMode;
+  const mobileManualOpenMode = isOpenMode(r.mobileManualOpenMode)
+    ? r.mobileManualOpenMode
+    : manualOpenMode;
+  const mobileOpenWhenEmpty = typeof r.mobileOpenWhenEmpty === 'boolean'
+    ? r.mobileOpenWhenEmpty
+    : openWhenEmpty;
+  const mobilePin = typeof r.mobilePin === 'boolean'
+    ? r.mobilePin
+    : pin;
   // Migrate legacy `hideScrollbar` to its `showScrollbar` inverse. A
   // new `showScrollbar` value on disk always wins; otherwise fall back to
   // the inverted legacy key, otherwise the default.
@@ -321,7 +350,9 @@ export function validateLayout(
   return {
     columns, layoutPriority, responsiveMode,
     mobileColumns, mobileLayoutPriority, mobileBlocks,
-    openOnStartup, openMode, manualOpenMode, openWhenEmpty,
-    pin, showScrollbar, compactLayout, hoverHighlight, blocks,
+    openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin,
+    separateStartup, mobileOpenOnStartup, mobileOpenMode,
+    mobileManualOpenMode, mobileOpenWhenEmpty, mobilePin,
+    showScrollbar, compactLayout, hoverHighlight, blocks,
   };
 }

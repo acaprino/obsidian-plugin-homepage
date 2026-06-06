@@ -12041,30 +12041,25 @@ var RandomNoteBlock = class extends BaseBlock {
 // src/blocks/VoiceDictationBlock.ts
 var import_obsidian26 = require("obsidian");
 var CONSENT_STORAGE_KEY = "hp-voice-consent";
-function consentKey(vaultId) {
-  return `${CONSENT_STORAGE_KEY}:${vaultId}`;
-}
 function hasMediaRecorderSupport() {
   if (typeof MediaRecorder === "undefined") return false;
   const md = navigator.mediaDevices;
   return typeof md?.getUserMedia === "function";
 }
-function hasConsent(provider, vaultId) {
+function readConsent(app) {
   try {
-    const raw = window.localStorage.getItem(consentKey(vaultId));
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
-    return parsed[provider] === true;
+    const raw = app.loadLocalStorage(CONSENT_STORAGE_KEY);
+    return raw && typeof raw === "object" ? raw : {};
   } catch {
-    return false;
+    return {};
   }
 }
-function setConsent(provider, vaultId) {
+function hasConsent(app, provider) {
+  return readConsent(app)[provider] === true;
+}
+function setConsent(app, provider) {
   try {
-    const raw = window.localStorage.getItem(consentKey(vaultId));
-    const parsed = raw ? JSON.parse(raw) : {};
-    parsed[provider] = true;
-    window.localStorage.setItem(consentKey(vaultId), JSON.stringify(parsed));
+    app.saveLocalStorage(CONSENT_STORAGE_KEY, { ...readConsent(app), [provider]: true });
   } catch {
   }
 }
@@ -12241,11 +12236,10 @@ var VoiceDictationBlock = class extends BaseBlock {
       return;
     }
     const provider = cfg.provider ?? "whisper";
-    const vaultId = this.app.vault.getName();
-    if (!hasConsent(provider, vaultId)) {
+    if (!hasConsent(this.app, provider)) {
       const confirmed = await confirmVoiceConsent(this.app, provider);
       if (!confirmed) return;
-      setConsent(provider, vaultId);
+      setConsent(this.app, provider);
     }
     this.stopActiveStream();
     let stream;

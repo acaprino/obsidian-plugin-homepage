@@ -11301,7 +11301,7 @@ var VideoEmbedBlock = class extends BaseBlock {
   }
   renderContentSettings(body, draft) {
     new import_obsidian21.Setting(body).setName("Video or playlist link").setDesc("Paste a video or playlist link from any supported platform.").addText(
-      (t) => t.setValue(draft.url ?? "").setPlaceholder("https://www.youtube.com/watch?v=...").onChange((v) => {
+      (t) => t.setValue(draft.url ?? "").setPlaceholder("https://www.youtube.com/watch?v={video-id}").onChange((v) => {
         draft.url = v;
       })
     );

@@ -10,6 +10,9 @@ interface RecentFilesConfig {
 }
 
 export class RecentFilesBlock extends BaseBlock {
+  /** Path of the currently-displayed most-recent file (set each renderContent). */
+  private topPath: string | null = null;
+
   render(el: HTMLElement): void {
     this.containerEl = el;
     el.addClass('recent-files-block');
@@ -17,16 +20,17 @@ export class RecentFilesBlock extends BaseBlock {
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); this.renderContent(e); });
 
     this.registerEvent(this.app.vault.on('modify', (file) => {
-      // Only re-render if the modified file could change the displayed list.
-      // Files already at the top won't change rank from a modify event.
+      // O(1) guard — no full-vault sort here (the old version sorted every
+      // markdown file on EVERY modify event, before the debounce). A modify
+      // bumps the file's mtime to "now", so it jumps to the top of the
+      // mtime-sorted list and changes the displayed list — UNLESS it was
+      // already the top item. So: re-render unless the file is already #1.
+      if (!file.path.endsWith('.md')) return;
       const cfg = this.instance.config as RecentFilesConfig;
-      const max = cfg.maxItems ?? 10;
-      const sorted = this.app.vault.getMarkdownFiles().sort((a, b) => b.stat.mtime - a.stat.mtime);
-      const topFile = sorted[0];
-      if (topFile && topFile.path === file.path && sorted.indexOf(topFile) === 0) return;
-      // Only trigger if the file would appear in the top N
-      const idx = sorted.findIndex(f => f.path === file.path);
-      if (idx >= 0 && idx < max) trigger();
+      const excluded = (cfg.excludeFolders ?? '').split(',').map(f => f.trim()).filter(Boolean);
+      if (excluded.some(folder => file.path.startsWith(folder + '/'))) return;
+      if (file.path === this.topPath) return;
+      trigger();
     }));
     this.registerEvent(this.app.vault.on('create', () => trigger()));
     this.registerEvent(this.app.vault.on('delete', () => trigger()));
@@ -50,6 +54,10 @@ export class RecentFilesBlock extends BaseBlock {
       .filter(file => !excluded.some(folder => file.path.startsWith(folder + '/')))
       .sort((a, b) => b.stat.mtime - a.stat.mtime)
       .slice(0, maxItems);
+
+    // Cache the top file's path so the modify handler can skip re-rendering
+    // when an already-#1 file is modified (the one case where the list is unchanged).
+    this.topPath = files[0]?.path ?? null;
 
     const list = el.createDiv({ cls: 'recent-files-list' });
 

@@ -17,14 +17,49 @@ export function cacheHasTag(cache: CachedMetadata | null, tag: string): boolean 
   return fmTagArray.some(t => (t.startsWith('#') ? t : `#${t}`) === tag);
 }
 
+/** Normalize a tag to include the leading `#` (e.g. `values` -> `#values`). */
+export function normalizeTag(tag: string): string {
+  const t = tag.trim();
+  return t.startsWith('#') ? t : `#${t}`;
+}
+
 /**
- * Cache of tag -> files keyed by the tag string (including `#`). Entries live
- * until a vault or metadataCache event invalidates them — see
- * installTagCacheListeners. Previously keyed by a 5s TTL, which could serve
- * stale data after a rename or tag edit; now staleness is event-driven.
+ * Cache of tag -> files keyed by the tag string (including `#`). Entries are
+ * kept fresh by PER-FILE invalidation (see installTagCacheListeners). Previously
+ * a 5s TTL (stale after edits), then a global clear on any metadata event (which
+ * forced every getFilesWithTag caller back to an O(N) vault scan under metadata
+ * churn); now only the changed file's membership is updated.
  */
 const tagCache = new Map<string, TFile[]>();
 let listenersInstalled = false;
+
+/** Remove a file path (and, for folders, anything under it) from every cached tag list. */
+function dropPathFromCache(path: string): void {
+  const prefix = path + '/';
+  for (const [tag, files] of tagCache) {
+    const next = files.filter(f => f.path !== path && !f.path.startsWith(prefix));
+    if (next.length !== files.length) tagCache.set(tag, next);
+  }
+}
+
+/** Re-evaluate one file's membership across every cached tag, in place. */
+function reindexFile(file: TFile, cache: CachedMetadata | null): void {
+  if (file.extension !== 'md') return;
+  for (const [tag, files] of tagCache) {
+    const has = cacheHasTag(cache, tag);
+    const idx = files.findIndex(f => f.path === file.path);
+    if (has && idx === -1) {
+      tagCache.set(tag, [...files, file]);
+    } else if (!has && idx !== -1) {
+      tagCache.set(tag, files.filter(f => f.path !== file.path));
+    } else if (has && idx !== -1 && files[idx] !== file) {
+      // Refresh a stale TFile reference (same path, new object).
+      const next = files.slice();
+      next[idx] = file;
+      tagCache.set(tag, next);
+    }
+  }
+}
 
 /**
  * Register a plugin-wide invalidator so every caller of getFilesWithTag sees
@@ -43,10 +78,18 @@ export function installTagCacheListeners(plugin: Plugin): void {
     listenersInstalled = false;
     tagCache.clear();
   });
-  plugin.registerEvent(plugin.app.vault.on('delete', () => { tagCache.clear(); }));
-  plugin.registerEvent(plugin.app.vault.on('rename', () => { tagCache.clear(); }));
-  plugin.registerEvent(plugin.app.metadataCache.on('changed', () => { tagCache.clear(); }));
-  plugin.registerEvent(plugin.app.metadataCache.on('resolved', () => { tagCache.clear(); }));
+  // Per-file invalidation (T cached tags is tiny) instead of a global clear:
+  // metadataCache 'changed' fires per recomputed file, so updating only that
+  // file's membership keeps lookups amortized-cheap under sync/bulk churn. The
+  // old global clear on 'resolved' is dropped — per-file 'changed' covers it.
+  plugin.registerEvent(plugin.app.vault.on('delete', (f) => { dropPathFromCache(f.path); }));
+  plugin.registerEvent(plugin.app.vault.on('rename', (f, oldPath) => {
+    dropPathFromCache(oldPath);
+    if (f instanceof TFile) reindexFile(f, plugin.app.metadataCache.getFileCache(f));
+  }));
+  plugin.registerEvent(plugin.app.metadataCache.on('changed', (f, _data, cache) => {
+    reindexFile(f, cache);
+  }));
 }
 
 /**

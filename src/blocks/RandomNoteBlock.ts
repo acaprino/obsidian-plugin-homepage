@@ -1,5 +1,5 @@
 import { Setting, TFile } from 'obsidian';
-import { cacheHasTag, getFilesWithTag } from '../utils/tags';
+import { cacheHasTag, getFilesWithTag, normalizeTag } from '../utils/tags';
 import { dailyEpochDay } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
@@ -32,7 +32,7 @@ export class RandomNoteBlock extends BaseBlock {
     this.registerEvent(this.app.metadataCache.on('changed', (_file, _data, cache) => {
       const tag = this.getTag();
       if (!tag) return;
-      const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
+      const tagSearch = normalizeTag(tag);
       if (cacheHasTag(cache, tagSearch)) trigger();
     }));
 
@@ -79,7 +79,7 @@ export class RandomNoteBlock extends BaseBlock {
       return;
     }
 
-    const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
+    const tagSearch = normalizeTag(tag);
     // Sort by path for stable ordering — vault iteration order is non-deterministic
     const files = getFilesWithTag(this.app, tagSearch).sort((a, b) => a.path.localeCompare(b.path));
 

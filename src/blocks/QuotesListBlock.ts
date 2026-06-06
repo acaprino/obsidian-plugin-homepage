@@ -1,5 +1,5 @@
 import { CachedMetadata, Setting } from 'obsidian';
-import { cacheHasTag, getFilesWithTag } from '../utils/tags';
+import { cacheHasTag, getFilesWithTag, normalizeTag } from '../utils/tags';
 import { parseNoteInsight } from '../utils/noteContent';
 import { dailyIndex } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
@@ -73,7 +73,7 @@ export class QuotesListBlock extends BaseBlock {
     this.registerEvent(this.app.metadataCache.on('changed', (_file, _data, cache) => {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
-      const tagSearch = cfg.tag.startsWith('#') ? cfg.tag : `#${cfg.tag}`;
+      const tagSearch = normalizeTag(cfg.tag);
       if (cacheHasTag(cache, tagSearch)) trigger();
     }));
 
@@ -145,7 +145,7 @@ export class QuotesListBlock extends BaseBlock {
         return;
       }
 
-      const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
+      const tagSearch = normalizeTag(tag);
       const files = getFilesWithTag(this.app, tagSearch);
 
       if (files.length === 0) {
@@ -232,7 +232,7 @@ export class QuotesListBlock extends BaseBlock {
       return;
     }
 
-    const tagSearch = tag.startsWith('#') ? tag : `#${tag}`;
+    const tagSearch = normalizeTag(tag);
     const allFiles = getFilesWithTag(this.app, tagSearch);
     const files = effectiveMax > 0 ? allFiles.slice(0, effectiveMax) : allFiles;
 

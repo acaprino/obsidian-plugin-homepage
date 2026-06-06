@@ -54,6 +54,21 @@ describe('buildResetLayout — startup config is never wiped (F1 regression)', (
     expect(next.columns).toBe(fresh.columns);
   });
 
+  it('unified: preserves the dormant mobile layout slice (L6)', () => {
+    // A user built a separate mobile layout, switched to unified, then reset.
+    // The dormant mobile layout must survive (same class of asymmetry as F1).
+    const current = customLayout({ responsiveMode: 'unified' });
+    const fresh = getDefaultLayout();
+    const next = buildResetLayout(current, fresh, false);
+
+    expect(next.mobileBlocks).toStrictEqual(current.mobileBlocks);
+    expect(next.mobileColumns).toBe(current.mobileColumns);
+    expect(next.mobileLayoutPriority).toBe(current.mobileLayoutPriority);
+    // …while the active (desktop) layout is still reset.
+    expect(next.blocks).toStrictEqual(fresh.blocks);
+    expect(next.columns).toBe(fresh.columns);
+  });
+
   it('desktop-issued (separate): resets desktop layout, keeps mobile layout slice + startup', () => {
     const current = customLayout({ responsiveMode: 'separate' });
     const fresh = getDefaultLayout();

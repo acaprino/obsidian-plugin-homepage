@@ -273,6 +273,30 @@ describe('validateBlocks', () => {
     expect(out.x).toBeGreaterThanOrEqual(0);
     expect(out.x + out.w).toBeLessThanOrEqual(3);
   });
+
+  it('reports the count of dropped invalid blocks via onInvalidDropped (M3)', () => {
+    let dropped = 0;
+    const result = validateBlocks(
+      [block({ id: 'a' }), { id: 'bad spaces' }, { type: 'nope' }, block({ id: 'd' })],
+      3,
+      [],
+      (n) => { dropped += n; },
+    );
+    expect(result.map(b => b.id)).toEqual(['a', 'd']);
+    expect(dropped).toBe(2);
+  });
+
+  it('does NOT report a drop when only the MAX_BLOCKS clamp or dedup trims (M3)', () => {
+    let called = false;
+    const onDrop = () => { called = true; };
+    // dedup: two valid blocks sharing an id is intentional trimming, not corruption.
+    validateBlocks([block({ id: 'dup' }), block({ id: 'dup' })], 3, [], onDrop);
+    expect(called).toBe(false);
+    // clamp: 100+ valid blocks is intentional trimming, not corruption.
+    const many = Array.from({ length: MAX_BLOCKS + 5 }, (_, i) => block({ id: 'b' + i }));
+    validateBlocks(many, 3, [], onDrop);
+    expect(called).toBe(false);
+  });
 });
 
 describe('validateLayout', () => {
@@ -308,6 +332,35 @@ describe('validateLayout', () => {
   it('migrates legacy hideScrollbar: true to showScrollbar: false', () => {
     expect(validateLayout({ hideScrollbar: true }).showScrollbar).toBe(false);
     expect(validateLayout({ hideScrollbar: false }).showScrollbar).toBe(true);
+  });
+
+  it('reports per-block corruption across both platform arrays via onBlocksDropped (M3)', () => {
+    let dropped = 0;
+    validateLayout(
+      {
+        blocks: [block({ id: 'ok1' }), { id: 'bad id with spaces' }],
+        mobileBlocks: [{ type: 'not-a-real-type' }, block({ id: 'ok2' })],
+      },
+      undefined,
+      (n) => { dropped += n; },
+    );
+    expect(dropped).toBe(2); // one bad desktop block + one bad mobile block
+  });
+
+  it('does NOT fire onBlocksDropped for a clean layout (M3)', () => {
+    let called = false;
+    validateLayout(
+      { blocks: [block({ id: 'ok1' })], mobileBlocks: [] },
+      undefined,
+      () => { called = true; },
+    );
+    expect(called).toBe(false);
+  });
+
+  it('does NOT fire onBlocksDropped when blocks is a non-array (top-level case, not per-block)', () => {
+    let called = false;
+    validateLayout({ blocks: 'nope' }, undefined, () => { called = true; });
+    expect(called).toBe(false);
   });
 
   it('prefers new showScrollbar over legacy hideScrollbar when both are present', () => {

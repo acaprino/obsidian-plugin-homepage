@@ -13,6 +13,15 @@ export type BlockType = typeof BLOCK_TYPES[number];
 
 export type OpenMode = 'replace-all' | 'replace-last' | 'retain';
 
+/**
+ * Fill direction for packing. Currently a single value: packing is always
+ * row-group-aware. `'column'` was removed (commit 32db977) but the union is
+ * kept as a reserved extension point — the `priority`/`_priority` params
+ * threaded through packing.ts / GridLayout / LayoutPersister exist for this
+ * forward-compat and are intentionally ignored today (old `'column'` layouts
+ * migrate silently to `'row'`). Do not delete the param plumbing without a plan
+ * to drop the reserved value.
+ */
 export type LayoutPriority = 'row';
 
 export type ResponsiveMode = 'unified' | 'separate';

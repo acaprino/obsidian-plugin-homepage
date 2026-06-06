@@ -177,7 +177,7 @@ export class GridLayout {
     // edited GridStack DOM and re-persist exactly the positions the user asked
     // to discard — silently turning Discard into Save.
     if (flushInFlight && this.editMode && this.gridStack && this.phase === Phase.Ready) {
-      try { this.persistLayout(); } catch { /* non-fatal */ }
+      this.tryPersist('edit-mode exit');
     }
     if (!enabled && this.editMode && !skipRepack) {
       // Repack y-positions: compact edit heights create y offsets that
@@ -233,7 +233,7 @@ export class GridLayout {
     // silently discards the dragged position (the rerender destroys the
     // GridStack instance before its dragstop event has fired).
     if (this.editMode && this.gridStack && this.phase === Phase.Ready) {
-      try { this.persistLayout(); } catch { /* non-fatal */ }
+      this.tryPersist('column change');
     }
     const newBlocks = this.plugin.activeBlocks().map(b => ({
       ...b,
@@ -298,7 +298,7 @@ export class GridLayout {
     // followed immediately by a tab close doesn't silently drop the write.
     if (this.scheduler.hasTimeout('sync')) {
       this.scheduler.cancelTimeout('sync');
-      try { this.persistLayout(); } catch { /* non-fatal */ }
+      this.tryPersist('teardown');
     }
     this.phase = Phase.Destroyed;
     this.scheduler.cancelAll();
@@ -380,86 +380,10 @@ export class GridLayout {
 
     this.gridStack.load(items);
 
-    // Wire up block Component lifecycle after DOM is created
+    // Wire up block Component lifecycle after DOM is created. The per-block
+    // mount work lives in mountBlock() to keep initGridStack readable.
     for (const [i, instance] of blocks.entries()) {
-      const gsEl = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
-      if (!(gsEl instanceof HTMLElement)) continue;
-
-      // ARIA: mark grid items as listitems to match parent role="list"
-      gsEl.setAttribute('role', 'listitem');
-      if (this.shouldAutoHeight(instance)) {
-        gsEl.classList.add('is-auto-height');
-      } else {
-        gsEl.classList.remove('is-auto-height');
-      }
-
-      // Find the GridStack item content container and populate it via Obsidian DOM API
-      const gsContent = gsEl.querySelector('.grid-stack-item-content');
-      if (!(gsContent instanceof HTMLElement)) continue;
-
-      const animDelayMs = isInitial ? ([0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240) : undefined;
-      const wrapper = buildBlockWrapper(gsContent, instance, animDelayMs);
-
-      const headerZone = wrapper.querySelector('.block-header-zone');
-      const contentEl = wrapper.querySelector('.block-content');
-      if (!(contentEl instanceof HTMLElement) || !(headerZone instanceof HTMLElement)) continue;
-
-      const factory = BlockRegistry.get(instance.type);
-      if (!factory) continue;
-
-      if (this.editMode) {
-        // Symbolic compact card — no content rendering for easy drag & drop
-        renderCompactPlaceholder(headerZone, contentEl, factory, instance);
-        this.blocks.set(instance.id, { block: null, wrapper });
-      } else {
-        const block = factory.create(this.app, instance, this.plugin);
-        block.setHeaderContainer(headerZone);
-        block.load();
-        const needsResize = this.shouldAutoHeight(instance);
-        // Listen for auto-height requests from block re-renders (via scheduleRender).
-        // Re-resolve the live block on every fire instead of trusting the
-        // render-time `instance` closure -- otherwise a settings change that
-        // toggled heightMode without a teardown would still treat the block as
-        // auto-height because the listener was wired with the old config.
-        if (needsResize) {
-          const blockId = instance.id;
-          gsEl.addEventListener('request-auto-height', () => {
-            const live = this.plugin.activeBlocks().find(b => b.id === blockId);
-            if (!live || !this.shouldAutoHeight(live)) return;
-            this.requestAutoHeight(gsEl, live);
-          });
-        }
-        // Skeleton overlay: show shimmer placeholder during initial load
-        const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
-        const result = block.render(contentEl);
-        if (result instanceof Promise) {
-          // After async render, wait one frame for the browser to lay out the new DOM,
-          // then measure and resize the block to its natural content height.
-          result
-            .then(() => {
-              removeSkeleton(skeletonEl, this.scheduler);
-              if (needsResize) this.requestAutoHeight(gsEl, instance);
-            })
-            .catch(e => {
-              removeSkeleton(skeletonEl, this.scheduler);
-              console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
-              contentEl.setText('Error rendering block. Check console for details.');
-            });
-        } else {
-          // Sync render completed — skeleton was never painted, just remove it
-          skeletonEl?.remove();
-          if (needsResize) this.requestAutoHeight(gsEl, instance);
-        }
-        this.blocks.set(instance.id, { block, wrapper });
-      }
-
-      // Collapse toggle
-      attachCollapseToggle(this, gsEl, instance, headerZone);
-
-      // Edit handles
-      if (this.editMode) {
-        attachEditHandleBar(this, wrapper, instance);
-      }
+      this.mountBlock(instance, i, isInitial);
     }
 
     // In single-column flex mode, reorder DOM elements by position
@@ -517,6 +441,96 @@ export class GridLayout {
     });
   }
 
+  /**
+   * Mount one block into its GridStack item: build the wrapper DOM, then either
+   * render a compact placeholder (edit mode) or instantiate the live block
+   * (view mode), wire the auto-height listener + skeleton, and attach the
+   * collapse toggle / edit handle bar. Extracted from initGridStack's per-block
+   * loop; the early `return`s here were `continue`s in the loop (skip a block
+   * whose expected DOM/factory is missing). `i` drives the staggered intro
+   * animation delay on the initial render only.
+   */
+  private mountBlock(instance: BlockInstance, i: number, isInitial: boolean): void {
+    const gsEl = this.gridEl.querySelector(`[gs-id="${CSS.escape(instance.id)}"]`);
+    if (!(gsEl instanceof HTMLElement)) return;
+
+    // ARIA: mark grid items as listitems to match parent role="list"
+    gsEl.setAttribute('role', 'listitem');
+    if (this.shouldAutoHeight(instance)) {
+      gsEl.classList.add('is-auto-height');
+    } else {
+      gsEl.classList.remove('is-auto-height');
+    }
+
+    // Find the GridStack item content container and populate it via Obsidian DOM API
+    const gsContent = gsEl.querySelector('.grid-stack-item-content');
+    if (!(gsContent instanceof HTMLElement)) return;
+
+    const animDelayMs = isInitial ? ([0, 50, 100, 140, 170, 195, 215, 230][i] ?? 240) : undefined;
+    const wrapper = buildBlockWrapper(gsContent, instance, animDelayMs);
+
+    const headerZone = wrapper.querySelector('.block-header-zone');
+    const contentEl = wrapper.querySelector('.block-content');
+    if (!(contentEl instanceof HTMLElement) || !(headerZone instanceof HTMLElement)) return;
+
+    const factory = BlockRegistry.get(instance.type);
+    if (!factory) return;
+
+    if (this.editMode) {
+      // Symbolic compact card — no content rendering for easy drag & drop
+      renderCompactPlaceholder(headerZone, contentEl, factory, instance);
+      this.blocks.set(instance.id, { block: null, wrapper });
+    } else {
+      const block = factory.create(this.app, instance, this.plugin);
+      block.setHeaderContainer(headerZone);
+      block.load();
+      const needsResize = this.shouldAutoHeight(instance);
+      // Listen for auto-height requests from block re-renders (via scheduleRender).
+      // Re-resolve the live block on every fire instead of trusting the
+      // render-time `instance` closure -- otherwise a settings change that
+      // toggled heightMode without a teardown would still treat the block as
+      // auto-height because the listener was wired with the old config.
+      if (needsResize) {
+        const blockId = instance.id;
+        gsEl.addEventListener('request-auto-height', () => {
+          const live = this.plugin.activeBlocks().find(b => b.id === blockId);
+          if (!live || !this.shouldAutoHeight(live)) return;
+          this.requestAutoHeight(gsEl, live);
+        });
+      }
+      // Skeleton overlay: show shimmer placeholder during initial load
+      const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
+      const result = block.render(contentEl);
+      if (result instanceof Promise) {
+        // After async render, wait one frame for the browser to lay out the new DOM,
+        // then measure and resize the block to its natural content height.
+        result
+          .then(() => {
+            removeSkeleton(skeletonEl, this.scheduler);
+            if (needsResize) this.requestAutoHeight(gsEl, instance);
+          })
+          .catch(e => {
+            removeSkeleton(skeletonEl, this.scheduler);
+            console.error(`[Homepage Blocks] Error rendering block ${instance.type}:`, e);
+            contentEl.setText('Error rendering block. Check console for details.');
+          });
+      } else {
+        // Sync render completed — skeleton was never painted, just remove it
+        skeletonEl?.remove();
+        if (needsResize) this.requestAutoHeight(gsEl, instance);
+      }
+      this.blocks.set(instance.id, { block, wrapper });
+    }
+
+    // Collapse toggle
+    attachCollapseToggle(this, gsEl, instance, headerZone);
+
+    // Edit handles
+    if (this.editMode) {
+      attachEditHandleBar(this, wrapper, instance);
+    }
+  }
+
   // buildBlockWrapper / createSkeleton / removeSkeleton / renderCompactPlaceholder /
   // renderEmptyState extracted to src/grid/BlockWrapper.ts (covered by render tests).
 
@@ -564,6 +578,20 @@ export class GridLayout {
   /** Read current positions from GridStack nodes and persist to layout. */
   private persistLayout(): void {
     this.persister.persist();
+  }
+
+  /**
+   * Best-effort synchronous persist for the flush sites that must not throw
+   * (edit-exit, column change, teardown). A persist failure here would lose the
+   * user's in-flight edit; logging it (rather than swallowing silently) keeps it
+   * diagnosable, consistent with the rest of the codebase's error channels.
+   */
+  private tryPersist(context: string): void {
+    try {
+      this.persistLayout();
+    } catch (e) {
+      console.error(`[Homepage Blocks] layout persist failed during ${context}:`, e instanceof Error ? e.message : 'unknown error');
+    }
   }
 
   /** Debounced persistLayout — coalesces rapid auto-height resize saves into one write. */

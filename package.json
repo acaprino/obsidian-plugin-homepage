@@ -1,6 +1,6 @@
 {
   "name": "homepage-blocks",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "scripts": {
     "build": "node esbuild.config.mjs",
@@ -9,6 +9,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
     "@eslint/js": "^9.39.4",
     "@types/node": "^22.0.0",
     "@typescript-eslint/parser": "^8.57.0",

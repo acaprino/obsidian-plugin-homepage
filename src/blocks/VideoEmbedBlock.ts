@@ -153,8 +153,7 @@ export class VideoEmbedBlock extends BaseBlock {
       .setDesc('Paste a video or playlist link from any supported platform.')
       .addText(t =>
         t.setValue(draft.url as string ?? '')
-         // eslint-disable-next-line obsidianmd/ui/sentence-case -- URL placeholder; a lowercase scheme/host is the only correct form
-         .setPlaceholder('https://www.youtube.com/watch?v=...')
+         .setPlaceholder('https://www.youtube.com/watch?v={video-id}')
          .onChange(v => { draft.url = v; }),
       );
 

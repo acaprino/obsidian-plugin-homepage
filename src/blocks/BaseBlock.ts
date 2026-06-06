@@ -49,15 +49,18 @@ export abstract class BaseBlock extends Component {
   // Renders into the header container set by GridLayout (if any), else falls back to el.
   protected renderHeader(el: HTMLElement, title: string): void {
     const cfg = this.instance.config;
-    if (cfg._showTitle === false) return;
+    const container = this._headerContainer ?? el;
     const label = (typeof cfg._titleLabel === 'string' && cfg._titleLabel.trim())
       ? cfg._titleLabel.trim()
       : title;
-    if (!label) return;
-    const container = this._headerContainer ?? el;
+    const show = cfg._showTitle !== false && !!label;
     // Remove stale header from a previous render cycle (header zone is NOT
     // emptied when block-content is cleared via el.empty()).
     container.querySelector('.block-header')?.remove();
+    // hp-header-empty collapses a header-less zone via CSS (replaces a
+    // :not(:has(.block-header)) selector — :has is a perf hazard).
+    container.toggleClass('hp-header-empty', !show);
+    if (!show) return;
     const sizeClass = typeof cfg._titleSize === 'string' && TITLE_SIZE_RE.test(cfg._titleSize)
       ? `block-header-${cfg._titleSize}` : '';
     const header = container.createDiv({ cls: `block-header${sizeClass ? ' ' + sizeClass : ''}` });

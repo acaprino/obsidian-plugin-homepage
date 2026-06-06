@@ -6110,11 +6110,12 @@ var BaseBlock = class extends import_obsidian.Component {
   // Renders into the header container set by GridLayout (if any), else falls back to el.
   renderHeader(el, title) {
     const cfg = this.instance.config;
-    if (cfg._showTitle === false) return;
-    const label = typeof cfg._titleLabel === "string" && cfg._titleLabel.trim() ? cfg._titleLabel.trim() : title;
-    if (!label) return;
     const container = this._headerContainer ?? el;
+    const label = typeof cfg._titleLabel === "string" && cfg._titleLabel.trim() ? cfg._titleLabel.trim() : title;
+    const show = cfg._showTitle !== false && !!label;
     container.querySelector(".block-header")?.remove();
+    container.toggleClass("hp-header-empty", !show);
+    if (!show) return;
     const sizeClass = typeof cfg._titleSize === "string" && TITLE_SIZE_RE.test(cfg._titleSize) ? `block-header-${cfg._titleSize}` : "";
     const header = container.createDiv({ cls: `block-header${sizeClass ? " " + sizeClass : ""}` });
     if (typeof cfg._titleEmoji === "string" && cfg._titleEmoji) {
@@ -7376,7 +7377,7 @@ function repackEditLayout(blocks, columns, priority = "row") {
 
 // src/grid/BlockWrapper.ts
 function buildBlockWrapper(container, instance, animDelayMs) {
-  const classes = ["homepage-block-wrapper"];
+  const classes = ["homepage-block-wrapper", `hp-block-${instance.type}`];
   const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
   if (effectiveCollapsed) classes.push("block-collapsed");
   const wrapper = container.createDiv({
@@ -7388,7 +7389,7 @@ function buildBlockWrapper(container, instance, animDelayMs) {
     wrapper.style.setProperty("--hp-card-anim-delay", `${animDelayMs}ms`);
   }
   const headerZone = wrapper.createDiv({
-    cls: "block-header-zone",
+    cls: "block-header-zone hp-header-empty",
     attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
   });
   headerZone.createSpan({
@@ -7418,6 +7419,7 @@ function removeSkeleton(el, scheduler) {
 function renderCompactPlaceholder(headerZone, contentEl, factory, instance) {
   const titleLabel = typeof instance.config._titleLabel === "string" && instance.config._titleLabel ? instance.config._titleLabel : factory.displayName;
   const emoji = typeof instance.config._titleEmoji === "string" ? instance.config._titleEmoji : "";
+  headerZone.removeClass("hp-header-empty");
   const header = headerZone.createDiv({ cls: "block-header" });
   if (emoji) header.createEl("em", { cls: "block-header-emoji", text: emoji });
   header.createSpan({ text: titleLabel });
@@ -7663,6 +7665,7 @@ var GridLayout = class {
       this.gridStack.destroy(false);
       this.gridStack = null;
     }
+    this.gridEl.removeClass("hp-dragging");
     this.gridEl.empty();
     this.gridEl.removeClass("viewport-fit");
     this.gridEl.style.removeProperty("--hp-grid-transform");
@@ -7722,7 +7725,11 @@ var GridLayout = class {
         this.gridEl.appendChild(el);
       }
     }
+    this.gridStack.on("dragstart", () => {
+      this.gridEl.addClass("hp-dragging");
+    });
     this.gridStack.on("dragstop", () => {
+      this.gridEl.removeClass("hp-dragging");
       if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
     });
@@ -7975,6 +7982,8 @@ var EditToolbar = class {
   syncVisibility() {
     this.fabEl.toggleClass("is-hidden", this.editMode);
     this.toolbarEl.toggleClass("is-visible", this.editMode);
+    const view = this.toolbarEl.closest(".homepage-view");
+    if (view instanceof HTMLElement) view.toggleClass("hp-toolbar-open", this.editMode);
   }
   renderToolbar() {
     this.toolbarEl.empty();

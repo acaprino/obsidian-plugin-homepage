@@ -15,7 +15,9 @@ import { Scheduler } from '../utils/Scheduler';
 
 /** Build the block wrapper DOM inside a GridStack item content div using Obsidian's DOM API. */
 export function buildBlockWrapper(container: HTMLElement, instance: BlockInstance, animDelayMs?: number): HTMLElement {
-  const classes = ['homepage-block-wrapper'];
+  // hp-block-<type> lets CSS target wrappers by block type without a
+  // :has(.pomodoro-block)-style selector (avoids :has invalidation cost).
+  const classes = ['homepage-block-wrapper', `hp-block-${instance.type}`];
   // Don't collapse blocks with hidden titles — there's no visible header
   // to click for re-expansion, making them appear completely invisible.
   const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
@@ -28,8 +30,11 @@ export function buildBlockWrapper(container: HTMLElement, instance: BlockInstanc
   if (animDelayMs !== undefined) {
     wrapper.style.setProperty('--hp-card-anim-delay', `${animDelayMs}ms`);
   }
+  // hp-header-empty marks a zone with no .block-header (chevron only) so CSS
+  // can collapse it without :has(). BaseBlock.renderHeader and
+  // renderCompactPlaceholder clear it when they render a header.
   const headerZone = wrapper.createDiv({
-    cls: 'block-header-zone',
+    cls: 'block-header-zone hp-header-empty',
     attr: { role: 'button', tabindex: '0', 'aria-expanded': String(!effectiveCollapsed) },
   });
   headerZone.createSpan({
@@ -78,6 +83,7 @@ export function renderCompactPlaceholder(
     ? instance.config._titleLabel
     : factory.displayName;
   const emoji = typeof instance.config._titleEmoji === 'string' ? instance.config._titleEmoji : '';
+  headerZone.removeClass('hp-header-empty');
   const header = headerZone.createDiv({ cls: 'block-header' });
   if (emoji) header.createEl('em', { cls: 'block-header-emoji', text: emoji });
   header.createSpan({ text: titleLabel });

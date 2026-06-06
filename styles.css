@@ -111,9 +111,11 @@
   opacity: 1;
 }
 
-/* Hide resize handles when not in edit mode */
+/* Hide resize handles when not in edit mode.
+   Outspecifies GridStack's `.grid-stack-item>.ui-resizable-handle` (0,2,0);
+   GridStack never sets display inline, so no !important needed. */
 .homepage-grid:not(.edit-mode) .ui-resizable-handle {
-  display: none !important;
+  display: none;
 }
 
 /* ── Block Card ─────────────────────────────────────────── */
@@ -739,26 +741,28 @@
 
 /* Compact horizontal: forced row when card is short (< 200px tall).
    Like "1x4 Panoramic" reference — emoji left, stacked salut/name right.
-   !important overrides the narrow query when both match (small square card). */
+   Declared AFTER the narrow query with equal specificity, so it wins by
+   source order when both match (small square card). Keep this block below
+   the max-width query. */
 @container (max-height: 200px) {
   .block-content.greeting-block {
-    flex-direction: row !important;
-    justify-content: flex-start !important;
-    align-items: center !important;
-    flex-wrap: nowrap !important;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: nowrap;
     overflow-x: hidden;
-    gap: clamp(6px, 3cqi, 16px) !important;
+    gap: clamp(6px, 3cqi, 16px);
   }
   .greeting-name {
-    display: flex !important;
-    flex-direction: column !important;
+    display: flex;
+    flex-direction: column;
     justify-content: center;
-    align-items: flex-start !important;
-    text-align: left !important;
-    white-space: nowrap !important;
+    align-items: flex-start;
+    text-align: left;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    gap: 0 !important;
+    gap: 0;
   }
   .greeting-salut {
     font-size: clamp(0.85rem, max(5cqi, 20cqh), 1.4rem);
@@ -775,9 +779,9 @@
     line-height: 1.05;
   }
   .greeting-emoji {
-    font-size: clamp(2rem, max(10cqi, 50cqh), 4.5rem) !important;
-    line-height: 1 !important;
-    flex-shrink: 0 !important;
+    font-size: clamp(2rem, max(10cqi, 50cqh), 4.5rem);
+    line-height: 1;
+    flex-shrink: 0;
   }
   .greeting-time {
     display: none;
@@ -886,10 +890,12 @@
   letter-spacing: 0.04em;
 }
 
-/* Clock: short card — scale time to fill height */
+/* Clock: short card — scale time to fill height.
+   Wins over the .clock-style-* rules above by source order (equal
+   specificity) and, for the large variant, by specificity (0,3,0). */
 @container (max-height: 160px) {
   .clock-block .clock-time {
-    font-size: clamp(1.4rem, 45cqh, 3rem) !important;
+    font-size: clamp(1.4rem, 45cqh, 3rem);
     line-height: 1;
   }
   .clock-block .clock-date {
@@ -897,7 +903,7 @@
     margin-top: 2px;
   }
   .clock-block.clock-style-large .clock-time {
-    font-size: clamp(1.6rem, 55cqh, 4rem) !important;
+    font-size: clamp(1.6rem, 55cqh, 4rem);
   }
 }
 
@@ -1046,7 +1052,7 @@
   border: none;
 }
 
-.vault-search-input-wrapper:has(input:focus-visible) {
+.vault-search-input-wrapper:focus-within {
   outline: 2px solid var(--color-accent);
   outline-offset: 0;
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
@@ -1771,10 +1777,16 @@
   height: 100%;
 }
 
-/* Masonry layout */
+/* Masonry layout (CSS multicolumn).
+   Lint flags multicolumn as "partially supported", but the partial bits are
+   column-span/balancing, which aren't used here; column flow + break-inside
+   work on every Obsidian platform and need no JS measurement. Width caps
+   arrive via --hp-masonry-cap / --hp-masonry-gap from the container queries
+   below (custom properties, so no !important war with the JS-set
+   --hp-masonry-cols inline variable). */
 .image-gallery.masonry-layout {
   display: block;
-  column-gap: 8px;
+  column-gap: var(--hp-masonry-gap, 8px);
 }
 
 .image-gallery.masonry-layout .gallery-item {
@@ -1813,36 +1825,43 @@
 }
 
 /* ── Gallery responsive ───────────────────────────────── */
+/* Width caps are expressed as custom properties (--hp-grid-cap,
+   --hp-masonry-cap, --hp-masonry-gap) consumed by the base rules in the
+   "Responsive grid columns" section at the end of this file. JS sets
+   --hp-grid-cols / --hp-masonry-cols as inline custom properties, which a
+   direct declaration here could only beat with !important; the second
+   variable layer sidesteps the war. When several queries match, the last
+   block wins by source order — keep them ordered widest to narrowest. */
 /* 500px — cap at 3 columns, slightly tighter gap */
 @container (max-width: 500px) {
   .image-gallery {
     gap: 6px;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)) !important;
+    --hp-grid-cap: repeat(auto-fill, minmax(120px, 1fr));
   }
-  .image-gallery.masonry-layout { column-gap: 6px; columns: 3 !important; }
+  .image-gallery.masonry-layout { --hp-masonry-gap: 6px; --hp-masonry-cap: 3; }
 }
 
 /* 400px — force 2 columns max */
 @container (max-width: 400px) {
   .image-gallery {
     gap: 4px;
-    grid-template-columns: repeat(2, 1fr) !important;
+    --hp-grid-cap: repeat(2, 1fr);
   }
   .gallery-item,
   .gallery-item img,
   .gallery-item video {
     border-radius: var(--radius-s, 4px);
   }
-  .image-gallery.masonry-layout { column-gap: 4px; columns: 2 !important; }
+  .image-gallery.masonry-layout { --hp-masonry-gap: 4px; --hp-masonry-cap: 2; }
   .image-gallery.masonry-layout .gallery-item { margin-bottom: 4px; }
 }
 
 /* 280px — single column */
 @container (max-width: 280px) {
   .image-gallery {
-    grid-template-columns: 1fr !important;
+    --hp-grid-cap: 1fr;
   }
-  .image-gallery.masonry-layout { columns: 1 !important; }
+  .image-gallery.masonry-layout { --hp-masonry-cap: 1; }
 }
 
 /* ── Lightbox ──────────────────────────────────────────── */
@@ -2242,12 +2261,13 @@
 }
 
 /* When toolbar is visible (edit mode), the view itself scrolls so the
-   toolbar can stick to the top. The grid yields scrolling to the view. */
-.homepage-view:has(.homepage-toolbar.is-visible) {
+   toolbar can stick to the top. The grid yields scrolling to the view.
+   hp-toolbar-open is toggled by EditToolbar.syncVisibility(). */
+.homepage-view.hp-toolbar-open {
   overflow-y: auto;
 }
 
-.homepage-view:has(.homepage-toolbar.is-visible) .homepage-grid.grid-stack {
+.homepage-view.hp-toolbar-open .homepage-grid.grid-stack {
   overflow-y: visible;
   min-height: auto;
   /* Add breathing room between the editing toolbar and the grid content. */
@@ -2393,8 +2413,10 @@
   transition: background 0.1s ease-out;
 }
 /* When title is hidden, the header zone only contains the collapse chevron.
-   Collapse it to zero height so it doesn't consume vertical space. */
-.block-header-zone:not(:has(.block-header)) {
+   Collapse it to zero height so it doesn't consume vertical space.
+   hp-header-empty is stamped by buildBlockWrapper and kept in sync by
+   BaseBlock.renderHeader / renderCompactPlaceholder. */
+.block-header-zone.hp-header-empty {
   padding: 0;
   margin: 0;
   min-height: 0;
@@ -2519,7 +2541,7 @@
 /* Hide vertical resize handles for auto-height blocks — their height is auto-managed */
 .homepage-grid.edit-mode .is-auto-height > .ui-resizable-s,
 .homepage-grid.edit-mode .is-auto-height > .ui-resizable-se {
-  display: none !important;
+  display: none;
 }
 
 /* ── Edit Mode Compact Placeholder ──────────────────────── */
@@ -2651,8 +2673,9 @@
   transform: scale(0.95);
 }
 
-/* Dim the non-dragged blocks so the picked-up card stands out. */
-.homepage-grid.grid-stack:has(.ui-draggable-dragging) .grid-stack-item:not(.ui-draggable-dragging) {
+/* Dim the non-dragged blocks so the picked-up card stands out.
+   hp-dragging is toggled by GridLayout's dragstart/dragstop handlers. */
+.homepage-grid.grid-stack.hp-dragging .grid-stack-item:not(.ui-draggable-dragging) {
   opacity: 0.5;
   transition: opacity var(--hp-dur-base, 0.2s) var(--hp-ease-out, ease-out);
 }
@@ -2947,31 +2970,37 @@
    instead of occupying fixed grid rows.  The class is toggled by
    GridLayout.applyColumnChange() and initGridStack(). */
 .homepage-grid.grid-stack.hp-single-column {
-  display: flex !important;
+  display: flex;
   flex-direction: column;
   gap: 12px;
 }
+/* GridStack writes top/left/width/height as INLINE styles on every item
+   (gridstack.js updateStyles) — !important is the only stylesheet-side way to
+   reclaim them. position/margin have no inline counterpart and win on
+   specificity alone. */
 .homepage-grid.grid-stack.hp-single-column > .grid-stack-item {
-  position: relative !important;
+  position: relative;
   top: auto !important;
   left: auto !important;
   width: 100% !important;
   height: auto !important;
-  margin: 0 !important;
+  margin: 0;
 }
 /* Let block wrapper and content fill naturally */
 .homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper {
   height: auto;
 }
-/* grid-stack-item-content is position:absolute in GridStack's base CSS.
-   Override to relative so the parent auto-heights correctly. */
+/* grid-stack-item-content is position:absolute in GridStack's base CSS
+   (specificity 0,3,0 — this selector outranks it at 0,4,0; GridStack sets no
+   inline styles on item-content). Override to relative so the parent
+   auto-heights correctly. */
 .homepage-grid.grid-stack.hp-single-column .grid-stack-item-content {
-  position: relative !important;
-  top: auto !important;
-  right: auto !important;
-  bottom: auto !important;
-  left: auto !important;
-  height: auto !important;
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  height: auto;
 }
 .homepage-grid.grid-stack.hp-single-column .block-content {
   height: auto;
@@ -2984,8 +3013,8 @@
    .block-content which needs an explicit height.  In single-column
    flex mode, remove the absolute positioning so blocks participate
    in the flex flow and auto-height correctly. */
-.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper:has(.pomodoro-block) .block-content,
-.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper:has(.voice-block) .block-content {
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper.hp-block-pomodoro .block-content,
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper.hp-block-voice-dictation .block-content {
   position: relative;
   inset: auto;
 }
@@ -3478,15 +3507,19 @@
 }
 
 /* ── Pomodoro Block ────────────────────────────────────── */
-/* Center pomodoro and voice content relative to the full card, not just below the header */
-.homepage-block-wrapper:has(.pomodoro-block) .block-content,
-.homepage-block-wrapper:has(.voice-block) .block-content {
+/* Center pomodoro and voice content relative to the full card, not just below
+   the header. hp-block-<type> is stamped by buildBlockWrapper; the
+   :not(.edit-mode) scope preserves the old :has(.pomodoro-block) behavior,
+   which never matched in edit mode (compact placeholders render no block
+   content). */
+.homepage-grid:not(.edit-mode) .homepage-block-wrapper.hp-block-pomodoro .block-content,
+.homepage-grid:not(.edit-mode) .homepage-block-wrapper.hp-block-voice-dictation .block-content {
   position: absolute;
   inset: var(--hp-card-padding);
   z-index: 0;
 }
-.homepage-block-wrapper:has(.pomodoro-block) .block-header-zone,
-.homepage-block-wrapper:has(.voice-block) .block-header-zone {
+.homepage-grid:not(.edit-mode) .homepage-block-wrapper.hp-block-pomodoro .block-header-zone,
+.homepage-grid:not(.edit-mode) .homepage-block-wrapper.hp-block-voice-dictation .block-header-zone {
   z-index: 1;
 }
 
@@ -3725,6 +3758,9 @@
 }
 
 /* ── Reduced Motion ─────────────────────────────────────── */
+/* !important is deliberate here: this is the canonical prefers-reduced-motion
+   kill-switch and must defeat every higher-specificity transition/animation
+   declaration in the file. */
 @media (prefers-reduced-motion: reduce) {
   .homepage-view,
   .homepage-view * {
@@ -3754,7 +3790,9 @@
   transform: var(--hp-grid-transform, none);
 }
 
-/* Auto-height measurement helpers (GridLayout.ts resizeBlockToContent) */
+/* Auto-height measurement helpers (GridLayout.ts resizeBlockToContent).
+   Single-class JS toggles that must beat any component-level specificity
+   while measuring — hence !important. */
 .hp-no-transition { transition: none !important; }
 .hp-auto-rows { grid-template-rows: max-content !important; }
 
@@ -3795,9 +3833,14 @@
   color: var(--hp-quote-color);
 }
 
-/* Responsive grid columns via custom property */
+/* Responsive grid columns via custom property. --hp-grid-cols and
+   --hp-masonry-cols are inline custom properties set from JS;
+   --hp-grid-cap / --hp-masonry-cap are stylesheet-side width caps from the
+   "Gallery responsive" container queries. min() clamps the masonry count to
+   the user's configured columns (the old `columns: N !important` cap could
+   force MORE columns than configured). */
 .button-grid { grid-template-columns: var(--hp-grid-cols); }
 .bookmark-grid { grid-template-columns: var(--hp-grid-cols); }
-.image-gallery:not(.masonry-layout) { grid-template-columns: var(--hp-grid-cols); }
-.image-gallery.masonry-layout { columns: var(--hp-masonry-cols, 3); }
+.image-gallery:not(.masonry-layout) { grid-template-columns: var(--hp-grid-cap, var(--hp-grid-cols)); }
+.image-gallery.masonry-layout { column-count: min(var(--hp-masonry-cap, 99), var(--hp-masonry-cols, 3)); }
 .quotes-columns { grid-template-columns: repeat(var(--hp-column-count, 2), 1fr); }

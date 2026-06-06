@@ -93,6 +93,10 @@ export class EditToolbar {
   private syncVisibility(): void {
     this.fabEl.toggleClass('is-hidden', this.editMode);
     this.toolbarEl.toggleClass('is-visible', this.editMode);
+    // Mirror the toolbar state on the view so CSS can flip scroll ownership
+    // (sticky toolbar) without a .homepage-view:has(...) selector.
+    const view = this.toolbarEl.closest('.homepage-view');
+    if (view instanceof HTMLElement) view.toggleClass('hp-toolbar-open', this.editMode);
   }
 
   private renderToolbar(): void {

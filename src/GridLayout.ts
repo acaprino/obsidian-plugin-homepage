@@ -313,6 +313,8 @@ export class GridLayout {
       this.gridStack.destroy(false);
       this.gridStack = null;
     }
+    // A teardown mid-drag never fires dragstop — drop the stale drag-dim class.
+    this.gridEl.removeClass('hp-dragging');
     this.gridEl.empty();
     // Clear inline styles GridStack or setZoom may have set.
     this.gridEl.removeClass('viewport-fit');
@@ -406,7 +408,13 @@ export class GridLayout {
     // batch (see AutoHeight.ts:67). A pointer twitch latched at mousedown can become
     // a real drag during that lift in view mode -- without this guard, dragstop would
     // persist the phantom drag and silently corrupt the saved layout.
+    // hp-dragging dims the sibling cards while a block is picked up (CSS hook;
+    // replaces a .grid-stack:has(.ui-draggable-dragging) selector).
+    this.gridStack.on('dragstart', () => {
+      this.gridEl.addClass('hp-dragging');
+    });
     this.gridStack.on('dragstop', () => {
+      this.gridEl.removeClass('hp-dragging');
       if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
     });

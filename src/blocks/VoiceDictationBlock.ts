@@ -4,41 +4,37 @@ import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 
 const CONSENT_STORAGE_KEY = 'hp-voice-consent';
 
-/**
- * localStorage in Obsidian is per-app-install, not per-vault — so a single
- * global consent flag would silence the prompt in every vault, including one
- * that received a shared layout pointing at someone else's API endpoint. Scope
- * the key to the vault so consent granted in vault A doesn't auto-apply in B.
- */
-function consentKey(vaultId: string): string {
-  return `${CONSENT_STORAGE_KEY}:${vaultId}`;
-}
-
 function hasMediaRecorderSupport(): boolean {
   if (typeof MediaRecorder === 'undefined') return false;
   const md = (navigator as unknown as { mediaDevices?: { getUserMedia?: unknown } }).mediaDevices;
   return typeof md?.getUserMedia === 'function';
 }
 
-function hasConsent(provider: TranscriptionProvider, vaultId: string): boolean {
+/**
+ * Consent must stay per-device AND per-vault — a synced data.json or a shared
+ * layout pointing at someone else's API endpoint must not inherit it. Obsidian's
+ * App.loadLocalStorage/saveLocalStorage scope keys to the vault automatically
+ * (by real vault ID, unlike the old vault-name suffix), so consent granted in
+ * vault A never auto-applies in vault B.
+ */
+function readConsent(app: App): Record<string, boolean> {
   try {
-    const raw = window.localStorage.getItem(consentKey(vaultId));
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as Record<string, boolean>;
-    return parsed[provider] === true;
+    const raw = app.loadLocalStorage(CONSENT_STORAGE_KEY) as Record<string, boolean> | null;
+    return raw && typeof raw === 'object' ? raw : {};
   } catch {
-    return false;
+    return {};
   }
 }
 
-function setConsent(provider: TranscriptionProvider, vaultId: string): void {
+function hasConsent(app: App, provider: TranscriptionProvider): boolean {
+  return readConsent(app)[provider] === true;
+}
+
+function setConsent(app: App, provider: TranscriptionProvider): void {
   try {
-    const raw = window.localStorage.getItem(consentKey(vaultId));
-    const parsed = raw ? JSON.parse(raw) as Record<string, boolean> : {};
-    parsed[provider] = true;
-    window.localStorage.setItem(consentKey(vaultId), JSON.stringify(parsed));
+    app.saveLocalStorage(CONSENT_STORAGE_KEY, { ...readConsent(app), [provider]: true });
   } catch {
-    /* localStorage may be unavailable — the user will re-consent next time */
+    /* storage may be unavailable — the user will re-consent next time */
   }
 }
 
@@ -279,11 +275,10 @@ export class VoiceDictationBlock extends BaseBlock {
     }
 
     const provider = cfg.provider ?? 'whisper';
-    const vaultId = this.app.vault.getName();
-    if (!hasConsent(provider, vaultId)) {
+    if (!hasConsent(this.app, provider)) {
       const confirmed = await confirmVoiceConsent(this.app, provider);
       if (!confirmed) return;
-      setConsent(provider, vaultId);
+      setConsent(this.app, provider);
     }
 
     // Stop any previous stream before acquiring a new one

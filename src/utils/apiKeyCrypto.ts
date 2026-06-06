@@ -34,7 +34,7 @@ const PREFIX = 'enc:v1:';
 let cachedKey: CryptoKey | null = null;
 
 function hasWebCrypto(): boolean {
-  return typeof globalThis.crypto?.subtle?.generateKey === 'function'
+  return typeof window.crypto?.subtle?.generateKey === 'function'
       && typeof indexedDB !== 'undefined';
 }
 

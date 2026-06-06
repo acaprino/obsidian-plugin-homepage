@@ -146,37 +146,39 @@ class ImageCacheStore {
  */
 function resizeToBlob(src: string, maxDim: number, quality: number): Promise<string> {
   return new Promise<string>(resolve => {
-    const timeout = setTimeout(() => resolve(src), THUMB_TIMEOUT_MS);
+    const timeout = window.setTimeout(() => resolve(src), THUMB_TIMEOUT_MS);
     const img = new Image();
     img.onload = () => {
       const { naturalWidth: w, naturalHeight: h } = img;
       // Already small enough — use original URL
-      if (w <= maxDim && h <= maxDim) { clearTimeout(timeout); resolve(src); return; }
+      if (w <= maxDim && h <= maxDim) { window.clearTimeout(timeout); resolve(src); return; }
       // Guard against decompression bombs
-      if (w * h > MAX_PIXELS) { clearTimeout(timeout); resolve(src); return; }
+      if (w * h > MAX_PIXELS) { window.clearTimeout(timeout); resolve(src); return; }
 
       const scale = Math.min(maxDim / w, maxDim / h);
       const tw = Math.round(w * scale);
       const th = Math.round(h * scale);
 
-      const canvas = document.createElement('canvas');
+      // Obsidian's global createEl returns a detached element — the canvas is
+      // a pure off-screen scratch surface and never enters the DOM.
+      const canvas = createEl('canvas');
       canvas.width = tw;
       canvas.height = th;
       const ctx = canvas.getContext('2d');
-      if (!ctx) { clearTimeout(timeout); resolve(src); return; }
+      if (!ctx) { window.clearTimeout(timeout); resolve(src); return; }
       ctx.drawImage(img, 0, 0, tw, th);
       try {
         canvas.toBlob(
-          blob => { clearTimeout(timeout); resolve(blob ? URL.createObjectURL(blob) : src); },
+          blob => { window.clearTimeout(timeout); resolve(blob ? URL.createObjectURL(blob) : src); },
           'image/webp',
           quality,
         );
       } catch {
-        clearTimeout(timeout);
+        window.clearTimeout(timeout);
         resolve(src);
       }
     };
-    img.onerror = () => { clearTimeout(timeout); resolve(src); };
+    img.onerror = () => { window.clearTimeout(timeout); resolve(src); };
     img.src = src;
   });
 }

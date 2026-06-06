@@ -238,8 +238,9 @@ export class VoiceDictationBlock extends BaseBlock {
     const rawFolder = (cfg.folder ?? '')
       .replace(/^[/\\~]+/, '')
       .replace(/^[A-Za-z]:/, '')
-      // eslint-disable-next-line no-control-regex -- NUL byte is a classic path-escape trick on some filesystems; stripping it is intentional defence in depth
-      .replace(/\x00/g, '')
+      // NUL byte is a classic path-escape trick on some filesystems; string
+      // replaceAll (not a regex) sidesteps the no-control-regex lint rule.
+      .replaceAll('\u0000', '')
       .replace(/\\/g, '/')
       .trim();
     const segments = rawFolder.split('/').filter(Boolean);

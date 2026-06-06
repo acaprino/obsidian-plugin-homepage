@@ -33,7 +33,7 @@ export class FolderSuggestModal extends SuggestModal<TFolder> {
   }
 
   renderSuggestion(folder: TFolder, el: HTMLElement): void {
-    el.createEl('span', { text: folder.path === '/' ? '/ (vault root)' : folder.path });
+    el.createSpan({ text: folder.path === '/' ? '/ (vault root)' : folder.path });
   }
 
   onChooseSuggestion(folder: TFolder): void {

@@ -100,7 +100,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
   }
 
   renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
-    new Setting(body).setName('File path').setDesc('Path to the note (e.g. Notes/MyNote.md)').addText(t => {
+    new Setting(body).setName('File path').setDesc('Path to the note, such as notes/my-note.md').addText(t => {
       t.setValue(draft.filePath as string ?? '')
        .setPlaceholder('Start typing to search…')
        .onChange(v => { draft.filePath = v; });
@@ -136,7 +136,7 @@ class FileSuggest extends AbstractInputSuggest<TFile> {
   }
 
   renderSuggestion(file: TFile, el: HTMLElement): void {
-    el.createEl('span', { text: file.path });
+    el.createSpan({ text: file.path });
   }
 
   selectSuggestion(file: TFile): void {

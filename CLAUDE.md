@@ -42,8 +42,8 @@ npx tsc --noEmit       # type-check (run after every .ts change)
 ## Dependencies
 
 - **Runtime:** `gridstack` (grid layout engine) -- the only runtime dependency
-- **Dev:** `obsidian`, `typescript`, `esbuild`, `@types/node`, `builtin-modules`, `eslint`, `eslint-plugin-obsidianmd`, `typescript-eslint`, `@eslint/js`, `globals`; tests via `vitest`, `happy-dom`, `fake-indexeddb`
-- esbuild bundles to CJS (`main.js`), externalizes `obsidian` and `electron`
+- **Dev:** `obsidian`, `typescript`, `esbuild`, `@types/node`, `eslint`, `eslint-plugin-obsidianmd`, `typescript-eslint`, `@eslint/js`, `globals`; tests via `vitest`, `happy-dom`, `fake-indexeddb`
+- esbuild bundles to CJS (`main.js`), externalizes `obsidian`, `electron`, and Node builtins (via `node:module`'s `builtinModules`)
 - **Tests:** `npm test` (`vitest run`) -- unit tests under `tests/` cover validation, migration, import sanitizer, crypto, packing, Scheduler, blockStyling, dailySeed, ids, layoutReset, startupResolver, urls, tag-cache invalidation, BaseBlock, VaultSearchBlock, and grid render (`GridLayout.render`)
 
 ## Architecture
@@ -204,6 +204,7 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 - Do not duplicate tag filtering logic -- use `getFilesWithTag` / `cacheHasTag` from `src/utils/tags.ts`
 - Do not inline block headers -- use `this.renderHeader(el, title)` from BaseBlock
 - Do not use raw `setInterval`/`vault.on` -- use `this.registerInterval()` / `this.registerEvent()`
+- Do not use bare `document`, `setTimeout`, `clearTimeout`, or `requestAnimationFrame` (ObsidianReviewBot popout-window rules). Use `el.doc`/`el.win` when an element is in scope, `activeDocument` otherwise, `window.setTimeout`/`window.requestAnimationFrame` for timers, global `createEl(...)`/`createSvg(...)` for detached elements, and `el.createSpan(...)` over `el.createEl('span', ...)`. The test shim in `tests/obsidian-dom.ts` polyfills `doc`/`win`
 - Do not add unnecessary runtime npm dependencies
 - esbuild marks `console.debug`, `console.log`, `console.info`, and `console.trace` as `pure` in production builds and removes them. `console.warn` and `console.error` are retained; prefix their messages with `[Homepage Blocks]` and do NOT include raw third-party response bodies that may echo user content
 - API keys in `data.json` are **encrypted at rest** (AES-GCM-256 via `apiKeyCrypto.ts`, with a non-extractable per-device key in IndexedDB); `saveLayout` re-encrypts on every write, `onload` decrypts to plaintext in memory. The in-memory `plugin.layout` holds plaintext (blocks read `config.apiKey` directly); only the on-disk copy is ciphertext. Refuse-to-downgrade logic never overwrites stored ciphertext with plaintext when WebCrypto is unavailable. Layout export still strips `apiKey`. Note the ciphertext is per-device — it does not decrypt on another synced device

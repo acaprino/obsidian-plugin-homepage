@@ -155,10 +155,9 @@ export class RandomNoteBlock extends BaseBlock {
       }
     }
 
-    // Title
-    const title = (typeof fm[titleProperty] === 'string' && fm[titleProperty])
-      ? fm[titleProperty]
-      : file.basename;
+    // Title — frontmatter values are typed `any`; pin to unknown before narrowing.
+    const rawTitle: unknown = fm[titleProperty];
+    const title = (typeof rawTitle === 'string' && rawTitle) ? rawTitle : file.basename;
 
     const titleEl = el.createEl('button', { cls: 'random-note-title' });
     titleEl.setText(title);
@@ -237,7 +236,7 @@ export class RandomNoteBlock extends BaseBlock {
       .setName('Tag filter')
       .setDesc('Only notes with this tag will appear.')
       .addText(t =>
-        t.setPlaceholder('#tag or tag')
+        t.setPlaceholder('Tag, with or without #')
          .setValue(cfg.tag ?? '')
          .onChange(v => { cfg.tag = v.trim(); }),
       );

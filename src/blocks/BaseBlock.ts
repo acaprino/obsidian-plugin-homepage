@@ -130,8 +130,8 @@ export abstract class BaseBlock extends Component {
         prevWidth = w;
         // Throttle to one dispatch per animation frame to avoid hammering
         // GridStack with layout recalculations during continuous resize.
-        cancelAnimationFrame(this._widthRafId);
-        this._widthRafId = requestAnimationFrame(() => this.requestAutoHeight());
+        window.cancelAnimationFrame(this._widthRafId);
+        this._widthRafId = window.requestAnimationFrame(() => this.requestAutoHeight());
       }
     });
     this._widthObserver.observe(el);

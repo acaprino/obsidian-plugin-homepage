@@ -5684,14 +5684,14 @@ var Scheduler = class {
   rafs = /* @__PURE__ */ new Map();
   timeout(name, ms, fn) {
     this.cancelTimeout(name);
-    this.timers.set(name, setTimeout(() => {
+    this.timers.set(name, window.setTimeout(() => {
       this.timers.delete(name);
       fn();
     }, ms));
   }
   raf(name, fn) {
     this.cancelRaf(name);
-    const id = requestAnimationFrame(() => {
+    const id = window.requestAnimationFrame(() => {
       this.rafs.delete(name);
       fn();
     });
@@ -5700,7 +5700,7 @@ var Scheduler = class {
   cancelTimeout(name) {
     const id = this.timers.get(name);
     if (id !== void 0) {
-      clearTimeout(id);
+      window.clearTimeout(id);
       this.timers.delete(name);
     }
   }
@@ -5710,14 +5710,14 @@ var Scheduler = class {
   cancelRaf(name) {
     const id = this.rafs.get(name);
     if (id !== void 0) {
-      cancelAnimationFrame(id);
+      window.cancelAnimationFrame(id);
       this.rafs.delete(name);
     }
   }
   cancelAll() {
-    for (const id of this.timers.values()) clearTimeout(id);
+    for (const id of this.timers.values()) window.clearTimeout(id);
     this.timers.clear();
-    for (const id of this.rafs.values()) cancelAnimationFrame(id);
+    for (const id of this.rafs.values()) window.cancelAnimationFrame(id);
     this.rafs.clear();
   }
 };
@@ -6062,8 +6062,8 @@ var import_obsidian4 = require("obsidian");
 
 // src/utils/ids.ts
 function newId() {
-  const g = globalThis;
-  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
+  const c = window.crypto;
+  if (c?.randomUUID) return c.randomUUID();
   return "hp-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
@@ -6176,8 +6176,8 @@ var BaseBlock = class extends import_obsidian.Component {
       const w = entries[0]?.contentRect.width ?? 0;
       if (w > 0 && w !== prevWidth) {
         prevWidth = w;
-        cancelAnimationFrame(this._widthRafId);
-        this._widthRafId = requestAnimationFrame(() => this.requestAutoHeight());
+        window.cancelAnimationFrame(this._widthRafId);
+        this._widthRafId = window.requestAnimationFrame(() => this.requestAutoHeight());
       }
     });
     this._widthObserver.observe(el);
@@ -6732,7 +6732,7 @@ function createEmojiPicker(opts) {
       searchInput.focus();
       outsideClickAc?.abort();
       outsideClickAc = new AbortController();
-      document.addEventListener("mousedown", (e) => {
+      panel.doc.addEventListener("mousedown", (e) => {
         const target = e.target;
         if (!panel.contains(target) && !triggerBtn.contains(target) && !clearBtn.contains(target)) {
           close();
@@ -6748,8 +6748,8 @@ function createEmojiPicker(opts) {
   });
   let searchTimer = null;
   searchInput.addEventListener("input", () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => renderGrid(searchInput.value), 100);
+    if (searchTimer) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => renderGrid(searchInput.value), 100);
   });
   const close = () => {
     panel.addClass("hp-hidden");
@@ -6758,7 +6758,7 @@ function createEmojiPicker(opts) {
   };
   const destroy = () => {
     if (searchTimer) {
-      clearTimeout(searchTimer);
+      window.clearTimeout(searchTimer);
       searchTimer = null;
     }
     outsideClickAc?.abort();
@@ -7949,7 +7949,7 @@ var EditToolbar = class {
     this.syncVisibility();
     this.renderToolbar();
     if (this.editMode) {
-      requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
         this.zoomScale = this.grid.computeFitZoom();
         this.grid.setZoom(this.zoomScale);
         this.renderToolbar();
@@ -8798,22 +8798,24 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     if (this.plugin.layout.responsiveMode === "separate") {
       new import_obsidian8.Setting(root).setName("Desktop layout").setHeading();
     }
-    new import_obsidian8.Setting(root).setName("Default columns").setDesc("Number of grid columns.").addDropdown(
-      (drop) => drop.addOption("2", "2 columns").addOption("3", "3 columns").addOption("4", "4 columns").addOption("5", "5 columns").setValue(String(this.plugin.layout.columns)).onChange((value) => {
+    new import_obsidian8.Setting(root).setName("Default columns").setDesc("Number of grid columns.").addDropdown((drop) => {
+      for (const n of [2, 3, 4, 5]) drop.addOption(String(n), `${n} columns`);
+      drop.setValue(String(this.plugin.layout.columns)).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
-      })
-    );
+      });
+    });
     if (this.plugin.layout.responsiveMode === "separate") {
       this.renderMobileLayoutControls(root);
     }
   }
   renderMobileLayoutControls(root) {
     new import_obsidian8.Setting(root).setName("Mobile layout").setHeading();
-    new import_obsidian8.Setting(root).setName("Mobile columns").setDesc("Number of grid columns on mobile.").addDropdown(
-      (drop) => drop.addOption("1", "1 column").addOption("2", "2 columns").addOption("3", "3 columns").setValue(String(this.plugin.layout.mobileColumns)).onChange((value) => {
+    new import_obsidian8.Setting(root).setName("Mobile columns").setDesc("Number of grid columns on mobile.").addDropdown((drop) => {
+      for (const n of [1, 2, 3]) drop.addOption(String(n), `${n} ${n === 1 ? "column" : "columns"}`);
+      drop.setValue(String(this.plugin.layout.mobileColumns)).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
-      })
-    );
+      });
+    });
     new import_obsidian8.Setting(root).setName("Copy desktop layout to mobile").setDesc("Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.").addButton(
       (btn) => btn.setButtonText("Copy to mobile").onClick(() => void (async () => {
         const desktopBlocks = structuredClone(this.plugin.layout.blocks);
@@ -9008,7 +9010,7 @@ var DB_RECORD = "apiKeyDeviceKey";
 var PREFIX = "enc:v1:";
 var cachedKey = null;
 function hasWebCrypto() {
-  return typeof globalThis.crypto?.subtle?.generateKey === "function" && typeof indexedDB !== "undefined";
+  return typeof window.crypto?.subtle?.generateKey === "function" && typeof indexedDB !== "undefined";
 }
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -9556,7 +9558,7 @@ var FolderSuggestModal = class extends import_obsidian13.SuggestModal {
     );
   }
   renderSuggestion(folder, el) {
-    el.createEl("span", { text: folder.path === "/" ? "/ (vault root)" : folder.path });
+    el.createSpan({ text: folder.path === "/" ? "/ (vault root)" : folder.path });
   }
   onChooseSuggestion(folder) {
     this.onChoose(folder);
@@ -10406,29 +10408,29 @@ var ImageCacheStore = class {
 };
 function resizeToBlob(src, maxDim, quality) {
   return new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(src), THUMB_TIMEOUT_MS);
+    const timeout = window.setTimeout(() => resolve(src), THUMB_TIMEOUT_MS);
     const img = new Image();
     img.onload = () => {
       const { naturalWidth: w, naturalHeight: h } = img;
       if (w <= maxDim && h <= maxDim) {
-        clearTimeout(timeout);
+        window.clearTimeout(timeout);
         resolve(src);
         return;
       }
       if (w * h > MAX_PIXELS) {
-        clearTimeout(timeout);
+        window.clearTimeout(timeout);
         resolve(src);
         return;
       }
       const scale = Math.min(maxDim / w, maxDim / h);
       const tw = Math.round(w * scale);
       const th = Math.round(h * scale);
-      const canvas = document.createElement("canvas");
+      const canvas = createEl("canvas");
       canvas.width = tw;
       canvas.height = th;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        clearTimeout(timeout);
+        window.clearTimeout(timeout);
         resolve(src);
         return;
       }
@@ -10436,19 +10438,19 @@ function resizeToBlob(src, maxDim, quality) {
       try {
         canvas.toBlob(
           (blob) => {
-            clearTimeout(timeout);
+            window.clearTimeout(timeout);
             resolve(blob ? URL.createObjectURL(blob) : src);
           },
           "image/webp",
           quality
         );
       } catch {
-        clearTimeout(timeout);
+        window.clearTimeout(timeout);
         resolve(src);
       }
     };
     img.onerror = () => {
-      clearTimeout(timeout);
+      window.clearTimeout(timeout);
       resolve(src);
     };
     img.src = src;
@@ -10473,12 +10475,13 @@ function abortActiveLightbox() {
 }
 function openMediaLightbox(items, startIndex) {
   if (items.length === 0) return null;
-  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const doc = activeDocument;
+  const opener = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
   abortActiveLightbox();
   const ac = new AbortController();
   const { signal } = ac;
   let current = startIndex;
-  const overlay = document.body.createDiv({ cls: "gallery-lightbox" });
+  const overlay = doc.body.createDiv({ cls: "gallery-lightbox" });
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", "true");
   overlay.setAttribute("aria-label", "Image viewer");
@@ -10489,7 +10492,7 @@ function openMediaLightbox(items, startIndex) {
   const mediaContainer = overlay.createDiv({ cls: "gallery-lightbox-media" });
   const nextBtn = overlay.createEl("button", { cls: "gallery-lightbox-next", attr: { "aria-label": "Next" } });
   (0, import_obsidian17.setIcon)(nextBtn, "chevron-right");
-  const counter = overlay.createEl("span", { cls: "gallery-lightbox-counter" });
+  const counter = overlay.createSpan({ cls: "gallery-lightbox-counter" });
   if (items.length <= 1) {
     prevBtn.addClass("gallery-lightbox-nav-hidden");
     nextBtn.addClass("gallery-lightbox-nav-hidden");
@@ -10546,12 +10549,12 @@ function openMediaLightbox(items, startIndex) {
     if (Date.now() - swipedAt < 300) return;
     if (e.target === overlay || e.target === mediaContainer) close();
   }, { signal });
-  document.addEventListener("keydown", (e) => {
-    const active = document.activeElement;
+  doc.addEventListener("keydown", (e) => {
+    const active = doc.activeElement;
     const tag = active?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (active?.isContentEditable) return;
-    if (document.querySelector(".modal-container")) return;
+    if (doc.querySelector(".modal-container")) return;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -10943,7 +10946,7 @@ var EmbeddedNoteBlock = class extends BaseBlock {
     }
   }
   renderContentSettings(body, draft) {
-    new import_obsidian18.Setting(body).setName("File path").setDesc("Path to the note (e.g. Notes/MyNote.md)").addText((t) => {
+    new import_obsidian18.Setting(body).setName("File path").setDesc("Path to the note, such as notes/my-note.md").addText((t) => {
       t.setValue(draft.filePath ?? "").setPlaceholder("Start typing to search\u2026").onChange((v) => {
         draft.filePath = v;
       });
@@ -10971,7 +10974,7 @@ var FileSuggest = class extends import_obsidian18.AbstractInputSuggest {
     return this.app.vault.getMarkdownFiles().filter((f) => f.path.toLowerCase().includes(q)).sort((a, b) => a.path.localeCompare(b.path)).slice(0, 30);
   }
   renderSuggestion(file, el) {
-    el.createEl("span", { text: file.path });
+    el.createSpan({ text: file.path });
   }
   selectSuggestion(file) {
     this.setValue(file.path);
@@ -11131,7 +11134,7 @@ var HtmlBlock = class extends BaseBlock {
       "body{margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}"
     ];
     if (varRefs.size > 0) {
-      const rootStyle = getComputedStyle(document.body);
+      const rootStyle = contentEl.win.getComputedStyle(contentEl.doc.body);
       const pairs = [...varRefs].map((v) => {
         const val = rootStyle.getPropertyValue(v).trim();
         return val ? `${v}:${val}` : "";
@@ -11147,12 +11150,11 @@ var HtmlBlock = class extends BaseBlock {
     } else {
       safe = bridge + safe;
     }
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("sandbox", "allow-same-origin");
-    iframe.setAttribute("referrerpolicy", "no-referrer");
+    const iframe = contentEl.createEl("iframe", {
+      cls: "hp-html-iframe",
+      attr: { sandbox: "allow-same-origin", referrerpolicy: "no-referrer" }
+    });
     iframe.srcdoc = safe;
-    iframe.addClass("hp-html-iframe");
-    contentEl.appendChild(iframe);
     iframe.addEventListener("load", () => {
       try {
         const doc = iframe.contentDocument;
@@ -11483,7 +11485,7 @@ var RecentFilesBlock = class extends BaseBlock {
       })
     );
     new import_obsidian23.Setting(body).setName("Exclude folders").setDesc("Comma-separated folder paths to exclude.").addText(
-      (t) => t.setPlaceholder("e.g. Templates, Archive/old").setValue(cfg.excludeFolders ?? "").onChange((v) => {
+      (t) => t.setPlaceholder("Templates, archive/old").setValue(cfg.excludeFolders ?? "").onChange((v) => {
         cfg.excludeFolders = v;
       })
     );
@@ -11524,31 +11526,32 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
     this.renderHeader(el, "Pomodoro");
     const container = el.createDiv({ cls: "pomodoro-container" });
     const ringWrap = container.createDiv({ cls: "pomodoro-ring" });
-    const NS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("viewBox", "0 0 120 120");
-    const bgCircle = document.createElementNS(NS, "circle");
-    bgCircle.setAttribute("cx", "60");
-    bgCircle.setAttribute("cy", "60");
-    bgCircle.setAttribute("r", "52");
-    bgCircle.setAttribute("stroke", "var(--background-modifier-border)");
-    bgCircle.setAttribute("stroke-width", "8");
-    bgCircle.setAttribute("fill", "transparent");
-    svg.appendChild(bgCircle);
-    const progressCircle = document.createElementNS(NS, "circle");
-    progressCircle.setAttribute("cx", "60");
-    progressCircle.setAttribute("cy", "60");
-    progressCircle.setAttribute("r", "52");
-    progressCircle.setAttribute("stroke", "var(--block-accent, var(--color-accent))");
-    progressCircle.setAttribute("stroke-width", "8");
-    progressCircle.setAttribute("fill", "transparent");
-    progressCircle.setAttribute("stroke-linecap", "round");
-    progressCircle.setAttribute("transform", "rotate(-90 60 60)");
-    progressCircle.setAttribute("stroke-dasharray", String(CIRCUMFERENCE));
-    progressCircle.setAttribute("stroke-dashoffset", String(CIRCUMFERENCE));
-    svg.appendChild(progressCircle);
+    const svg = ringWrap.createSvg("svg", { attr: { viewBox: "0 0 120 120" } });
+    svg.createSvg("circle", {
+      attr: {
+        cx: "60",
+        cy: "60",
+        r: "52",
+        stroke: "var(--background-modifier-border)",
+        "stroke-width": "8",
+        fill: "transparent"
+      }
+    });
+    const progressCircle = svg.createSvg("circle", {
+      attr: {
+        cx: "60",
+        cy: "60",
+        r: "52",
+        stroke: "var(--block-accent, var(--color-accent))",
+        "stroke-width": "8",
+        fill: "transparent",
+        "stroke-linecap": "round",
+        transform: "rotate(-90 60 60)",
+        "stroke-dasharray": String(CIRCUMFERENCE),
+        "stroke-dashoffset": String(CIRCUMFERENCE)
+      }
+    });
     this.ringEl = progressCircle;
-    ringWrap.appendChild(svg);
     this.timerEl = ringWrap.createDiv({ cls: "pomodoro-time" });
     this.phaseEl = container.createDiv({ cls: "pomodoro-phase" });
     this.sessionDotsEl = container.createDiv({ cls: "pomodoro-dots" });
@@ -11948,7 +11951,8 @@ var RandomNoteBlock = class extends BaseBlock {
         }
       }
     }
-    const title = typeof fm[titleProperty] === "string" && fm[titleProperty] ? fm[titleProperty] : file.basename;
+    const rawTitle = fm[titleProperty];
+    const title = typeof rawTitle === "string" && rawTitle ? rawTitle : file.basename;
     const titleEl = el.createEl("button", { cls: "random-note-title" });
     titleEl.setText(title);
     titleEl.addEventListener("click", () => {
@@ -11993,7 +11997,7 @@ var RandomNoteBlock = class extends BaseBlock {
   renderContentSettings(body, draft) {
     const cfg = draft;
     new import_obsidian25.Setting(body).setName("Tag filter").setDesc("Only notes with this tag will appear.").addText(
-      (t) => t.setPlaceholder("#tag or tag").setValue(cfg.tag ?? "").onChange((v) => {
+      (t) => t.setPlaceholder("Tag, with or without #").setValue(cfg.tag ?? "").onChange((v) => {
         cfg.tag = v.trim();
       })
     );
@@ -12200,7 +12204,7 @@ var VoiceDictationBlock = class extends BaseBlock {
   // ── Note creation ──────────────────────────────────────────────────────────
   async saveNote(transcript, cfg) {
     if (!transcript.trim()) return;
-    const rawFolder = (cfg.folder ?? "").replace(/^[/\\~]+/, "").replace(/^[A-Za-z]:/, "").replace(/\x00/g, "").replace(/\\/g, "/").trim();
+    const rawFolder = (cfg.folder ?? "").replace(/^[/\\~]+/, "").replace(/^[A-Za-z]:/, "").replaceAll("\0", "").replace(/\\/g, "/").trim();
     const segments = rawFolder.split("/").filter(Boolean);
     if (segments.some((s) => s === "..")) return;
     const safePath = (0, import_obsidian26.normalizePath)(segments.join("/"));
@@ -12535,8 +12539,8 @@ var VaultSearchBlock = class extends BaseBlock {
   viewportTracking = false;
   /** rAF-throttled reposition so the fixed dropdown follows the input on scroll/resize. */
   onViewportChange = () => {
-    cancelAnimationFrame(this.repositionRaf);
-    this.repositionRaf = requestAnimationFrame(() => this.positionDropdown());
+    window.cancelAnimationFrame(this.repositionRaf);
+    this.repositionRaf = window.requestAnimationFrame(() => this.positionDropdown());
   };
   /**
    * The typed query lives only in the DOM <input> (never persisted), so a full
@@ -12564,15 +12568,15 @@ var VaultSearchBlock = class extends BaseBlock {
       }
     });
     this.inputEl = input;
-    const dropdown = document.body.createDiv({ cls: "vault-search-dropdown vault-search-dropdown--hidden" });
+    const dropdown = el.doc.body.createDiv({ cls: "vault-search-dropdown vault-search-dropdown--hidden" });
     this.dropdownEl = dropdown;
     this.register(() => {
       dropdown.remove();
     });
     this.register(() => this.stopViewportTracking());
     input.addEventListener("input", () => {
-      if (this.debounceTimer) clearTimeout(this.debounceTimer);
-      this.debounceTimer = setTimeout(() => {
+      if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
+      this.debounceTimer = window.setTimeout(() => {
         this.debounceTimer = null;
         this.search(input.value.trim());
       }, DEBOUNCE_MS6);
@@ -12587,7 +12591,7 @@ var VaultSearchBlock = class extends BaseBlock {
       } else if (e.key === "Enter") {
         e.preventDefault();
         if (this.debounceTimer) {
-          clearTimeout(this.debounceTimer);
+          window.clearTimeout(this.debounceTimer);
           this.debounceTimer = null;
           this.search(input.value.trim());
         }
@@ -12603,15 +12607,15 @@ var VaultSearchBlock = class extends BaseBlock {
       if (input.value.trim()) this.showDropdown();
     });
     input.addEventListener("blur", () => {
-      if (this.blurTimer) clearTimeout(this.blurTimer);
-      this.blurTimer = setTimeout(() => {
+      if (this.blurTimer) window.clearTimeout(this.blurTimer);
+      this.blurTimer = window.setTimeout(() => {
         this.blurTimer = null;
         this.closeDropdown();
       }, BLUR_DELAY_MS);
     });
     this.register(() => {
-      if (this.debounceTimer) clearTimeout(this.debounceTimer);
-      if (this.blurTimer) clearTimeout(this.blurTimer);
+      if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
+      if (this.blurTimer) window.clearTimeout(this.blurTimer);
     });
   }
   search(query) {
@@ -13023,13 +13027,13 @@ var HomepagePlugin = class extends import_obsidian28.Plugin {
     let emptyCheckTimer = null;
     let lastEmptyOpen = 0;
     this.register(() => {
-      if (emptyCheckTimer) clearTimeout(emptyCheckTimer);
+      if (emptyCheckTimer) window.clearTimeout(emptyCheckTimer);
     });
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
         if (!layoutReady || !this.activeOpenWhenEmpty()) return;
-        if (emptyCheckTimer) clearTimeout(emptyCheckTimer);
-        emptyCheckTimer = setTimeout(() => {
+        if (emptyCheckTimer) window.clearTimeout(emptyCheckTimer);
+        emptyCheckTimer = window.setTimeout(() => {
           emptyCheckTimer = null;
           if (this.app.workspace.getLeavesOfType(VIEW_TYPE).length > 0) return;
           if (Date.now() - lastEmptyOpen < 2e3) return;

@@ -106,7 +106,7 @@ export class RecentFilesBlock extends BaseBlock {
       .setName('Exclude folders')
       .setDesc('Comma-separated folder paths to exclude.')
       .addText(t =>
-        t.setPlaceholder('e.g. Templates, Archive/old')
+        t.setPlaceholder('Templates, archive/old')
          .setValue(cfg.excludeFolders ?? '')
          .onChange(v => { cfg.excludeFolders = v; }),
       );

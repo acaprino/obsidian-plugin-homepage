@@ -29,9 +29,12 @@ export function abortActiveLightbox(): void {
 
 function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortController | null {
   if (items.length === 0) return null;
+  // Pin the document of the window the user clicked in (popout-safe): the
+  // overlay, key handling and focus restore must all target the same document.
+  const doc = activeDocument;
   // Remember the element that opened the lightbox (the gallery thumbnail) so
   // focus can be restored there on close.
-  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const opener = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
   // Abort previous lightbox listeners and remove ONLY the overlay we own
   abortActiveLightbox();
 
@@ -39,7 +42,7 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
   const { signal } = ac;
 
   let current = startIndex;
-  const overlay = document.body.createDiv({ cls: 'gallery-lightbox' });
+  const overlay = doc.body.createDiv({ cls: 'gallery-lightbox' });
   // Treat the overlay as a modal dialog for assistive tech.
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
@@ -52,7 +55,7 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
   const mediaContainer = overlay.createDiv({ cls: 'gallery-lightbox-media' });
   const nextBtn = overlay.createEl('button', { cls: 'gallery-lightbox-next', attr: { 'aria-label': 'Next' } });
   setIcon(nextBtn, 'chevron-right');
-  const counter = overlay.createEl('span', { cls: 'gallery-lightbox-counter' });
+  const counter = overlay.createSpan({ cls: 'gallery-lightbox-counter' });
 
   if (items.length <= 1) {
     prevBtn.addClass('gallery-lightbox-nav-hidden');
@@ -113,20 +116,20 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
     if (e.target === overlay || e.target === mediaContainer) close();
   }, { signal });
 
-  // Direct document.addEventListener (not Component.registerDomEvent) because
-  // the lightbox is a free-standing overlay attached to document.body, not a
-  // child of any Component. The `signal` comes from `myLightboxAc` (per-block
+  // Direct doc.addEventListener (not Component.registerDomEvent) because
+  // the lightbox is a free-standing overlay attached to the document body, not
+  // a child of any Component. The `signal` comes from `myLightboxAc` (per-block
   // instance AbortController, see this file's `openMediaLightbox`); abort
   // happens on lightbox close AND on plugin onunload via abortActiveLightbox()
   // wired in main.ts. Manual reviewers: trace `signal` -> `ac.abort()` to
   // confirm the cleanup chain.
-  document.addEventListener('keydown', (e: KeyboardEvent) => {
+  doc.addEventListener('keydown', (e: KeyboardEvent) => {
     // Ignore when focus is in an input/textarea/contenteditable or when a modal is open.
-    const active = document.activeElement as HTMLElement | null;
+    const active = doc.activeElement as HTMLElement | null;
     const tag = active?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (active?.isContentEditable) return;
-    if (document.querySelector('.modal-container')) return;
+    if (doc.querySelector('.modal-container')) return;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); showItem(current - 1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); showItem(current + 1); }

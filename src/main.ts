@@ -419,14 +419,14 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       }
     });
 
-    let emptyCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let emptyCheckTimer: number | null = null;
     let lastEmptyOpen = 0;
-    this.register(() => { if (emptyCheckTimer) clearTimeout(emptyCheckTimer); });
+    this.register(() => { if (emptyCheckTimer) window.clearTimeout(emptyCheckTimer); });
     this.registerEvent(
       this.app.workspace.on('layout-change', () => {
         if (!layoutReady || !this.activeOpenWhenEmpty()) return;
-        if (emptyCheckTimer) clearTimeout(emptyCheckTimer);
-        emptyCheckTimer = setTimeout(() => {
+        if (emptyCheckTimer) window.clearTimeout(emptyCheckTimer);
+        emptyCheckTimer = window.setTimeout(() => {
           emptyCheckTimer = null;
           if (this.app.workspace.getLeavesOfType(VIEW_TYPE).length > 0) return;
           // Another plugin may briefly close all leaves before opening its own.

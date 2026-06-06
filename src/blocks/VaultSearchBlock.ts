@@ -14,15 +14,15 @@ export class VaultSearchBlock extends BaseBlock {
   private inputEl: HTMLInputElement | null = null;
   private wrapperEl: HTMLElement | null = null;
   private selectedIndex = -1;
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private blurTimer: ReturnType<typeof setTimeout> | null = null;
+  private debounceTimer: number | null = null;
+  private blurTimer: number | null = null;
   private results: { name: string; path: string }[] = [];
   private repositionRaf = 0;
   private viewportTracking = false;
   /** rAF-throttled reposition so the fixed dropdown follows the input on scroll/resize. */
   private readonly onViewportChange = (): void => {
-    cancelAnimationFrame(this.repositionRaf);
-    this.repositionRaf = requestAnimationFrame(() => this.positionDropdown());
+    window.cancelAnimationFrame(this.repositionRaf);
+    this.repositionRaf = window.requestAnimationFrame(() => this.positionDropdown());
   };
 
   /**
@@ -56,9 +56,10 @@ export class VaultSearchBlock extends BaseBlock {
     });
     this.inputEl = input;
 
-    // Dropdown appended to document.body with position:fixed to escape
-    // all overflow:hidden/auto ancestors in the GridStack layout.
-    const dropdown = document.body.createDiv({ cls: 'vault-search-dropdown vault-search-dropdown--hidden' });
+    // Dropdown appended to the owning document's body (popout-safe) with
+    // position:fixed to escape all overflow:hidden/auto ancestors in the
+    // GridStack layout.
+    const dropdown = el.doc.body.createDiv({ cls: 'vault-search-dropdown vault-search-dropdown--hidden' });
     this.dropdownEl = dropdown;
 
     this.register(() => { dropdown.remove(); });
@@ -67,8 +68,8 @@ export class VaultSearchBlock extends BaseBlock {
     this.register(() => this.stopViewportTracking());
 
     input.addEventListener('input', () => {
-      if (this.debounceTimer) clearTimeout(this.debounceTimer);
-      this.debounceTimer = setTimeout(() => {
+      if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
+      this.debounceTimer = window.setTimeout(() => {
         this.debounceTimer = null;
         this.search(input.value.trim());
       }, DEBOUNCE_MS);
@@ -84,7 +85,7 @@ export class VaultSearchBlock extends BaseBlock {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (this.debounceTimer) {
-          clearTimeout(this.debounceTimer);
+          window.clearTimeout(this.debounceTimer);
           this.debounceTimer = null;
           this.search(input.value.trim());
         }
@@ -102,13 +103,13 @@ export class VaultSearchBlock extends BaseBlock {
     });
 
     input.addEventListener('blur', () => {
-      if (this.blurTimer) clearTimeout(this.blurTimer);
-      this.blurTimer = setTimeout(() => { this.blurTimer = null; this.closeDropdown(); }, BLUR_DELAY_MS);
+      if (this.blurTimer) window.clearTimeout(this.blurTimer);
+      this.blurTimer = window.setTimeout(() => { this.blurTimer = null; this.closeDropdown(); }, BLUR_DELAY_MS);
     });
 
     this.register(() => {
-      if (this.debounceTimer) clearTimeout(this.debounceTimer);
-      if (this.blurTimer) clearTimeout(this.blurTimer);
+      if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
+      if (this.blurTimer) window.clearTimeout(this.blurTimer);
     });
   }
 

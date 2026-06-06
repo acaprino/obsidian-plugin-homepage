@@ -52,7 +52,7 @@ export class EditToolbar {
     this.renderToolbar();
     if (this.editMode) {
       // Defer zoom computation until browser has reflowed the edit-mode placeholders
-      requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
         this.zoomScale = this.grid.computeFitZoom();
         this.grid.setZoom(this.zoomScale);
         this.renderToolbar();

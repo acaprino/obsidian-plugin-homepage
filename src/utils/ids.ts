@@ -3,7 +3,7 @@
  * crypto.randomUUID is unavailable (non-secure contexts, older WebViews).
  */
 export function newId(): string {
-  const g = globalThis as { crypto?: { randomUUID?: () => string } };
-  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
+  const c: { randomUUID?: () => string } | undefined = window.crypto;
+  if (c?.randomUUID) return c.randomUUID();
   return 'hp-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }

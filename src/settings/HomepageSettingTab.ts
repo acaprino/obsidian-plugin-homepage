@@ -227,17 +227,14 @@ export class HomepageSettingTab extends PluginSettingTab {
     new Setting(root)
       .setName('Default columns')
       .setDesc('Number of grid columns.')
-      .addDropdown(drop =>
+      .addDropdown(drop => {
+        for (const n of [2, 3, 4, 5]) drop.addOption(String(n), `${n} columns`);
         drop
-          .addOption('2', '2 columns')
-          .addOption('3', '3 columns')
-          .addOption('4', '4 columns')
-          .addOption('5', '5 columns')
           .setValue(String(this.plugin.layout.columns))
           .onChange((value) => {
             void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
-          }),
-      );
+          });
+      });
 
     if (this.plugin.layout.responsiveMode === 'separate') {
       this.renderMobileLayoutControls(root);
@@ -250,16 +247,14 @@ export class HomepageSettingTab extends PluginSettingTab {
     new Setting(root)
       .setName('Mobile columns')
       .setDesc('Number of grid columns on mobile.')
-      .addDropdown(drop =>
+      .addDropdown(drop => {
+        for (const n of [1, 2, 3]) drop.addOption(String(n), `${n} ${n === 1 ? 'column' : 'columns'}`);
         drop
-          .addOption('1', '1 column')
-          .addOption('2', '2 columns')
-          .addOption('3', '3 columns')
           .setValue(String(this.plugin.layout.mobileColumns))
           .onChange((value) => {
             void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
-          }),
-      );
+          });
+      });
 
     new Setting(root)
       .setName('Copy desktop layout to mobile')

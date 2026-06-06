@@ -109,15 +109,16 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
       searchInput.value = '';
       renderGrid('');
       searchInput.focus();
-      // Close on outside click. Direct document.addEventListener (not
-      // Component.registerDomEvent) because emojiPicker is a free function
-      // with no Component reference; cleanup runs via the AbortController
-      // signal -- aborted by the next picker open AND inside close() below.
-      // If the consuming block is unloaded with the picker open, close() is
-      // called via the picker instance's destroy() and the listener detaches.
+      // Close on outside click. Direct addEventListener on the panel's owner
+      // document (popout-safe, not Component.registerDomEvent) because
+      // emojiPicker is a free function with no Component reference; cleanup
+      // runs via the AbortController signal -- aborted by the next picker open
+      // AND inside close() below. If the consuming block is unloaded with the
+      // picker open, close() is called via the picker instance's destroy() and
+      // the listener detaches.
       outsideClickAc?.abort();
       outsideClickAc = new AbortController();
-      document.addEventListener('mousedown', (e) => {
+      panel.doc.addEventListener('mousedown', (e) => {
         const target = e.target as Node;
         if (!panel.contains(target) && !triggerBtn.contains(target) && !clearBtn.contains(target)) {
           close();
@@ -133,10 +134,10 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
     close();
   });
 
-  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  let searchTimer: number | null = null;
   searchInput.addEventListener('input', () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => renderGrid(searchInput.value), 100);
+    if (searchTimer) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(() => renderGrid(searchInput.value), 100);
   });
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -148,7 +149,7 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
 
   const destroy = () => {
     if (searchTimer) {
-      clearTimeout(searchTimer);
+      window.clearTimeout(searchTimer);
       searchTimer = null;
     }
     outsideClickAc?.abort();

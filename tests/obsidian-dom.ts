@@ -81,6 +81,17 @@ function install(): void {
   proto.detach = function (this: HTMLElement): void {
     this.remove();
   };
+
+  // Obsidian exposes `doc`/`win` on every Node — the node's owner document and
+  // window, falling back to the globals. Used for popout-window-safe DOM access.
+  Object.defineProperty(Node.prototype, 'doc', {
+    configurable: true,
+    get(this: Node) { return this.ownerDocument ?? document; },
+  });
+  Object.defineProperty(Node.prototype, 'win', {
+    configurable: true,
+    get(this: Node) { return (this.ownerDocument ?? document).defaultView ?? window; },
+  });
 }
 
 install();

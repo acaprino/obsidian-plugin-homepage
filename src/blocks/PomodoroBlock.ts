@@ -65,34 +65,34 @@ export class PomodoroBlock extends BaseBlock {
     // ── SVG progress ring ──────────────────────────────────────────────
     const ringWrap = container.createDiv({ cls: 'pomodoro-ring' });
 
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 120 120');
+    const svg = ringWrap.createSvg('svg', { attr: { viewBox: '0 0 120 120' } });
 
-    const bgCircle = document.createElementNS(NS, 'circle');
-    bgCircle.setAttribute('cx', '60');
-    bgCircle.setAttribute('cy', '60');
-    bgCircle.setAttribute('r', '52');
-    bgCircle.setAttribute('stroke', 'var(--background-modifier-border)');
-    bgCircle.setAttribute('stroke-width', '8');
-    bgCircle.setAttribute('fill', 'transparent');
-    svg.appendChild(bgCircle);
+    svg.createSvg('circle', {
+      attr: {
+        cx: '60',
+        cy: '60',
+        r: '52',
+        stroke: 'var(--background-modifier-border)',
+        'stroke-width': '8',
+        fill: 'transparent',
+      },
+    });
 
-    const progressCircle = document.createElementNS(NS, 'circle');
-    progressCircle.setAttribute('cx', '60');
-    progressCircle.setAttribute('cy', '60');
-    progressCircle.setAttribute('r', '52');
-    progressCircle.setAttribute('stroke', 'var(--block-accent, var(--color-accent))');
-    progressCircle.setAttribute('stroke-width', '8');
-    progressCircle.setAttribute('fill', 'transparent');
-    progressCircle.setAttribute('stroke-linecap', 'round');
-    progressCircle.setAttribute('transform', 'rotate(-90 60 60)');
-    progressCircle.setAttribute('stroke-dasharray', String(CIRCUMFERENCE));
-    progressCircle.setAttribute('stroke-dashoffset', String(CIRCUMFERENCE));
-    svg.appendChild(progressCircle);
+    const progressCircle = svg.createSvg('circle', {
+      attr: {
+        cx: '60',
+        cy: '60',
+        r: '52',
+        stroke: 'var(--block-accent, var(--color-accent))',
+        'stroke-width': '8',
+        fill: 'transparent',
+        'stroke-linecap': 'round',
+        transform: 'rotate(-90 60 60)',
+        'stroke-dasharray': String(CIRCUMFERENCE),
+        'stroke-dashoffset': String(CIRCUMFERENCE),
+      },
+    });
     this.ringEl = progressCircle;
-
-    ringWrap.appendChild(svg);
 
     // ── Time display (overlaid on ring) ─────────────────────────────────
     this.timerEl = ringWrap.createDiv({ cls: 'pomodoro-time' });

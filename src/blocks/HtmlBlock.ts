@@ -69,7 +69,9 @@ export class HtmlBlock extends BaseBlock {
       'body{margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}',
     ];
     if (varRefs.size > 0) {
-      const rootStyle = getComputedStyle(document.body);
+      // Resolve variables against the document the block actually lives in
+      // (popout-safe — a popout window can have different computed values).
+      const rootStyle = contentEl.win.getComputedStyle(contentEl.doc.body);
       const pairs = [...varRefs]
         .map(v => {
           const val = rootStyle.getPropertyValue(v).trim();
@@ -96,16 +98,15 @@ export class HtmlBlock extends BaseBlock {
       safe = bridge + safe;
     }
 
-    const iframe = document.createElement('iframe');
     // allow-same-origin is required for the auto-scale load handler to read
     // contentDocument; the injected CSP (not the sandbox) is what blocks script
-    // execution and active network access.
-    iframe.setAttribute('sandbox', 'allow-same-origin');
-    iframe.setAttribute('referrerpolicy', 'no-referrer');
+    // execution and active network access. The sandbox attribute is set at
+    // creation time, before srcdoc triggers any navigation.
+    const iframe = contentEl.createEl('iframe', {
+      cls: 'hp-html-iframe',
+      attr: { sandbox: 'allow-same-origin', referrerpolicy: 'no-referrer' },
+    });
     iframe.srcdoc = safe;
-    iframe.addClass('hp-html-iframe');
-
-    contentEl.appendChild(iframe);
 
     // Auto-scale: if content overflows vertically, widen + shrink to fill the card.
     // Iterates because widening the body causes flex-wrap reflow (shorter content),

@@ -168,8 +168,13 @@ export async function encryptStringEx(plaintext: string): Promise<EncryptResult>
     const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
     return { ok: true, value: `${PREFIX}${toBase64(iv)}:${toBase64(ct)}` };
   } catch (err) {
-    console.error('[Homepage Blocks] API key encryption failed — storing plaintext', err instanceof Error ? err.message : 'unknown error');
-    return { ok: false, reason: 'crypto-error', value: plaintext, transient: false };
+    // A thrown encrypt() with a successfully-loaded key is almost always a
+    // transient WebCrypto hiccup, not a permanent platform limitation. Mark it
+    // transient:true so the caller preserves any prior ciphertext or drops the
+    // key from the persisted copy, rather than downgrading it to plaintext at
+    // rest (the in-memory layout keeps the plaintext; the next save retries).
+    console.error('[Homepage Blocks] API key encryption failed — key left unencrypted this save, will retry', err instanceof Error ? err.message : 'unknown error');
+    return { ok: false, reason: 'crypto-error', value: plaintext, transient: true };
   }
 }
 

@@ -8,7 +8,7 @@ TypeScript + Obsidian DOM API. GridStack for layout. No Dataview.
 - `src/main.ts` -- plugin lifecycle, block registration (`registerBlocks()`), commands, ribbon, settings tab wiring, API-key encrypt/decrypt orchestration, layout persistence funnel (`saveLayout`/`updateBlockConfig`), corrupted-data stash
 - `src/HomepageView.ts` -- `ItemView` subclass (`VIEW_TYPE = 'homepage-blocks'`), mounts grid + toolbar
 - `src/GridLayout.ts` -- GridStack lifecycle wrapper: init/teardown, render, edit-mode placeholders, zoom, empty/skeleton state, drag/resize sync, `buildLayoutUpdate` write-routing. Delegates to `src/grid/*` managers
-- `src/grid/` -- extracted GridStack concerns: `AutoHeight.ts` (`AUTO_HEIGHT_ATTR`, `AutoHeightManager`), `LayoutPersister.ts` (read/diff/write positions), `EditHandleBar.ts` (`attachEditHandleBar`, `swapWithNeighbor`), `CollapseToggle.ts` (`attachCollapseToggle`), `ResponsiveColumns.ts` (`ResponsiveColumnsManager`), `packing.ts` (`packRows`/`repackEditLayout`, pure + unit-tested), `phase.ts` (`Phase` enum)
+- `src/grid/` -- extracted GridStack concerns: `AutoHeight.ts` (`AUTO_HEIGHT_ATTR`, `AutoHeightManager`), `LayoutPersister.ts` (read/diff/write positions), `EditHandleBar.ts` (`attachEditHandleBar`, `swapWithNeighbor`), `CollapseToggle.ts` (`attachCollapseToggle`), `ResponsiveColumns.ts` (`ResponsiveColumnsManager`), `BlockWrapper.ts` (`buildBlockWrapper`/`createSkeleton`/`removeSkeleton`/`renderCompactPlaceholder`/`renderEmptyState` -- pure DOM builders), `packing.ts` (`packRows`/`repackEditLayout`, pure + unit-tested), `phase.ts` (`Phase` enum)
 - `src/modals/` -- `BlockSettingsModal.ts` (shared `_`-prefixed styling settings), `RemoveBlockConfirmModal.ts`, `ConfirmPresetModal.ts`
 - `src/settings/HomepageSettingTab.ts` -- settings UI: startup/layout/display sections, export/import, reset, copy-to-mobile
 - `src/EditToolbar.ts` -- floating edit FAB, toolbar (column picker, zoom slider, add-block modal), Discard snapshot/restore, `AddBlockModal`
@@ -16,8 +16,8 @@ TypeScript + Obsidian DOM API. GridStack for layout. No Dataview.
 - `src/types.ts` -- `BlockType`, `BlockInstance`, `LayoutConfig`, `BlockFactory`, `IHomepagePlugin`
 - `src/validation.ts` -- `validateLayout`, `validateBlocks` (ID dedup + clamp), `migrateBlockInstance` (idempotent), `getDefaultLayout`
 - `src/BlockRegistry.ts` -- singleton `BlockRegistryClass` wrapping `Map<BlockType, BlockFactory>`
-- `src/blocks/BaseBlock.ts` -- abstract base extending `Component`; `renderContentSettings`, `hasUnsavedInlineState`, `scheduleRender`, auto-height helpers
-- `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag), `apiKeyCrypto.ts` (AES-GCM at rest), `importSanitizer.ts` (`_`-key validator table), `Scheduler.ts` (named timers/rAF), `imageCache.ts`, `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts` (intra-block CSS grid columns), `dailySeed.ts`, `ids.ts`, `emojis.ts`, `FolderSuggestModal.ts`, `noteContent.ts` (parseNoteInsight, used by QuotesList)
+- `src/blocks/BaseBlock.ts` -- abstract base extending `Component`; `renderContentSettings`, `hasUnsavedInlineState`, `scheduleRender`, `renderErrorHint`, auto-height helpers
+- `src/utils/` -- `tags.ts` (getFilesWithTag, cacheHasTag, `normalizeTag`, per-file cache invalidation), `apiKeyCrypto.ts` (AES-GCM at rest), `importSanitizer.ts` (`_`-key validator table), `Scheduler.ts` (named timers/rAF), `imageCache.ts`, `emojiPicker.ts`, `blockStyling.ts` (applyBlockStyling), `responsiveGrid.ts` (intra-block CSS grid columns), `dailySeed.ts`, `ids.ts`, `emojis.ts`, `FolderSuggestModal.ts`, `noteContent.ts` (parseNoteInsight, used by QuotesList), `dragReorder.ts` (`enableDragReorder` HTML5 DnD list reorder), `layoutReset.ts` (`buildResetLayout`, `MOBILE_LAYOUT_FIELDS`, `STARTUP_FIELDS`), `startupResolver.ts` (`resolveStartup`, `mobileStartupActive` -- pure), `urls.ts` (`isDangerousUrl` navigation gate)
 - `src/blocks/` -- one file per block type (17 total)
 - `styles.css` -- all styles at repo root
 
@@ -44,7 +44,7 @@ npx tsc --noEmit       # type-check (run after every .ts change)
 - **Runtime:** `gridstack` (grid layout engine) -- the only runtime dependency
 - **Dev:** `obsidian`, `typescript`, `esbuild`, `@types/node`, `builtin-modules`, `eslint`, `eslint-plugin-obsidianmd`, `typescript-eslint`, `@eslint/js`, `globals`; tests via `vitest`, `happy-dom`, `fake-indexeddb`
 - esbuild bundles to CJS (`main.js`), externalizes `obsidian` and `electron`
-- **Tests:** `npm test` (`vitest run`) -- unit tests under `tests/` cover validation, migration, import sanitizer, crypto, packing, Scheduler, blockStyling, dailySeed, ids
+- **Tests:** `npm test` (`vitest run`) -- unit tests under `tests/` cover validation, migration, import sanitizer, crypto, packing, Scheduler, blockStyling, dailySeed, ids, layoutReset, startupResolver, urls, tag-cache invalidation, BaseBlock, VaultSearchBlock, and grid render (`GridLayout.render`)
 
 ## Architecture
 
@@ -88,6 +88,11 @@ void this.plugin.saveLayout(this.buildLayoutUpdate(newBlocks));
 ```
 `buildLayoutUpdate()` in `GridLayout` routes blocks to `mobileBlocks` or `blocks`
 (and columns to `mobileColumns` or `columns`) based on `plugin.isMobileActive()`.
+
+`IHomepagePlugin` exposes three write methods, all on the serialized `savePromise` chain:
+- `saveLayout(layout)` -- write a full `LayoutConfig` (re-encrypts `apiKey` fields)
+- `saveActiveBlocks(blocks)` -- convenience: routes `blocks` to `mobileBlocks`/`blocks` via `isMobileActive()`, then `saveLayout`
+- `updateBlockConfig(id, patch)` -- awaits the chain, then patches one block's `config` and saves (so a config patch can't clobber an in-flight positional save)
 
 ### Responsive Mode
 `IHomepagePlugin` exposes platform-aware accessors:
@@ -201,4 +206,4 @@ In edit mode, GridLayout renders compact symbolic placeholders (block type + siz
 - Do not use raw `setInterval`/`vault.on` -- use `this.registerInterval()` / `this.registerEvent()`
 - Do not add unnecessary runtime npm dependencies
 - esbuild marks `console.debug`, `console.log`, `console.info`, and `console.trace` as `pure` in production builds and removes them. `console.warn` and `console.error` are retained; prefix their messages with `[Homepage Blocks]` and do NOT include raw third-party response bodies that may echo user content
-- Do not store secrets in block config -- API keys in `data.json` are plaintext. Layout export strips `apiKey` fields but the on-disk storage is unencrypted
+- API keys in `data.json` are **encrypted at rest** (AES-GCM-256 via `apiKeyCrypto.ts`, with a non-extractable per-device key in IndexedDB); `saveLayout` re-encrypts on every write, `onload` decrypts to plaintext in memory. The in-memory `plugin.layout` holds plaintext (blocks read `config.apiKey` directly); only the on-disk copy is ciphertext. Refuse-to-downgrade logic never overwrites stored ciphertext with plaintext when WebCrypto is unavailable. Layout export still strips `apiKey`. Note the ciphertext is per-device — it does not decrypt on another synced device

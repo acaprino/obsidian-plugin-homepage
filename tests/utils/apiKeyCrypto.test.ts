@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { decryptString, encryptString, isEncrypted, _resetDeviceKeyCache } from '../../src/utils/apiKeyCrypto';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { decryptString, encryptString, encryptStringEx, isEncrypted, _resetDeviceKeyCache } from '../../src/utils/apiKeyCrypto';
 
 /**
  * These tests only run in environments where WebCrypto + IndexedDB are available.
@@ -69,5 +69,23 @@ describe('encryptString / decryptString', () => {
     expect(a).not.toBe(b);
     expect(await decryptString(a)).toBe('sk-same');
     expect(await decryptString(b)).toBe('sk-same');
+  });
+
+  it.skipIf(!hasCryptoAndIdb)('classifies a thrown encrypt() as TRANSIENT so the caller never downgrades to plaintext at rest (M1)', async () => {
+    _resetDeviceKeyCache();
+    // Force a successful key load, then make the actual encrypt throw.
+    const spy = vi.spyOn(crypto.subtle, 'encrypt').mockRejectedValue(new Error('boom'));
+    try {
+      const r = await encryptStringEx('sk-secret');
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.reason).toBe('crypto-error');
+        // The crux of M1: transient=true means encryptApiKeys will preserve prior
+        // ciphertext / drop the key rather than persist `value` (plaintext).
+        expect(r.transient).toBe(true);
+      }
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -73,7 +73,7 @@ The **Voice Notes** block records audio in your browser and uploads it to a thir
 | **OpenAI Whisper** | `api.openai.com/v1/audio/transcriptions` | Raw audio blob + model + optional language hint | Your OpenAI API key in the `Authorization: Bearer ...` header |
 | **Google Gemini** | `generativelanguage.googleapis.com/v1beta/models/...:generateContent` | Base64-encoded audio + a transcription prompt + optional language hint | Your Google AI API key in the `x-goog-api-key` header |
 
-**API key storage:** the key is persisted in **cleartext** in `<vault>/.obsidian/plugins/homepage-blocks/data.json`. If your vault is synced (Obsidian Sync, iCloud, Dropbox, git, ...) the key is synced too. Treat it like any other secret in your vault. When you **Export layout** the key is stripped from the exported JSON, but the on-disk copy is untouched.
+**API key storage:** the key is **encrypted at rest** (AES-GCM-256) in `<vault>/.obsidian/plugins/homepage-blocks/data.json` using a non-extractable, per-device key held in the browser's IndexedDB. Because the key never leaves the device that created it, a synced `data.json` (Obsidian Sync, iCloud, Dropbox, git, ...) carries only ciphertext that **cannot be decrypted on another device** -- you re-enter the API key per device. On the rare platform without WebCrypto, the plugin falls back to plaintext (with a refuse-to-downgrade guard that never overwrites existing ciphertext). Treat the key like any secret regardless, since the ciphertext still travels with your synced vault. When you **Export layout** the key is stripped from the exported JSON.
 
 **Revoking access:** delete the key from the provider's dashboard ([OpenAI](https://platform.openai.com/api-keys), [Google AI Studio](https://aistudio.google.com/app/apikey)) and clear the API key field in block settings.
 
@@ -103,8 +103,12 @@ Open **Settings > Homepage Blocks**:
 | Open when empty | Opens the homepage when no other tabs are open |
 | Manual open mode | Controls how the homepage opens from ribbon/command -- replace, new tab, or sidebar |
 | Pin homepage tab | Prevents the homepage tab from being closed |
+| Separate startup for mobile | Use independent startup settings on mobile (open-on-startup, open mode, pin, ...) instead of mirroring desktop |
 | Default columns | Grid column count (2, 3, 4, or 5) |
-| Hide scrollbar | Hides the homepage scroll bar |
+| Responsive mode | **Unified** (one adaptive layout) or **Separate** (independent desktop + mobile layouts, with copy-to-mobile) |
+| Compact layout | Removes vertical gaps between blocks in view mode (off preserves intentional gaps) |
+| Hover highlight | Subtly lifts blocks on hover and reveals the collapse toggle |
+| Show scroll bar | Shows or hides the homepage scroll bar |
 | Reset to default layout | Restores demo blocks (**cannot be undone**) |
 | Export layout | Exports your layout as JSON |
 | Import layout | Imports a layout from JSON |
@@ -134,7 +138,7 @@ You can override layout variables in a [CSS snippet](https://help.obsidian.md/Ex
 
 ## Using theme colors in HTML blocks
 
-Obsidian strips `<style>` tags from HTML blocks for security. To match your theme's look, use **inline `style` attributes** with Obsidian's CSS variables instead. These variables update automatically when you switch themes, so your HTML always stays consistent.
+HTML that contains a `<style>` block is rendered inside a sandboxed iframe (no scripts, no network) for full CSS support with style isolation. HTML *without* a `<style>` block is sanitized and rendered inline, where `<style>`/`<script>`/`<iframe>` and other active tags are stripped. For inline fragments, match your theme by using **inline `style` attributes** with Obsidian's CSS variables -- these update automatically when you switch themes, so your HTML stays consistent.
 
 ### Common theme variables
 

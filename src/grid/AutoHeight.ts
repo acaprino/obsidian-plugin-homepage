@@ -104,6 +104,14 @@ export class AutoHeightManager {
     const { gridStack } = this.host;
     if (!gridStack || !gsEl.isConnected) return false;
 
+    // A collapsed block must keep its 1-row height. Skip measurement entirely so
+    // a width change (which dispatches request-auto-height) can't re-expand it:
+    // the collapsed .block-content is forced to grid-template-rows:0fr, but the
+    // measurement path below temporarily switches it to max-content, which would
+    // otherwise read the full natural height and grow the collapsed cell.
+    const wrapperEl = gsEl.querySelector('.homepage-block-wrapper');
+    if (wrapperEl?.classList.contains('block-collapsed')) return false;
+
     const contentEl = gsEl.querySelector<HTMLElement>(`[${AUTO_HEIGHT_ATTR}]`);
     const headerZone = gsEl.querySelector<HTMLElement>('.block-header-zone');
     if (!contentEl || !headerZone) return false;

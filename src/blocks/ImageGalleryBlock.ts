@@ -180,6 +180,27 @@ function waitForImage(img: HTMLImageElement): Promise<void> {
   });
 }
 
+/**
+ * Run async thunks with bounded concurrency. A large gallery folder would
+ * otherwise fire hundreds of simultaneous thumbnail generations (full-image
+ * decode + canvas.toBlob), spiking memory and blocking the main thread; a small
+ * pool keeps a few in flight at a time while still completing all of them.
+ */
+async function runWithConcurrency(thunks: Array<() => Promise<void>>, limit: number): Promise<void> {
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < thunks.length) {
+      const idx = next++;
+      await thunks[idx]();
+    }
+  };
+  const workers = Math.max(1, Math.min(limit, thunks.length));
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+}
+
+/** Max concurrent thumbnail generations (full decode + canvas encode). */
+const THUMB_CONCURRENCY = 6;
+
 const DEBOUNCE_MS = 300;
 
 export class ImageGalleryBlock extends BaseBlock {
@@ -311,6 +332,11 @@ export class ImageGalleryBlock extends BaseBlock {
     });
 
     const loadPromises: Promise<void>[] = [];
+    // Thumbnail generations (cache misses) are run through a bounded pool rather
+    // than all-at-once, so a large folder doesn't fire hundreds of concurrent
+    // decode/canvas operations. Cached hits and video metadata waits stay in
+    // loadPromises (no heavy work to throttle).
+    const genThunks: Array<() => Promise<void>> = [];
     // Only use lazy loading in fixed-height (scrollable) mode — auto-height
     // needs all dimensions upfront for GridStack measurement.
     const useLazy = heightMode === 'fixed';
@@ -342,9 +368,10 @@ export class ImageGalleryBlock extends BaseBlock {
           img.src = cached.thumbUrl;
           loadPromises.push(waitForImage(img));
         } else {
-          // Show shimmer placeholder while thumbnail is generated
+          // Show shimmer placeholder while thumbnail is generated. Deferred into
+          // the bounded pool below so decode/canvas work doesn't all fire at once.
           wrapper.addClass('gallery-item--loading');
-          loadPromises.push(
+          genThunks.push(() =>
             imageCache.get(this.app, file).then(entry => {
               if (this.isStale(gen)) return;
               img.src = entry.thumbUrl;
@@ -380,7 +407,11 @@ export class ImageGalleryBlock extends BaseBlock {
     }
 
     // Wait for all thumbnails + image decodes so GridStack can measure true height.
-    await Promise.all(loadPromises);
+    // Cached/video waits run unbounded; cache-miss generations run through a pool.
+    await Promise.all([
+      Promise.all(loadPromises),
+      runWithConcurrency(genThunks, THUMB_CONCURRENCY),
+    ]);
     if (this.isStale(gen)) return; // a newer render superseded this one
 
     // Start width observer AFTER images load so the initial measurement is accurate.

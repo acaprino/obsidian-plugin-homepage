@@ -66,8 +66,11 @@ export function buildResetLayout(
   const keepStartup = pickFields(current, STARTUP_FIELDS);
 
   if (current.responsiveMode !== 'separate') {
-    // Unified: one layout to reset; startup config is independent, so preserve it.
-    return { ...fresh, ...keepStartup };
+    // Unified: reset the (single) active layout. Preserve the full startup config
+    // AND the dormant mobile layout slice -- a user who built a separate mobile
+    // layout, switched to unified, then reset should not lose it (the same class
+    // of asymmetry the startup-fields preservation fixed).
+    return { ...fresh, ...pickFields(current, MOBILE_LAYOUT_FIELDS), ...keepStartup };
   }
   if (isMobileActive) {
     // Mobile-issued reset: reset the mobile layout slice; `...current` already

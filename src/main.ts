@@ -202,6 +202,20 @@ function registerBlocks(): void {
  * vault sync), we look up the previously-persisted apiKey from `priorOnDisk` and
  * keep its ciphertext value when the encrypt step fell back to plaintext.
  */
+/**
+ * True when any block on either platform array carries a non-empty `apiKey`.
+ * Lets saveLayout skip the prior-on-disk read + encryption clone entirely when
+ * there is nothing to encrypt (the common no-voice-key case). A cleared key
+ * (apiKey === '') correctly returns false so clearing persists via the fast path.
+ */
+function layoutHasApiKey(layout: LayoutConfig): boolean {
+  const anyIn = (blocks: BlockInstance[] | undefined): boolean =>
+    Array.isArray(blocks) && blocks.some(
+      b => typeof b?.config?.apiKey === 'string' && b.config.apiKey !== '',
+    );
+  return anyIn(layout.blocks) || anyIn(layout.mobileBlocks);
+}
+
 async function encryptApiKeys(layout: LayoutConfig, priorOnDisk: LayoutConfig | null): Promise<LayoutConfig> {
   const buildPriorMap = (blocks: BlockInstance[] | undefined): Map<string, string> => {
     const m = new Map<string, string>();
@@ -335,6 +349,16 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
         console.error('[Homepage Blocks] Failed to stash corrupted data.json', err instanceof Error ? err.message : 'unknown error');
       });
       new Notice('Homepage blocks: data.json was unreadable and has been backed up. Layout has been reset to defaults.', 12_000);
+    }, (droppedCount) => {
+      // Per-block corruption: some block entries were valid-shaped data.json but
+      // failed the block schema (partial sync merge, hand-edit, future block
+      // type). Surface it rather than dropping blocks silently. Stash a backup
+      // of the raw layout so the dropped blocks are recoverable by hand.
+      console.warn(`[Homepage Blocks] ${droppedCount} invalid block(s) were dropped from the layout on load`);
+      void this.stashCorruptedData(raw).catch((err) => {
+        console.error('[Homepage Blocks] Failed to stash layout with dropped blocks', err instanceof Error ? err.message : 'unknown error');
+      });
+      new Notice(`Homepage blocks: ${droppedCount} invalid block(s) couldn't be loaded and were removed. A backup of your data.json was saved alongside the plugin.`, 12_000);
     });
     // At-rest apiKey values are encrypted (AES-GCM, non-extractable device key in
     // IndexedDB). Decrypt on load so blocks see plaintext; encrypt again on save.
@@ -527,6 +551,15 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // Serialize save ordering AND await the pre-save encryption inside the
     // chain so a later-queued save sees the updated ciphertext format.
     this.savePromise = this.savePromise.then(async () => {
+      // Fast path: when no block holds an apiKey there is nothing to encrypt and
+      // no downgrade to guard against, so skip the prior-on-disk read AND the
+      // full-layout clone. This is the common case (no voice-dictation key) and
+      // keeps every high-frequency persist (drag/resize/auto-height) to a single
+      // write instead of a read+clone+write.
+      if (!layoutHasApiKey(layout)) {
+        await this.saveData(layout);
+        return;
+      }
       // Read the prior on-disk layout so encryptApiKeys can refuse to overwrite
       // a previously-stored ciphertext with plaintext when WebCrypto is gated
       // (cross-platform vault-sync footgun: ciphertext on desktop, plaintext on

@@ -1,8 +1,9 @@
-import { Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { Notice, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { enableDragReorder } from '../utils/dragReorder';
+import { isDangerousUrl } from '../utils/urls';
 
 interface LinkItem {
   label: string;
@@ -161,6 +162,13 @@ export class FolderLinksBlock extends BaseBlock {
       }
       btn.createSpan({ text: link.label });
       btn.addEventListener('click', () => {
+        // Guard against a dangerous-scheme link arriving via an imported layout
+        // (manual links are user/import-supplied config, unlike the auto-listed
+        // folder notes above which are real vault files). Mirrors ButtonGrid/Bookmark.
+        if (isDangerousUrl(link.path)) {
+          new Notice('Homepage blocks: blocked an unsafe link.');
+          return;
+        }
         void this.app.workspace.openLinkText(link.path, '');
       });
     }

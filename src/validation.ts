@@ -231,11 +231,28 @@ export function isValidBlockInstance(b: unknown): b is BlockInstance {
   );
 }
 
-/** Migrate + validate + clamp a raw blocks array loaded from disk. */
-export function validateBlocks(raw: unknown, columns: number, defaults: BlockInstance[]): BlockInstance[] {
+/**
+ * Migrate + validate + clamp a raw blocks array loaded from disk.
+ *
+ * `onInvalidDropped` fires (with the count) when one or more array entries
+ * survive as a real array but fail `isValidBlockInstance` -- i.e. per-block
+ * corruption distinct from the top-level "data.json is unusable" case. Callers
+ * can surface this so a partially-corrupt blocks array doesn't lose blocks
+ * silently. The MAX_BLOCKS clamp and id-dedup are NOT reported (they are
+ * intentional, not corruption).
+ */
+export function validateBlocks(
+  raw: unknown,
+  columns: number,
+  defaults: BlockInstance[],
+  onInvalidDropped?: (count: number) => void,
+): BlockInstance[] {
   if (!Array.isArray(raw)) return defaults;
   const migrated: unknown[] = raw.map(b => migrateBlockInstance(b as Record<string, unknown>));
-  const valid = migrated.filter(isValidBlockInstance).slice(0, MAX_BLOCKS);
+  const validAll = migrated.filter(isValidBlockInstance);
+  const invalidCount = migrated.length - validAll.length;
+  if (invalidCount > 0) onInvalidDropped?.(invalidCount);
+  const valid = validAll.slice(0, MAX_BLOCKS);
   // Dedupe block IDs. A hand-edited or clipboard-imported layout with two blocks
   // sharing the same id breaks every gs-id selector + Array.find lookup downstream
   // (edit handles modify the wrong block, remove deletes one but not the duplicate,
@@ -270,6 +287,7 @@ export function validateBlocks(raw: unknown, columns: number, defaults: BlockIns
 export function validateLayout(
   raw: unknown,
   onTopLevelCorruption?: (raw: unknown) => void,
+  onBlocksDropped?: (count: number) => void,
 ): LayoutConfig {
   const defaults = getDefaultLayout();
   if (raw === null || raw === undefined) return defaults;
@@ -344,8 +362,13 @@ export function validateLayout(
   const hoverHighlight = typeof r.hoverHighlight === 'boolean'
     ? r.hoverHighlight
     : defaults.hoverHighlight;
-  const blocks = validateBlocks(r.blocks, columns, defaults.blocks);
-  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks);
+  // Aggregate per-block corruption across both platform arrays into one report
+  // so the caller can surface a single Notice rather than one per array.
+  let droppedBlocks = 0;
+  const countDropped = (n: number) => { droppedBlocks += n; };
+  const blocks = validateBlocks(r.blocks, columns, defaults.blocks, countDropped);
+  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks, countDropped);
+  if (droppedBlocks > 0) onBlocksDropped?.(droppedBlocks);
 
   return {
     columns, layoutPriority, responsiveMode,

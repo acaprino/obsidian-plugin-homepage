@@ -4,6 +4,7 @@ import { BlockRegistry } from './BlockRegistry';
 import { GridLayout } from './GridLayout';
 import { BLOCK_META } from './blockMeta';
 import { newId } from './utils/ids';
+import { Phase } from './grid/phase';
 
 export class EditToolbar {
   private toolbarEl: HTMLElement;
@@ -160,6 +161,7 @@ export class EditToolbar {
    * the user's selection lands on a destroyed grid instance. Silent failure.
    */
   private openModal: AddBlockModal | null = null;
+  private destroyed = false;
 
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal(): void {
@@ -167,10 +169,16 @@ export class EditToolbar {
     // current grid.
     this.openModal?.close();
     const modal = new AddBlockModal(this.app, (type) => {
-      // Defensive: don't add to a grid that's been destroyed since the modal
-      // opened (e.g., the user changed showScrollbar in another tab while the
-      // picker was up, triggering a full view reload).
-      if (this.openModal !== modal) return;
+      // SuggestModal may close before or after onChooseSuggestion depending on
+      // platform and input method. Closing alone does not revoke the latest
+      // picker; replacement or destruction does.
+      if (
+        this.destroyed ||
+        this.openModal !== modal ||
+        this.grid.phase === Phase.Destroyed
+      ) {
+        return;
+      }
       const factory = BlockRegistry.get(type);
       if (!factory) return;
 
@@ -189,11 +197,6 @@ export class EditToolbar {
 
       this.grid.addBlock(instance);
     });
-    const originalOnClose = modal.onClose.bind(modal);
-    modal.onClose = () => {
-      if (this.openModal === modal) this.openModal = null;
-      originalOnClose();
-    };
     this.openModal = modal;
     modal.open();
   }
@@ -215,6 +218,7 @@ export class EditToolbar {
     // toolbar's about-to-be-destroyed grid reference.
     this.openModal?.close();
     this.openModal = null;
+    this.destroyed = true;
     this.grid.onRequestAddBlock = null;
     this.fabEl.remove();
     this.toolbarEl.remove();
@@ -229,6 +233,8 @@ export class EditToolbar {
  * description.
  */
 class AddBlockModal extends SuggestModal<BlockFactory> {
+  private selectionProcessed = false;
+
   constructor(
     app: App,
     private onSelect: (type: BlockType) => void,
@@ -260,6 +266,9 @@ class AddBlockModal extends SuggestModal<BlockFactory> {
   }
 
   onChooseSuggestion(factory: BlockFactory): void {
+    if (this.selectionProcessed) return;
+
+    this.selectionProcessed = true;
     this.onSelect(factory.type);
   }
 }

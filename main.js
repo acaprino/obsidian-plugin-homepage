@@ -8035,11 +8035,14 @@ var EditToolbar = class {
    * the user's selection lands on a destroyed grid instance. Silent failure.
    */
   openModal = null;
+  destroyed = false;
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal() {
     this.openModal?.close();
     const modal = new AddBlockModal(this.app, (type) => {
-      if (this.openModal !== modal) return;
+      if (this.destroyed || this.openModal !== modal || this.grid.phase === Phase.Destroyed) {
+        return;
+      }
       const factory = BlockRegistry.get(type);
       if (!factory) return;
       const instance = {
@@ -8056,11 +8059,6 @@ var EditToolbar = class {
       };
       this.grid.addBlock(instance);
     });
-    const originalOnClose = modal.onClose.bind(modal);
-    modal.onClose = () => {
-      if (this.openModal === modal) this.openModal = null;
-      originalOnClose();
-    };
     this.openModal = modal;
     modal.open();
   }
@@ -8076,6 +8074,7 @@ var EditToolbar = class {
   destroy() {
     this.openModal?.close();
     this.openModal = null;
+    this.destroyed = true;
     this.grid.onRequestAddBlock = null;
     this.fabEl.remove();
     this.toolbarEl.remove();
@@ -8088,6 +8087,7 @@ var AddBlockModal = class extends import_obsidian5.SuggestModal {
     this.setPlaceholder("Search blocks\u2026");
     this.modalEl.addClass("add-block-suggest");
   }
+  selectionProcessed = false;
   getSuggestions(query) {
     const q = query.trim().toLowerCase();
     const all = BlockRegistry.getAll();
@@ -8108,6 +8108,8 @@ var AddBlockModal = class extends import_obsidian5.SuggestModal {
     }
   }
   onChooseSuggestion(factory) {
+    if (this.selectionProcessed) return;
+    this.selectionProcessed = true;
     this.onSelect(factory.type);
   }
 };

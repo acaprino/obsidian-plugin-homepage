@@ -78,10 +78,11 @@ export class Component {
 export class Modal extends Component {
   contentEl = document.createElement('div');
   containerEl = document.createElement('div');
-  open(): void {}
-  close(): void {}
-  onOpen?(): void;
-  onClose?(): void;
+  modalEl = document.createElement('div');
+  open(): void { this.onOpen(); }
+  close(): void { this.onClose(); }
+  onOpen(): void {}
+  onClose(): void {}
 }
 
 export class Plugin extends Component {
@@ -115,8 +116,14 @@ export class Setting {
   addColorPicker(_cb: unknown): this { return this; }
 }
 
+export const openedSuggestModals: SuggestModal<unknown>[] = [];
+
 export class SuggestModal<T> extends Modal {
-  constructor(_app: unknown) { super(); }
+  constructor(_app: unknown) {
+    super();
+    openedSuggestModals.push(this as SuggestModal<unknown>);
+  }
+  setPlaceholder(_placeholder: string): this { return this; }
   getSuggestions(_query: string): T[] { return []; }
   renderSuggestion(_item: T, _el: HTMLElement): void {}
   onChooseSuggestion(_item: T, _evt: Event): void {}

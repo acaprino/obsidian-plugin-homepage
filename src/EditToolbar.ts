@@ -161,16 +161,20 @@ export class EditToolbar {
    */
   private openModal: AddBlockModal | null = null;
 
+  private addModalGeneration = 0;
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal(): void {
     // Replace any previously-open modal so the closure always points at the
     // current grid.
     this.openModal?.close();
+    
+    const generation = ++this.addModalGeneration;
+    
     const modal = new AddBlockModal(this.app, (type) => {
       // Defensive: don't add to a grid that's been destroyed since the modal
       // opened (e.g., the user changed showScrollbar in another tab while the
       // picker was up, triggering a full view reload).
-      if (this.openModal !== modal) return;
+      if (generation !== this.addModalGeneration) return;
       const factory = BlockRegistry.get(type);
       if (!factory) return;
 
@@ -213,6 +217,7 @@ export class EditToolbar {
   destroy(): void {
     // Close any open Add Block modal so its callback can't fire against this
     // toolbar's about-to-be-destroyed grid reference.
+    this.addModalGeneration++;
     this.openModal?.close();
     this.openModal = null;
     this.grid.onRequestAddBlock = null;

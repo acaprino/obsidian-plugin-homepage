@@ -8035,11 +8035,13 @@ var EditToolbar = class {
    * the user's selection lands on a destroyed grid instance. Silent failure.
    */
   openModal = null;
+  addModalGeneration = 0;
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal() {
     this.openModal?.close();
+    const generation = ++this.addModalGeneration;
     const modal = new AddBlockModal(this.app, (type) => {
-      if (this.openModal !== modal) return;
+      if (generation !== this.addModalGeneration) return;
       const factory = BlockRegistry.get(type);
       if (!factory) return;
       const instance = {
@@ -8074,6 +8076,7 @@ var EditToolbar = class {
     return this.fabEl;
   }
   destroy() {
+    this.addModalGeneration++;
     this.openModal?.close();
     this.openModal = null;
     this.grid.onRequestAddBlock = null;

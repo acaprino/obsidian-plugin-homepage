@@ -16,7 +16,9 @@
  * the "non-extractable" guarantee meaningful — structured clone serialises the key
  * reference without exposing raw bytes. The key is therefore scoped to this browser
  * profile / Obsidian install — a freshly-synced vault on another device will see the
- * ciphertext but cannot decrypt it; the user has to re-enter the apiKey there.
+ * ciphertext but cannot decrypt it. That device keeps the ciphertext untouched (the
+ * device that wrote it still uses it) and treats the block as having no usable key;
+ * entering a key there replaces the stored one for every device sharing the block.
  *
  * Wire format
  * -----------
@@ -189,7 +191,7 @@ export async function encryptString(plaintext: string): Promise<string> {
 
 /**
  * Result of decryptString — distinguishes "transient crypto failure" (preserve
- * ciphertext on disk) from "definitely corrupt or wrong device" (clear the key).
+ * ciphertext on disk) from "definitely corrupt or wrong device" (unusable here).
  * Without this distinction, a single QuotaExceededError or transient IndexedDB
  * hiccup would destroy the user's encrypted ciphertext on the next save.
  */
@@ -200,7 +202,8 @@ export type DecryptResult =
 /**
  * Decrypt a string previously produced by encryptString — rich-result variant.
  * Use this when you need to act differently for transient failures (preserve
- * ciphertext) versus permanent ones (clear and let the user re-enter).
+ * ciphertext) versus permanent ones (the key is unusable on this device; the
+ * caller keeps the ciphertext for the device that can read it).
  */
 export async function decryptStringEx(value: string): Promise<DecryptResult> {
   if (!isEncrypted(value)) return { ok: true, plaintext: value }; // plaintext or empty

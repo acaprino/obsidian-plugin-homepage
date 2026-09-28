@@ -90,6 +90,11 @@ export interface LayoutConfig {
 export interface BlockFactory {
   type: BlockType;
   displayName: string;
+  /**
+   * Every config key the block reads, with its default. Seeds new blocks and is
+   * the clipboard-import allowlist, which also type-checks imported values
+   * against these defaults. A key with no default of its own is `undefined`.
+   */
   defaultConfig: Record<string, unknown>;
   defaultSize: { w: number; h: number };
   /** Block reports content height dynamically. GridLayout persists height specially for these. */
@@ -104,12 +109,13 @@ export interface IHomepagePlugin {
   /** Save a new blocks array into the active field (mobileBlocks on mobile+separate, blocks otherwise). */
   saveActiveBlocks(blocks: BlockInstance[]): Promise<void>;
   /**
-   * Atomically patch one block's config. The patcher reads the live layout
-   * inside the save chain so a concurrent positional save (e.g. from a drag
-   * that finishes while a vault rename is in flight) cannot be clobbered by
-   * a stale snapshot. Returns when the save has been queued; the patch is
-   * applied to whatever block matches `id` at write time. No-op if the id
-   * isn't present at write time.
+   * Patch one block's config and save. Waits for the saves already queued,
+   * then reads the in-memory layout (every saveLayout call updates it
+   * synchronously, so a finished drag is already there), replaces that block's
+   * objects, and resolves once the write completes. A block whose id is gone by
+   * then is left alone, with a console warning. The rendered instance is never
+   * updated: a block that shows its own config must read it back with
+   * BaseBlock.liveConfig() after this resolves.
    */
   updateBlockConfig(id: string, patch: Record<string, unknown>): Promise<void>;
   /** True when running on a mobile device AND responsiveMode is 'separate'. */

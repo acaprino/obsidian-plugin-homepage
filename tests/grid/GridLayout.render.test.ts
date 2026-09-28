@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { GridLayout } from '../../src/GridLayout';
+import { BaseBlock } from '../../src/blocks/BaseBlock';
 import { Phase } from '../../src/grid/phase';
 import { getDefaultLayout } from '../../src/validation';
 import { BlockRegistry } from '../../src/BlockRegistry';
@@ -40,6 +41,14 @@ function makePlugin(over: Partial<LayoutConfig> = {}, mobileActive = false): IHo
     activeLayoutPriority: () => 'row',
   };
   return plugin;
+}
+
+/**
+ * happy-dom lays nothing out, so every pane measures 0px, which ResponsiveColumns
+ * reads as "hidden, width unknown". Give the view a real narrow width instead.
+ */
+function narrowPane(el: HTMLElement, width = 300): void {
+  Object.defineProperty(el, 'clientWidth', { configurable: true, get: () => width });
 }
 
 function clock(id: string, over: Partial<BlockInstance> = {}): BlockInstance {
@@ -125,6 +134,32 @@ describe('GridLayout — block wrapper DOM (extraction safety net)', () => {
   });
 });
 
+describe('GridLayout — collapsed blocks after a reload (M5)', () => {
+  const renderedH = (grid: GridLayout): number =>
+    (grid.gridStack!.getGridItems()[0] as HTMLElement & { gridstackNode?: { h: number } }).gridstackNode!.h;
+
+  it('draws a collapsed block one row high, although the stored h is the expanded height', () => {
+    // What collapsing saves: collapsed + _expandedH, while h keeps the expanded value.
+    const block = clock('c1', { collapsed: true, _expandedH: 4, h: 4, config: { _titleLabel: 'Clock' } });
+    const plugin = makePlugin({ blocks: [block] });
+    const grid = new GridLayout(host, plugin.app, plugin, () => {});
+
+    grid.render([block], 3);
+
+    expect(renderedH(grid)).toBe(1);
+  });
+
+  it('draws a collapsed block whose title is hidden at its expanded height (no header to reopen it)', () => {
+    const block = clock('c1', { collapsed: true, _expandedH: 4, h: 1, config: { _showTitle: false } });
+    const plugin = makePlugin({ blocks: [block] });
+    const grid = new GridLayout(host, plugin.app, plugin, () => {});
+
+    grid.render([block], 3);
+
+    expect(renderedH(grid)).toBe(4);
+  });
+});
+
 describe('GridLayout — edit-mode placeholders', () => {
   it('renders compact symbolic placeholders instead of full content', () => {
     const block = clock('c1', { config: { _titleLabel: 'My clock' } });
@@ -176,20 +211,72 @@ describe('GridLayout — buildLayoutUpdate routing', () => {
   });
 });
 
+describe('GridLayout — a block whose render throws (RF-R6)', () => {
+  it('still mounts the blocks after it and lets the grid settle', async () => {
+    class ThrowingBlock extends BaseBlock {
+      render(): void { throw new TypeError('items is not iterable'); }
+    }
+    BlockRegistry.register({
+      type: 'spacer', displayName: 'Spacer', defaultConfig: {}, defaultSize: { w: 1, h: 2 },
+      create: (app, instance, plugin) => new ThrowingBlock(app, instance, plugin),
+    });
+    const blocks: BlockInstance[] = [
+      { id: 'bad', type: 'spacer', x: 0, y: 0, w: 1, h: 2, config: {} },
+      clock('ok', { x: 1 }),
+    ];
+    const plugin = makePlugin({ blocks });
+    const grid = new GridLayout(host, plugin.app, plugin, () => {});
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(() => grid.render(blocks, 3)).not.toThrow();
+      await new Promise(resolve => window.requestAnimationFrame(() => resolve(undefined)));
+    } finally {
+      errorLog.mockRestore();
+    }
+
+    expect(host.querySelector('[gs-id="ok"] .clock-block')).toBeTruthy();
+    expect(host.querySelector('[gs-id="bad"] .block-content')?.textContent).toContain('Error rendering block');
+    expect(grid.phase).toBe(Phase.Ready);
+  });
+});
+
+describe('GridLayout — a view-mode persist still pending when edit mode starts (AP-1)', () => {
+  it('does not save the narrow pane\'s packed positions as the canonical layout', () => {
+    const blocks = [clock('a'), clock('b', { x: 1 }), clock('c', { x: 2 })];
+    const plugin = makePlugin({ blocks });
+    narrowPane(host);
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+    grid.render(blocks, 3);
+    grid.phase = Phase.Ready; // simulate the post-init "settled" state
+    // On a 300px pane view mode shows the responsive single column, and the live
+    // GridStack nodes hold its packed positions.
+    expect(grid.effectiveColumns).toBe(1);
+    grid.gridStack!.getGridItems().forEach((el, i) => {
+      const node = (el as HTMLElement & { gridstackNode?: { x: number; y: number } }).gridstackNode!;
+      node.x = 0;
+      node.y = i * 3;
+    });
+    grid.persistLayoutDebounced(); // queued by an auto-height resize, say
+
+    grid.setEditMode(true);
+
+    expect(plugin.layout.blocks.map(b => b.x)).toEqual([0, 1, 2]);
+  });
+});
+
 describe('GridLayout — REG-1: Discard must not re-persist edited positions', () => {
   function setupEditingWithDrag(): { grid: GridLayout; emits: LayoutConfig[] } {
     const block = clock('c1');
     const plugin = makePlugin({ blocks: [block] });
     const emits: LayoutConfig[] = [];
+    // A 300px pane, narrower than every column breakpoint, so these tests also
+    // cover edit mode on a narrow pane (RF-R2): the grid must keep its canonical
+    // 3 columns there, or persist() drops x/y/w changes.
+    narrowPane(host);
     const grid = new GridLayout(host, plugin.app, plugin, (l) => emits.push(l));
     grid.render([block], 3);
     grid.setEditMode(true);
     grid.phase = Phase.Ready; // simulate the post-init "settled" state
-    // happy-dom reports container width 0, so the responsive manager collapses
-    // to 1 column (isResponsive=true), which makes persist() compare only h.
-    // Force the canonical 3-column view so an x-drag is actually persisted.
-    grid.canonicalColumns = 3;
-    grid.effectiveColumns = 3;
     // Simulate an in-flight drag: move the live GridStack node away from x=0.
     // (gridStack.update() is a no-op without a real layout engine, so write the
     // node position directly — persist() reads node.x off gridstackNode.)

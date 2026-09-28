@@ -1,27 +1,37 @@
 import { BlockInstance, BlockType, LayoutConfig } from '../types';
 import { BlockRegistry } from '../BlockRegistry';
-import { HEX_COLOR_RE } from './blockStyling';
+import { HEX_COLOR_RE, RangedStyleKey, VALID_BORDER_STYLES, clampStyle } from './blockStyling';
+import { TITLE_SIZE_RE } from '../blocks/BaseBlock';
+
+/** Own-property check: an imported key such as `__proto__` must not match an inherited member. */
+const hasOwn = (obj: object, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key);
+
+/** Never carried by a clipboard layout: export removes both (HomepageSettingTab). */
+const ALWAYS_STRIPPED = new Set(['apiKey', 'customCss']);
 
 /**
- * Keys that may legitimately appear on many block configs but are not always declared
- * in the factory's defaultConfig. Kept in an allowlist so the unknown-key stripper
- * doesn't drop user-customised shared styling from a valid export.
+ * True when an imported `value` has the JSON type of the factory's declared
+ * default: a malformed value (say `items: null` where the block iterates an
+ * array) would otherwise reach render. A key declared with no default of its
+ * own (`undefined`) accepts a string, number or boolean.
  */
-const SHARED_CONFIG_KEYS = new Set([
-  // Every `_`-prefixed key is shared styling — handled specially below, but listing
-  // the well-known ones here documents the contract.
-  '_titleLabel', '_titleEmoji', '_showTitle', '_titleSize', '_titleGap',
-  '_showDivider', '_showHeaderAccent', '_showBorder', '_borderWidth', '_borderStyle',
-  '_borderRadius', '_showBackground', '_bgOpacity', '_backdropBlur', '_cardPadding',
-  '_elevation', '_accentColor', '_accentIntensity', '_gradientStart', '_gradientEnd',
-  '_gradientAngle',
-]);
+function matchesDeclaredType(value: unknown, declared: unknown): boolean {
+  if (declared === undefined || declared === null) {
+    const t = typeof value;
+    return t === 'string' || t === 'number' || t === 'boolean';
+  }
+  if (Array.isArray(declared)) return Array.isArray(value);
+  if (typeof declared === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (typeof declared === 'number') return typeof value === 'number' && Number.isFinite(value);
+  return typeof value === typeof declared;
+}
 
-const TITLE_SIZE_RE = /^h[1-6]$/;
-const BORDER_STYLE_VALUES = new Set(['solid', 'dashed', 'dotted']);
+/** A validator that clamps a finite number to the key's range in STYLE_RANGES. */
+const ranged = (key: RangedStyleKey) => (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? clampStyle(key, v) : undefined;
 
 /**
- * Per-key validators that mirror the runtime clamps in blockStyling.ts. The
+ * Per-key validators, clamping to the same ranges rendering uses. The
  * runtime defenses already prevent a malformed value from being rendered, but
  * without these import-time clamps a hostile payload (e.g. 50 MB string in
  * `_titleLabel`, prototype-polluting object in `_titleSize`) is silently kept
@@ -33,29 +43,31 @@ const SHARED_VALIDATORS: Record<string, (v: unknown) => unknown> = {
   _titleEmoji: (v) => typeof v === 'string' ? v.slice(0, 16) : undefined,
   _showTitle: (v) => typeof v === 'boolean' ? v : undefined,
   _titleSize: (v) => typeof v === 'string' && TITLE_SIZE_RE.test(v) ? v : undefined,
-  _titleGap: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(-32, Math.min(32, v)) : undefined,
+  _titleGap: ranged('_titleGap'),
   _showDivider: (v) => typeof v === 'boolean' ? v : undefined,
   _showHeaderAccent: (v) => typeof v === 'boolean' ? v : undefined,
   _showBorder: (v) => typeof v === 'boolean' ? v : undefined,
-  _borderWidth: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(8, v)) : undefined,
-  _borderStyle: (v) => typeof v === 'string' && BORDER_STYLE_VALUES.has(v) ? v : undefined,
-  _borderRadius: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(48, v)) : undefined,
+  _borderWidth: ranged('_borderWidth'),
+  _borderStyle: (v) => typeof v === 'string' && VALID_BORDER_STYLES.includes(v) ? v : undefined,
+  _borderRadius: ranged('_borderRadius'),
   _showBackground: (v) => typeof v === 'boolean' ? v : undefined,
-  _bgOpacity: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : undefined,
-  _backdropBlur: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(48, v)) : undefined,
-  _cardPadding: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(-48, Math.min(48, v)) : undefined,
-  _elevation: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(8, v)) : undefined,
+  _bgOpacity: ranged('_bgOpacity'),
+  _backdropBlur: ranged('_backdropBlur'),
+  _cardPadding: ranged('_cardPadding'),
+  _elevation: ranged('_elevation'),
   _accentColor: (v) => typeof v === 'string' && (v === '' || HEX_COLOR_RE.test(v)) ? v : undefined,
-  _accentIntensity: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(5, Math.min(100, v)) : undefined,
+  _accentIntensity: ranged('_accentIntensity'),
   _gradientStart: (v) => typeof v === 'string' && (v === '' || HEX_COLOR_RE.test(v)) ? v : undefined,
   _gradientEnd: (v) => typeof v === 'string' && (v === '' || HEX_COLOR_RE.test(v)) ? v : undefined,
-  _gradientAngle: (v) => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(360, v)) : undefined,
+  _gradientAngle: ranged('_gradientAngle'),
 };
 
 /**
  * Sanitize a single block's config at import time. Strips:
- *   - `apiKey` unconditionally (never carry credentials across clipboard exports)
- *   - unknown non-underscore keys (fields the current block factory doesn't declare)
+ *   - `apiKey` and `customCss` unconditionally (export removes both: a clipboard
+ *     layout never carries credentials or raw CSS)
+ *   - non-underscore keys the block factory doesn't declare in defaultConfig
+ *   - declared keys whose value doesn't have the declared default's type
  *
  * `_`-prefixed keys are kept because they are shared styling and every block supports
  * them — a new shared field added in a future version shouldn't be silently dropped
@@ -65,19 +77,17 @@ export function sanitizeImportedConfig(
   blockType: BlockType,
   config: Record<string, unknown>,
 ): { config: Record<string, unknown>; stripped: string[] } {
-  const factory = BlockRegistry.get(blockType);
-  const allowed = new Set<string>(factory ? Object.keys(factory.defaultConfig) : []);
-  SHARED_CONFIG_KEYS.forEach(k => allowed.add(k));
+  const declared = BlockRegistry.get(blockType)?.defaultConfig ?? {};
 
   const clean: Record<string, unknown> = {};
   const stripped: string[] = [];
   for (const [key, value] of Object.entries(config)) {
-    if (key === 'apiKey') {
+    if (ALWAYS_STRIPPED.has(key)) {
       stripped.push(key);
       continue;
     }
     if (key.startsWith('_')) {
-      const validator = SHARED_VALIDATORS[key];
+      const validator = hasOwn(SHARED_VALIDATORS, key) ? SHARED_VALIDATORS[key] : undefined;
       if (validator) {
         const validated = validator(value);
         if (validated === undefined) {
@@ -98,7 +108,7 @@ export function sanitizeImportedConfig(
       }
       continue;
     }
-    if (allowed.has(key)) {
+    if (hasOwn(declared, key) && matchesDeclaredType(value, declared[key])) {
       clean[key] = value;
     } else {
       stripped.push(key);

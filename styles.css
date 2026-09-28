@@ -2268,7 +2268,7 @@
 }
 
 .homepage-view.hp-toolbar-open .homepage-grid.grid-stack {
-  overflow-y: visible;
+  overflow: visible; /* both axes: with overflow-x hidden, overflow-y: visible computes to auto, the grid scrolls itself, and GridStack (which ignores that scrollTop) lands drops and resizes rows above the pointer */
   min-height: auto;
   /* Add breathing room between the editing toolbar and the grid content. */
   margin-top: 12px;
@@ -2968,7 +2968,7 @@
 /* When GridLayout collapses to 1 column, override GridStack's absolute
    positioning with a simple flex column so blocks shrink-wrap their content
    instead of occupying fixed grid rows.  The class is toggled by
-   GridLayout.applyColumnChange() and initGridStack(). */
+   ResponsiveColumnsManager.apply() and GridLayout.initGridStack(). */
 .homepage-grid.grid-stack.hp-single-column {
   display: flex;
   flex-direction: column;
@@ -3059,7 +3059,7 @@
 
 /* ── Container Query Responsive Breakpoints ────────────── */
 /* CSS breakpoints: 380 / 540 / 768 (UI adaptation).
-   See also GridLayout.ts computeEffective(): 480 / 768 / 1024 (column reduction). */
+   See also computeEffectiveColumns() in grid/ResponsiveColumns.ts: 480 / 768 / 1024 (column reduction). */
 
 /* ── Medium-narrow (tablets, split panes) ──────────────── */
 @container homepage (max-width: 768px) {
@@ -3790,7 +3790,7 @@
   transform: var(--hp-grid-transform, none);
 }
 
-/* Auto-height measurement helpers (GridLayout.ts resizeBlockToContent).
+/* Auto-height measurement helpers (AutoHeightManager.measureAndResize in grid/AutoHeight.ts).
    Single-class JS toggles that must beat any component-level specificity
    while measuring — hence !important. */
 .hp-no-transition { transition: none !important; }

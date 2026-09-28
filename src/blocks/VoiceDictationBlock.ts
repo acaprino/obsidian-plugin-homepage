@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Setting, TFolder, moment, normalizePath, setIcon, requestUrl } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
+import { isEncrypted } from '../utils/apiKeyCrypto';
 
 const CONSENT_STORAGE_KEY = 'hp-voice-consent';
 
@@ -120,6 +121,15 @@ export class VoiceDictationBlock extends BaseBlock {
     // Require an API key
     if (!cfg.apiKey) {
       new Notice('Voice notes require an API key. Configure it in block settings.');
+      this.micBtn.disabled = true;
+      this.micBtn.addClass('voice-mic--unavailable');
+      return;
+    }
+    // Still encrypted: the key was saved on another device (or this device's key
+    // store is unavailable). The ciphertext must never be sent as a credential;
+    // the load-time Notice has already said why.
+    if (isEncrypted(cfg.apiKey)) {
+      this.statusEl.setText('API key unavailable on this device');
       this.micBtn.disabled = true;
       this.micBtn.addClass('voice-mic--unavailable');
       return;
@@ -269,7 +279,7 @@ export class VoiceDictationBlock extends BaseBlock {
     if (!el) return;
     const cfg = this.instance.config as VoiceDictationConfig;
 
-    if (!cfg.apiKey) {
+    if (!cfg.apiKey || isEncrypted(cfg.apiKey)) {
       new Notice('API key required — configure it in block settings');
       return;
     }
@@ -562,16 +572,18 @@ export class VoiceDictationBlock extends BaseBlock {
 
       // API key (label + placeholder change based on provider)
       const isGemini = (cfg.provider ?? 'whisper') === 'gemini';
+      // A key still encrypted here was saved on another device: show an empty
+      // field, and keep that key unless a new one is typed, so clearing the
+      // field on this device cannot erase it for the device that can use it.
+      const otherDeviceKey = cfg.apiKey && isEncrypted(cfg.apiKey) ? cfg.apiKey : null;
       new Setting(body)
         .setName('API key')
-        .setDesc(isGemini
-          ? 'Google AI API key for Gemini. Encrypted at rest with a device-specific key; it cannot be decrypted on another device (re-enter it there), and it is never included in layout exports.'
-          : 'OpenAI API key for Whisper. Encrypted at rest with a device-specific key; it cannot be decrypted on another device (re-enter it there), and it is never included in layout exports.')
+        .setDesc(`${isGemini ? 'Google AI API key for Gemini.' : 'OpenAI API key for Whisper.'} Encrypted at rest with a key that never leaves this device, so other devices cannot read it; entering a key on another device replaces it. Never included in layout exports.`)
         .addText(t => {
           t.inputEl.type = 'password';
-          t.setPlaceholder(isGemini ? 'AIza...' : 'sk-...')
-           .setValue(cfg.apiKey ?? '')
-           .onChange(v => { cfg.apiKey = v.trim(); });
+          t.setPlaceholder(otherDeviceKey ? 'Stored key unreadable on this device' : isGemini ? 'AIza...' : 'sk-...')
+           .setValue(otherDeviceKey ? '' : cfg.apiKey ?? '')
+           .onChange(v => { cfg.apiKey = v.trim() || (otherDeviceKey ?? ''); });
         });
 
       // Model (options change based on provider)

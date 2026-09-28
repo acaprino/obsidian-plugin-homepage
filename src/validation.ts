@@ -146,8 +146,13 @@ export function migrateBlockInstance(b: Record<string, unknown>): Record<string,
   delete m.newRow;
   // Migrate legacy type renames
   if (m.type === 'tag-grid') { m.type = 'button-grid'; }
+  // Only an object config is migrated. A truthy primitive (hand edit, merge tool)
+  // would make the `in` tests below throw and reject the whole load; skipping it
+  // leaves the block for isValidBlockInstance to drop through the per-block path.
+  const cfg = typeof m.config === 'object' && m.config !== null
+    ? m.config as Record<string, unknown>
+    : undefined;
   // Migrate legacy _transparent flag to granular flags.
-  const cfg = m.config as Record<string, unknown> | undefined;
   if (cfg && cfg._transparent === true) {
     if (cfg._showBorder === undefined) cfg._showBorder = false;
     if (cfg._showBackground === undefined) cfg._showBackground = false;
@@ -278,11 +283,14 @@ export function validateBlocks(
  * (idempotence) — the plugin re-persists the validated layout on every load, and an
  * accreting implementation would corrupt `data.json` on every reload.
  *
- * `onTopLevelCorruption` fires when raw exists but isn't a usable object (e.g.,
- * data.json is a string from a sync conflict, or an array from a schema mistake).
- * This signals "the user had a layout, but we can't read it" — distinct from "no
- * layout exists yet" (raw == null on first install). Callers can use the hook to
- * stash a backup before defaults wipe the slot.
+ * `onTopLevelCorruption` fires when raw parsed but isn't a usable object (a JSON
+ * array, string or number), or when its `blocks` / `mobileBlocks` field is present
+ * but not an array (those blocks are replaced by the defaults, like the rest of an
+ * unusable file). An unparseable data.json never reaches here as a
+ * value: Obsidian's `loadData()` returns `undefined` for it and `null` for a
+ * missing file, and both look like "no layout yet" to this function. Telling them
+ * apart needs the file system, which is `loadLayoutWithRecovery`'s job
+ * (utils/loadRecovery.ts); it also backs the file up before defaults wipe the slot.
  */
 export function validateLayout(
   raw: unknown,
@@ -362,6 +370,10 @@ export function validateLayout(
   const hoverHighlight = typeof r.hoverHighlight === 'boolean'
     ? r.hoverHighlight
     : defaults.hoverHighlight;
+  // A blocks field that is present but not an array is corruption as well:
+  // without a report, validateBlocks would swap in the defaults silently.
+  const notAnArray = (v: unknown) => v !== undefined && v !== null && !Array.isArray(v);
+  if (notAnArray(r.blocks) || notAnArray(r.mobileBlocks)) onTopLevelCorruption?.(raw);
   // Aggregate per-block corruption across both platform arrays into one report
   // so the caller can surface a single Notice rather than one per array.
   let droppedBlocks = 0;

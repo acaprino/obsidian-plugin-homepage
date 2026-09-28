@@ -1,7 +1,8 @@
 import { App, Modal, Setting } from 'obsidian';
 
 /**
- * Confirmation dialog for "load preset" and "import from clipboard" flows.
+ * Confirmation dialog shown before a clipboard import replaces the layout (its
+ * only caller). The wording still says "preset", from the removed presets feature.
  * Accepts a sync or async onConfirm — rejections are logged, not thrown, because the
  * modal has already closed and there is no UI left to surface them through.
  */

@@ -2,8 +2,12 @@ import { GridStack, GridStackNode } from 'gridstack';
 import { BlockInstance, IHomepagePlugin, LayoutPriority } from '../types';
 import { Scheduler } from '../utils/Scheduler';
 import { Phase } from './phase';
+import { viewModeHeight } from './CollapseToggle';
 
-/** Width breakpoints (px) where the grid drops a column (mirrors the container queries in styles.css). */
+/**
+ * Width breakpoints (px) where the grid drops a column. The container queries in
+ * styles.css adapt the UI inside the grid at their own breakpoints (380 / 540 / 768).
+ */
 const COLUMN_BREAKPOINTS = { single: 480, double: 768, triple: 1024 };
 
 /** Narrow view of GridLayout state / methods needed by the responsive-columns manager. */
@@ -61,6 +65,9 @@ export class ResponsiveColumnsManager {
         const entry = entries[0];
         if (!entry) return;
         const width = entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+        // 0 is a hidden view (a background tab gets display:none), not a narrow
+        // one: re-laying the grid out would reload iframes and jump the scroll.
+        if (width <= 0) return;
         const next = computeEffectiveColumns(width, this.host.canonicalColumns);
         if (next !== this.host.effectiveColumns) {
           this.apply(next);
@@ -69,14 +76,24 @@ export class ResponsiveColumnsManager {
       this.resizeObserver.observe(viewEl);
     }
 
-    // Set initial value synchronously (also handles userCols changes).
+    // Set initial value synchronously (also handles userCols changes). Edit mode
+    // shows the canonical layout whatever the pane width, and LayoutPersister
+    // reads effective !== canonical as "transient positions, persist h only":
+    // narrowing here while editing would silently drop every drag and resize.
+    if (this.host.editMode) {
+      this.host.effectiveColumns = userCols;
+      return;
+    }
+    // A view rendered while hidden measures 0: keep the columns it was built with
+    // until the observer reports a real width.
+    if (viewEl.clientWidth <= 0) return;
     this.host.effectiveColumns = computeEffectiveColumns(viewEl.clientWidth, userCols);
-    if (this.host.effectiveColumns !== userCols && this.host.gridStack && !this.host.editMode) {
+    if (this.host.effectiveColumns !== userCols && this.host.gridStack) {
       this.apply(this.host.effectiveColumns);
     }
   }
 
-  /** Disconnect the ResizeObserver. Called from GridLayout.teardown. */
+  /** Disconnect the ResizeObserver. Called from GridLayout.destroy. */
   destroy(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -98,20 +115,34 @@ export class ResponsiveColumnsManager {
     this.host.scheduler.cancelTimeout('sync');
     this.host.clearPendingResizes();
 
-    // Single-column mode: switch to CSS flex layout so blocks shrink-wrap their
-    // content instead of using GridStack's fixed row heights.
-    this.host.gridEl.classList.toggle('hp-single-column', next === 1);
+    // No transition for a column change: restoreCanonicalLayout requests auto-height,
+    // measured on the next frame, and a width still inside GridStack's 0.3 s
+    // transition measures text at its old width (wider out of single column, so a
+    // too-short card is saved).
+    const animate = gridStack.opts.animate ?? true;
+    gridStack.setAnimation(false);
+    try {
+      // Single-column mode: switch to CSS flex layout so blocks shrink-wrap their
+      // content instead of using GridStack's fixed row heights.
+      this.host.gridEl.classList.toggle('hp-single-column', next === 1);
 
-    // Use 'none' so GridStack doesn't auto-scale widths, then manually clamp each
-    // block's w to the new column count and repack.
-    gridStack.column(next, 'none');
+      // Use 'none' so GridStack doesn't auto-scale widths, then manually clamp each
+      // block's w to the new column count and repack.
+      gridStack.column(next, 'none');
 
-    if (next === this.host.canonicalColumns) {
-      this.restoreCanonicalLayout(gridStack, next);
-      return;
+      if (next === this.host.canonicalColumns) {
+        this.restoreCanonicalLayout(gridStack, next);
+      } else {
+        this.packForNarrowLayout(gridStack, next);
+      }
+    } finally {
+      // Commit the new geometry while no transition applies, then animate again.
+      // GridStack 12 happens to read computed style in _updateContainerHeight
+      // (unless minRow is set), which already commits it; this read keeps the fix
+      // independent of that internal detail.
+      void this.host.gridEl.offsetWidth;
+      gridStack.setAnimation(animate);
     }
-
-    this.packForNarrowLayout(gridStack, next);
   }
 
   /**
@@ -131,7 +162,7 @@ export class ResponsiveColumnsManager {
       const isAuto = this.host.shouldAutoHeight(b);
       gridStack.update(gsEl as HTMLElement, {
         x: b.x, y: b.y, w: Math.min(b.w, next),
-        ...(isAuto ? {} : { h: b.h }),
+        ...(isAuto ? {} : { h: viewModeHeight(b) }),
         maxW: next,
       });
       if (isAuto) autoHeightItems.push({ gsEl: gsEl as HTMLElement, b });

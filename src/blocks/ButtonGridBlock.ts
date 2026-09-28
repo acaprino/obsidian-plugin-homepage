@@ -14,6 +14,8 @@ interface ButtonItem {
 export class ButtonGridBlock extends BaseBlock {
   render(el: HTMLElement): void {
     el.addClass('button-grid-block');
+    // observeWidthForAutoHeight's requestAutoHeight() dispatches from here.
+    this.containerEl = el;
 
     const { columns = 2, items = [] } = this.instance.config as {
       columns?: number;

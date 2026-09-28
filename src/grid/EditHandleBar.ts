@@ -33,9 +33,10 @@ export interface EditHandleBarHost {
  * settings, remove). Inserted before the block's header zone so the bar floats
  * above the block content and never participates in normal block layout.
  *
- * Each button reads `plugin.activeBlocks()` at click time rather than trusting
- * the render-time `instance` closure, so a block whose position/config changed
- * between render and click stays consistent on disk.
+ * Duplicate, move and remove read `plugin.activeBlocks()` at click time rather
+ * than trusting the render-time `instance` closure, so a block whose position
+ * changed between render and click stays consistent on disk. The settings draft
+ * starts from the render-time `instance`.
  */
 export function attachEditHandleBar(
   host: EditHandleBarHost,

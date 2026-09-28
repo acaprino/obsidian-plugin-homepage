@@ -14,6 +14,20 @@ export interface CollapseToggleHost {
 }
 
 /**
+ * Rows a block is drawn at in view mode. Collapsing saves `collapsed` and
+ * `_expandedH` but leaves `h` at the expanded height (and auto-height never
+ * rewrites it), so a collapsed block is one row whatever `h` holds. A collapsed
+ * block whose title is hidden has no header to reopen it and renders expanded,
+ * at `_expandedH` when that is a positive number.
+ */
+export function viewModeHeight(instance: BlockInstance): number {
+  if (!instance.collapsed) return instance.h;
+  if (instance.config._showTitle !== false) return 1;
+  const expandedH = instance._expandedH;
+  return typeof expandedH === 'number' && expandedH > 0 ? expandedH : instance.h;
+}
+
+/**
  * Wires the click + Enter/Space handler on a block's header zone to toggle
  * its collapsed state. Mutates the wrapper's CSS class, asks GridStack to
  * resize the cell to either 1 row (collapsed) or _expandedH rows (restored),

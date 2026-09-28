@@ -1,4 +1,4 @@
-import { App, Component } from 'obsidian';
+import { App, Component, Keymap } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
 
 /** Regex for the shared `_titleSize` config key — h1 through h6. */
@@ -37,6 +37,16 @@ export abstract class BaseBlock extends Component {
    */
   hasUnsavedInlineState(): boolean {
     return false;
+  }
+
+  /**
+   * This block's config as the layout holds it now. `this.instance` is the
+   * snapshot the block was rendered from: plugin.updateBlockConfig replaces the
+   * block's objects without touching it, so a block that saves its own config
+   * must read it back through here, after the returned promise resolves.
+   */
+  protected liveConfig(): Record<string, unknown> {
+    return this.plugin.activeBlocks().find(b => b.id === this.instance.id)?.config ?? this.instance.config;
   }
 
   // Called by GridLayout to redirect renderHeader output outside block-content.
@@ -81,6 +91,31 @@ export abstract class BaseBlock extends Component {
     const hint = el.createDiv({ cls: 'block-empty-hint block-error-hint' });
     hint.createDiv({ cls: 'block-empty-hint-icon', text: '⚠' });
     hint.createDiv({ cls: 'block-empty-hint-text', text: message });
+  }
+
+  /**
+   * Make vault links work in Markdown rendered with the static
+   * `MarkdownRenderer.render`. That call only builds the DOM: reading view,
+   * embeds and the editor wire link clicks themselves, so without this a click
+   * on `[[Note]]` becomes a blocked new-window request. Mirrors reading view:
+   * left or middle click, `Keymap.isModEvent` picks the pane, and `sourcePath`
+   * (the path given to render) resolves the link. A click that a nested embed
+   * already handled arrives with `defaultPrevented` and is left alone.
+   *
+   * Attach to the element the Markdown is rendered into; a re-render that
+   * replaces the element drops the listeners with it.
+   */
+  protected openLinksOnClick(el: HTMLElement, sourcePath: string): void {
+    const open = (evt: MouseEvent): void => {
+      if (evt.defaultPrevented || (evt.button !== 0 && evt.button !== 1)) return;
+      const link = (evt.target as HTMLElement | null)?.closest?.('a.internal-link');
+      const href = link?.getAttribute('data-href') || link?.getAttribute('href');
+      if (!href) return;
+      evt.preventDefault();
+      void this.app.workspace.openLinkText(href, sourcePath, Keymap.isModEvent(evt));
+    };
+    el.addEventListener('click', open);
+    el.addEventListener('auxclick', open);
   }
 
   // ── Shared debounced re-render infrastructure ──────────────────────────────

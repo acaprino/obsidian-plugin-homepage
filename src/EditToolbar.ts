@@ -40,14 +40,18 @@ export class EditToolbar {
   /** Toggle edit mode — called from FAB, Done button, and keyboard shortcut command. */
   toggleEditMode(): void {
     this.editMode = !this.editMode;
-    if (this.editMode) {
-      // Snapshot blocks so Discard can restore them (not the full layout — settings changes must survive)
-      this.blocksSnapshot = structuredClone(this.plugin.activeBlocks());
-    } else {
+    if (!this.editMode) {
       this.blocksSnapshot = null;
       this.zoomScale = 1;
     }
     this.grid.setEditMode(this.editMode);
+    if (this.editMode) {
+      // Snapshot blocks so Discard can restore them (not the full layout — settings changes must survive).
+      // Taken after the switch: tearing down the view-mode blocks can still write
+      // what predates this edit session (a pending view-mode persist, an open
+      // Static Text draft), and Discard must not revert that.
+      this.blocksSnapshot = structuredClone(this.plugin.activeBlocks());
+    }
     this.syncVisibility();
     this.renderToolbar();
     if (this.editMode) {
@@ -160,6 +164,8 @@ export class EditToolbar {
    * the user's selection lands on a destroyed grid instance. Silent failure.
    */
   private openModal: AddBlockModal | null = null;
+  /** Set by destroy(); a pick that arrives afterwards is dropped. */
+  private destroyed = false;
 
   /** Opens the Add Block modal. Called from toolbar button, empty state CTA, and command palette. */
   openAddBlockModal(): void {
@@ -168,9 +174,12 @@ export class EditToolbar {
     this.openModal?.close();
     const modal = new AddBlockModal(this.app, (type) => {
       // Defensive: don't add to a grid that's been destroyed since the modal
-      // opened (e.g., the user changed showScrollbar in another tab while the
-      // picker was up, triggering a full view reload).
-      if (this.openModal !== modal) return;
+      // opened (e.g., an import or reset in the settings tab while the picker
+      // was up, which reloads every homepage view). Checked on the toolbar,
+      // not on `openModal`: SuggestModal closes before it reports the pick, and
+      // off phones Modal.close() runs onClose synchronously, which clears
+      // `openModal` before this callback runs.
+      if (this.destroyed) return;
       const factory = BlockRegistry.get(type);
       if (!factory) return;
 
@@ -211,6 +220,7 @@ export class EditToolbar {
   }
 
   destroy(): void {
+    this.destroyed = true;
     // Close any open Add Block modal so its callback can't fire against this
     // toolbar's about-to-be-destroyed grid reference.
     this.openModal?.close();

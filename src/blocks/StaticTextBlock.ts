@@ -5,13 +5,38 @@ import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 export class StaticTextBlock extends BaseBlock {
   /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
   private inlineEditActive = false;
+  /** The open inline editor and the text it started from; null once saved or cancelled. */
+  private draft: { textarea: HTMLTextAreaElement; original: string } | null = null;
 
   hasUnsavedInlineState(): boolean {
     return this.inlineEditActive;
   }
 
+  /**
+   * A grid teardown (entering edit mode, a reload from settings, closing the
+   * tab) destroys an open editor without Save: keep its text, unless the stored
+   * text changed meanwhile (Reset, Import), which it must not overwrite. The
+   * layout changes synchronously, so the Discard snapshot taken right after
+   * edit mode starts already holds it.
+   */
+  onunload(): void {
+    const draft = this.draft;
+    this.draft = null;
+    const live = this.plugin.activeBlocks().find(b => b.id === this.instance.id);
+    const stored = typeof live?.config.content === 'string' ? live.config.content : '';
+    if (draft && live && draft.textarea.value !== draft.original && stored === draft.original) {
+      const content = draft.textarea.value;
+      void this.plugin.saveActiveBlocks(this.plugin.activeBlocks().map(b =>
+        b.id === this.instance.id ? { ...b, config: { ...b.config, content } } : b,
+      ));
+    }
+    super.onunload();
+  }
+
   render(el: HTMLElement): void {
     el.addClass('static-text-block');
+    // requestAutoHeight() dispatches from here once an inline save re-renders.
+    this.containerEl = el;
     this.renderContent(el).catch(e => {
       console.error('[Homepage Blocks] StaticTextBlock failed to render:', e);
       this.renderErrorHint(el, 'Couldn’t render this content.');
@@ -20,7 +45,7 @@ export class StaticTextBlock extends BaseBlock {
 
   private async renderContent(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
-    const { content = '', heightMode = 'auto' } = this.instance.config as {
+    const { content = '', heightMode = 'auto' } = this.liveConfig() as {
       content?: string;
       heightMode?: 'auto' | 'fixed';
     };
@@ -51,12 +76,14 @@ export class StaticTextBlock extends BaseBlock {
       return;
     }
 
+    this.openLinksOnClick(contentEl, '');
     await MarkdownRenderer.render(this.app, content, contentEl, '', this);
     if (this.isStale(gen)) return;
   }
 
   private enterInlineEdit(el: HTMLElement): void {
-    const currentContent = (this.instance.config.content as string) ?? '';
+    const config = this.liveConfig();
+    const currentContent = (config.content as string) ?? '';
     this.inlineEditActive = true;
 
     // Hide rendered content and pencil button
@@ -67,12 +94,13 @@ export class StaticTextBlock extends BaseBlock {
 
     // Create inline editor
     const editor = el.createDiv({ cls: 'static-text-inline-editor' });
-    if ((this.instance.config.heightMode ?? 'auto') !== 'fixed') {
+    if ((config.heightMode ?? 'auto') !== 'fixed') {
       editor.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
     const textarea = editor.createEl('textarea');
     textarea.value = currentContent;
+    this.draft = { textarea, original: currentContent };
 
     const toolbar = editor.createDiv({ cls: 'inline-edit-toolbar' });
 
@@ -89,18 +117,26 @@ export class StaticTextBlock extends BaseBlock {
     setIcon(cancelBtn, 'x');
 
     const save = (): void => {
-      this.inlineEditActive = false;
+      // Lock the editor until the save lands, so text typed meanwhile can't be
+      // silently dropped and Cancel can't claim to undo a save already under way.
+      textarea.disabled = true;
+      saveBtn.disabled = true;
+      cancelBtn.disabled = true;
+      this.draft = null;
       // updateBlockConfig waits for in-flight saves so a rapid drag+pencil-save
-      // doesn't lose either change.
-      void this.plugin.updateBlockConfig(this.instance.id, { content: textarea.value });
-      // Re-render from the updated layout — do NOT reassign this.instance directly
-      this.renderContent(el)
+      // doesn't lose either change. Re-render only once it has landed, and from
+      // the live layout: this.instance still holds the pre-save text. Until then
+      // the editor counts as unsaved state, which holds off external rerenders.
+      void this.plugin.updateBlockConfig(this.instance.id, { content: textarea.value })
+        .finally(() => { this.inlineEditActive = false; })
+        .then(() => this.renderContent(el))
         .then(() => this.requestAutoHeight())
         .catch(() => { /* handled in render */ });
     };
 
     const cancel = (): void => {
       this.inlineEditActive = false;
+      this.draft = null;
       this.renderContent(el).catch(() => { /* handled in render */ });
     };
 

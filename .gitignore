@@ -1,6 +1,6 @@
 node_modules/
 data.json
-data.json.invalid
+data.json.invalid*
 data.backup.json
 # Glob pattern catches archived review snapshots like .team-review-2026-04-23/
 .frontend-review*/

@@ -2,7 +2,7 @@ import { App, ColorComponent, Modal, Setting } from 'obsidian';
 import { BlockInstance } from '../types';
 import { BlockRegistry } from '../BlockRegistry';
 import { BaseBlock, TITLE_SIZE_RE } from '../blocks/BaseBlock';
-import { applyBlockStyling, HEX_COLOR_RE } from '../utils/blockStyling';
+import { applyBlockStyling, HEX_COLOR_RE, STYLE_RANGES } from '../utils/blockStyling';
 import { createEmojiPicker } from '../utils/emojiPicker';
 
 /**
@@ -181,7 +181,7 @@ export class BlockSettingsModal extends Modal {
       .setName('Title gap')
       .setDesc('Gap between title and content in pixels (0 = default).')
       .addSlider(s =>
-        s.setLimits(0, 48, 2)
+        s.setLimits(STYLE_RANGES._titleGap.min, STYLE_RANGES._titleGap.max, 2)
          .setValue(typeof this.draft._titleGap === 'number' ? this.draft._titleGap : 0)
          .setDynamicTooltip()
          .onChange(v => { this.draft._titleGap = v; this.refreshPreview(); }),
@@ -201,7 +201,7 @@ export class BlockSettingsModal extends Modal {
       .setName('Padding')
       .setDesc('Inner padding in pixels (0 = default). Negative values allowed.')
       .addSlider(s =>
-        s.setLimits(-48, 48, 4)
+        s.setLimits(STYLE_RANGES._cardPadding.min, STYLE_RANGES._cardPadding.max, 4)
          .setValue(typeof this.draft._cardPadding === 'number' ? this.draft._cardPadding : 0)
          .setDynamicTooltip()
          .onChange(v => { this.draft._cardPadding = v; this.refreshPreview(); }),
@@ -219,7 +219,7 @@ export class BlockSettingsModal extends Modal {
       .setName('Background opacity')
       .setDesc('Body background transparency (100 = fully opaque).')
       .addSlider(s =>
-        s.setLimits(0, 100, 5)
+        s.setLimits(STYLE_RANGES._bgOpacity.min, STYLE_RANGES._bgOpacity.max, 5)
          .setValue(typeof this.draft._bgOpacity === 'number' ? this.draft._bgOpacity : 100)
          .setDynamicTooltip()
          .onChange(v => { this.draft._bgOpacity = v; this.refreshPreview(); }),
@@ -229,7 +229,7 @@ export class BlockSettingsModal extends Modal {
       .setName('Backdrop blur')
       .setDesc('Blur behind the body (only visible when opacity < 100).')
       .addSlider(s =>
-        s.setLimits(0, 20, 1)
+        s.setLimits(STYLE_RANGES._backdropBlur.min, STYLE_RANGES._backdropBlur.max, 1)
          .setValue(typeof this.draft._backdropBlur === 'number' ? this.draft._backdropBlur : 0)
          .setDynamicTooltip()
          .onChange(v => { this.draft._backdropBlur = v; this.refreshPreview(); }),
@@ -269,7 +269,7 @@ export class BlockSettingsModal extends Modal {
     new Setting(body)
       .setName('Angle')
       .addSlider(s =>
-        s.setLimits(0, 360, 15)
+        s.setLimits(STYLE_RANGES._gradientAngle.min, STYLE_RANGES._gradientAngle.max, 15)
          .setValue(typeof this.draft._gradientAngle === 'number' ? this.draft._gradientAngle : 135)
          .setDynamicTooltip()
          .onChange(v => { this.draft._gradientAngle = v; this.refreshPreview(); }),
@@ -332,7 +332,7 @@ export class BlockSettingsModal extends Modal {
       .setName('Accent intensity')
       .setDesc('Strength of the accent tint (5–100%).')
       .addSlider(s => {
-        s.setLimits(5, 100, 5)
+        s.setLimits(STYLE_RANGES._accentIntensity.min, STYLE_RANGES._accentIntensity.max, 5)
          .setValue(typeof this.draft._accentIntensity === 'number' ? this.draft._accentIntensity : 15)
          .setDynamicTooltip()
          .onChange(v => { this.draft._accentIntensity = v; this.refreshPreview(); });
@@ -356,7 +356,7 @@ export class BlockSettingsModal extends Modal {
       .setName('Width')
       .setDesc('Border thickness in pixels (0 = default).')
       .addSlider(s =>
-        s.setLimits(0, 4, 1)
+        s.setLimits(STYLE_RANGES._borderWidth.min, STYLE_RANGES._borderWidth.max, 1)
          .setValue(typeof this.draft._borderWidth === 'number' ? this.draft._borderWidth : 0)
          .setDynamicTooltip()
          .onChange(v => { this.draft._borderWidth = v; this.refreshPreview(); }),
@@ -377,7 +377,7 @@ export class BlockSettingsModal extends Modal {
       .setName('Radius')
       .setDesc('Corner rounding in pixels (0 = theme default).')
       .addSlider(s =>
-        s.setLimits(0, 24, 2)
+        s.setLimits(STYLE_RANGES._borderRadius.min, STYLE_RANGES._borderRadius.max, 2)
          .setValue(typeof this.draft._borderRadius === 'number' ? this.draft._borderRadius : 0)
          .setDynamicTooltip()
          .onChange(v => { this.draft._borderRadius = v; this.refreshPreview(); }),

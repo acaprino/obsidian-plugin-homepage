@@ -8,7 +8,7 @@ import { Phase } from './grid/phase';
 import { AutoHeightManager } from './grid/AutoHeight';
 import { ResponsiveColumnsManager } from './grid/ResponsiveColumns';
 import { LayoutPersister } from './grid/LayoutPersister';
-import { attachCollapseToggle } from './grid/CollapseToggle';
+import { attachCollapseToggle, viewModeHeight } from './grid/CollapseToggle';
 import { attachEditHandleBar } from './grid/EditHandleBar';
 import { packRows, repackEditLayout } from './grid/packing';
 import { buildBlockWrapper, createSkeleton, removeSkeleton, renderCompactPlaceholder, renderEmptyState } from './grid/BlockWrapper';
@@ -168,6 +168,14 @@ export class GridLayout {
 
   setEditMode(enabled: boolean, skipRepack = false, flushInFlight = true): void {
     if (this.phase === Phase.Destroyed) return;
+    // A view-mode persist still debounced (an auto-height resize) must run against
+    // the columns it was computed for. Entering edit mode forces effectiveColumns to
+    // the canonical count below, and the teardown flush would then save a narrow
+    // pane's packed positions as the canonical layout.
+    if (enabled && !this.editMode && this.scheduler.hasTimeout('sync')) {
+      this.scheduler.cancelTimeout('sync');
+      this.tryPersist('entering edit mode');
+    }
     // If a drag was in-flight when this fires, dragstop won't get a chance to
     // run (the grid is about to be torn down). Flush its current GridStack
     // positions to the layout NOW so we don't lose the user's in-progress edit.
@@ -189,8 +197,8 @@ export class GridLayout {
       );
       this.onLayoutChange(this.buildLayoutUpdate(repacked));
     }
-    // Set editMode before rerender so setupResponsiveColumns skips
-    // responsive remapping while in edit mode (canonical layout preserved).
+    // Set editMode before rerender so ResponsiveColumnsManager.setup keeps the
+    // canonical columns while in edit mode (canonical layout preserved).
     this.editMode = enabled;
     if (enabled) {
       // Force canonical columns so isResponsive is false and drag/resize
@@ -332,16 +340,10 @@ export class GridLayout {
     // Build widget items WITHOUT content — DOM will be built manually using Obsidian API
     // (GridStack sets content via innerHTML which Obsidian blocks)
     const items: GridStackWidget[] = blocks.map((instance) => {
-      // When _showTitle is false but the block was previously collapsed, the
-      // wrapper renders full content (no header to click to re-expand) yet
-      // instance.h is still the collapsed `1` row. Use _expandedH so the
-      // GridStack widget matches what the wrapper actually displays.
-      const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
-      let renderH = instance.h;
-      if (instance.collapsed && !effectiveCollapsed) {
-        const expandedH = instance._expandedH;
-        if (typeof expandedH === 'number' && expandedH > 0) renderH = expandedH;
-      }
+      // Edit mode keeps a collapsed block at its stored size, so it is arranged at
+      // the size it has when expanded; view mode draws it as viewModeHeight says.
+      const collapsedInEdit = this.editMode && instance.collapsed && instance.config._showTitle !== false;
+      const renderH = collapsedInEdit ? instance.h : viewModeHeight(instance);
       return {
         id: instance.id,
         x: instance.x,
@@ -405,7 +407,7 @@ export class GridLayout {
     // GridStack already compensates for CSS transform via getValuesFromTransformedElement
     // (dragTransform.xScale/yScale), so we do NOT need to clear the viewport-fit scale.
     // editMode guard: AutoHeightManager temporarily lifts staticGrid during its rAF
-    // batch (see AutoHeight.ts:67). A pointer twitch latched at mousedown can become
+    // batch (see AutoHeightManager.runBatch). A pointer twitch latched at mousedown can become
     // a real drag during that lift in view mode -- without this guard, dragstop would
     // persist the phantom drag and silently corrupt the saved layout.
     // hp-dragging dims the sibling cards while a block is picked up (CSS hook;
@@ -508,7 +510,16 @@ export class GridLayout {
       }
       // Skeleton overlay: show shimmer placeholder during initial load
       const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
-      const result = block.render(contentEl);
+      // A synchronous throw (typically a malformed config value) takes the same
+      // path as a failed async render. Escaping here would abort initGridStack's
+      // loop: the blocks after this one, the drag handlers and the Ready phase
+      // all come after it.
+      let result: void | Promise<void>;
+      try {
+        result = block.render(contentEl);
+      } catch (e) {
+        result = Promise.reject(e instanceof Error ? e : new Error(String(e)));
+      }
       if (result instanceof Promise) {
         // After async render, wait one frame for the browser to lay out the new DOM,
         // then measure and resize the block to its natural content height.
@@ -559,8 +570,7 @@ export class GridLayout {
   /**
    * Build a LayoutConfig with blocks routed to the correct field (desktop or mobile).
    * On mobile with separate mode, writes go to mobileBlocks/mobileColumns.
-   */
-  /**
+   *
    * Public for callers that need the same mobile/desktop routing logic but
    * don't go through onLayoutChange (e.g., EditToolbar's discardChanges).
    * Keeping `buildLayoutUpdate` as the single funnel for layout writes that

@@ -12,7 +12,7 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['tests/**/*.test.ts'],
-    // Deterministic time for anything that reads `moment()` / `Date.now()`.
+    // IndexedDB (fake-indexeddb) and the Obsidian DOM helpers for every test file.
     setupFiles: ['tests/setup.ts'],
   },
 });

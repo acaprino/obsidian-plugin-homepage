@@ -347,6 +347,21 @@ describe('validateLayout', () => {
     expect(dropped).toBe(2); // one bad desktop block + one bad mobile block
   });
 
+  it.each([
+    ['a string', 'oops'],
+    ['a number', 5],
+    ['true', true],
+  ])('drops a block whose config is %s through the per-block path instead of throwing (RF-R5)', (_label, badConfig) => {
+    let dropped = 0;
+    const out = validateLayout(
+      { blocks: [block({ id: 'ok1' }), { ...block({ id: 'bad1' }), config: badConfig }] },
+      undefined,
+      (n) => { dropped += n; },
+    );
+    expect(out.blocks.map(b => b.id)).toEqual(['ok1']);
+    expect(dropped).toBe(1);
+  });
+
   it('does NOT fire onBlocksDropped for a clean layout (M3)', () => {
     let called = false;
     validateLayout(
@@ -361,6 +376,22 @@ describe('validateLayout', () => {
     let called = false;
     validateLayout({ blocks: 'nope' }, undefined, () => { called = true; });
     expect(called).toBe(false);
+  });
+
+  it.each([
+    ['blocks', { blocks: 'nope' }],
+    ['mobileBlocks', { blocks: [], mobileBlocks: { a: 1 } }],
+  ])('reports a %s field that is present but not an array as top-level corruption', (_field, raw) => {
+    let reported = 0;
+    validateLayout(raw, () => { reported++; });
+    expect(reported).toBe(1);
+  });
+
+  it('does not report an absent or null blocks field (a first install or an old file)', () => {
+    let reported = 0;
+    validateLayout({ columns: 3 }, () => { reported++; });
+    validateLayout({ blocks: null, mobileBlocks: null }, () => { reported++; });
+    expect(reported).toBe(0);
   });
 
   it('prefers new showScrollbar over legacy hideScrollbar when both are present', () => {

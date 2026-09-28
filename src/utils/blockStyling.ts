@@ -5,6 +5,31 @@
 
 export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
+/**
+ * The one range table for the numeric shared styling keys: the block settings
+ * controls offer exactly these bounds (BlockSettingsModal), rendering clamps to
+ * them (below), and a clipboard import clamps to them (importSanitizer.ts).
+ */
+export const STYLE_RANGES = {
+  _titleGap: { min: 0, max: 48 },
+  _cardPadding: { min: -48, max: 48 },
+  _bgOpacity: { min: 0, max: 100 },
+  _backdropBlur: { min: 0, max: 20 },
+  _borderWidth: { min: 0, max: 4 },
+  _borderRadius: { min: 0, max: 24 },
+  _elevation: { min: 0, max: 3 },
+  _accentIntensity: { min: 5, max: 100 },
+  _gradientAngle: { min: 0, max: 360 },
+} as const;
+
+export type RangedStyleKey = keyof typeof STYLE_RANGES;
+
+/** Clamp `value` to the range of the styling key `key`. */
+export function clampStyle(key: RangedStyleKey, value: number): number {
+  const { min, max } = STYLE_RANGES[key];
+  return Math.max(min, Math.min(max, value));
+}
+
 function hexChannelToLinear(c: number): number {
   const s = c / 255;
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
@@ -17,7 +42,7 @@ function getRelativeLuminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-const VALID_BORDER_STYLES = ['solid', 'dashed', 'dotted'];
+export const VALID_BORDER_STYLES: readonly string[] = ['solid', 'dashed', 'dotted'];
 
 // ── Custom CSS allowlist ──────────────────────────────────────────────
 // Only custom properties matching this pattern are accepted from user input.
@@ -61,7 +86,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   // (not a shared `_`-prefixed key). Only --hp-btn-* custom properties are
   // applied; anything else is rejected by parseAllowlistedCustomCss.
   // Declarations go through setProperty (not cssText) so caller-set inline
-  // styles on the wrapper (e.g. --hp-card-anim-delay at GridLayout.ts:415)
+  // styles on the wrapper (e.g. --hp-card-anim-delay, set by buildBlockWrapper)
   // survive. Previous keys are tracked via data-hp-custom-css-keys and
   // removed before the new set is applied, so edits fully replace the
   // prior style.
@@ -90,7 +115,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
     // Only set --block-accent-pct when it differs from the CSS default (15%)
     // so the CSS fallback governs unless explicitly overridden.
     const intensity = typeof config._accentIntensity === 'number'
-      ? Math.max(5, Math.min(100, config._accentIntensity)) : 0;
+      ? clampStyle('_accentIntensity', config._accentIntensity) : 0;
     if (intensity && intensity !== 15) {
       el.style.setProperty('--block-accent-pct', `${intensity}%`);
     } else {
@@ -120,38 +145,38 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
 
   // ── Padding ────────────────────────────────────────────────────────
   const pad = typeof config._cardPadding === 'number'
-    ? Math.max(-48, Math.min(48, config._cardPadding)) : 0;
+    ? clampStyle('_cardPadding', config._cardPadding) : 0;
   if (pad) el.style.setProperty('--hp-card-padding', `${pad}px`);
   else el.style.removeProperty('--hp-card-padding');
 
   // ── Title gap ──────────────────────────────────────────────────────
   const gap = typeof config._titleGap === 'number'
-    ? Math.max(0, Math.min(48, config._titleGap)) : 0;
+    ? clampStyle('_titleGap', config._titleGap) : 0;
   if (gap) el.style.setProperty('--hp-title-gap', `${gap}px`);
   else el.style.removeProperty('--hp-title-gap');
 
   // ── Elevation ──────────────────────────────────────────────────────
   for (let i = 1; i <= 3; i++) el.removeClass(`block-elevation-${i}`);
   const elevation = typeof config._elevation === 'number'
-    ? Math.max(0, Math.min(3, config._elevation)) : 0;
+    ? clampStyle('_elevation', config._elevation) : 0;
   if (elevation) el.addClass(`block-elevation-${elevation}`);
 
   // ── Border radius ──────────────────────────────────────────────────
   const borderRadius = typeof config._borderRadius === 'number'
-    ? Math.max(0, Math.min(24, config._borderRadius)) : 0;
+    ? clampStyle('_borderRadius', config._borderRadius) : 0;
   if (borderRadius) el.style.setProperty('--hp-border-radius', `${borderRadius}px`);
   else el.style.removeProperty('--hp-border-radius');
 
   // ── Background opacity ─────────────────────────────────────────────
   const bgOpacity = typeof config._bgOpacity === 'number'
-    ? Math.max(0, Math.min(100, config._bgOpacity)) : 100;
+    ? clampStyle('_bgOpacity', config._bgOpacity) : 100;
   el.toggleClass('block-custom-opacity', bgOpacity < 100);
   if (bgOpacity < 100) el.style.setProperty('--hp-bg-opacity', `${bgOpacity}%`);
   else el.style.removeProperty('--hp-bg-opacity');
 
   // ── Backdrop blur (only when opacity < 100) ────────────────────────
   const backdropBlur = typeof config._backdropBlur === 'number'
-    ? Math.max(0, Math.min(20, config._backdropBlur)) : 0;
+    ? clampStyle('_backdropBlur', config._backdropBlur) : 0;
   if (backdropBlur > 0 && bgOpacity < 100) {
     el.style.setProperty('--hp-backdrop-blur', `blur(${backdropBlur}px)`);
   } else {
@@ -164,7 +189,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   const gradEnd = typeof config._gradientEnd === 'string'
     && HEX_COLOR_RE.test(config._gradientEnd) ? config._gradientEnd : '';
   const gradAngle = typeof config._gradientAngle === 'number'
-    ? Math.max(0, Math.min(360, config._gradientAngle)) : 135;
+    ? clampStyle('_gradientAngle', config._gradientAngle) : 135;
   if (gradStart && gradEnd && config._showBackground !== false) {
     el.style.setProperty('--hp-bg-gradient', `linear-gradient(${gradAngle}deg, ${gradStart}, ${gradEnd})`);
     el.toggleClass('block-has-gradient', true);
@@ -175,7 +200,7 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
 
   // ── Border width ───────────────────────────────────────────────────
   const borderWidth = typeof config._borderWidth === 'number'
-    ? Math.max(0, Math.min(4, config._borderWidth)) : 0;
+    ? clampStyle('_borderWidth', config._borderWidth) : 0;
   if (borderWidth) el.style.setProperty('--hp-border-width', `${borderWidth}px`);
   else el.style.removeProperty('--hp-border-width');
 

@@ -11,17 +11,18 @@ export class EmbeddedNoteBlock extends BaseBlock {
 
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => this.renderContent(e));
 
-    // Re-render when the embedded file is modified
+    // Re-render when the embedded file is modified. The path is read from the
+    // live config: after a rename, this.instance still holds the old path.
     this.registerEvent(
       this.app.vault.on('modify', (modFile) => {
-        const { filePath = '' } = this.instance.config as { filePath?: string };
+        const { filePath = '' } = this.liveConfig() as { filePath?: string };
         if (modFile.path === filePath) trigger();
       }),
     );
 
     // Re-render if the embedded file is deleted
     this.registerEvent(this.app.vault.on('delete', (file) => {
-      const { filePath = '' } = this.instance.config as { filePath?: string };
+      const { filePath = '' } = this.liveConfig() as { filePath?: string };
       if (file.path === filePath) trigger();
     }));
 
@@ -53,8 +54,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
   private async renderContent(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
     // Read from the live layout to pick up rename-updated filePath
-    const liveConfig = this.plugin.activeBlocks().find(b => b.id === this.instance.id)?.config ?? this.instance.config;
-    const { filePath = '', showTitle = true, heightMode = 'scroll' } = liveConfig as {
+    const { filePath = '', showTitle = true, heightMode = 'scroll' } = this.liveConfig() as {
       filePath?: string;
       showTitle?: boolean;
       heightMode?: 'scroll' | 'grow';
@@ -92,6 +92,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
     try {
       const content = await this.app.vault.read(file);
       if (this.isStale(gen)) return;
+      this.openLinksOnClick(contentEl, file.path);
       await MarkdownRenderer.render(this.app, content, contentEl, file.path, this);
     } catch (e) {
       console.error('[Homepage Blocks] EmbeddedNoteBlock MarkdownRenderer failed:', e);

@@ -1,11 +1,13 @@
-import { Notice, Platform, Plugin, WorkspaceLeaf } from 'obsidian';
+import { Notice, Platform, Plugin, WorkspaceLeaf, normalizePath } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from './HomepageView';
 import { BlockInstance, LayoutConfig, LayoutPriority, OpenMode, IHomepagePlugin } from './types';
-import { getDefaultLayout, validateLayout } from './validation';
+import { getDefaultLayout } from './validation';
+import { DataFileGuard, fileName, loadLayoutWithRecovery, loadProblemMessage } from './utils/loadRecovery';
 import { BlockRegistry } from './BlockRegistry';
 import { HomepageSettingTab } from './settings/HomepageSettingTab';
 import { installTagCacheListeners } from './utils/tags';
-import { decryptStringEx, encryptStringEx, isEncrypted, _resetDeviceKeyCache } from './utils/apiKeyCrypto';
+import { _resetDeviceKeyCache } from './utils/apiKeyCrypto';
+import { decryptApiKeys, persistableLayout, unreadableKeyNotice } from './utils/apiKeyLayout';
 import { mobileStartupActive, resolveStartup } from './utils/startupResolver';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
@@ -31,13 +33,24 @@ import { abortActiveLightbox } from './blocks/ImageGalleryBlock';
 
 // ── Block registration ───────────────────────────────────────────────────────
 
-function registerBlocks(): void {
+// Each factory's defaultConfig declares every config key its block reads: it
+// seeds new blocks, and it is the clipboard-import allowlist that also
+// type-checks imported values against these defaults (utils/importSanitizer.ts).
+// A key the block reads with no default of its own (it falls back to a built-in
+// value while unset) is declared as `undefined`, which never reaches data.json.
+export function registerBlocks(): void {
   BlockRegistry.clear();
 
   BlockRegistry.register({
     type: 'greeting',
     displayName: 'Greeting',
-    defaultConfig: { name: 'World', showTime: true },
+    defaultConfig: {
+      name: 'World', showTime: true, showEmoji: true, emojiMode: 'auto',
+      emojiMorning: undefined, emojiAfternoon: undefined, emojiEvening: undefined, emojiNight: undefined,
+      emojiPool: '', emojiDailySeed: false,
+      salutationMode: 'auto', salutationPreset: 'it',
+      salutMorning: undefined, salutAfternoon: undefined, salutEvening: undefined,
+    },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new GreetingBlock(app, instance, plugin),
   });
@@ -45,7 +58,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'clock',
     displayName: 'Clock / date',
-    defaultConfig: { showSeconds: false, showDate: true },
+    defaultConfig: { showSeconds: false, showDate: true, clockStyle: 'minimal', format: '' },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new ClockBlock(app, instance, plugin),
   });
@@ -53,7 +66,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'folder-links',
     displayName: 'Quick links',
-    defaultConfig: { _titleLabel: 'Quick links', folder: '', links: [] },
+    defaultConfig: { _titleLabel: 'Quick links', folder: '', links: [], folderEmoji: '', linkAlign: 'left' },
     defaultSize: { w: 1, h: 3 },
     create: (app, instance, plugin) => new FolderLinksBlock(app, instance, plugin),
   });
@@ -62,6 +75,8 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'button-grid',
     displayName: 'Button grid',
+    // customCss is read but deliberately undeclared: like apiKey, it never
+    // travels through export / import.
     defaultConfig: { _titleLabel: 'Button grid', columns: 2, items: [] },
     defaultSize: { w: 1, h: 5 },
     autoHeight: true,
@@ -71,7 +86,11 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'quotes-list',
     displayName: 'Quotes',
-    defaultConfig: { tag: '', _titleLabel: 'Quotes', columns: 2, maxItems: 0, quoteStyle: 'classic', fontStyle: 'default', customFont: '', dailySeed: true, showNoteTitle: true },
+    defaultConfig: {
+      source: 'tag', tag: '', quotes: '', _titleLabel: 'Quotes', columns: 2, maxItems: 0,
+      quoteStyle: 'classic', fontStyle: 'default', customFont: '', dailySeed: true, showNoteTitle: true,
+      heightMode: 'extend', textAlign: 'left', verticalAlign: 'top', showAccentBar: true,
+    },
     defaultSize: { w: 2, h: 3 },
     autoHeight: true,
     create: (app, instance, plugin) => new QuotesListBlock(app, instance, plugin),
@@ -80,7 +99,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'image-gallery',
     displayName: 'Image gallery',
-    defaultConfig: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 0 },
+    defaultConfig: { folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 0, layout: 'grid', heightMode: 'auto' },
     defaultSize: { w: 3, h: 3 },
     autoHeight: true,
     create: (app, instance, plugin) => new ImageGalleryBlock(app, instance, plugin),
@@ -89,7 +108,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'embedded-note',
     displayName: 'Embedded note',
-    defaultConfig: { filePath: '', showTitle: true },
+    defaultConfig: { filePath: '', showTitle: true, heightMode: 'scroll' },
     defaultSize: { w: 1, h: 3 },
     autoHeight: true,
     create: (app, instance, plugin) => new EmbeddedNoteBlock(app, instance, plugin),
@@ -98,7 +117,7 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'static-text',
     displayName: 'Static text',
-    defaultConfig: { content: '' },
+    defaultConfig: { content: '', heightMode: 'auto' },
     defaultSize: { w: 1, h: 3 },
     autoHeight: true,
     create: (app, instance, plugin) => new StaticTextBlock(app, instance, plugin),
@@ -139,7 +158,10 @@ function registerBlocks(): void {
   BlockRegistry.register({
     type: 'pomodoro',
     displayName: 'Pomodoro timer',
-    defaultConfig: { _titleLabel: 'Pomodoro', workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLong: 4 },
+    defaultConfig: {
+      _titleLabel: 'Pomodoro', workMinutes: 25, breakMinutes: 5, longBreakMinutes: 15, sessionsBeforeLong: 4,
+      soundType: 'crystal', autoStartCycle: false,
+    },
     defaultSize: { w: 1, h: 4 },
     create: (app, instance, plugin) => new PomodoroBlock(app, instance, plugin),
   });
@@ -186,143 +208,11 @@ function registerBlocks(): void {
 
 // ── Plugin ───────────────────────────────────────────────────────────────────
 
-// ── API key encryption helpers ──────────────────────────────────────────────
-//
-// Walked every save / load. Only block types whose defaultConfig declares `apiKey`
-// currently need this (voice-dictation today), but checking by key name makes
-// this future-proof — any new block that names its field `apiKey` gets encrypted
-// automatically.
-
 /**
- * Encrypt every BlockInstance.config.apiKey on the given layout. Returns a new
- * layout with new block objects — never mutates the input.
- *
- * If WebCrypto is unavailable, encryptStringEx returns `ok: false`. To avoid
- * downgrading already-stored ciphertext to plaintext (which would propagate via
- * vault sync), we look up the previously-persisted apiKey from `priorOnDisk` and
- * keep its ciphertext value when the encrypt step fell back to plaintext.
+ * Vault-scoped localStorage key (per device): ids of the blocks whose API key
+ * this device was already told it cannot read.
  */
-/**
- * True when any block on either platform array carries a non-empty `apiKey`.
- * Lets saveLayout skip the prior-on-disk read + encryption clone entirely when
- * there is nothing to encrypt (the common no-voice-key case). A cleared key
- * (apiKey === '') correctly returns false so clearing persists via the fast path.
- */
-function layoutHasApiKey(layout: LayoutConfig): boolean {
-  const anyIn = (blocks: BlockInstance[] | undefined): boolean =>
-    Array.isArray(blocks) && blocks.some(
-      b => typeof b?.config?.apiKey === 'string' && b.config.apiKey !== '',
-    );
-  return anyIn(layout.blocks) || anyIn(layout.mobileBlocks);
-}
-
-async function encryptApiKeys(layout: LayoutConfig, priorOnDisk: LayoutConfig | null): Promise<LayoutConfig> {
-  const buildPriorMap = (blocks: BlockInstance[] | undefined): Map<string, string> => {
-    const m = new Map<string, string>();
-    if (!Array.isArray(blocks)) return m;
-    for (const b of blocks) {
-      const k = b?.config?.apiKey;
-      if (typeof k === 'string' && k) m.set(b.id, k);
-    }
-    return m;
-  };
-  const priorDesktop = buildPriorMap(priorOnDisk?.blocks);
-  const priorMobile = buildPriorMap(priorOnDisk?.mobileBlocks);
-
-  const encryptBlocks = async (blocks: BlockInstance[], prior: Map<string, string>): Promise<BlockInstance[]> =>
-    Promise.all(blocks.map(async (b) => {
-      const key = b.config.apiKey;
-      if (typeof key !== 'string' || !key || isEncrypted(key)) return b;
-      const r = await encryptStringEx(key);
-      if (!r.ok) {
-        // Refuse to overwrite a previously-stored ciphertext with plaintext.
-        const previously = prior.get(b.id);
-        if (typeof previously === 'string' && isEncrypted(previously)) {
-          return { ...b, config: { ...b.config, apiKey: previously } };
-        }
-        // Transient WebCrypto/IndexedDB failure with no prior ciphertext to
-        // fall back to (e.g. import / copy-to-mobile re-minted the id, so the
-        // refuse-to-downgrade lookup above missed). Never write plaintext at
-        // rest just because crypto hiccupped: drop the key from the persisted
-        // copy. The runtime in-memory layout keeps it, and the next save once
-        // WebCrypto recovers will encrypt it properly.
-        if (r.transient) {
-          return { ...b, config: { ...b.config, apiKey: '' } };
-        }
-        // Permanent (no WebCrypto on this platform) with no prior ciphertext:
-        // nothing to protect, so let the plaintext fallback proceed (the warn
-        // is logged inside encryptStringEx).
-      }
-      return { ...b, config: { ...b.config, apiKey: r.value } };
-    }));
-
-  const [blocks, mobileBlocks] = await Promise.all([
-    encryptBlocks(layout.blocks, priorDesktop),
-    encryptBlocks(layout.mobileBlocks, priorMobile),
-  ]);
-  return { ...layout, blocks, mobileBlocks };
-}
-
-/**
- * Decrypt apiKey fields on a layout in place. Returns `true` when every
- * decryption succeeded (or the value was empty / plaintext), `false` if at
- * least one ciphertext was preserved on disk because the device key was
- * transiently unavailable. Callers should skip the post-load resave when
- * this returns false, otherwise a transient WebCrypto/IndexedDB hiccup
- * would silently destroy the user's encrypted key.
- *
- * The function still produces new BlockInstance / config objects rather than
- * mutating the input — old code mutated in place to keep object identity, but
- * that pattern leaked into shared input fixtures during tests.
- */
-async function decryptApiKeys(layout: LayoutConfig): Promise<{ stable: boolean }> {
-  let stable = true;
-  // One Notice per failure class, hoisted across the desktop + mobile loops so
-  // a layout with N voice blocks doesn't spam N identical toasts.
-  let notifiedTransient = false;
-  let notifiedPermanent = false;
-
-  const decryptBlocks = async (blocks: BlockInstance[]): Promise<BlockInstance[]> => {
-    const out: BlockInstance[] = [];
-    for (const b of blocks) {
-      const key = b.config.apiKey;
-      if (typeof key !== 'string' || !key || !isEncrypted(key)) {
-        out.push(b);
-        continue;
-      }
-      const r = await decryptStringEx(key);
-      if (r.ok) {
-        out.push({ ...b, config: { ...b.config, apiKey: r.plaintext } });
-      } else if (r.reason === 'no-key' && r.transient) {
-        // IndexedDB/WebCrypto hiccuped. Keep the ciphertext on disk untouched
-        // (we leave b.config.apiKey alone in memory; runtime callers will see
-        // the encrypted form, which is benign — the dictation block will fail
-        // with a clear "key invalid" path until next launch retries decrypt).
-        stable = false;
-        if (!notifiedTransient) {
-          notifiedTransient = true;
-          new Notice('Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.', 10_000);
-        }
-        out.push(b);
-      } else {
-        // Permanent failure: corrupt ciphertext, missing WebCrypto entirely,
-        // or wrong device. Clearing forces the user to re-enter on this device.
-        out.push({ ...b, config: { ...b.config, apiKey: '' } });
-        if (!notifiedPermanent) {
-          notifiedPermanent = true;
-          new Notice('Homepage blocks: voice API key could not be decrypted on this device. Please re-enter it in settings.', 10_000);
-        }
-      }
-    }
-    return out;
-  };
-
-  const desktop = await decryptBlocks(layout.blocks);
-  const mobile = await decryptBlocks(layout.mobileBlocks);
-  layout.blocks = desktop;
-  layout.mobileBlocks = mobile;
-  return { stable };
-}
+const UNREADABLE_KEYS_STORAGE_KEY = 'hp-unreadable-api-keys';
 
 export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   layout: LayoutConfig = getDefaultLayout();
@@ -339,36 +229,32 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // see fresh data without having to wire up vault listeners themselves.
     installTagCacheListeners(this);
 
+    // An unusable data.json (unparseable, not an object, or with invalid blocks)
+    // is copied verbatim to data.json.invalid before anything can resave over it.
+    const dir = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
     const raw = await this.loadData() as unknown;
-    const validated = validateLayout(raw, (badRaw) => {
-      // data.json existed but its top-level shape is unusable (string from a
-      // sync conflict marker, array from a schema mistake, etc.). Stash a copy
-      // alongside the plugin's data folder so the user can recover by hand
-      // instead of silently losing every block + every persisted setting.
-      void this.stashCorruptedData(badRaw).catch((err) => {
-        console.error('[Homepage Blocks] Failed to stash corrupted data.json', err instanceof Error ? err.message : 'unknown error');
-      });
-      new Notice('Homepage blocks: data.json was unreadable and has been backed up. Layout has been reset to defaults.', 12_000);
-    }, (droppedCount) => {
-      // Per-block corruption: some block entries were valid-shaped data.json but
-      // failed the block schema (partial sync merge, hand-edit, future block
-      // type). Surface it rather than dropping blocks silently. Stash a backup
-      // of the raw layout so the dropped blocks are recoverable by hand.
-      console.warn(`[Homepage Blocks] ${droppedCount} invalid block(s) were dropped from the layout on load`);
-      void this.stashCorruptedData(raw).catch((err) => {
-        console.error('[Homepage Blocks] Failed to stash layout with dropped blocks', err instanceof Error ? err.message : 'unknown error');
-      });
-      new Notice(`Homepage blocks: ${droppedCount} invalid block(s) couldn't be loaded and were removed. A backup of your data.json was saved alongside the plugin.`, 12_000);
-    });
+    const loaded = await loadLayoutWithRecovery(raw, normalizePath(`${dir}/data.json`), this.app.vault.adapter);
+    if (loaded.problem) {
+      if (loaded.problem.kind === 'blocks-dropped') {
+        console.warn(`[Homepage Blocks] ${loaded.problem.count} invalid block(s) were dropped from the layout on load`);
+      }
+      new Notice(loadProblemMessage(loaded.problem, loaded.backupPath), 12_000);
+    }
+    // Every write asks this first: while a broken data.json could not be backed
+    // up, writing would destroy the only copy.
+    this.dataGuard = loaded.guard;
+    const validated = loaded.layout;
     // At-rest apiKey values are encrypted (AES-GCM, non-extractable device key in
     // IndexedDB). Decrypt on load so blocks see plaintext; encrypt again on save.
     const decryptResult = await decryptApiKeys(validated);
     this.layout = validated;
+    if (!decryptResult.stable) {
+      new Notice('Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.', 10_000);
+    }
+    this.announceUnreadableKeys(decryptResult.unreadable, validated);
     // Persist cleaned layout to remove old-format properties and fix corruption,
-    // BUT only when the apiKey decrypt was stable. If a key was preserved as
-    // ciphertext because of a transient WebCrypto/IndexedDB failure, the post-load
-    // resave would round-trip empty plaintext through encryptApiKeys and overwrite
-    // the original ciphertext on disk -- destroying the user's key for good.
+    // BUT only when the apiKey decrypt was stable. A transient WebCrypto/IndexedDB
+    // failure is retried at the next launch; nothing is gained by writing now.
     if (decryptResult.stable) {
       await this.saveLayout(this.layout);
     }
@@ -457,39 +343,27 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   }
 
   /**
-   * Write a copy of corrupted data.json content to a sibling file so the user
-   * can manually recover. Only invoked from validateLayout's corruption hook;
-   * silent in normal flow. Uses a single fixed sibling name (no timestamp) to
-   * avoid accumulating files when data.json corrupts repeatedly -- the most
-   * recent bad copy is the one the user typically wants.
+   * Tell the user once per key when a voice API key in the blocks this device
+   * renders can't be read here (saved on another device). The block itself keeps
+   * saying so; repeating a Notice on every launch would only nag.
    */
-  private async stashCorruptedData(badRaw: unknown): Promise<void> {
-    const dir = this.manifest.dir;
-    if (!dir) return;
-    let serialized: string;
-    if (typeof badRaw === 'string') {
-      serialized = badRaw;
-    } else {
-      try {
-        serialized = JSON.stringify(badRaw, null, 2);
-      } catch {
-        serialized = String(badRaw);
-      }
-    }
-    const base = `${dir}/data.json.invalid`;
-    // Never clobber an earlier backup: if data.json.invalid already exists, the
-    // user's real layout may already be stashed there (a prior corruption could
-    // since have been round-tripped to defaults). Write a timestamped sibling so
-    // a *second* corruption can't destroy the first, only recoverable copy.
-    let target = base;
+  private announceUnreadableKeys(unreadable: Parameters<typeof unreadableKeyNotice>[0], layout: LayoutConfig): void {
+    const rendered = Platform.isMobile && layout.responsiveMode === 'separate' ? 'mobileBlocks' : 'blocks';
+    let recorded: unknown = null;
     try {
-      if (await this.app.vault.adapter.exists(base)) {
-        target = `${base}.${Date.now()}`;
-      }
+      recorded = this.app.loadLocalStorage(UNREADABLE_KEYS_STORAGE_KEY);
     } catch {
-      // exists() failed — fall back to the base name rather than refusing to stash.
+      // Storage unavailable: treat as nothing told yet.
     }
-    await this.app.vault.adapter.write(target, serialized);
+    const { notify, record } = unreadableKeyNotice(unreadable, rendered, recorded);
+    try {
+      this.app.saveLocalStorage(UNREADABLE_KEYS_STORAGE_KEY, record.length > 0 ? record : null);
+    } catch {
+      // Storage unavailable: the Notice may repeat at the next launch.
+    }
+    if (notify) {
+      new Notice('Homepage blocks: the voice notes API key can\'t be read on this device, most likely because it was saved on another one. It was kept as it is; entering a key here replaces it.', 12_000);
+    }
   }
 
   // ── Platform-aware layout helpers ─────────────────────────────────
@@ -545,39 +419,24 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
   private savePromise = Promise.resolve();
   private saveErrorNotified = false;
+  private dataGuard: DataFileGuard | null = null;
 
   async saveLayout(layout: LayoutConfig): Promise<void> {
     this.layout = layout;
     // Serialize save ordering AND await the pre-save encryption inside the
     // chain so a later-queued save sees the updated ciphertext format.
     this.savePromise = this.savePromise.then(async () => {
-      // Fast path: when no block holds an apiKey there is nothing to encrypt and
-      // no downgrade to guard against, so skip the prior-on-disk read AND the
-      // full-layout clone. This is the common case (no voice-dictation key) and
-      // keeps every high-frequency persist (drag/resize/auto-height) to a single
-      // write instead of a read+clone+write.
-      if (!layoutHasApiKey(layout)) {
-        await this.saveData(layout);
-        return;
+      // A broken data.json that could not be backed up at load must not be
+      // written over: each save retries the copy and writes only once it exists.
+      if (this.dataGuard) {
+        const { allowed, backupPath } = await this.dataGuard.allowWrite();
+        if (backupPath) new Notice(`Homepage blocks: the original data.json was saved as ${fileName(backupPath)}; saving resumes.`, 12_000);
+        if (!allowed) return;
       }
-      // Read the prior on-disk layout so encryptApiKeys can refuse to overwrite
-      // a previously-stored ciphertext with plaintext when WebCrypto is gated
-      // (cross-platform vault-sync footgun: ciphertext on desktop, plaintext on
-      // mobile if the mobile platform's WebCrypto is restricted).
-      let priorOnDisk: LayoutConfig | null = null;
-      try {
-        const prior = await this.loadData() as unknown;
-        if (prior && typeof prior === 'object' && !Array.isArray(prior)) {
-          priorOnDisk = prior as LayoutConfig;
-        }
-      } catch {
-        // Read failure is benign — without prior context we accept the plaintext
-        // fallback (encryptStringEx still warns), since refusing the save would
-        // be worse.
-      }
-      // Clone so we don't write ciphertext back into the live layout the blocks
-      // are reading from — runtime copies always stay plaintext.
-      const persistable = await encryptApiKeys(layout, priorOnDisk);
+      // Keys are encrypted into a copy, so the live layout the blocks read from
+      // stays plaintext. With no plaintext key to encrypt, the layout is written
+      // as it is and the prior-on-disk read is skipped (every drag / auto-height persist).
+      const persistable = await persistableLayout(layout, () => this.readPriorLayout());
       await this.saveData(persistable);
     }).then(
       () => { this.saveErrorNotified = false; },
@@ -598,6 +457,22 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     await this.savePromise;
   }
 
+  /**
+   * The layout currently on disk, for encryptApiKeys to refuse to overwrite a
+   * stored ciphertext with plaintext when WebCrypto is gated (cross-platform
+   * vault sync: ciphertext on desktop, plaintext on a restricted mobile). A read
+   * failure is benign: without prior context the plaintext fallback proceeds
+   * (encryptStringEx still warns), since refusing the save would be worse.
+   */
+  private async readPriorLayout(): Promise<LayoutConfig | null> {
+    try {
+      const prior = await this.loadData() as unknown;
+      return prior && typeof prior === 'object' && !Array.isArray(prior) ? prior as LayoutConfig : null;
+    } catch {
+      return null;
+    }
+  }
+
   async saveActiveBlocks(blocks: BlockInstance[]): Promise<void> {
     const next = this.isMobileActive()
       ? { ...this.layout, mobileBlocks: blocks }
@@ -606,17 +481,14 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   }
 
   /**
-   * Atomically patch one block's config. The patcher reads `activeBlocks()`
-   * here at call time, but if a positional save (dragstop) is currently
-   * waiting on the savePromise chain it will land BEFORE this read -- so
-   * the snapshot we capture already reflects the dragged positions. Then
-   * saveLayout serializes our update behind it. The previous saveActiveBlocks
-   * pattern read positions inside the rename handler (before the chain),
-   * which lost any dragstop that hadn't yet been awaited.
+   * Patch one block's config and save (contract: IHomepagePlugin.updateBlockConfig).
+   * Positions stay current because the in-memory layout is the ordering
+   * authority: every saveLayout call, a dragstop's included, assigns it
+   * synchronously, and the patch is computed from it. A caller that builds the
+   * blocks array itself, from a value read earlier, is what loses a drag.
    */
   async updateBlockConfig(id: string, patch: Record<string, unknown>): Promise<void> {
-    // Wait for any pending writes so we read positions written by a prior
-    // dragstop before computing newBlocks.
+    // Queue behind the writes already pending so this one lands after them.
     try {
       await this.savePromise;
     } catch {
@@ -639,28 +511,36 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
   async openHomepage(mode: OpenMode = 'retain'): Promise<void> {
     const { workspace } = this.app;
-    const existing = workspace.getLeavesOfType(VIEW_TYPE);
-    if (existing.length > 0) {
-      await workspace.revealLeaf(existing[0]);
-      if (this.activePin()) existing[0].setPinned(true);
-      return;
-    }
+    const existing = workspace.getLeavesOfType(VIEW_TYPE)[0];
 
     let leaf: WorkspaceLeaf;
-    if (mode === 'replace-all') {
-      const toClose: WorkspaceLeaf[] = [];
-      workspace.iterateAllLeaves(l => {
-        if (l.getRoot() === workspace.rootSplit) toClose.push(l);
-      });
-      toClose.forEach(l => l.detach());
-      leaf = workspace.getLeaf(true);
+    if (existing) {
+      leaf = existing;
+    } else if (mode === 'replace-all') {
+      // Reuse the most recent tab of the main area, then close the rest below.
+      // Closing every tab first leaves the main area without a tab group:
+      // getLeaf(true) then throws "No tab group found." (the host refills an
+      // empty main area only later), and it would also pick a popout window
+      // if one was used last.
+      leaf = workspace.getMostRecentLeaf(workspace.rootSplit) ?? workspace.getLeaf('tab');
     } else if (mode === 'replace-last') {
       leaf = workspace.getLeaf(false);
     } else {
       leaf = workspace.getLeaf('tab');
     }
 
-    await leaf.setViewState({ type: VIEW_TYPE, active: true });
+    if (!existing) await leaf.setViewState({ type: VIEW_TYPE, active: true });
+
+    // "Close all tabs" leaves only the homepage in the main area, also when it
+    // was already open (e.g. restored at startup next to other tabs).
+    if (mode === 'replace-all') {
+      const toClose: WorkspaceLeaf[] = [];
+      workspace.iterateAllLeaves(l => {
+        if (l !== leaf && l.getRoot() === workspace.rootSplit) toClose.push(l);
+      });
+      toClose.forEach(l => l.detach());
+    }
+
     await workspace.revealLeaf(leaf);
 
     if (this.activePin()) leaf.setPinned(true);

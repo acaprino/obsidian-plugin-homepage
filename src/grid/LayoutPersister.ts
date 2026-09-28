@@ -49,9 +49,10 @@ export class LayoutPersister {
     // GridStack nodes hold transient positions adapted for the narrow viewport.
     // Persisting x/y/w from the responsive layout would destroy the canonical
     // (desktop) layout. Only persist height changes in this case.
-    // Note: dragstop/resizestop callers are gated by editMode in GridLayout, so
-    // isResponsive is always false for manual user interactions; this guard
-    // protects auto-height-driven persists in view mode.
+    // Note: dragstop/resizestop callers are gated by editMode in GridLayout, and
+    // edit mode always keeps effective == canonical (GridLayout.setEditMode and
+    // ResponsiveColumnsManager.setup), so isResponsive is always false for manual
+    // user interactions; this guard protects auto-height-driven persists in view mode.
     const isResponsive = effectiveColumns !== canonicalColumns;
 
     // Fast path: when every block is auto-height and we are in responsive mode,

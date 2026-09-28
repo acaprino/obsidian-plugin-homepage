@@ -300,8 +300,12 @@ export class HomepageSettingTab extends PluginSettingTab {
           .setValue(this.plugin.layout.showScrollbar !== false)
           .onChange((value) => {
             void this.plugin.saveLayout({ ...this.plugin.layout, showScrollbar: value });
+            // The rule matches .homepage-view.homepage-no-scrollbar, so the class
+            // goes on the view's content element, as HomepageView.onOpen puts it.
             for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-              leaf.view.containerEl.toggleClass('homepage-no-scrollbar', !value);
+              if (leaf.view instanceof HomepageView) {
+                leaf.view.contentEl.toggleClass('homepage-no-scrollbar', !value);
+              }
             }
           }),
       );

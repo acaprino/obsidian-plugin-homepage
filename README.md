@@ -10,13 +10,15 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 - **Drag-and-drop layout** with 2D resize (column span + row height)
 - **Accent colors** with adjustable intensity (5--100%) that tint the entire card, including interactive controls
 - **Per-block styling** -- title, emoji, divider, padding, elevation, border, opacity, backdrop blur, gradients
-- **Responsive layout** -- blocks reflow in narrow panes via CSS container queries
+- **Responsive layout** -- the grid drops columns in narrow panes (below 1024, 768 and 480 px), and blocks adapt their contents with CSS container queries
 - **Full-screen lightbox** for gallery images with keyboard and swipe navigation
 - **Collapsible blocks** -- click any header to collapse or expand it
-- **50 language presets** for greeting salutations
+- **51 language presets** for greeting salutations
 - **Zero runtime dependencies** beyond [GridStack](https://gridstackjs.com/)
 
 ## Installation
+
+Requires Obsidian 1.8.7 or later.
 
 ### From Community Plugins
 
@@ -33,7 +35,7 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 
 ## Getting started
 
-1. Click the **house icon** in the ribbon, or run `Open Homepage` from the command palette.
+1. Click the **house icon** in the ribbon, or run `Open homepage` from the command palette.
 2. Click the **pencil FAB** to enter edit mode.
 3. **Add Block** inserts new blocks. The **gear icon** opens settings, the **grip handle** reorders, and the **corner grip** resizes.
 4. Click **Done** to exit edit mode.
@@ -42,7 +44,7 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 
 | Block | Description |
 |-------|-------------|
-| **Greeting** | Time-aware salutation with 50 language presets and custom emoji per time slot or random pool |
+| **Greeting** | Time-aware salutation with 51 language presets and custom emoji per time slot or random pool |
 | **Clock** | Live clock with optional seconds and date display |
 | **Quotes** | Multi-column quotes pulled from tagged notes or entered manually |
 | **Quick Links** | Auto-generated list from a folder (with optional glob patterns like `Projects/*.md` or `**/*-draft.md`), plus manual links |
@@ -73,22 +75,22 @@ The **Voice Notes** block records audio in your browser and uploads it to a thir
 | **OpenAI Whisper** | `api.openai.com/v1/audio/transcriptions` | Raw audio blob + model + optional language hint | Your OpenAI API key in the `Authorization: Bearer ...` header |
 | **Google Gemini** | `generativelanguage.googleapis.com/v1beta/models/...:generateContent` | Base64-encoded audio + a transcription prompt + optional language hint | Your Google AI API key in the `x-goog-api-key` header |
 
-**API key storage:** the key is **encrypted at rest** (AES-GCM-256) in `<vault>/.obsidian/plugins/homepage-blocks/data.json` using a non-extractable, per-device key held in the browser's IndexedDB. Because the key never leaves the device that created it, a synced `data.json` (Obsidian Sync, iCloud, Dropbox, git, ...) carries only ciphertext that **cannot be decrypted on another device** -- you re-enter the API key per device. On the rare platform without WebCrypto, the plugin falls back to plaintext (with a refuse-to-downgrade guard that never overwrites existing ciphertext). Treat the key like any secret regardless, since the ciphertext still travels with your synced vault. When you **Export layout** the key is stripped from the exported JSON.
+**API key storage:** the key is **encrypted at rest** (AES-GCM-256) in `<vault>/.obsidian/plugins/homepage-blocks/data.json` using a non-extractable key that stays on the device where you entered it (in the browser's IndexedDB). A synced `data.json` (Obsidian Sync, iCloud, Dropbox, git, ...) therefore carries only ciphertext that **other devices cannot decrypt**: there the block shows *API key unavailable on this device*, and the stored key is left untouched for the device that saved it. Entering a key on another device replaces the stored one for every device that shares that block; in **Separate** responsive mode, desktop and mobile blocks keep their own keys. Update the plugin on every device that syncs the vault: older versions clear a key they cannot read, which erases it for the other devices too. On the rare platform without WebCrypto, the plugin falls back to plaintext (with a refuse-to-downgrade guard that never overwrites existing ciphertext). Treat the key like any secret regardless, since the ciphertext still travels with your synced vault. When you **Export layout** the key is stripped from the exported JSON.
 
-**Revoking access:** delete the key from the provider's dashboard ([OpenAI](https://platform.openai.com/api-keys), [Google AI Studio](https://aistudio.google.com/app/apikey)) and clear the API key field in block settings.
+**Revoking access:** delete the key from the provider's dashboard ([OpenAI](https://platform.openai.com/api-keys), [Google AI Studio](https://aistudio.google.com/app/apikey)) and clear the API key field in block settings on the device where you entered it.
 
-**Mobile:** voice recording requires the platform's `MediaRecorder` + `navigator.mediaDevices` APIs. On platforms that don't expose them, the block is automatically disabled with an "Not available on this platform" message.
+**Mobile:** voice recording requires the platform's `MediaRecorder` + `navigator.mediaDevices` APIs. On platforms that don't expose them, the microphone is disabled and, once an API key is set, the block shows *Not available on this platform*.
 
-If you do not want the Voice Notes feature, simply don't add a Voice Notes block -- no code runs and no network calls happen.
+If you do not want the Voice Notes feature, remove the Voice Notes block (the default layout includes one). Nothing is ever sent without an API key and your confirmation.
 
 ## Card styling
 
-Every block shares these settings (open them with the gear icon):
+Every block shares these settings (open them with the gear icon in edit mode):
 
-- **Title** -- custom label, emoji (picker), size (h1--h6), show/hide, divider
-- **Accent color** -- preset swatches or custom picker, intensity slider (5--100%)
-- **Card** -- hide border, hide background, padding, elevation (shadow), border radius/width/style
-- **Advanced** -- background opacity, backdrop blur, two-color gradient with angle
+- **Header** -- custom label, emoji (picker), size (h1--h6), show/hide, divider, gap below the title, header bar
+- **Body** -- padding, background on/off, background opacity, backdrop blur, two-color gradient with angle
+- **Card** -- accent color (preset swatches or custom picker) with an intensity slider (5--100%), border (on/off, width, style, radius), elevation (shadow)
+- **Content** -- the block's own settings
 
 An accent color tints the header, background, border, divider, and all interactive controls (checkboxes, toggles, radio buttons) in one step.
 
@@ -99,46 +101,43 @@ Open **Settings > Homepage Blocks**:
 | Setting | Description |
 |---------|-------------|
 | Open on startup | Opens the homepage automatically when Obsidian launches |
-| Startup open mode | Controls how the homepage opens on startup -- replace active tab, new tab, or sidebar |
+| Startup open mode | Controls how the homepage opens on startup -- keep existing tabs (new tab), replace the active tab, or close all tabs |
 | Open when empty | Opens the homepage when no other tabs are open |
-| Manual open mode | Controls how the homepage opens from ribbon/command -- replace, new tab, or sidebar |
+| Manual open mode | Controls how the homepage opens from ribbon/command -- keep existing tabs (new tab), replace the active tab, or close all tabs |
 | Pin homepage tab | Prevents the homepage tab from being closed |
 | Separate startup for mobile | Use independent startup settings on mobile (open-on-startup, open mode, pin, ...) instead of mirroring desktop |
 | Default columns | Grid column count (2, 3, 4, or 5) |
 | Responsive mode | **Unified** (one adaptive layout) or **Separate** (independent desktop + mobile layouts, with copy-to-mobile) |
-| Compact layout | Removes vertical gaps between blocks in view mode (off preserves intentional gaps) |
+| Compact layout | Removes vertical gaps between blocks in view mode. Turned off, gaps are kept only until a block that sizes itself to its content (gallery, quotes, text, button grid, random note, a note set to grow) changes height, which packs the grid again |
 | Hover highlight | Subtly lifts blocks on hover and reveals the collapse toggle |
 | Show scroll bar | Shows or hides the homepage scroll bar |
 | Reset to default layout | Restores demo blocks (**cannot be undone**) |
-| Export layout | Exports your layout as JSON |
-| Import layout | Imports a layout from JSON |
-| Layout presets | Applies a preset layout (Minimal, Dashboard, Focus) |
+| Export layout | Copies your layout to the clipboard as JSON, without API keys and button custom CSS |
+| Import layout | Replaces the whole layout, mobile layout and settings included, with a layout from the clipboard, after a confirmation. API keys, custom CSS, unknown settings and values of the wrong type are dropped |
 
 ### Commands
 
 | Command | Action |
 |---------|--------|
-| `Open Homepage` | Opens or focuses the homepage tab |
-| `Toggle edit mode` | Switches between edit and view mode |
-| `Add block` | Opens the add-block modal |
+| `Open homepage` | Opens or focuses the homepage tab |
+| `Toggle edit mode` | Switches open homepages between edit and view mode |
+| `Add block` | Opens the add-block picker on an open homepage |
 
 ## CSS customization
 
-You can override layout variables in a [CSS snippet](https://help.obsidian.md/Extending+Obsidian/CSS+snippets):
+You can override layout variables in a [CSS snippet](https://help.obsidian.md/Extending+Obsidian/CSS+snippets). Set them on `.homepage-view`, where the plugin declares them (a value on `:root` has no effect):
 
 ```css
-:root {
-  --hp-gap: 16px;
+.homepage-view {
   --hp-padding: 24px;
   --hp-card-padding: 16px;
   --hp-content-max-width: 1400px;
-  --hp-row-unit: 200px;
 }
 ```
 
 ## Using theme colors in HTML blocks
 
-HTML that contains a `<style>` block is rendered inside a sandboxed iframe (no scripts, no network) for full CSS support with style isolation. HTML *without* a `<style>` block is sanitized and rendered inline, where `<style>`/`<script>`/`<iframe>` and other active tags are stripped. For inline fragments, match your theme by using **inline `style` attributes** with Obsidian's CSS variables -- these update automatically when you switch themes, so your HTML stays consistent.
+HTML that contains a `<style>` block is rendered inside a sandboxed iframe for full CSS support with style isolation: scripts, fetches and frames are blocked, while images, media and fonts may still load over `https:` (without a referrer). HTML *without* a `<style>` block is sanitized and rendered inline, where `<style>`/`<script>`/`<iframe>` and other active tags are stripped. For inline fragments, match your theme by using **inline `style` attributes** with Obsidian's CSS variables -- these update automatically when you switch themes, so your HTML stays consistent.
 
 ### Common theme variables
 

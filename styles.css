@@ -368,12 +368,15 @@
      container query breakpoints (layout jump on background toggle). */
 }
 
+/* The setting hides the homepage's own scroll bar. Regions inside blocks that
+   scroll (Scroll / Fixed height modes) keep theirs: without one, nothing shows
+   that they hold more content (N14). */
 .homepage-view.homepage-no-scrollbar,
-.homepage-view.homepage-no-scrollbar * {
+.homepage-view.homepage-no-scrollbar > .homepage-grid {
   scrollbar-width: none;           /* Firefox */
 }
 .homepage-view.homepage-no-scrollbar::-webkit-scrollbar,
-.homepage-view.homepage-no-scrollbar *::-webkit-scrollbar {
+.homepage-view.homepage-no-scrollbar > .homepage-grid::-webkit-scrollbar {
   display: none;                   /* Chrome / Safari / Electron */
 }
 
@@ -1700,6 +1703,13 @@
   font-family: var(--hp-quote-font, inherit);
 }
 
+/* "Text alignment" setting: QuotesListBlock writes --hp-quote-align (N15). The
+   centered quote style keeps its own, more specific text-align. */
+.quotes-list-block .quote-item,
+.quotes-list-block .insight-card {
+  text-align: var(--hp-quote-align, start);
+}
+
 .quotes-list-block.quote-font-serif {
   --hp-quote-font: Georgia, 'Times New Roman', serif;
 }
@@ -2048,6 +2058,11 @@
 }
 
 .static-text-block:hover .static-text-edit-btn {
+  opacity: 1;
+}
+
+/* A keyboard user who tabs onto the pencil must see it (N2). */
+.static-text-edit-btn:focus-visible {
   opacity: 1;
 }
 
@@ -2487,6 +2502,16 @@
 .homepage-block-wrapper .block-content > * {
   overflow: hidden;
   min-height: 0;
+}
+
+/* Height modes that scroll: the clip above would otherwise win, as it did for
+   the Embedded Note default 'Scroll', Quotes 'Scroll (fixed height)' and
+   Gallery 'Fixed (scroll)' (U1, M40, M41). Same pattern as
+   .static-text-content; the grow / extend modes keep overflow: visible. */
+.homepage-block-wrapper .block-content:not(.embedded-note-block--grow) > .embedded-note-content,
+.homepage-block-wrapper .block-content:not(.quotes-list-block--extend) > .quotes-columns,
+.homepage-block-wrapper .block-content > .image-gallery.image-gallery--fixed-height {
+  overflow-y: auto;
 }
 
 .homepage-block-wrapper.block-collapsed .block-content {

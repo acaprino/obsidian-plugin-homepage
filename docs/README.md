@@ -1,6 +1,6 @@
 # Homepage Blocks developer docs
 
-These pages document the Obsidian plugin **Homepage Blocks** as the code stands on branch `xray-remediation` (commit `8dff07e` plus uncommitted changes). Every claim cites its source as `path:line`, relative to the repo root. When a comment, `CLAUDE.md` or the README says something else, the docs follow the code and list the difference.
+These pages document the Obsidian plugin **Homepage Blocks** as the code stands on branch `xray-remediation` after the X-ray fixes of 2026-10-10; line citations in sections that were not edited may be a few lines off. Every claim cites its source as `path:line`, relative to the repo root. When a comment, `CLAUDE.md` or the README says something else, the docs follow the code and list the difference.
 
 ## What each doc covers
 
@@ -8,10 +8,10 @@ These pages document the Obsidian plugin **Homepage Blocks** as the code stands 
 |---|---|
 | [architecture.md](architecture.md) | Layers, module map, import graph, runtime objects and their lifetimes, where state lives, the write funnel, build and test commands, where to add code |
 | [data-model.md](data-model.md) | `LayoutConfig` and `BlockInstance` field by field, the default layout, block ids, validation and migration, load and recovery, the save chain, API keys at rest, device-local storage, and the field-level rules of export, import, copy to mobile and reset |
-| [flows.md](flows.md) | Runtime sequences: startup and load, opening the homepage, rendering, edit mode (Done, Discard), Add Block, block settings, auto-height, responsive columns, collapse, the inline Static Text edit, export and import |
+| [flows.md](flows.md) | Runtime sequences: startup and load, opening the homepage, rendering, edit mode (Done, Discard, one session at a time), Add Block, block settings, auto-height, responsive columns, collapse, the inline Static Text edit, export and import, and a `data.json` changed by another device |
 | [blocks.md](blocks.md) | The 17 block types: config keys, rendering, live updates, auto-height, settings UI, network access, limits, test coverage |
 | [styling.md](styling.md) | `styles.css`, tokens and CSS hooks, how the shared `_` keys become classes and custom properties, breakpoints and container queries, state classes, worked snippet examples |
-| [api/plugin.md](api/plugin.md) | `IHomepagePlugin`, `HomepagePlugin`, the view, commands and ribbon, the settings tab, and the helper modules for validation, load recovery, encryption, import, reset and startup |
+| [api/plugin.md](api/plugin.md) | `IHomepagePlugin`, `HomepagePlugin`, the view, commands and ribbon, the settings tab, renames and external `data.json` changes, and the helper modules for validation, load recovery, encryption, import, config ranges, reset, startup, voice notes, timeouts and the Pomodoro timer |
 | [api/blocks.md](api/blocks.md) | `BaseBlock`, `BlockFactory` and the `defaultConfig` contract, `BlockRegistry`, `BLOCK_META`, and a step-by-step guide to adding a block type |
 | [api/grid.md](api/grid.md) | `HomepageView`, `GridLayout`, `Phase`, the `src/grid/*` managers, Scheduler keys, events, `EditToolbar` and the modals |
 

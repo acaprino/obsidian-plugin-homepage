@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { GridLayout } from '../../src/GridLayout';
 import { BlockRegistry } from '../../src/BlockRegistry';
 import { ClockBlock } from '../../src/blocks/ClockBlock';
+import { BaseBlock } from '../../src/blocks/BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../../src/grid/AutoHeight';
 import { getDefaultLayout } from '../../src/validation';
 import type { BlockInstance, IHomepagePlugin, LayoutConfig } from '../../src/types';
 
@@ -123,5 +125,35 @@ describe('Responsive columns and GridStack animation', () => {
     resize(1200);
 
     expect(grid.getElement().classList.contains('grid-stack-animate')).toBe(true);
+  });
+});
+
+/** An auto-height block whose content measures 600 px, rendered synchronously like Static Text. */
+class MeasuredBlock extends BaseBlock {
+  render(el: HTMLElement): void {
+    const body = el.createDiv();
+    body.setAttribute(AUTO_HEIGHT_ATTR, '');
+    Object.defineProperty(body, 'offsetHeight', { configurable: true, get: () => 600 });
+  }
+}
+
+describe('Responsive columns and auto-height', () => {
+  it('measures an auto-height block rendered before the pane narrowed the grid (N23)', async () => {
+    BlockRegistry.register({
+      type: 'static-text', displayName: 'Text', defaultConfig: {}, defaultSize: { w: 1, h: 3 }, autoHeight: true,
+      create: (app, instance, plugin) => new MeasuredBlock(app, instance, plugin),
+    });
+    const text: BlockInstance = { id: 't', type: 'static-text', x: 0, y: 0, w: 1, h: 3, config: {} };
+    const { grid } = renderView(600, [text, clock('b', 1), clock('c', 2)]);
+    expect(grid.effectiveColumns).toBe(2);
+    // happy-dom computes no padding: report the card's 12 px top and bottom.
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({ paddingTop: '12px', paddingBottom: '12px', gap: '0px' } as CSSStyleDeclaration);
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const node = (grid.gridStack!.getGridItems().find(el => el.getAttribute('gs-id') === 't') as HTMLElement & { gridstackNode?: { h: number } }).gridstackNode!;
+    // header 0 + padding 24 + content 600 + margins 16 + buffer 4 = 644 px -> 9 rows of 80 px
+    expect(node.h).toBe(9);
+    vi.restoreAllMocks();
   });
 });

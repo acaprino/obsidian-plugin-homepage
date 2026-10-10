@@ -189,6 +189,17 @@ export class ResponsiveColumnsManager {
     }
     gridStack.batchUpdate(false);
 
+    // apply() cancelled the measurements queued before the column change (render
+    // queues one per auto-height block). Ask again at the new width; one column
+    // is sized by CSS and needs none (N23).
+    if (next > 1) {
+      const saved = new Map(this.host.plugin.activeBlocks().map(b => [b.id, b]));
+      for (const item of nodeItems) {
+        const b = saved.get(item.el.getAttribute('gs-id') ?? '');
+        if (b && this.host.shouldAutoHeight(b)) this.host.requestAutoHeight(item.el, b);
+      }
+    }
+
     // In single-column flex mode, DOM order determines visual order. Reorder DOM
     // elements by packed position using the user's priority.
     if (next === 1) {

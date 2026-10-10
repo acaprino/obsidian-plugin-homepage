@@ -416,7 +416,8 @@ export class QuotesListBlock extends BaseBlock {
       .setDesc('Leave empty for all. Set to 1 for a daily rotating quote.')
       .addText(t =>
         t.setPlaceholder('All')
-         .setValue(typeof cfg.maxItems === 'number' && cfg.maxItems > 0 ? String(cfg.maxItems) : '')
+         // The value the block renders: a block saved without the setting shows 20 (N16).
+         .setValue(String(rangedNumber('quotes-list', cfg, 'maxItems', 20) || ''))
          .onChange(v => {
            const n = parseInt(v);
            cfg.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
@@ -425,7 +426,7 @@ export class QuotesListBlock extends BaseBlock {
       );
 
     const dailySeedSetting = body.createDiv();
-    dailySeedSetting.toggleClass('hp-hidden', (cfg.maxItems ?? 0) !== 1);
+    dailySeedSetting.toggleClass('hp-hidden', rangedNumber('quotes-list', cfg, 'maxItems', 20) !== 1);
     new Setting(dailySeedSetting)
       .setName('Daily seed')
       .setDesc('Same quote all day, changes at midnight.')

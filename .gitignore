@@ -10,3 +10,8 @@ data.backup.json
 obsidian-simulator/
 claude_.bat
 .claude/scheduled_tasks.lock
+# Analysis runs and implementation plans: local working material
+.codebase-xray/
+docs/superpowers/
+.superpowers/
+.playwright-mcp/

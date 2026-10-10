@@ -26,6 +26,12 @@ function mountQuotes(config: Record<string, unknown>, files: { path: string; bas
   return { el, rendered, fire, reads: () => reads };
 }
 
+/** A Quotes block that is never rendered, for its settings UI. */
+function mountQuotesBlock() {
+  const instance: BlockInstance = { id: 'q2', type: 'quotes-list', x: 0, y: 0, w: 2, h: 3, config: {} };
+  return { block: new QuotesListBlock({} as App, instance, {} as IHomepagePlugin) };
+}
+
 beforeEach(() => { document.body.empty(); registerBlocks(); });
 
 describe('QuotesListBlock Max quotes default (N16)', () => {
@@ -55,5 +61,24 @@ describe('QuotesListBlock live updates (R9)', () => {
     await new Promise(resolve => setTimeout(resolve, 600));
 
     expect(reads()).toBe(2);
+  });
+});
+
+describe('QuotesListBlock Max quotes setting (N16)', () => {
+  function maxQuotesField(draft: Record<string, unknown>): HTMLInputElement {
+    const body = document.body.createDiv();
+    const { block } = mountQuotesBlock();
+    block.renderContentSettings(body, draft);
+    const item = [...body.querySelectorAll('.setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent === 'Max quotes');
+    return item!.querySelector('input') as HTMLInputElement;
+  }
+
+  it('shows the 20 quotes a block without the setting renders, not "All"', () => {
+    expect(maxQuotesField({}).value).toBe('20');
+  });
+
+  it('shows all for 0 and the stored number otherwise', () => {
+    expect(maxQuotesField({ maxItems: 0 }).value).toBe('');
+    expect(maxQuotesField({ maxItems: 7 }).value).toBe('7');
   });
 });

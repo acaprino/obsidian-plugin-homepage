@@ -236,3 +236,10 @@ describe('active content in an imported layout (M11, M12)', () => {
     expect(out.blocks[1].x).toBe(0);
   });
 });
+
+describe('sanitizeImportedLayout and unknown block types (M58)', () => {
+  it('drops data this version cannot check: an import is untrusted', () => {
+    const layout = { ...getDefaultLayout(), preserved: { blocks: [{ id: 'f', type: 'weather', x: 0, y: 0, w: 1, h: 1, config: {} }], mobileBlocks: [], fields: { x: 1 } } };
+    expect(sanitizeImportedLayout(layout).layout.preserved).toBeUndefined();
+  });
+});

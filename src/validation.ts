@@ -1,4 +1,4 @@
-import { BLOCK_TYPES, BlockInstance, LayoutConfig, LayoutPriority, OpenMode, ResponsiveMode } from './types';
+import { BLOCK_TYPES, BlockInstance, LayoutConfig, LayoutPriority, OpenMode, PreservedData, ResponsiveMode } from './types';
 
 // ── Type guards for union-typed fields ──────────────────────────────────────
 
@@ -237,6 +237,17 @@ export function isValidBlockInstance(b: unknown): b is BlockInstance {
 }
 
 /**
+ * A block of a type this version does not know, otherwise in the current shape:
+ * written by a newer version, so kept rather than dropped (M58).
+ */
+function isUnknownTypeBlock(b: unknown): b is Record<string, unknown> {
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return false;
+  const block = b as Record<string, unknown>;
+  return typeof block.type === 'string' && block.type !== '' && !VALID_BLOCK_TYPES.has(block.type)
+    && isValidBlockInstance({ ...block, type: BLOCK_TYPES[0] });
+}
+
+/**
  * Migrate + validate + clamp a raw blocks array loaded from disk.
  *
  * `onInvalidDropped` fires (with the count) when one or more array entries
@@ -251,9 +262,19 @@ export function validateBlocks(
   columns: number,
   defaults: BlockInstance[],
   onInvalidDropped?: (count: number) => void,
+  onUnknownType?: (block: Record<string, unknown>) => void,
 ): BlockInstance[] {
   if (!Array.isArray(raw)) return defaults;
-  const migrated: unknown[] = raw.map(b => migrateBlockInstance(b as Record<string, unknown>));
+  // A block of an unknown type goes to onUnknownType as stored (M58), when the
+  // caller keeps such blocks; otherwise it counts as invalid.
+  const known = onUnknownType
+    ? raw.filter((b: unknown) => {
+      if (!isUnknownTypeBlock(b)) return true;
+      onUnknownType(b);
+      return false;
+    })
+    : raw;
+  const migrated: unknown[] = known.map(b => migrateBlockInstance(b as Record<string, unknown>));
   const validAll = migrated.filter(isValidBlockInstance);
   const invalidCount = migrated.length - validAll.length;
   const overLimit = Math.max(0, validAll.length - MAX_BLOCKS);
@@ -391,16 +412,60 @@ export function validateLayout(
   // so the caller can surface a single Notice rather than one per array.
   let droppedBlocks = 0;
   const countDropped = (n: number) => { droppedBlocks += n; };
-  const blocks = validateBlocks(r.blocks, columns, defaults.blocks, countDropped);
-  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks, countDropped);
+  const preserved = readPreserved(r);
+  const blocks = validateBlocks(r.blocks, columns, defaults.blocks, countDropped, b => preserved.blocks.push(b));
+  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks, countDropped, b => preserved.mobileBlocks.push(b));
   if (droppedBlocks > 0) onBlocksDropped?.(droppedBlocks);
 
-  return {
+  const layout: LayoutConfig = {
     columns, layoutPriority, responsiveMode,
     mobileColumns, mobileLayoutPriority, mobileBlocks,
     openOnStartup, openMode, manualOpenMode, openWhenEmpty, pin,
     separateStartup, mobileOpenOnStartup, mobileOpenMode,
     mobileManualOpenMode, mobileOpenWhenEmpty, mobilePin,
     showScrollbar, compactLayout, hoverHighlight, blocks,
+  };
+  if (preserved.blocks.length || preserved.mobileBlocks.length || Object.keys(preserved.fields).length) {
+    layout.preserved = preserved;
+  }
+  return layout;
+}
+
+/** Top-level keys this version reads (current fields, the legacy hideScrollbar, the in-memory preserved). */
+const KNOWN_LAYOUT_KEYS = new Set([...Object.keys(DEFAULT_LAYOUT_DATA), 'hideScrollbar', 'preserved']);
+
+/**
+ * What `raw` holds for a newer version: its unknown top-level fields, plus the
+ * `preserved` data of an in-memory layout validated again (which keeps
+ * validateLayout idempotent). Blocks of unknown types are added by the caller.
+ */
+function readPreserved(r: Record<string, unknown>): PreservedData {
+  const out: PreservedData = { blocks: [], mobileBlocks: [], fields: {} };
+  const prior = r.preserved;
+  if (prior && typeof prior === 'object' && !Array.isArray(prior)) {
+    const p = prior as Record<string, unknown>;
+    if (Array.isArray(p.blocks)) out.blocks.push(...p.blocks.filter(isUnknownTypeBlock));
+    if (Array.isArray(p.mobileBlocks)) out.mobileBlocks.push(...p.mobileBlocks.filter(isUnknownTypeBlock));
+    if (p.fields && typeof p.fields === 'object' && !Array.isArray(p.fields)) {
+      for (const [k, v] of Object.entries(p.fields)) if (!KNOWN_LAYOUT_KEYS.has(k)) out.fields[k] = v;
+    }
+  }
+  for (const [k, v] of Object.entries(r)) if (!KNOWN_LAYOUT_KEYS.has(k)) out.fields[k] = v;
+  return out;
+}
+
+/**
+ * The layout as data.json stores it: preserved blocks back at the end of their
+ * arrays and preserved fields back at the top level, where the version that
+ * wrote them reads them (M58).
+ */
+export function toStoredLayout(layout: LayoutConfig): Record<string, unknown> {
+  const { preserved, ...rest } = layout;
+  if (!preserved) return rest;
+  return {
+    ...preserved.fields,
+    ...rest,
+    blocks: [...rest.blocks, ...preserved.blocks],
+    mobileBlocks: [...rest.mobileBlocks, ...preserved.mobileBlocks],
   };
 }

@@ -391,7 +391,8 @@ export class HomepageSettingTab extends PluginSettingTab {
             return;
           }
           try {
-            const exportLayout = structuredClone(this.plugin.layout);
+            // Without data from a newer version: an import drops it anyway (M58).
+            const { preserved: _newer, ...exportLayout } = structuredClone(this.plugin.layout);
             for (const block of exportLayout.blocks) {
               delete block.config.apiKey;
               delete block.config.customCss;

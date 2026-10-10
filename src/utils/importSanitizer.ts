@@ -127,9 +127,12 @@ export function sanitizeImportedLayout(layout: LayoutConfig): { layout: LayoutCo
     strippedCount += stripped.length;
     return { ...b, config };
   };
+  // Blocks of unknown types and unknown fields cannot be checked here: an
+  // import is untrusted, so they are not carried in (M58).
+  const { preserved: _unchecked, ...known } = layout;
   return {
     layout: {
-      ...layout,
+      ...known,
       blocks: layout.blocks.map(sanitizeBlock),
       mobileBlocks: layout.mobileBlocks.map(sanitizeBlock),
     },

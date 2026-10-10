@@ -48,6 +48,17 @@ export interface BlockInstance {
   config: Record<string, unknown>;
 }
 
+/**
+ * Data a newer plugin version wrote that this one does not know: blocks of an
+ * unknown type and unknown top-level fields. Kept out of rendering and written
+ * back unchanged, so an older version on a synced device does not delete them (M58).
+ */
+export interface PreservedData {
+  blocks: Record<string, unknown>[];
+  mobileBlocks: Record<string, unknown>[];
+  fields: Record<string, unknown>;
+}
+
 export interface LayoutConfig {
   columns: number;
   layoutPriority: LayoutPriority;
@@ -85,6 +96,8 @@ export interface LayoutConfig {
   /** Show a subtle hover lift on blocks and reveal the collapse chevron on hover. */
   hoverHighlight: boolean;
   blocks: BlockInstance[];
+  /** See PreservedData; absent when there is nothing to keep. */
+  preserved?: PreservedData;
 }
 
 export interface BlockFactory {

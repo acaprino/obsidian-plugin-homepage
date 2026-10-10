@@ -417,3 +417,18 @@ describe('data.json changed on disk: races and key-store failures', () => {
     expect(Notice.messages.some(m => /API key could not be loaded/.test(m))).toBe(true);
   });
 });
+
+describe('data from a newer plugin version (M58)', () => {
+  it('is written back to data.json where that version reads it', async () => {
+    const future = { id: 'f', type: 'weather', x: 1, y: 0, w: 1, h: 3, config: {} };
+    const { plugin, disk } = pluginWithDisk(getDefaultLayout());
+    const layout = { ...getDefaultLayout(), blocks: [block('c', 'clock')], mobileBlocks: [], preserved: { blocks: [future], mobileBlocks: [], fields: { themeSync: 1 } } };
+
+    await plugin.saveLayout(layout);
+
+    const stored = disk() as unknown as Record<string, unknown>;
+    expect((stored.blocks as { id: string }[]).map(b => b.id)).toEqual(['c', 'f']);
+    expect(stored.themeSync).toBe(1);
+    expect('preserved' in stored).toBe(false);
+  });
+});

@@ -8,6 +8,7 @@ import {
   isResponsiveMode,
   isValidBlockInstance,
   migrateBlockInstance,
+  toStoredLayout,
   validateBlocks,
   validateLayout,
 } from '../src/validation';
@@ -547,5 +548,38 @@ describe('validateBlocks optional fields (N19)', () => {
   it('stays idempotent', () => {
     const once = validateBlocks(raw({ collapsed: true, _expandedH: 4 }), 3, []);
     expect(validateBlocks(once, 3, [])).toStrictEqual(once);
+  });
+});
+
+describe('blocks and fields from a newer plugin version (M58)', () => {
+  const known = { id: 'k', type: 'clock', x: 0, y: 0, w: 1, h: 3, config: {} };
+  const future = { id: 'f', type: 'weather', x: 1, y: 0, w: 1, h: 3, config: { city: 'Rome' } };
+
+  it('keeps a well-formed block of an unknown type, unrendered, without reporting a loss', () => {
+    let dropped = 0;
+    const out = validateLayout({ blocks: [known, future] }, undefined, (n) => { dropped += n; });
+
+    expect(out.blocks.map(b => b.id)).toEqual(['k']);
+    expect(out.preserved?.blocks).toEqual([future]);
+    expect(dropped).toBe(0);
+  });
+
+  it('keeps unknown top-level fields', () => {
+    const out = validateLayout({ blocks: [known], themeSync: { on: true } });
+    expect(out.preserved?.fields).toEqual({ themeSync: { on: true } });
+  });
+
+  it('stays idempotent', () => {
+    const once = validateLayout({ blocks: [known, future], mobileBlocks: [future], themeSync: 1 });
+    expect(validateLayout(once)).toStrictEqual(once);
+  });
+
+  it('writes them back where the newer version reads them', () => {
+    const out = toStoredLayout(validateLayout({ blocks: [known, future], mobileBlocks: [future], themeSync: 1 }));
+
+    expect('preserved' in out).toBe(false);
+    expect((out.blocks as { id: string }[]).map(b => b.id)).toEqual(['k', 'f']);
+    expect((out.mobileBlocks as { id: string }[]).map(b => b.id)).toEqual(['f']);
+    expect(out.themeSync).toBe(1);
   });
 });

@@ -1,7 +1,7 @@
 import { Notice, Platform, Plugin, WorkspaceLeaf, normalizePath } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from './HomepageView';
 import { BlockInstance, LayoutConfig, LayoutPriority, OpenMode, IHomepagePlugin } from './types';
-import { getDefaultLayout } from './validation';
+import { getDefaultLayout, toStoredLayout } from './validation';
 import { DataFileGuard, fileName, loadLayoutWithRecovery, loadProblemMessage } from './utils/loadRecovery';
 import { BlockRegistry } from './BlockRegistry';
 import { HomepageSettingTab } from './settings/HomepageSettingTab';
@@ -448,9 +448,10 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       // Keys are encrypted into a copy, so the live layout the blocks read from
       // stays plaintext. With no plaintext key to encrypt, the layout is written
       // as it is and the prior-on-disk read is skipped (every drag / auto-height persist).
-      const persistable = await persistableLayout(layout, () => this.readPriorLayout());
-      await this.saveData(persistable);
-      this.lastWrittenJson = JSON.stringify(persistable);
+      // toStoredLayout puts data from a newer plugin version back where it reads it (M58).
+      const stored = toStoredLayout(await persistableLayout(layout, () => this.readPriorLayout()));
+      await this.saveData(stored);
+      this.lastWrittenJson = JSON.stringify(stored);
     }).then(
       () => { this.saveErrorNotified = false; },
       (err) => {

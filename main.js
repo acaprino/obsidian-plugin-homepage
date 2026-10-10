@@ -22,13 +22,17 @@ var main_exports = {};
 __export(main_exports, {
   commandTarget: () => commandTarget,
   default: () => HomepagePlugin,
+  homepageCommand: () => homepageCommand,
   registerBlocks: () => registerBlocks
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian29 = require("obsidian");
+var import_obsidian34 = require("obsidian");
 
 // src/HomepageView.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian9 = require("obsidian");
+
+// src/GridLayout.ts
+var import_obsidian7 = require("obsidian");
 
 // node_modules/gridstack/dist/utils.js
 var Utils = class _Utils {
@@ -5822,10 +5826,56 @@ var AutoHeightManager = class {
   }
 };
 
+// src/blockMeta.ts
+var BLOCK_META = {
+  "greeting": { icon: "\u{1F44B}", desc: "Personalized greeting with time of day" },
+  "clock": { icon: "\u{1F550}", desc: "Live clock with date display" },
+  "folder-links": { icon: "\u{1F517}", desc: "Quick links to notes and folders" },
+  "button-grid": { icon: "\u{1F532}", desc: "Grid of emoji-labeled buttons" },
+  "quotes-list": { icon: "\u{1F4AC}", desc: "Collection of quotes from notes" },
+  "image-gallery": { icon: "\u{1F5BC}\uFE0F", desc: "Photo grid from a vault folder" },
+  "embedded-note": { icon: "\u{1F4C4}", desc: "Render a note inline on the page" },
+  "static-text": { icon: "\u{1F4DD}", desc: "Markdown text block you write directly" },
+  "html": { icon: "</>", desc: "Custom HTML content (sanitized)" },
+  "video-embed": { icon: "\u{1F3AC}", desc: "Embed YouTube, Vimeo, or other videos" },
+  "bookmarks": { icon: "\u{1F516}", desc: "Web links and vault bookmarks grid" },
+  "recent-files": { icon: "\u{1F4C2}", desc: "Recently modified notes in your vault" },
+  "pomodoro": { icon: "\u{1F345}", desc: "Pomodoro timer with work/break cycles" },
+  "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" },
+  "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" },
+  "voice-dictation": { icon: "\u{1F399}\uFE0F", desc: "Record voice notes saved automatically to a folder" },
+  "vault-search": { icon: "\u{1F50D}", desc: "Search notes by name with live results" }
+};
+var BLOCK_TITLES = {
+  "greeting": "",
+  "clock": "",
+  "folder-links": "Folder links",
+  "button-grid": "Buttons",
+  "quotes-list": "Quotes",
+  "image-gallery": "Gallery",
+  "embedded-note": "Embedded note",
+  "static-text": "Text",
+  "html": "HTML",
+  "video-embed": "Video",
+  "bookmarks": "Bookmarks",
+  "recent-files": "Recent files",
+  "pomodoro": "Pomodoro",
+  "spacer": "",
+  "random-note": "Random note",
+  "voice-dictation": "Voice notes",
+  "vault-search": "Vault search"
+};
+function blockTitle(type) {
+  return BLOCK_TITLES[type];
+}
+
 // src/grid/CollapseToggle.ts
+function isCollapsible(instance) {
+  return !!instance.collapsed && blockTitle(instance.type) !== "";
+}
 function viewModeHeight(instance) {
   if (!instance.collapsed) return instance.h;
-  if (instance.config._showTitle !== false) return 1;
+  if (isCollapsible(instance) && instance.config._showTitle !== false) return 1;
   const expandedH = instance._expandedH;
   return typeof expandedH === "number" && expandedH > 0 ? expandedH : instance.h;
 }
@@ -5835,7 +5885,7 @@ function attachCollapseToggle(host, gsEl, instance, headerZone) {
   if (!wrapper) return;
   const toggleCollapse = (e) => {
     e.stopPropagation();
-    if (host.editMode) return;
+    if (host.editMode || headerZone.getAttribute("role") !== "button") return;
     const isNowCollapsed = !wrapper.hasClass("block-collapsed");
     wrapper.toggleClass("block-collapsed", isNowCollapsed);
     chevron?.toggleClass("is-collapsed", isNowCollapsed);
@@ -5866,6 +5916,37 @@ function attachCollapseToggle(host, gsEl, instance, headerZone) {
       toggleCollapse(e);
     }
   });
+}
+
+// src/grid/domOrder.ts
+function orderChildren(parent, ordered) {
+  const position = /* @__PURE__ */ new Map();
+  Array.from(parent.children).forEach((el, i) => position.set(el, i));
+  const keep = longestIncreasing(ordered.map((el) => position.get(el) ?? -1));
+  let next2 = null;
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    if (!keep.has(i)) parent.insertBefore(ordered[i], next2);
+    next2 = ordered[i];
+  }
+}
+function longestIncreasing(seq) {
+  const tails = [];
+  const prev = new Array(seq.length).fill(-1);
+  for (let i = 0; i < seq.length; i++) {
+    if (seq[i] < 0) continue;
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (seq[tails[mid]] < seq[i]) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) prev[i] = tails[lo - 1];
+    tails[lo] = i;
+  }
+  const keep = /* @__PURE__ */ new Set();
+  for (let i = tails.length ? tails[tails.length - 1] : -1; i >= 0; i = prev[i]) keep.add(i);
+  return keep;
 }
 
 // src/grid/ResponsiveColumns.ts
@@ -5993,9 +6074,7 @@ var ResponsiveColumnsManager = class {
     }
     if (next2 === 1) {
       const sorted = nodeItems.slice().sort((a, b) => a.y - b.y || a.x - b.x);
-      for (const item of sorted) {
-        this.host.gridEl.appendChild(item.el);
-      }
+      orderChildren(this.host.gridEl, sorted.map((item) => item.el));
     }
   }
 };
@@ -6091,7 +6170,383 @@ var LayoutPersister = class {
 };
 
 // src/grid/EditHandleBar.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian6 = require("obsidian");
+
+// src/grid/blockLimit.ts
+var import_obsidian = require("obsidian");
+
+// src/types.ts
+var BLOCK_TYPES = [
+  "greeting",
+  "folder-links",
+  "button-grid",
+  "quotes-list",
+  "image-gallery",
+  "clock",
+  "embedded-note",
+  "static-text",
+  "html",
+  "video-embed",
+  "bookmarks",
+  "recent-files",
+  "pomodoro",
+  "spacer",
+  "random-note",
+  "voice-dictation",
+  "vault-search"
+];
+
+// src/validation.ts
+var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
+var VALID_LAYOUT_PRIORITIES = /* @__PURE__ */ new Set(["row"]);
+var VALID_RESPONSIVE_MODES = /* @__PURE__ */ new Set(["unified", "separate"]);
+function isOpenMode(v) {
+  return typeof v === "string" && VALID_OPEN_MODES.has(v);
+}
+function isLayoutPriority(v) {
+  return typeof v === "string" && VALID_LAYOUT_PRIORITIES.has(v);
+}
+function isResponsiveMode(v) {
+  return typeof v === "string" && VALID_RESPONSIVE_MODES.has(v);
+}
+var DEFAULT_LAYOUT_DATA = {
+  columns: 3,
+  layoutPriority: "row",
+  responsiveMode: "unified",
+  mobileColumns: 1,
+  mobileLayoutPriority: "row",
+  mobileBlocks: [],
+  openOnStartup: false,
+  openMode: "retain",
+  manualOpenMode: "retain",
+  openWhenEmpty: false,
+  pin: false,
+  separateStartup: false,
+  mobileOpenOnStartup: false,
+  mobileOpenMode: "retain",
+  mobileManualOpenMode: "retain",
+  mobileOpenWhenEmpty: false,
+  mobilePin: false,
+  showScrollbar: true,
+  compactLayout: true,
+  hoverHighlight: true,
+  blocks: [
+    // Row 0 (y: 0–2)
+    {
+      id: "default-static-text",
+      type: "static-text",
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 3,
+      config: { content: "" }
+    },
+    {
+      id: "default-clock",
+      type: "clock",
+      x: 1,
+      y: 0,
+      w: 1,
+      h: 3,
+      config: { showSeconds: false, showDate: true }
+    },
+    {
+      id: "default-folder-links",
+      type: "folder-links",
+      x: 2,
+      y: 0,
+      w: 1,
+      h: 3,
+      config: { _titleLabel: "Quick links", links: [] }
+    },
+    // Row 1 (y: 3–5)
+    {
+      id: "default-insight",
+      type: "quotes-list",
+      x: 0,
+      y: 3,
+      w: 2,
+      h: 3,
+      config: { tag: "", _titleLabel: "Daily insight", dailySeed: true, maxItems: 1 }
+    },
+    {
+      id: "default-button-grid",
+      type: "button-grid",
+      x: 2,
+      y: 3,
+      w: 1,
+      h: 5,
+      config: {
+        // Empty, showing its "No items yet" hint: six buttons with no link did
+        // nothing when clicked (M95).
+        _titleLabel: "Quick actions",
+        columns: 2,
+        items: []
+      }
+    },
+    // Row 2 (y: 6–8)
+    {
+      id: "default-quotes",
+      type: "quotes-list",
+      x: 0,
+      y: 6,
+      w: 2,
+      h: 3,
+      config: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 0 }
+    },
+    // Row 3 (y: 8)
+    {
+      id: "default-voice-dictation",
+      type: "voice-dictation",
+      x: 0,
+      y: 8,
+      w: 2,
+      h: 3,
+      config: { folder: "", triggerMode: "tap", _titleLabel: "Voice notes" }
+    },
+    // Row 4 (y: 11–13)
+    {
+      id: "default-gallery",
+      type: "image-gallery",
+      x: 0,
+      y: 11,
+      w: 3,
+      h: 3,
+      config: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 0 }
+    }
+  ]
+};
+function getDefaultLayout() {
+  return structuredClone(DEFAULT_LAYOUT_DATA);
+}
+var VALID_BLOCK_TYPES = new Set(BLOCK_TYPES);
+var SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+var MAX_BLOCKS = 100;
+function migrateBlockInstance(b) {
+  const m = { ...b };
+  if (typeof m.col === "number" && typeof m.x !== "number") {
+    m.x = Math.max(0, m.col - 1);
+  }
+  if (typeof m.row === "number" && typeof m.y !== "number") {
+    m.y = Math.max(0, m.row - 1);
+  }
+  if (typeof m.colSpan === "number" && typeof m.w !== "number") {
+    m.w = m.colSpan;
+  }
+  if (typeof m.rowSpan === "number" && typeof m.h !== "number") {
+    m.h = m.rowSpan;
+  }
+  delete m.col;
+  delete m.row;
+  delete m.colSpan;
+  delete m.rowSpan;
+  delete m.newRow;
+  if (m.type === "tag-grid") {
+    m.type = "button-grid";
+  }
+  const cfg = typeof m.config === "object" && m.config !== null ? m.config : void 0;
+  if (cfg && cfg._transparent === true) {
+    if (cfg._showBorder === void 0) cfg._showBorder = false;
+    if (cfg._showBackground === void 0) cfg._showBackground = false;
+    delete cfg._transparent;
+  }
+  if (cfg) {
+    const HIDE_TO_SHOW = [
+      ["_hideTitle", "_showTitle"],
+      ["_hideBorder", "_showBorder"],
+      ["_hideBackground", "_showBackground"],
+      ["_hideHeaderAccent", "_showHeaderAccent"]
+    ];
+    for (const [hideKey, showKey] of HIDE_TO_SHOW) {
+      if (hideKey in cfg) {
+        if (cfg[hideKey] === true && cfg[showKey] === void 0) {
+          cfg[showKey] = false;
+        }
+        delete cfg[hideKey];
+      }
+    }
+    if (m.type === "quotes-list" && "hideAccentBar" in cfg) {
+      if (cfg.hideAccentBar === true && cfg.showAccentBar === void 0) {
+        cfg.showAccentBar = false;
+      }
+      delete cfg.hideAccentBar;
+    }
+  }
+  if (m.type === "voice-dictation" && cfg) {
+    if (typeof cfg.whisperApiKey === "string" && !cfg.apiKey) {
+      cfg.apiKey = cfg.whisperApiKey;
+    }
+    if (typeof cfg.whisperLanguage === "string" && !cfg.language) {
+      cfg.language = cfg.whisperLanguage;
+    }
+    delete cfg.whisperApiKey;
+    delete cfg.whisperLanguage;
+  }
+  if (m.type === "button-grid" && cfg && typeof cfg.columns === "number" && cfg.columns > 3) {
+    cfg.columns = 3;
+  }
+  if (cfg && m.type !== "button-grid" && "customCss" in cfg) {
+    delete cfg.customCss;
+  }
+  if (cfg && typeof cfg.title === "string") {
+    if (cfg.title && !cfg._titleLabel) {
+      cfg._titleLabel = cfg.title;
+    }
+    if (!cfg.title && (m.type === "html" || m.type === "static-text")) {
+      if (cfg._showTitle === void 0) cfg._showTitle = false;
+    }
+    delete cfg.title;
+  }
+  return m;
+}
+function isValidBlockInstance(b) {
+  if (!b || typeof b !== "object") return false;
+  const block = b;
+  return typeof block.id === "string" && SAFE_ID_RE.test(block.id) && typeof block.type === "string" && VALID_BLOCK_TYPES.has(block.type) && typeof block.x === "number" && Number.isFinite(block.x) && block.x >= 0 && typeof block.y === "number" && Number.isFinite(block.y) && block.y >= 0 && typeof block.w === "number" && Number.isFinite(block.w) && block.w >= 1 && typeof block.h === "number" && block.h >= 1 && Number.isFinite(block.h) && block.config !== null && typeof block.config === "object" && !Array.isArray(block.config);
+}
+function isUnknownTypeBlock(b) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) return false;
+  const raw = b;
+  const config = raw.config && typeof raw.config === "object" && !Array.isArray(raw.config) ? { ...raw.config } : raw.config;
+  const block = migrateBlockInstance({ ...raw, config });
+  return typeof block.type === "string" && block.type !== "" && !VALID_BLOCK_TYPES.has(block.type) && !RETIRED_BLOCK_TYPES.has(block.type) && isValidBlockInstance({ ...block, type: BLOCK_TYPES[0] });
+}
+var RETIRED_BLOCK_TYPES = /* @__PURE__ */ new Set(["insight"]);
+function validateBlocks(raw, columns, defaults, onInvalidDropped, onUnknownType) {
+  if (!Array.isArray(raw)) return defaults;
+  const known = onUnknownType ? raw.filter((b) => {
+    if (!isUnknownTypeBlock(b)) return true;
+    onUnknownType(b);
+    return false;
+  }) : raw;
+  const migrated = known.map((b) => migrateBlockInstance(b));
+  const validAll = migrated.filter(isValidBlockInstance);
+  const invalidCount = migrated.length - validAll.length;
+  const overLimit = Math.max(0, validAll.length - MAX_BLOCKS);
+  if (invalidCount + overLimit > 0) onInvalidDropped?.(invalidCount + overLimit);
+  const valid = validAll.slice(0, MAX_BLOCKS);
+  const seen = /* @__PURE__ */ new Set();
+  const dedup = valid.filter((b) => {
+    if (seen.has(b.id)) return false;
+    seen.add(b.id);
+    return true;
+  });
+  return dedup.map((b) => {
+    const w = Math.min(b.w, columns);
+    const out = {
+      id: b.id,
+      type: b.type,
+      x: Math.min(b.x, Math.max(0, columns - w)),
+      y: b.y,
+      w,
+      h: b.h,
+      config: b.config
+    };
+    if (b.collapsed === true) out.collapsed = true;
+    const expandedH = b._expandedH;
+    if (typeof expandedH === "number" && Number.isFinite(expandedH) && expandedH >= 1) {
+      out._expandedH = Math.round(expandedH);
+    }
+    return out;
+  });
+}
+function validateLayout(raw, onTopLevelCorruption, onBlocksDropped) {
+  const defaults = getDefaultLayout();
+  if (raw === null || raw === void 0) return defaults;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    onTopLevelCorruption?.(raw);
+    return defaults;
+  }
+  const r = raw;
+  const columns = typeof r.columns === "number" && [2, 3, 4, 5].includes(r.columns) ? r.columns : defaults.columns;
+  const layoutPriority = isLayoutPriority(r.layoutPriority) ? r.layoutPriority : defaults.layoutPriority;
+  const responsiveMode = isResponsiveMode(r.responsiveMode) ? r.responsiveMode : defaults.responsiveMode;
+  const mobileColumns = typeof r.mobileColumns === "number" && [1, 2, 3].includes(r.mobileColumns) ? r.mobileColumns : defaults.mobileColumns;
+  const mobileLayoutPriority = isLayoutPriority(r.mobileLayoutPriority) ? r.mobileLayoutPriority : defaults.mobileLayoutPriority;
+  const openOnStartup = typeof r.openOnStartup === "boolean" ? r.openOnStartup : defaults.openOnStartup;
+  const openMode = isOpenMode(r.openMode) ? r.openMode : defaults.openMode;
+  const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
+  const openWhenEmpty = typeof r.openWhenEmpty === "boolean" ? r.openWhenEmpty : defaults.openWhenEmpty;
+  const pin = typeof r.pin === "boolean" ? r.pin : defaults.pin;
+  const separateStartup = typeof r.separateStartup === "boolean" ? r.separateStartup : defaults.separateStartup;
+  const mobileOpenOnStartup = typeof r.mobileOpenOnStartup === "boolean" ? r.mobileOpenOnStartup : openOnStartup;
+  const mobileOpenMode = isOpenMode(r.mobileOpenMode) ? r.mobileOpenMode : openMode;
+  const mobileManualOpenMode = isOpenMode(r.mobileManualOpenMode) ? r.mobileManualOpenMode : manualOpenMode;
+  const mobileOpenWhenEmpty = typeof r.mobileOpenWhenEmpty === "boolean" ? r.mobileOpenWhenEmpty : openWhenEmpty;
+  const mobilePin = typeof r.mobilePin === "boolean" ? r.mobilePin : pin;
+  const showScrollbar = typeof r.showScrollbar === "boolean" ? r.showScrollbar : typeof r.hideScrollbar === "boolean" ? !r.hideScrollbar : defaults.showScrollbar;
+  const compactLayout = typeof r.compactLayout === "boolean" ? r.compactLayout : defaults.compactLayout;
+  const hoverHighlight = typeof r.hoverHighlight === "boolean" ? r.hoverHighlight : defaults.hoverHighlight;
+  const notAnArray = (v) => v !== void 0 && v !== null && !Array.isArray(v);
+  if (notAnArray(r.blocks) || notAnArray(r.mobileBlocks)) onTopLevelCorruption?.(raw);
+  let droppedBlocks = 0;
+  const countDropped = (n) => {
+    droppedBlocks += n;
+  };
+  const preserved = readPreserved(r);
+  const blocks = validateBlocks(r.blocks, columns, defaults.blocks, countDropped, (b) => preserved.blocks.push(b));
+  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks, countDropped, (b) => preserved.mobileBlocks.push(b));
+  if (droppedBlocks > 0) onBlocksDropped?.(droppedBlocks);
+  const layout = {
+    columns,
+    layoutPriority,
+    responsiveMode,
+    mobileColumns,
+    mobileLayoutPriority,
+    mobileBlocks,
+    openOnStartup,
+    openMode,
+    manualOpenMode,
+    openWhenEmpty,
+    pin,
+    separateStartup,
+    mobileOpenOnStartup,
+    mobileOpenMode,
+    mobileManualOpenMode,
+    mobileOpenWhenEmpty,
+    mobilePin,
+    showScrollbar,
+    compactLayout,
+    hoverHighlight,
+    blocks
+  };
+  if (preserved.blocks.length || preserved.mobileBlocks.length || Object.keys(preserved.fields).length) {
+    layout.preserved = preserved;
+  }
+  return layout;
+}
+var KNOWN_LAYOUT_KEYS = /* @__PURE__ */ new Set([...Object.keys(DEFAULT_LAYOUT_DATA), "hideScrollbar", "preserved"]);
+function readPreserved(r) {
+  const out = { blocks: [], mobileBlocks: [], fields: {} };
+  const prior = r.preserved;
+  if (prior && typeof prior === "object" && !Array.isArray(prior)) {
+    const p = prior;
+    if (Array.isArray(p.blocks)) out.blocks.push(...p.blocks.filter(isUnknownTypeBlock));
+    if (Array.isArray(p.mobileBlocks)) out.mobileBlocks.push(...p.mobileBlocks.filter(isUnknownTypeBlock));
+    if (p.fields && typeof p.fields === "object" && !Array.isArray(p.fields)) {
+      for (const [k, v] of Object.entries(p.fields)) if (!KNOWN_LAYOUT_KEYS.has(k)) out.fields[k] = v;
+    }
+  }
+  for (const [k, v] of Object.entries(r)) if (!KNOWN_LAYOUT_KEYS.has(k)) out.fields[k] = v;
+  return out;
+}
+function toStoredLayout(layout) {
+  const { preserved, ...rest } = layout;
+  if (!preserved) return rest;
+  return {
+    ...preserved.fields,
+    ...rest,
+    blocks: [...rest.blocks, ...preserved.blocks],
+    mobileBlocks: [...rest.mobileBlocks, ...preserved.mobileBlocks]
+  };
+}
+
+// src/grid/blockLimit.ts
+function canAddBlock(blocks) {
+  if (blocks.length < MAX_BLOCKS) return true;
+  new import_obsidian.Notice(`Homepage blocks: a homepage holds at most ${MAX_BLOCKS} blocks.`);
+  return false;
+}
 
 // src/utils/ids.ts
 function newId() {
@@ -6101,12 +6556,26 @@ function newId() {
 }
 
 // src/modals/BlockSettingsModal.ts
-var import_obsidian2 = require("obsidian");
+var import_obsidian4 = require("obsidian");
 
 // src/blocks/BaseBlock.ts
-var import_obsidian = require("obsidian");
+var import_obsidian3 = require("obsidian");
+
+// src/utils/dailySeed.ts
+var import_obsidian2 = require("obsidian");
+var MS_PER_DAY = 864e5;
+function dailyEpochDay() {
+  const now = (0, import_obsidian2.moment)();
+  return Math.floor(Date.UTC(now.year(), now.month(), now.date()) / MS_PER_DAY);
+}
+function dailyIndex(poolLength) {
+  if (poolLength <= 0) return 0;
+  return (dailyEpochDay() % poolLength + poolLength) % poolLength;
+}
+
+// src/blocks/BaseBlock.ts
 var TITLE_SIZE_RE = /^h[1-6]$/;
-var BaseBlock = class extends import_obsidian.Component {
+var BaseBlock = class extends import_obsidian3.Component {
   constructor(app, instance, plugin) {
     super();
     this.app = app;
@@ -6118,6 +6587,8 @@ var BaseBlock = class extends import_obsidian.Component {
   _renderGen = 0;
   _widthObserver = null;
   _widthRafId = 0;
+  _sizeObserver = null;
+  _sizeRafId = 0;
   /** Set by subclasses in render() to enable scheduleRender(). */
   containerEl = null;
   // Override to render block-specific content settings directly into `body`.
@@ -6157,6 +6628,18 @@ var BaseBlock = class extends import_obsidian.Component {
     const show = cfg._showTitle !== false && !!label;
     container.querySelector(".block-header")?.remove();
     container.toggleClass("hp-header-empty", !show);
+    if (container.hasClass("block-header-zone")) {
+      if (show) {
+        const collapsed = !!container.closest(".homepage-block-wrapper")?.hasClass("block-collapsed");
+        container.setAttribute("role", "button");
+        container.setAttribute("tabindex", "0");
+        container.setAttribute("aria-expanded", String(!collapsed));
+      } else {
+        container.removeAttribute("role");
+        container.removeAttribute("tabindex");
+        container.removeAttribute("aria-expanded");
+      }
+    }
     if (!show) return;
     const sizeClass = typeof cfg._titleSize === "string" && TITLE_SIZE_RE.test(cfg._titleSize) ? `block-header-${cfg._titleSize}` : "";
     const header = container.createDiv({ cls: `block-header${sizeClass ? " " + sizeClass : ""}` });
@@ -6196,7 +6679,7 @@ var BaseBlock = class extends import_obsidian.Component {
       const href = link?.getAttribute("data-href") || link?.getAttribute("href");
       if (!href) return;
       evt.preventDefault();
-      void this.app.workspace.openLinkText(href, sourcePath, import_obsidian.Keymap.isModEvent(evt));
+      void this.app.workspace.openLinkText(href, sourcePath, import_obsidian3.Keymap.isModEvent(evt));
     };
     el.addEventListener("click", open);
     el.addEventListener("auxclick", open);
@@ -6259,6 +6742,45 @@ var BaseBlock = class extends import_obsidian.Component {
     });
     this._widthObserver.observe(el);
   }
+  /**
+   * Like observeWidthForAutoHeight, for content whose height changes after the
+   * first render without the block re-rendering: an image that loads late, a
+   * folded callout opened, a Dataview refresh (M34). `el` must be content-sized
+   * (the AUTO_HEIGHT_ATTR element), or the cell's own resize would feed back.
+   */
+  observeSizeForAutoHeight(el) {
+    this.stopSizeObserver();
+    let prev = null;
+    this._sizeObserver = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect || rect.width <= 0) return;
+      if (prev && (rect.width !== prev.width || rect.height !== prev.height)) {
+        window.cancelAnimationFrame(this._sizeRafId);
+        this._sizeRafId = window.requestAnimationFrame(() => this.requestAutoHeight());
+      }
+      prev = { width: rect.width, height: rect.height };
+    });
+    this._sizeObserver.observe(el);
+  }
+  stopSizeObserver() {
+    this._sizeObserver?.disconnect();
+    this._sizeObserver = null;
+    window.cancelAnimationFrame(this._sizeRafId);
+  }
+  /**
+   * Run `fn` when the local calendar day changes while the block stays mounted,
+   * checked every minute. A daily-seeded quote or note otherwise kept
+   * yesterday's pick until the homepage re-rendered (M83).
+   */
+  onDayChange(fn) {
+    let day = dailyEpochDay();
+    this.registerInterval(window.setInterval(() => {
+      const today = dailyEpochDay();
+      if (today === day) return;
+      day = today;
+      fn();
+    }, 6e4));
+  }
   /** Increment and return a new render generation. Call at the start of async renders. */
   nextGeneration() {
     return ++this._renderGen;
@@ -6277,14 +6799,75 @@ var BaseBlock = class extends import_obsidian.Component {
       this._widthObserver = null;
       window.cancelAnimationFrame(this._widthRafId);
     }
+    this.stopSizeObserver();
   }
 };
+
+// src/utils/accentContrast.ts
+var THEMES = {
+  light: { bg: "#f6f6f6", text: "#222222" },
+  dark: { bg: "#262626", text: "#dadada" }
+};
+var DARK_TEXT = "#1a1a1a";
+var LIGHT_TEXT = "#f5f5f5";
+var MIN_CONTRAST = 4.5;
+function rgb(hex2) {
+  return [1, 3, 5].map((i) => parseInt(hex2.slice(i, i + 2), 16));
+}
+function hex([r, g, b]) {
+  return "#" + [r, g, b].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
+}
+function mix(a, pct, b) {
+  const p = pct / 100;
+  const ca = rgb(a);
+  const cb = rgb(b);
+  return hex([0, 1, 2].map((i) => ca[i] * p + cb[i] * (1 - p)));
+}
+function luminance(color) {
+  const [r, g, b] = rgb(color).map((c) => {
+    const s = c / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrastRatio(a, b) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+function better(bg, a, b) {
+  return contrastRatio(a, bg) >= contrastRatio(b, bg) ? a : b;
+}
+function accentColors(accent, pct, opaque, theme, headerAccent = true) {
+  const t = THEMES[theme];
+  const bg = opaque ? mix(accent, pct, t.bg) : t.bg;
+  const other = theme === "dark" ? DARK_TEXT : LIGHT_TEXT;
+  const flipText = opaque && contrastRatio(t.text, bg) < MIN_CONTRAST && contrastRatio(other, bg) > contrastRatio(t.text, bg);
+  const text = flipText ? other : t.text;
+  const darkCard = contrastRatio(LIGHT_TEXT, bg) >= contrastRatio(DARK_TEXT, bg);
+  const ctrl = darkCard ? mix(accent, 60, "#ffffff") : mix(accent, theme === "dark" ? 50 : 60, "#000000");
+  const plainAccentText = contrastRatio(ctrl, bg) < MIN_CONTRAST;
+  const headerBg = headerAccent ? mix(accent, 22, bg) : bg;
+  const headerMix = mix(accent, 85, text);
+  const plainHeader = contrastRatio(headerMix, headerBg) < MIN_CONTRAST;
+  return {
+    bg,
+    text,
+    flipText,
+    accentText: plainAccentText ? text : ctrl,
+    plainAccentText,
+    header: plainHeader ? text : headerMix,
+    headerBg,
+    plainHeader,
+    onAccent: better(accent, "#ffffff", DARK_TEXT)
+  };
+}
 
 // src/utils/blockStyling.ts
 var HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 var STYLE_RANGES = {
   _titleGap: { min: 0, max: 48 },
-  _cardPadding: { min: -48, max: 48 },
+  _cardPadding: { min: 0, max: 48 },
+  // negative values rendered as zero and pushed some content out (M106)
   _bgOpacity: { min: 0, max: 100 },
   _backdropBlur: { min: 0, max: 20 },
   _borderWidth: { min: 0, max: 4 },
@@ -6296,16 +6879,6 @@ var STYLE_RANGES = {
 function clampStyle(key, value) {
   const { min, max } = STYLE_RANGES[key];
   return Math.max(min, Math.min(max, value));
-}
-function hexChannelToLinear(c) {
-  const s = c / 255;
-  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-function getRelativeLuminance(hex) {
-  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
-  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
-  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 var VALID_BORDER_STYLES = ["solid", "dashed", "dotted"];
 var HP_BTN_KEY_RE = /^--hp-btn-[a-z0-9-]+$/;
@@ -6352,17 +6925,9 @@ function applyBlockStyling(el, config) {
     } else {
       el.style.removeProperty("--block-accent-pct");
     }
-    const DARK_BASE_LUM = 0.05;
-    const BRIGHT_ACCENT_THRESHOLD = 0.18;
-    const effectiveIntensity = intensity || 15;
-    const ratio = effectiveIntensity / 100;
-    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
-    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
-    el.toggleClass("block-bright-accent", needsDarkText);
   } else {
     el.style.removeProperty("--block-accent");
     el.style.removeProperty("--block-accent-pct");
-    el.toggleClass("block-bright-accent", false);
   }
   el.toggleClass("block-no-border", config._showBorder === false);
   el.toggleClass("block-no-background", config._showBackground === false);
@@ -6379,8 +6944,9 @@ function applyBlockStyling(el, config) {
   if (borderRadius) el.style.setProperty("--hp-border-radius", `${borderRadius}px`);
   else el.style.removeProperty("--hp-border-radius");
   const bgOpacity = typeof config._bgOpacity === "number" ? clampStyle("_bgOpacity", config._bgOpacity) : 100;
-  el.toggleClass("block-custom-opacity", bgOpacity < 100);
-  if (bgOpacity < 100) el.style.setProperty("--hp-bg-opacity", `${bgOpacity}%`);
+  const translucent = bgOpacity < 100 && config._showBackground !== false;
+  el.toggleClass("block-custom-opacity", translucent);
+  if (translucent) el.style.setProperty("--hp-bg-opacity", `${bgOpacity}%`);
   else el.style.removeProperty("--hp-bg-opacity");
   const backdropBlur = typeof config._backdropBlur === "number" ? clampStyle("_backdropBlur", config._backdropBlur) : 0;
   if (backdropBlur > 0 && bgOpacity < 100) {
@@ -6398,6 +6964,18 @@ function applyBlockStyling(el, config) {
     el.style.removeProperty("--hp-bg-gradient");
     el.toggleClass("block-has-gradient", false);
   }
+  const accentIntensity = typeof config._accentIntensity === "number" ? clampStyle("_accentIntensity", config._accentIntensity) : 15;
+  const opaque = config._showBackground !== false && bgOpacity >= 100 && !(gradStart && gradEnd);
+  const headerAccent = config._showHeaderAccent !== false;
+  const light = accentColor ? accentColors(accentColor, accentIntensity, opaque, "light", headerAccent) : null;
+  const dark = accentColor ? accentColors(accentColor, accentIntensity, opaque, "dark", headerAccent) : null;
+  el.toggleClass("block-bright-accent", !!dark?.flipText);
+  el.toggleClass("block-dark-accent", !!light?.flipText);
+  el.toggleClass("hp-plain-header-light", !!light?.plainHeader);
+  el.toggleClass("hp-plain-header-dark", !!dark?.plainHeader);
+  el.toggleClass("hp-plain-accent-light", !!light?.plainAccentText);
+  el.toggleClass("hp-plain-accent-dark", !!dark?.plainAccentText);
+  el.toggleClass("hp-dark-on-accent", light?.onAccent === "#1a1a1a");
   const borderWidth = typeof config._borderWidth === "number" ? clampStyle("_borderWidth", config._borderWidth) : 0;
   if (borderWidth) el.style.setProperty("--hp-border-width", `${borderWidth}px`);
   else el.style.removeProperty("--hp-border-width");
@@ -6761,6 +7339,7 @@ function createEmojiPicker(opts) {
     container,
     panelContainer,
     label,
+    ariaLabel,
     value,
     placeholder,
     rowClass,
@@ -6774,7 +7353,7 @@ function createEmojiPicker(opts) {
   if (label) {
     row.createSpan({ cls: "setting-item-name", text: label });
   }
-  const triggerBtn = row.createEl("button", { cls: "emoji-picker-trigger" });
+  const triggerBtn = row.createEl("button", { cls: "emoji-picker-trigger", attr: { "aria-label": label ?? ariaLabel ?? "Choose emoji" } });
   const clearBtn = row.createEl("button", { cls: "emoji-picker-clear", text: "\u2715" });
   clearBtn.setAttribute("aria-label", "Clear emoji");
   const updateTrigger = () => {
@@ -6838,6 +7417,13 @@ function createEmojiPicker(opts) {
     onClear();
     close();
   });
+  panel.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || panel.hasClass("hp-hidden")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+    triggerBtn.focus();
+  });
   let searchTimer = null;
   searchInput.addEventListener("input", () => {
     if (searchTimer) window.clearTimeout(searchTimer);
@@ -6881,7 +7467,7 @@ var ACCENT_PRESETS = [
   "#6c5ce7",
   "#636e72"
 ];
-var BlockSettingsModal = class extends import_obsidian2.Modal {
+var BlockSettingsModal = class extends import_obsidian4.Modal {
   constructor(app, instance, block, onSave) {
     super(app);
     this.instance = instance;
@@ -6894,6 +7480,8 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
   tabBodyEl = null;
   tabButtons = /* @__PURE__ */ new Map();
   defaultTitle = "";
+  /** The title the block draws by default; '' when it draws no header. */
+  blockTitle = "";
   refreshPreview = () => {
   };
   onOpen() {
@@ -6902,12 +7490,13 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     contentEl.addClass("hp-block-settings-modal");
     this.draft = structuredClone(this.instance.config);
     const factory = BlockRegistry.get(this.instance.type);
-    this.defaultTitle = factory?.displayName ?? this.instance.type;
+    this.blockTitle = BlockRegistry.get(this.instance.type) ? blockTitle(this.instance.type) : "";
+    this.defaultTitle = this.blockTitle || factory?.displayName || this.instance.type;
     this.accentDirty = !!(typeof this.draft._accentColor === "string" && this.draft._accentColor);
     const hasStart = typeof this.draft._gradientStart === "string" && HEX_COLOR_RE.test(this.draft._gradientStart);
     const hasEnd = typeof this.draft._gradientEnd === "string" && HEX_COLOR_RE.test(this.draft._gradientEnd);
     this.gradDirty = hasStart && hasEnd;
-    new import_obsidian2.Setting(contentEl).setName(`Block settings \u2014 ${this.defaultTitle}`).setHeading();
+    new import_obsidian4.Setting(contentEl).setName(`Block settings \u2014 ${this.defaultTitle}`).setHeading();
     const previewWrap = contentEl.createDiv({ cls: "hp-settings-preview-wrap" });
     const previewCard = previewWrap.createDiv({ cls: "settings-preview-card homepage-block-wrapper" });
     const previewHeaderZone = previewCard.createDiv({ cls: "block-header-zone" });
@@ -6927,7 +7516,7 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
       previewHeader.className = "block-header";
       const sz = typeof d._titleSize === "string" && TITLE_SIZE_RE.test(d._titleSize) ? d._titleSize : "";
       if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.toggleClass("hp-hidden", d._showTitle === false);
+      previewHeaderZone.toggleClass("hp-hidden", d._showTitle === false || !this.blockTitle);
       previewDivider.toggleClass("hp-hidden", d._showDivider !== true);
       applyBlockStyling(previewCard, d);
     };
@@ -6951,7 +7540,7 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
       this.tabButtons.set(t.id, btn);
     }
     this.tabBodyEl = contentEl.createDiv({ cls: "hp-settings-tabbody" });
-    new import_obsidian2.Setting(contentEl).addButton(
+    new import_obsidian4.Setting(contentEl).addButton(
       (btn) => btn.setButtonText("Save").setCta().onClick(() => this.commit())
     ).addButton(
       (btn) => btn.setButtonText("Cancel").onClick(() => this.close())
@@ -6981,7 +7570,11 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     }
   }
   renderHeaderTab(body) {
-    new import_obsidian2.Setting(body).setName("Title label").setDesc("Leave blank for the default.").addText(
+    if (!this.blockTitle) {
+      body.createDiv({ cls: "setting-item-description", text: "This block has no title." });
+      return;
+    }
+    new import_obsidian4.Setting(body).setName("Title label").setDesc("Leave blank for the default.").addText(
       (t) => t.setValue(typeof this.draft._titleLabel === "string" ? this.draft._titleLabel : "").setPlaceholder("Default title").onChange((v) => {
         this.draft._titleLabel = v;
         this.refreshPreview();
@@ -7001,31 +7594,31 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
         this.refreshPreview();
       }
     });
-    new import_obsidian2.Setting(body).setName("Show title").addToggle(
+    new import_obsidian4.Setting(body).setName("Show title").addToggle(
       (t) => t.setValue(this.draft._showTitle !== false).onChange((v) => {
         this.draft._showTitle = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Title size").addDropdown(
+    new import_obsidian4.Setting(body).setName("Title size").addDropdown(
       (d) => d.addOption("", "Default").addOption("h1", "H1").addOption("h2", "H2").addOption("h3", "H3").addOption("h4", "H4").addOption("h5", "H5").addOption("h6", "H6").setValue(typeof this.draft._titleSize === "string" ? this.draft._titleSize : "").onChange((v) => {
         this.draft._titleSize = TITLE_SIZE_RE.test(v) ? v : "";
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Show divider after title").setDesc("Show a thin line between the title and content.").addToggle(
+    new import_obsidian4.Setting(body).setName("Show divider after title").setDesc("Show a thin line between the title and content.").addToggle(
       (t) => t.setValue(this.draft._showDivider === true).onChange((v) => {
         this.draft._showDivider = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Title gap").setDesc("Gap between title and content in pixels (0 = default).").addSlider(
+    new import_obsidian4.Setting(body).setName("Title gap").setDesc("Gap between title and content in pixels (0 = default).").addSlider(
       (s) => s.setLimits(STYLE_RANGES._titleGap.min, STYLE_RANGES._titleGap.max, 2).setValue(typeof this.draft._titleGap === "number" ? this.draft._titleGap : 0).setDynamicTooltip().onChange((v) => {
         this.draft._titleGap = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Show header bar").setDesc("Show the colored header accent behind the title.").addToggle(
+    new import_obsidian4.Setting(body).setName("Show header bar").setDesc("Show the colored header accent behind the title.").addToggle(
       (t) => t.setValue(this.draft._showHeaderAccent !== false).onChange((v) => {
         this.draft._showHeaderAccent = v;
         this.refreshPreview();
@@ -7033,25 +7626,25 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     );
   }
   renderBodyTab(body) {
-    new import_obsidian2.Setting(body).setName("Padding").setDesc("Inner padding in pixels (0 = default). Negative values allowed.").addSlider(
+    new import_obsidian4.Setting(body).setName("Padding").setDesc("Inner padding in pixels (0 = default).").addSlider(
       (s) => s.setLimits(STYLE_RANGES._cardPadding.min, STYLE_RANGES._cardPadding.max, 4).setValue(typeof this.draft._cardPadding === "number" ? this.draft._cardPadding : 0).setDynamicTooltip().onChange((v) => {
         this.draft._cardPadding = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Show background").setDesc("Show the body background. Turn off to let the block blend into the page.").addToggle(
+    new import_obsidian4.Setting(body).setName("Show background").setDesc("Show the body background. Turn off to let the block blend into the page.").addToggle(
       (t) => t.setValue(this.draft._showBackground !== false).onChange((v) => {
         this.draft._showBackground = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Background opacity").setDesc("Body background transparency (100 = fully opaque).").addSlider(
+    new import_obsidian4.Setting(body).setName("Background opacity").setDesc("Body background transparency (100 = fully opaque).").addSlider(
       (s) => s.setLimits(STYLE_RANGES._bgOpacity.min, STYLE_RANGES._bgOpacity.max, 5).setValue(typeof this.draft._bgOpacity === "number" ? this.draft._bgOpacity : 100).setDynamicTooltip().onChange((v) => {
         this.draft._bgOpacity = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Backdrop blur").setDesc("Blur behind the body (only visible when opacity < 100).").addSlider(
+    new import_obsidian4.Setting(body).setName("Backdrop blur").setDesc("Blur behind the body (only visible when opacity < 100).").addSlider(
       (s) => s.setLimits(STYLE_RANGES._backdropBlur.min, STYLE_RANGES._backdropBlur.max, 1).setValue(typeof this.draft._backdropBlur === "number" ? this.draft._backdropBlur : 0).setDynamicTooltip().onChange((v) => {
         this.draft._backdropBlur = v;
         this.refreshPreview();
@@ -7064,37 +7657,39 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     });
     let gradStartRef = null;
     let gradEndRef = null;
-    new import_obsidian2.Setting(body).setName("Start color").addColorPicker((cp) => {
+    new import_obsidian4.Setting(body).setName("Start color").addColorPicker((cp) => {
       gradStartRef = cp;
       const seed = typeof this.draft._gradientStart === "string" && this.draft._gradientStart ? this.draft._gradientStart : "#667eea";
       cp.setValue(seed).onChange((v) => {
         this.draft._gradientStart = v;
+        if (!this.gradDirty && gradEndRef) this.draft._gradientEnd = gradEndRef.getValue();
         this.gradDirty = true;
         this.refreshPreview();
       });
     });
-    new import_obsidian2.Setting(body).setName("End color").addColorPicker((cp) => {
+    new import_obsidian4.Setting(body).setName("End color").addColorPicker((cp) => {
       gradEndRef = cp;
       const seed = typeof this.draft._gradientEnd === "string" && this.draft._gradientEnd ? this.draft._gradientEnd : "#764ba2";
       cp.setValue(seed).onChange((v) => {
         this.draft._gradientEnd = v;
+        if (!this.gradDirty && gradStartRef) this.draft._gradientStart = gradStartRef.getValue();
         this.gradDirty = true;
         this.refreshPreview();
       });
     });
-    new import_obsidian2.Setting(body).setName("Angle").addSlider(
+    new import_obsidian4.Setting(body).setName("Angle").addSlider(
       (s) => s.setLimits(STYLE_RANGES._gradientAngle.min, STYLE_RANGES._gradientAngle.max, 15).setValue(typeof this.draft._gradientAngle === "number" ? this.draft._gradientAngle : 135).setDynamicTooltip().onChange((v) => {
         this.draft._gradientAngle = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).addButton(
+    new import_obsidian4.Setting(body).addButton(
       (btn) => btn.setButtonText("Clear gradient").onClick(() => {
+        gradStartRef?.setValue("#667eea");
+        gradEndRef?.setValue("#764ba2");
         this.draft._gradientStart = "";
         this.draft._gradientEnd = "";
         this.gradDirty = false;
-        gradStartRef?.setValue("#667eea");
-        gradEndRef?.setValue("#764ba2");
         this.refreshPreview();
       })
     );
@@ -7102,7 +7697,7 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
   renderCardTab(body) {
     let cpRef = null;
     const currentColor = typeof this.draft._accentColor === "string" ? this.draft._accentColor : "";
-    const accentRow = new import_obsidian2.Setting(body).setName("Accent color").setDesc("Tints header, body, and border.");
+    const accentRow = new import_obsidian4.Setting(body).setName("Accent color").setDesc("Tints header, body, and border.");
     accentRow.addColorPicker((cp) => {
       cpRef = cp;
       cp.setValue(currentColor || "#888888").onChange((v) => {
@@ -7113,27 +7708,27 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
     });
     accentRow.addExtraButton(
       (btn) => btn.setIcon("x").setTooltip("Clear accent color").onClick(() => {
+        cpRef?.setValue("#888888");
         this.draft._accentColor = "";
         this.accentDirty = false;
-        cpRef?.setValue("#888888");
         this.refreshPreview();
       })
     );
     const swatchRow = body.createDiv({ cls: "accent-preset-row" });
-    for (const hex of ACCENT_PRESETS) {
+    for (const hex2 of ACCENT_PRESETS) {
       const swatch = swatchRow.createEl("button", {
         cls: "accent-preset-swatch",
-        attr: { type: "button", "aria-label": `Accent ${hex}` }
+        attr: { type: "button", "aria-label": `Accent ${hex2}` }
       });
-      swatch.style.setProperty("--hp-swatch-bg", hex);
+      swatch.style.setProperty("--hp-swatch-bg", hex2);
       swatch.addEventListener("click", () => {
-        this.draft._accentColor = hex;
+        this.draft._accentColor = hex2;
         this.accentDirty = true;
-        cpRef?.setValue(hex);
+        cpRef?.setValue(hex2);
         this.refreshPreview();
       });
     }
-    new import_obsidian2.Setting(body).setName("Accent intensity").setDesc("Strength of the accent tint (5\u2013100%).").addSlider((s) => {
+    new import_obsidian4.Setting(body).setName("Accent intensity").setDesc("Strength of the accent tint (5\u2013100%).").addSlider((s) => {
       s.setLimits(STYLE_RANGES._accentIntensity.min, STYLE_RANGES._accentIntensity.max, 5).setValue(typeof this.draft._accentIntensity === "number" ? this.draft._accentIntensity : 15).setDynamicTooltip().onChange((v) => {
         this.draft._accentIntensity = v;
         this.refreshPreview();
@@ -7144,32 +7739,32 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
       });
     });
     body.createDiv({ cls: "hp-settings-subhead", text: "Border" });
-    new import_obsidian2.Setting(body).setName("Show border").setDesc("Show the border and hover highlight.").addToggle(
+    new import_obsidian4.Setting(body).setName("Show border").setDesc("Show the border and hover highlight.").addToggle(
       (t) => t.setValue(this.draft._showBorder !== false).onChange((v) => {
         this.draft._showBorder = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Width").setDesc("Border thickness in pixels (0 = default).").addSlider(
+    new import_obsidian4.Setting(body).setName("Width").setDesc("Border thickness in pixels (0 = default).").addSlider(
       (s) => s.setLimits(STYLE_RANGES._borderWidth.min, STYLE_RANGES._borderWidth.max, 1).setValue(typeof this.draft._borderWidth === "number" ? this.draft._borderWidth : 0).setDynamicTooltip().onChange((v) => {
         this.draft._borderWidth = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Style").addDropdown(
+    new import_obsidian4.Setting(body).setName("Style").addDropdown(
       (d) => d.addOption("", "Default").addOption("solid", "Solid").addOption("dashed", "Dashed").addOption("dotted", "Dotted").setValue(typeof this.draft._borderStyle === "string" ? this.draft._borderStyle : "").onChange((v) => {
         this.draft._borderStyle = v;
         this.refreshPreview();
       })
     );
-    new import_obsidian2.Setting(body).setName("Radius").setDesc("Corner rounding in pixels (0 = theme default).").addSlider(
+    new import_obsidian4.Setting(body).setName("Radius").setDesc("Corner rounding in pixels (0 = theme default).").addSlider(
       (s) => s.setLimits(STYLE_RANGES._borderRadius.min, STYLE_RANGES._borderRadius.max, 2).setValue(typeof this.draft._borderRadius === "number" ? this.draft._borderRadius : 0).setDynamicTooltip().onChange((v) => {
         this.draft._borderRadius = v;
         this.refreshPreview();
       })
     );
     body.createDiv({ cls: "hp-settings-subhead", text: "Shadow" });
-    new import_obsidian2.Setting(body).setName("Elevation").setDesc("Card shadow depth.").addDropdown(
+    new import_obsidian4.Setting(body).setName("Elevation").setDesc("Card shadow depth.").addDropdown(
       (d) => d.addOption("0", "None").addOption("1", "Subtle").addOption("2", "Medium").addOption("3", "Elevated").setValue(String(typeof this.draft._elevation === "number" ? this.draft._elevation : 0)).onChange((v) => {
         this.draft._elevation = Number(v);
         this.refreshPreview();
@@ -7200,8 +7795,8 @@ var BlockSettingsModal = class extends import_obsidian2.Modal {
 };
 
 // src/modals/RemoveBlockConfirmModal.ts
-var import_obsidian3 = require("obsidian");
-var RemoveBlockConfirmModal = class extends import_obsidian3.Modal {
+var import_obsidian5 = require("obsidian");
+var RemoveBlockConfirmModal = class extends import_obsidian5.Modal {
   constructor(app, onConfirm, blockLabel) {
     super(app);
     this.onConfirm = onConfirm;
@@ -7210,10 +7805,10 @@ var RemoveBlockConfirmModal = class extends import_obsidian3.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian3.Setting(contentEl).setName("Remove block?").setHeading();
+    new import_obsidian5.Setting(contentEl).setName("Remove block?").setHeading();
     const what = this.blockLabel ? `the \u201C${this.blockLabel}\u201D block` : "this block";
     contentEl.createEl("p", { text: `This will remove ${what} from your homepage.` });
-    new import_obsidian3.Setting(contentEl).addButton((btn) => {
+    new import_obsidian5.Setting(contentEl).addButton((btn) => {
       btn.setButtonText("Cancel").setCta().onClick(() => this.close());
       window.setTimeout(() => btn.buttonEl.focus(), 0);
     }).addButton(
@@ -7232,30 +7827,31 @@ var RemoveBlockConfirmModal = class extends import_obsidian3.Modal {
 function attachEditHandleBar(host, wrapper, instance) {
   const bar = wrapper.createDiv({ cls: "block-handle-bar" });
   const handle = bar.createDiv({ cls: "block-move-handle" });
-  (0, import_obsidian4.setIcon)(handle, "grip-vertical");
+  (0, import_obsidian6.setIcon)(handle, "grip-vertical");
+  handle.setAttribute("role", "img");
   handle.setAttribute("aria-label", "Drag to reorder");
   handle.setAttribute("title", "Drag to reorder");
   const moveUpBtn = bar.createEl("button", { cls: "block-move-up-btn" });
-  (0, import_obsidian4.setIcon)(moveUpBtn, "chevron-up");
+  (0, import_obsidian6.setIcon)(moveUpBtn, "chevron-up");
   moveUpBtn.setAttribute("aria-label", "Move block up");
   moveUpBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     swapWithNeighbor(host, instance, "up");
   });
   const moveDownBtn = bar.createEl("button", { cls: "block-move-down-btn" });
-  (0, import_obsidian4.setIcon)(moveDownBtn, "chevron-down");
+  (0, import_obsidian6.setIcon)(moveDownBtn, "chevron-down");
   moveDownBtn.setAttribute("aria-label", "Move block down");
   moveDownBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     swapWithNeighbor(host, instance, "down");
   });
   const dupBtn = bar.createEl("button", { cls: "block-duplicate-btn" });
-  (0, import_obsidian4.setIcon)(dupBtn, "copy");
+  (0, import_obsidian6.setIcon)(dupBtn, "copy");
   dupBtn.setAttribute("aria-label", "Duplicate block");
   dupBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     const current = host.plugin.activeBlocks().find((b) => b.id === instance.id);
-    if (!current) return;
+    if (!current || !canAddBlock(host.plugin.activeBlocks())) return;
     const clone = {
       ...structuredClone(current),
       id: newId(),
@@ -7267,7 +7863,7 @@ function attachEditHandleBar(host, wrapper, instance) {
     host.triggerRerender();
   });
   const settingsBtn = bar.createEl("button", { cls: "block-settings-btn" });
-  (0, import_obsidian4.setIcon)(settingsBtn, "settings");
+  (0, import_obsidian6.setIcon)(settingsBtn, "settings");
   settingsBtn.setAttribute("aria-label", "Block settings");
   settingsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -7306,7 +7902,7 @@ function attachEditHandleBar(host, wrapper, instance) {
     modal.open();
   });
   const removeBtn = bar.createEl("button", { cls: "block-remove-btn" });
-  (0, import_obsidian4.setIcon)(removeBtn, "x");
+  (0, import_obsidian6.setIcon)(removeBtn, "x");
   removeBtn.setAttribute("aria-label", "Remove block");
   removeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -7469,7 +8065,7 @@ function repackEditLayout(blocks, columns, priority = "row") {
 // src/grid/BlockWrapper.ts
 function buildBlockWrapper(container, instance, animDelayMs) {
   const classes = ["homepage-block-wrapper", `hp-block-${instance.type}`];
-  const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
+  const effectiveCollapsed = isCollapsible(instance) && instance.config._showTitle !== false;
   if (effectiveCollapsed) classes.push("block-collapsed");
   const wrapper = container.createDiv({
     cls: classes.join(" "),
@@ -7479,10 +8075,7 @@ function buildBlockWrapper(container, instance, animDelayMs) {
   if (animDelayMs !== void 0) {
     wrapper.style.setProperty("--hp-card-anim-delay", `${animDelayMs}ms`);
   }
-  const headerZone = wrapper.createDiv({
-    cls: "block-header-zone hp-header-empty",
-    attr: { role: "button", tabindex: "0", "aria-expanded": String(!effectiveCollapsed) }
-  });
+  const headerZone = wrapper.createDiv({ cls: "block-header-zone hp-header-empty" });
   headerZone.createSpan({
     cls: "block-collapse-chevron" + (effectiveCollapsed ? " is-collapsed" : ""),
     attr: { "aria-hidden": "true" }
@@ -7508,7 +8101,7 @@ function removeSkeleton(el, scheduler) {
   scheduler.timeout(token, 200, () => el.remove());
 }
 function renderCompactPlaceholder(headerZone, contentEl, factory, instance) {
-  const titleLabel = typeof instance.config._titleLabel === "string" && instance.config._titleLabel ? instance.config._titleLabel : factory.displayName;
+  const titleLabel = typeof instance.config._titleLabel === "string" && instance.config._titleLabel ? instance.config._titleLabel : blockTitle(instance.type) || factory.displayName;
   const emoji = typeof instance.config._titleEmoji === "string" ? instance.config._titleEmoji : "";
   headerZone.removeClass("hp-header-empty");
   const header = headerZone.createDiv({ cls: "block-header" });
@@ -7537,6 +8130,7 @@ function renderEmptyState(gridEl, opts) {
 
 // src/GridLayout.ts
 var COMPACT_EDIT_H = 2;
+var SKELETON_MAX_MS = 300;
 var GridLayout = class {
   // ── Public API ─────────────────────────────────────────────────────────
   constructor(containerEl, app, plugin, onLayoutChange) {
@@ -7626,6 +8220,7 @@ var GridLayout = class {
     return this.gridEl;
   }
   render(blocks, columns, isInitial = false) {
+    const restoreView = isInitial ? null : this.captureViewState();
     this.teardown();
     this.phase = Phase.Ready;
     this.gridEl.setAttribute("role", "list");
@@ -7646,6 +8241,38 @@ var GridLayout = class {
       return;
     }
     this.initGridStack(blocks, columns, isInitial);
+    if (this.editMode && this.zoom < 1) this.applyZoom(this.zoom);
+    restoreView?.();
+  }
+  /**
+   * The scroll positions from the grid up to its view, and the focused control
+   * (its block and class), as a function that puts them back after a re-render.
+   */
+  captureViewState() {
+    const scrolled = [];
+    const view = this.gridEl.closest(".homepage-view");
+    for (let el = this.gridEl; el; el = el.parentElement) {
+      if (el.scrollTop > 0) scrolled.push([el, el.scrollTop]);
+      if (el === view) break;
+    }
+    const active = this.gridEl.doc.activeElement;
+    let refocus = null;
+    if (active instanceof HTMLElement && active !== this.gridEl && this.gridEl.contains(active) && active.classList.length > 0) {
+      const id = active.closest("[gs-id]")?.getAttribute("gs-id");
+      if (id) refocus = `[gs-id="${CSS.escape(id)}"] .${CSS.escape(active.classList[0])}`;
+    }
+    return () => {
+      for (const [el, top] of scrolled) el.scrollTop = top;
+      if (refocus) this.gridEl.querySelector(refocus)?.focus({ preventScroll: true });
+    };
+  }
+  /**
+   * True when the grid is in a popout window. GridStack binds its pointer
+   * listeners to the main window's document, so drag and resize do not work
+   * there and could leave its drag state stuck for the main window (M29).
+   */
+  inPopout() {
+    return this.gridEl.win !== window;
   }
   /** Full teardown: unload blocks and remove the grid element from the DOM. */
   destroy() {
@@ -7655,6 +8282,7 @@ var GridLayout = class {
   }
   setEditMode(enabled, skipRepack = false, flushInFlight = true) {
     if (this.phase === Phase.Destroyed) return;
+    const entering = enabled && !this.editMode;
     this.derivedPersistHeld = false;
     if (enabled && !this.editMode && this.scheduler.hasTimeout("sync")) {
       this.scheduler.cancelTimeout("sync");
@@ -7676,12 +8304,32 @@ var GridLayout = class {
       this.effectiveColumns = this.canonicalColumns;
     }
     if (this.gridStack) {
-      this.gridStack.setStatic(!enabled);
+      this.gridStack.setStatic(!enabled || this.inPopout());
+    }
+    if (entering && this.inPopout()) {
+      new import_obsidian7.Notice("Dragging and resizing blocks don\u2019t work in a pop-out window. Use the arrow buttons on each block to reorder them.");
     }
     this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
     if (!enabled) {
       this.setZoom(1);
     }
+  }
+  /** Zoom of the edit-mode grid, re-applied after each edit-mode re-render (M71). */
+  zoom = 1;
+  /** Wheel listener that holds the scroll during a zoomed drag (M26). */
+  wheelHold = null;
+  holdWheelWhileDragging(on) {
+    const view = this.gridEl.closest(".homepage-view");
+    const target = view instanceof HTMLElement ? view : this.gridEl;
+    if (this.wheelHold) {
+      target.removeEventListener("wheel", this.wheelHold);
+      this.wheelHold = null;
+    }
+    if (!on) return;
+    this.wheelHold = (e) => {
+      e.preventDefault();
+    };
+    target.addEventListener("wheel", this.wheelHold, { passive: false });
   }
   /**
    * Cancel any queued debounced layout persist + auto-height measurement.
@@ -7708,8 +8356,14 @@ var GridLayout = class {
   }
   /** Apply a zoom scale (0.1–1) via CSS transform. */
   setZoom(scale) {
-    if (!this.gridEl.isConnected) return;
     if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+    this.zoom = Math.min(scale, 1);
+    this.applyZoom(this.zoom);
+  }
+  applyZoom(scale) {
+    if (!this.gridEl.isConnected) return;
+    const draggable = this.gridStack?.opts.draggable;
+    if (draggable) draggable.scroll = scale >= 1;
     if (scale >= 1) {
       this.gridEl.style.removeProperty("--hp-grid-transform");
       this.gridEl.removeClass("hp-zoomed");
@@ -7722,7 +8376,7 @@ var GridLayout = class {
   }
   /** Compute zoom scale that fits all grid content in the viewport. */
   computeFitZoom() {
-    if (!this.gridEl.isConnected) return 1;
+    if (!this.gridEl.isConnected || this.effectiveColumns === 1) return 1;
     const viewportHeight = this.gridEl.parentElement?.clientHeight ?? 0;
     const contentHeight = this.gridEl.scrollHeight;
     if (viewportHeight <= 0 || contentHeight <= viewportHeight) return 1;
@@ -7731,6 +8385,7 @@ var GridLayout = class {
   }
   addBlock(instance) {
     if (this.phase === Phase.Destroyed) return;
+    if (!canAddBlock(this.plugin.activeBlocks())) return;
     const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
     const positioned = { ...instance, y: maxY };
     const newBlocks = [...this.plugin.activeBlocks(), positioned];
@@ -7764,6 +8419,8 @@ var GridLayout = class {
       this.gridStack = null;
     }
     this.gridEl.removeClass("hp-dragging");
+    this.holdWheelWhileDragging(false);
+    this.gridEl.removeClass("homepage-grid--animating");
     this.gridEl.empty();
     this.gridEl.removeClass("viewport-fit");
     this.gridEl.style.removeProperty("--hp-grid-transform");
@@ -7790,14 +8447,14 @@ var GridLayout = class {
       packRows(items, columns, this.plugin.activeLayoutPriority());
     }
     this.effectiveColumns = columns;
-    this.gridEl.classList.toggle("hp-single-column", columns === 1);
+    this.gridEl.classList.toggle("hp-single-column", columns === 1 && !this.editMode);
     this.gridStack = GridStack.init({
       column: columns,
       cellHeight: 80,
       margin: 8,
       float: true,
       animate: true,
-      staticGrid: !this.editMode,
+      staticGrid: !this.editMode || this.inPopout(),
       removable: false,
       handleClass: "block-move-handle",
       // Horizontal-only resize in edit mode (vertical managed by sizeToContent / GridStack rows).
@@ -7815,15 +8472,15 @@ var GridLayout = class {
         const nb = b.gridstackNode;
         return (na?.y ?? 0) - (nb?.y ?? 0) || (na?.x ?? 0) - (nb?.x ?? 0);
       });
-      for (const el of gridItems) {
-        this.gridEl.appendChild(el);
-      }
+      orderChildren(this.gridEl, gridItems);
     }
     this.gridStack.on("dragstart", () => {
       this.gridEl.addClass("hp-dragging");
+      this.holdWheelWhileDragging(this.zoom < 1);
     });
     this.gridStack.on("dragstop", () => {
       this.gridEl.removeClass("hp-dragging");
+      this.holdWheelWhileDragging(false);
       if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
     });
@@ -7839,7 +8496,11 @@ var GridLayout = class {
       this.lastAddedBlockId = null;
       const el = this.gridEl.querySelector(`[gs-id="${CSS.escape(targetId)}"]`);
       if (el instanceof HTMLElement) {
-        el.querySelector(".homepage-block-wrapper")?.addClass("block-just-added");
+        const wrapper = el.querySelector(".homepage-block-wrapper");
+        if (wrapper instanceof HTMLElement) {
+          wrapper.addClass("block-just-added");
+          wrapper.addEventListener("animationend", () => wrapper.removeClass("block-just-added"), { once: true });
+        }
         el.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
     }
@@ -7892,6 +8553,7 @@ var GridLayout = class {
         });
       }
       const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
+      if (skeletonEl) this.scheduler.timeout(`skeleton-cap-${instance.id}`, SKELETON_MAX_MS, () => removeSkeleton(skeletonEl, this.scheduler));
       let result;
       try {
         result = block.render(contentEl);
@@ -7998,30 +8660,7 @@ var GridLayout = class {
 };
 
 // src/EditToolbar.ts
-var import_obsidian5 = require("obsidian");
-
-// src/blockMeta.ts
-var BLOCK_META = {
-  "greeting": { icon: "\u{1F44B}", desc: "Personalized greeting with time of day" },
-  "clock": { icon: "\u{1F550}", desc: "Live clock with date display" },
-  "folder-links": { icon: "\u{1F517}", desc: "Quick links to notes and folders" },
-  "button-grid": { icon: "\u{1F532}", desc: "Grid of emoji-labeled buttons" },
-  "quotes-list": { icon: "\u{1F4AC}", desc: "Collection of quotes from notes" },
-  "image-gallery": { icon: "\u{1F5BC}\uFE0F", desc: "Photo grid from a vault folder" },
-  "embedded-note": { icon: "\u{1F4C4}", desc: "Render a note inline on the page" },
-  "static-text": { icon: "\u{1F4DD}", desc: "Markdown text block you write directly" },
-  "html": { icon: "</>", desc: "Custom HTML content (sanitized)" },
-  "video-embed": { icon: "\u{1F3AC}", desc: "Embed YouTube, Vimeo, or other videos" },
-  "bookmarks": { icon: "\u{1F516}", desc: "Web links and vault bookmarks grid" },
-  "recent-files": { icon: "\u{1F4C2}", desc: "Recently modified notes in your vault" },
-  "pomodoro": { icon: "\u{1F345}", desc: "Pomodoro timer with work/break cycles" },
-  "spacer": { icon: "\u2B1C", desc: "Empty space for layout spacing" },
-  "random-note": { icon: "\u{1F3B2}", desc: "Random note card with cover image and preview" },
-  "voice-dictation": { icon: "\u{1F399}\uFE0F", desc: "Record voice notes saved automatically to a folder" },
-  "vault-search": { icon: "\u{1F50D}", desc: "Search notes by name with live results" }
-};
-
-// src/EditToolbar.ts
+var import_obsidian8 = require("obsidian");
 var EditToolbar = class {
   constructor(containerEl, app, plugin, grid, onColumnsChange, session = { canStart: () => true, ended: () => {
   } }) {
@@ -8035,7 +8674,7 @@ var EditToolbar = class {
     this.fabEl.setAttribute("role", "button");
     this.fabEl.setAttribute("tabindex", "0");
     this.fabEl.setAttribute("aria-label", "Enter edit mode");
-    (0, import_obsidian5.setIcon)(this.fabEl, "pencil");
+    (0, import_obsidian8.setIcon)(this.fabEl, "pencil");
     this.fabEl.addEventListener("click", () => this.toggleEditMode());
     this.fabEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -8047,6 +8686,7 @@ var EditToolbar = class {
     this.toolbarEl.setAttribute("role", "toolbar");
     this.toolbarEl.setAttribute("aria-label", "Homepage toolbar");
     this.renderToolbar();
+    this.syncVisibility();
   }
   toolbarEl;
   fabEl;
@@ -8059,7 +8699,7 @@ var EditToolbar = class {
   /** Toggle edit mode — called from FAB, Done button, and keyboard shortcut command. */
   toggleEditMode() {
     if (!this.editMode && !this.session.canStart()) {
-      new import_obsidian5.Notice("The homepage is already being edited in another tab.");
+      new import_obsidian8.Notice("The homepage is already being edited in another tab.");
       return;
     }
     this.editMode = !this.editMode;
@@ -8120,10 +8760,17 @@ var EditToolbar = class {
   syncVisibility() {
     this.fabEl.toggleClass("is-hidden", this.editMode);
     this.toolbarEl.toggleClass("is-visible", this.editMode);
+    this.toolbarEl.toggleAttribute("inert", !this.editMode);
     const view = this.toolbarEl.closest(".homepage-view");
     if (view instanceof HTMLElement) view.toggleClass("hp-toolbar-open", this.editMode);
   }
   renderToolbar() {
+    const active = this.toolbarEl.doc.activeElement;
+    const refocus = active instanceof HTMLElement && this.toolbarEl.contains(active) ? active.classList[0] : void 0;
+    this.buildToolbar();
+    if (refocus) this.toolbarEl.querySelector(`.${CSS.escape(refocus)}`)?.focus({ preventScroll: true });
+  }
+  buildToolbar() {
     this.toolbarEl.empty();
     const indicator = this.toolbarEl.createDiv({ cls: "toolbar-edit-indicator is-visible" });
     indicator.createDiv({ cls: "toolbar-edit-dot" });
@@ -8137,6 +8784,7 @@ var EditToolbar = class {
       if (n === this.plugin.activeColumns()) opt.selected = true;
     });
     colSelect.addEventListener("change", () => {
+      if (!this.editMode) return;
       this.onColumnsChange(Number(colSelect.value));
     });
     const zoomGroup = this.toolbarEl.createDiv({ cls: "toolbar-zoom-group" });
@@ -8227,7 +8875,7 @@ var EditToolbar = class {
     this.toolbarEl.remove();
   }
 };
-var AddBlockModal = class extends import_obsidian5.SuggestModal {
+var AddBlockModal = class extends import_obsidian8.SuggestModal {
   constructor(app, onSelect) {
     super(app);
     this.onSelect = onSelect;
@@ -8260,7 +8908,7 @@ var AddBlockModal = class extends import_obsidian5.SuggestModal {
 
 // src/HomepageView.ts
 var VIEW_TYPE = "homepage-blocks";
-var HomepageView = class _HomepageView extends import_obsidian6.ItemView {
+var HomepageView = class _HomepageView extends import_obsidian9.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -8363,333 +9011,6 @@ var HomepageView = class _HomepageView extends import_obsidian6.ItemView {
   }
 };
 
-// src/types.ts
-var BLOCK_TYPES = [
-  "greeting",
-  "folder-links",
-  "button-grid",
-  "quotes-list",
-  "image-gallery",
-  "clock",
-  "embedded-note",
-  "static-text",
-  "html",
-  "video-embed",
-  "bookmarks",
-  "recent-files",
-  "pomodoro",
-  "spacer",
-  "random-note",
-  "voice-dictation",
-  "vault-search"
-];
-
-// src/validation.ts
-var VALID_OPEN_MODES = /* @__PURE__ */ new Set(["replace-all", "replace-last", "retain"]);
-var VALID_LAYOUT_PRIORITIES = /* @__PURE__ */ new Set(["row"]);
-var VALID_RESPONSIVE_MODES = /* @__PURE__ */ new Set(["unified", "separate"]);
-function isOpenMode(v) {
-  return typeof v === "string" && VALID_OPEN_MODES.has(v);
-}
-function isLayoutPriority(v) {
-  return typeof v === "string" && VALID_LAYOUT_PRIORITIES.has(v);
-}
-function isResponsiveMode(v) {
-  return typeof v === "string" && VALID_RESPONSIVE_MODES.has(v);
-}
-var DEFAULT_LAYOUT_DATA = {
-  columns: 3,
-  layoutPriority: "row",
-  responsiveMode: "unified",
-  mobileColumns: 1,
-  mobileLayoutPriority: "row",
-  mobileBlocks: [],
-  openOnStartup: false,
-  openMode: "retain",
-  manualOpenMode: "retain",
-  openWhenEmpty: false,
-  pin: false,
-  separateStartup: false,
-  mobileOpenOnStartup: false,
-  mobileOpenMode: "retain",
-  mobileManualOpenMode: "retain",
-  mobileOpenWhenEmpty: false,
-  mobilePin: false,
-  showScrollbar: true,
-  compactLayout: true,
-  hoverHighlight: true,
-  blocks: [
-    // Row 0 (y: 0–2)
-    {
-      id: "default-static-text",
-      type: "static-text",
-      x: 0,
-      y: 0,
-      w: 1,
-      h: 3,
-      config: { content: "" }
-    },
-    {
-      id: "default-clock",
-      type: "clock",
-      x: 1,
-      y: 0,
-      w: 1,
-      h: 3,
-      config: { showSeconds: false, showDate: true }
-    },
-    {
-      id: "default-folder-links",
-      type: "folder-links",
-      x: 2,
-      y: 0,
-      w: 1,
-      h: 3,
-      config: { _titleLabel: "Quick links", links: [] }
-    },
-    // Row 1 (y: 3–5)
-    {
-      id: "default-insight",
-      type: "quotes-list",
-      x: 0,
-      y: 3,
-      w: 2,
-      h: 3,
-      config: { tag: "", _titleLabel: "Daily insight", dailySeed: true, maxItems: 1 }
-    },
-    {
-      id: "default-button-grid",
-      type: "button-grid",
-      x: 2,
-      y: 3,
-      w: 1,
-      h: 5,
-      config: {
-        _titleLabel: "Quick actions",
-        columns: 2,
-        items: [
-          { emoji: "\u{1F4DD}", label: "New note" },
-          { emoji: "\u{1F4C5}", label: "Today" },
-          { emoji: "\u2B50", label: "Favorites" },
-          { emoji: "\u{1F50D}", label: "Search" },
-          { emoji: "\u{1F4DA}", label: "Library" },
-          { emoji: "\u2699\uFE0F", label: "Settings" }
-        ]
-      }
-    },
-    // Row 2 (y: 6–8)
-    {
-      id: "default-quotes",
-      type: "quotes-list",
-      x: 0,
-      y: 6,
-      w: 2,
-      h: 3,
-      config: { tag: "", _titleLabel: "Quotes", columns: 2, maxItems: 0 }
-    },
-    // Row 3 (y: 8)
-    {
-      id: "default-voice-dictation",
-      type: "voice-dictation",
-      x: 0,
-      y: 8,
-      w: 2,
-      h: 3,
-      config: { folder: "", triggerMode: "tap", _titleLabel: "Voice notes" }
-    },
-    // Row 4 (y: 11–13)
-    {
-      id: "default-gallery",
-      type: "image-gallery",
-      x: 0,
-      y: 11,
-      w: 3,
-      h: 3,
-      config: { folder: "", _titleLabel: "Gallery", columns: 3, maxItems: 0 }
-    }
-  ]
-};
-function getDefaultLayout() {
-  return structuredClone(DEFAULT_LAYOUT_DATA);
-}
-var VALID_BLOCK_TYPES = new Set(BLOCK_TYPES);
-var SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
-var MAX_BLOCKS = 100;
-function migrateBlockInstance(b) {
-  const m = { ...b };
-  if (typeof m.col === "number" && typeof m.x !== "number") {
-    m.x = Math.max(0, m.col - 1);
-  }
-  if (typeof m.row === "number" && typeof m.y !== "number") {
-    m.y = Math.max(0, m.row - 1);
-  }
-  if (typeof m.colSpan === "number" && typeof m.w !== "number") {
-    m.w = m.colSpan;
-  }
-  if (typeof m.rowSpan === "number" && typeof m.h !== "number") {
-    m.h = m.rowSpan;
-  }
-  delete m.col;
-  delete m.row;
-  delete m.colSpan;
-  delete m.rowSpan;
-  delete m.newRow;
-  if (m.type === "tag-grid") {
-    m.type = "button-grid";
-  }
-  const cfg = typeof m.config === "object" && m.config !== null ? m.config : void 0;
-  if (cfg && cfg._transparent === true) {
-    if (cfg._showBorder === void 0) cfg._showBorder = false;
-    if (cfg._showBackground === void 0) cfg._showBackground = false;
-    delete cfg._transparent;
-  }
-  if (cfg) {
-    const HIDE_TO_SHOW = [
-      ["_hideTitle", "_showTitle"],
-      ["_hideBorder", "_showBorder"],
-      ["_hideBackground", "_showBackground"],
-      ["_hideHeaderAccent", "_showHeaderAccent"]
-    ];
-    for (const [hideKey, showKey] of HIDE_TO_SHOW) {
-      if (hideKey in cfg) {
-        if (cfg[hideKey] === true && cfg[showKey] === void 0) {
-          cfg[showKey] = false;
-        }
-        delete cfg[hideKey];
-      }
-    }
-    if (m.type === "quotes-list" && "hideAccentBar" in cfg) {
-      if (cfg.hideAccentBar === true && cfg.showAccentBar === void 0) {
-        cfg.showAccentBar = false;
-      }
-      delete cfg.hideAccentBar;
-    }
-  }
-  if (m.type === "voice-dictation" && cfg) {
-    if (typeof cfg.whisperApiKey === "string" && !cfg.apiKey) {
-      cfg.apiKey = cfg.whisperApiKey;
-    }
-    if (typeof cfg.whisperLanguage === "string" && !cfg.language) {
-      cfg.language = cfg.whisperLanguage;
-    }
-    delete cfg.whisperApiKey;
-    delete cfg.whisperLanguage;
-  }
-  if (m.type === "button-grid" && cfg && typeof cfg.columns === "number" && cfg.columns > 3) {
-    cfg.columns = 3;
-  }
-  if (cfg && m.type !== "button-grid" && "customCss" in cfg) {
-    delete cfg.customCss;
-  }
-  if (cfg && typeof cfg.title === "string") {
-    if (cfg.title && !cfg._titleLabel) {
-      cfg._titleLabel = cfg.title;
-    }
-    if (!cfg.title && (m.type === "html" || m.type === "static-text")) {
-      if (cfg._showTitle === void 0) cfg._showTitle = false;
-    }
-    delete cfg.title;
-  }
-  return m;
-}
-function isValidBlockInstance(b) {
-  if (!b || typeof b !== "object") return false;
-  const block = b;
-  return typeof block.id === "string" && SAFE_ID_RE.test(block.id) && typeof block.type === "string" && VALID_BLOCK_TYPES.has(block.type) && typeof block.x === "number" && Number.isFinite(block.x) && block.x >= 0 && typeof block.y === "number" && Number.isFinite(block.y) && block.y >= 0 && typeof block.w === "number" && Number.isFinite(block.w) && block.w >= 1 && typeof block.h === "number" && block.h >= 1 && Number.isFinite(block.h) && block.config !== null && typeof block.config === "object" && !Array.isArray(block.config);
-}
-function validateBlocks(raw, columns, defaults, onInvalidDropped) {
-  if (!Array.isArray(raw)) return defaults;
-  const migrated = raw.map((b) => migrateBlockInstance(b));
-  const validAll = migrated.filter(isValidBlockInstance);
-  const invalidCount = migrated.length - validAll.length;
-  if (invalidCount > 0) onInvalidDropped?.(invalidCount);
-  const valid = validAll.slice(0, MAX_BLOCKS);
-  const seen = /* @__PURE__ */ new Set();
-  const dedup = valid.filter((b) => {
-    if (seen.has(b.id)) return false;
-    seen.add(b.id);
-    return true;
-  });
-  return dedup.map((b) => {
-    const w = Math.min(b.w, columns);
-    const out = {
-      id: b.id,
-      type: b.type,
-      x: Math.min(b.x, Math.max(0, columns - w)),
-      y: b.y,
-      w,
-      h: b.h,
-      config: b.config
-    };
-    if (b.collapsed === true) out.collapsed = true;
-    const expandedH = b._expandedH;
-    if (typeof expandedH === "number" && Number.isFinite(expandedH) && expandedH >= 1) {
-      out._expandedH = Math.round(expandedH);
-    }
-    return out;
-  });
-}
-function validateLayout(raw, onTopLevelCorruption, onBlocksDropped) {
-  const defaults = getDefaultLayout();
-  if (raw === null || raw === void 0) return defaults;
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    onTopLevelCorruption?.(raw);
-    return defaults;
-  }
-  const r = raw;
-  const columns = typeof r.columns === "number" && [2, 3, 4, 5].includes(r.columns) ? r.columns : defaults.columns;
-  const layoutPriority = isLayoutPriority(r.layoutPriority) ? r.layoutPriority : defaults.layoutPriority;
-  const responsiveMode = isResponsiveMode(r.responsiveMode) ? r.responsiveMode : defaults.responsiveMode;
-  const mobileColumns = typeof r.mobileColumns === "number" && [1, 2, 3].includes(r.mobileColumns) ? r.mobileColumns : defaults.mobileColumns;
-  const mobileLayoutPriority = isLayoutPriority(r.mobileLayoutPriority) ? r.mobileLayoutPriority : defaults.mobileLayoutPriority;
-  const openOnStartup = typeof r.openOnStartup === "boolean" ? r.openOnStartup : defaults.openOnStartup;
-  const openMode = isOpenMode(r.openMode) ? r.openMode : defaults.openMode;
-  const manualOpenMode = isOpenMode(r.manualOpenMode) ? r.manualOpenMode : defaults.manualOpenMode;
-  const openWhenEmpty = typeof r.openWhenEmpty === "boolean" ? r.openWhenEmpty : defaults.openWhenEmpty;
-  const pin = typeof r.pin === "boolean" ? r.pin : defaults.pin;
-  const separateStartup = typeof r.separateStartup === "boolean" ? r.separateStartup : defaults.separateStartup;
-  const mobileOpenOnStartup = typeof r.mobileOpenOnStartup === "boolean" ? r.mobileOpenOnStartup : openOnStartup;
-  const mobileOpenMode = isOpenMode(r.mobileOpenMode) ? r.mobileOpenMode : openMode;
-  const mobileManualOpenMode = isOpenMode(r.mobileManualOpenMode) ? r.mobileManualOpenMode : manualOpenMode;
-  const mobileOpenWhenEmpty = typeof r.mobileOpenWhenEmpty === "boolean" ? r.mobileOpenWhenEmpty : openWhenEmpty;
-  const mobilePin = typeof r.mobilePin === "boolean" ? r.mobilePin : pin;
-  const showScrollbar = typeof r.showScrollbar === "boolean" ? r.showScrollbar : typeof r.hideScrollbar === "boolean" ? !r.hideScrollbar : defaults.showScrollbar;
-  const compactLayout = typeof r.compactLayout === "boolean" ? r.compactLayout : defaults.compactLayout;
-  const hoverHighlight = typeof r.hoverHighlight === "boolean" ? r.hoverHighlight : defaults.hoverHighlight;
-  const notAnArray = (v) => v !== void 0 && v !== null && !Array.isArray(v);
-  if (notAnArray(r.blocks) || notAnArray(r.mobileBlocks)) onTopLevelCorruption?.(raw);
-  let droppedBlocks = 0;
-  const countDropped = (n) => {
-    droppedBlocks += n;
-  };
-  const blocks = validateBlocks(r.blocks, columns, defaults.blocks, countDropped);
-  const mobileBlocks = validateBlocks(r.mobileBlocks, mobileColumns, defaults.mobileBlocks, countDropped);
-  if (droppedBlocks > 0) onBlocksDropped?.(droppedBlocks);
-  return {
-    columns,
-    layoutPriority,
-    responsiveMode,
-    mobileColumns,
-    mobileLayoutPriority,
-    mobileBlocks,
-    openOnStartup,
-    openMode,
-    manualOpenMode,
-    openWhenEmpty,
-    pin,
-    separateStartup,
-    mobileOpenOnStartup,
-    mobileOpenMode,
-    mobileManualOpenMode,
-    mobileOpenWhenEmpty,
-    mobilePin,
-    showScrollbar,
-    compactLayout,
-    hoverHighlight,
-    blocks
-  };
-}
-
 // src/utils/loadRecovery.ts
 async function loadLayoutWithRecovery(raw, dataPath, adapter) {
   const found = [];
@@ -8760,16 +9081,20 @@ var DataFileGuard = class {
   }
 };
 function loadProblemMessage(problem, backupPath) {
-  const what = problem.kind === "unreadable" ? "data.json could not be read, so the default layout was loaded." : problem.kind === "unusable" ? "data.json does not hold a usable layout, so the default blocks were loaded." : `${problem.count} invalid block(s) couldn't be loaded and were removed.`;
+  const what = problem.kind === "unreadable" ? "data.json could not be read, so the default layout was loaded." : problem.kind === "unusable" ? "data.json does not hold a usable layout, so the default blocks were loaded." : `${problem.count} block(s) couldn't be loaded (invalid, or past the limit of ${MAX_BLOCKS}) and were removed.`;
   const backup = backupPath ? ` The original file was saved as ${fileName(backupPath)}.` : " The original file could not be backed up, so nothing will be saved until it can be; data.json is kept as it is.";
   return `Homepage blocks: ${what}${backup}`;
+}
+function newerVersionMessage(layout) {
+  const n = (layout.preserved?.blocks.length ?? 0) + (layout.preserved?.mobileBlocks.length ?? 0);
+  return n > 0 ? `Homepage blocks: ${n} block(s) need a newer version of the plugin. They are kept and not shown.` : null;
 }
 function fileName(path) {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
 // src/settings/HomepageSettingTab.ts
-var import_obsidian8 = require("obsidian");
+var import_obsidian12 = require("obsidian");
 
 // src/utils/layoutReset.ts
 var DESKTOP_LAYOUT_FIELDS = [
@@ -8790,18 +9115,22 @@ function fitBlocksToColumns(blocks, columns, mintId) {
 function buildResetLayout(current, fresh, isMobileActive) {
   if (isMobileActive) {
     return {
-      ...current,
+      ...dropPreserved(current, "mobileBlocks"),
       mobileBlocks: fitBlocksToColumns(fresh.blocks, fresh.mobileColumns),
       mobileColumns: fresh.mobileColumns,
       mobileLayoutPriority: fresh.mobileLayoutPriority
     };
   }
-  return { ...current, ...pickFields(structuredClone(fresh), DESKTOP_LAYOUT_FIELDS) };
+  return { ...dropPreserved(current, "blocks"), ...pickFields(structuredClone(fresh), DESKTOP_LAYOUT_FIELDS) };
+}
+function dropPreserved(layout, half) {
+  if (!layout.preserved || layout.preserved[half].length === 0) return layout;
+  return { ...layout, preserved: { ...layout.preserved, [half]: [] } };
 }
 
 // src/modals/ConfirmImportModal.ts
-var import_obsidian7 = require("obsidian");
-var ConfirmImportModal = class extends import_obsidian7.Modal {
+var import_obsidian10 = require("obsidian");
+var ConfirmImportModal = class extends import_obsidian10.Modal {
   constructor(app, summary, active, onChoice) {
     super(app);
     this.summary = summary;
@@ -8811,7 +9140,7 @@ var ConfirmImportModal = class extends import_obsidian7.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian7.Setting(contentEl).setName("Import layout?").setHeading();
+    new import_obsidian10.Setting(contentEl).setName("Import layout?").setHeading();
     contentEl.createEl("p", { text: `This replaces your current layout with the imported one (${this.summary}). This can\u2019t be undone.` });
     if (this.active.length > 0) {
       contentEl.createEl("p", {
@@ -8825,7 +9154,7 @@ var ConfirmImportModal = class extends import_obsidian7.Modal {
         li.createEl("code", { text: item.excerpt });
       }
     }
-    const buttons = new import_obsidian7.Setting(contentEl);
+    const buttons = new import_obsidian10.Setting(contentEl);
     buttons.addButton((btn) => btn.setButtonText(this.active.length > 0 ? "Import all" : "Import").setWarning().onClick(() => this.choose("all")));
     if (this.active.length > 0) {
       buttons.addButton((btn) => btn.setButtonText("Import without content").onClick(() => this.choose("without-content")));
@@ -8837,6 +9166,36 @@ var ConfirmImportModal = class extends import_obsidian7.Modal {
       (e) => console.error("[Homepage Blocks] Import failed:", e instanceof Error ? e.message : "unknown error")
     );
     this.close();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
+// src/modals/ConfirmActionModal.ts
+var import_obsidian11 = require("obsidian");
+var ConfirmActionModal = class extends import_obsidian11.Modal {
+  constructor(app, texts, onConfirm) {
+    super(app);
+    this.texts = texts;
+    this.onConfirm = onConfirm;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    new import_obsidian11.Setting(contentEl).setName(this.texts.title).setHeading();
+    contentEl.createEl("p", { text: this.texts.message });
+    new import_obsidian11.Setting(contentEl).addButton((btn) => {
+      btn.setButtonText("Cancel").setCta().onClick(() => this.close());
+      window.setTimeout(() => btn.buttonEl.focus(), 0);
+    }).addButton(
+      (btn) => btn.setButtonText(this.texts.confirm).setWarning().onClick(() => {
+        void Promise.resolve(this.onConfirm()).catch(
+          (e) => console.error("[Homepage Blocks] Action failed:", e instanceof Error ? e.message : "unknown error")
+        );
+        this.close();
+      })
+    );
   }
   onClose() {
     this.contentEl.empty();
@@ -8872,10 +9231,7 @@ function rangedNumber(type, config, key, fallback) {
 var hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
 var ALWAYS_STRIPPED = /* @__PURE__ */ new Set(["apiKey", "customCss"]);
 function matchesDeclaredType(value, declared) {
-  if (declared === void 0 || declared === null) {
-    const t = typeof value;
-    return t === "string" || t === "number" || t === "boolean";
-  }
+  if (declared === void 0 || declared === null) return typeof value === "string";
   if (Array.isArray(declared)) return Array.isArray(value);
   if (typeof declared === "object") return value !== null && typeof value === "object" && !Array.isArray(value);
   if (typeof declared === "number") return typeof value === "number" && Number.isFinite(value);
@@ -8948,20 +9304,29 @@ function sanitizeImportedLayout(layout) {
     strippedCount += stripped.length;
     return { ...b, config };
   };
-  return {
-    layout: {
-      ...layout,
-      blocks: layout.blocks.map(sanitizeBlock),
-      mobileBlocks: layout.mobileBlocks.map(sanitizeBlock)
-    },
-    strippedCount
+  const sanitized = {
+    ...layout,
+    blocks: layout.blocks.map(sanitizeBlock),
+    mobileBlocks: layout.mobileBlocks.map(sanitizeBlock)
   };
+  delete sanitized.preserved;
+  return { layout: sanitized, strippedCount };
 }
 var ACTIVE_CONTENT_KEYS = {
   "static-text": ["content"],
   "html": ["html"],
   "voice-dictation": ["noteTemplate", "folder"]
 };
+var LINK_LISTS = {
+  "bookmarks": { list: "items", key: "url" },
+  "button-grid": { list: "items", key: "link" },
+  "folder-links": { list: "links", key: "path" }
+};
+function isOtherSchemeLink(value) {
+  if (typeof value !== "string") return false;
+  const m = /^\s*([a-z][a-z0-9+.-]+):/i.exec(value);
+  return !!m && !["http", "https"].includes(m[1].toLowerCase());
+}
 var EXCERPT_LENGTH = 80;
 function findActiveContent(layout) {
   const found = [];
@@ -8974,16 +9339,35 @@ function findActiveContent(layout) {
       const flat = value.replace(/\s+/g, " ").trim();
       found.push({ blockType: b.type, title, key, excerpt: flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH)}\u2026` : flat });
     }
+    const links = LINK_LISTS[b.type];
+    const entries = links ? b.config[links.list] : null;
+    if (links && Array.isArray(entries)) {
+      for (const entry of entries) {
+        const value = entry?.[links.key];
+        if (!isOtherSchemeLink(value)) continue;
+        const label = b.config._titleLabel;
+        const title = typeof label === "string" && label.trim() ? label.trim() : BlockRegistry.get(b.type)?.displayName ?? b.type;
+        found.push({ blockType: b.type, title, key: links.key, excerpt: value.length > EXCERPT_LENGTH ? `${value.slice(0, EXCERPT_LENGTH)}\u2026` : value });
+      }
+    }
   }
   return found;
 }
 function withoutActiveContent(layout) {
   const strip = (b) => {
     const keys = ACTIVE_CONTENT_KEYS[b.type];
-    if (!keys) return b;
+    const links = LINK_LISTS[b.type];
+    if (!keys && !links) return b;
     const defaults = BlockRegistry.get(b.type)?.defaultConfig ?? {};
     const config = { ...b.config };
-    for (const key of keys) config[key] = typeof defaults[key] === "string" ? defaults[key] : "";
+    for (const key of keys ?? []) config[key] = typeof defaults[key] === "string" ? defaults[key] : "";
+    const entries = links ? config[links.list] : null;
+    if (links && Array.isArray(entries)) {
+      config[links.list] = entries.map((entry) => {
+        if (!isOtherSchemeLink(entry?.[links.key])) return entry;
+        return { ...entry, [links.key]: links.key === "link" ? void 0 : "" };
+      });
+    }
     return { ...b, config };
   };
   return { ...layout, blocks: layout.blocks.map(strip), mobileBlocks: layout.mobileBlocks.map(strip) };
@@ -8995,7 +9379,7 @@ var OPEN_MODE_LABELS = {
   "replace-last": "Replace active tab",
   "replace-all": "Close all tabs"
 };
-var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
+var HomepageSettingTab = class extends import_obsidian12.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -9049,7 +9433,7 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
   // ── Section renderers ──────────────────────────────────────────────────────
   renderStartupSection(root) {
     const separate = this.plugin.layout.separateStartup;
-    new import_obsidian8.Setting(root).setName("Separate startup for mobile").setDesc("Use different startup settings on mobile devices \u2014 for example, open the homepage on startup only on desktop. Independent of the layout responsive mode below.").addToggle(
+    new import_obsidian12.Setting(root).setName("Separate startup for mobile").setDesc("Use different startup settings on mobile devices \u2014 for example, open the homepage on startup only on desktop. Independent of the layout responsive mode below.").addToggle(
       (toggle) => toggle.setValue(separate).onChange((value) => {
         const base = this.plugin.layout;
         const mobileMirrorsDesktop = base.mobileOpenOnStartup === base.openOnStartup && base.mobileOpenMode === base.openMode && base.mobileManualOpenMode === base.manualOpenMode && base.mobileOpenWhenEmpty === base.openWhenEmpty && base.mobilePin === base.pin;
@@ -9072,10 +9456,10 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         void this.plugin.saveLayout(next2).then(() => this.display());
       })
     );
-    if (separate) new import_obsidian8.Setting(root).setName("Desktop startup").setHeading();
+    if (separate) new import_obsidian12.Setting(root).setName("Desktop startup").setHeading();
     this.renderStartupControls(root, false);
     if (separate) {
-      new import_obsidian8.Setting(root).setName("Mobile startup").setHeading();
+      new import_obsidian12.Setting(root).setName("Mobile startup").setHeading();
       this.renderStartupControls(root, true);
     }
   }
@@ -9092,14 +9476,14 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     const openWhenEmpty = mobile ? L.mobileOpenWhenEmpty : L.openWhenEmpty;
     const manualOpenMode = mobile ? L.mobileManualOpenMode : L.manualOpenMode;
     const pin = mobile ? L.mobilePin : L.pin;
-    new import_obsidian8.Setting(root).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
+    new import_obsidian12.Setting(root).setName("Open on startup").setDesc("Open the homepage when Obsidian starts.").addToggle(
       (toggle) => toggle.setValue(openOnStartup).onChange((value) => {
         const patch = mobile ? { mobileOpenOnStartup: value } : { openOnStartup: value };
         void this.plugin.saveLayout({ ...this.plugin.layout, ...patch }).then(() => this.display());
       })
     );
     if (openOnStartup) {
-      new import_obsidian8.Setting(root).setName("Startup open mode").setDesc("What to do with existing tabs on startup.").addDropdown((drop) => {
+      new import_obsidian12.Setting(root).setName("Startup open mode").setDesc("What to do with existing tabs on startup.").addDropdown((drop) => {
         for (const [value, label] of Object.entries(OPEN_MODE_LABELS)) {
           drop.addOption(value, label);
         }
@@ -9110,13 +9494,13 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         });
       });
     }
-    new import_obsidian8.Setting(root).setName("Open when empty").setDesc("Open the homepage when all tabs are closed.").addToggle(
+    new import_obsidian12.Setting(root).setName("Open when empty").setDesc("Open the homepage when all tabs are closed.").addToggle(
       (toggle) => toggle.setValue(openWhenEmpty).onChange((value) => {
         const patch = mobile ? { mobileOpenWhenEmpty: value } : { openWhenEmpty: value };
         void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
       })
     );
-    new import_obsidian8.Setting(root).setName("Manual open mode").setDesc("What to do with existing tabs when you open the homepage manually.").addDropdown((drop) => {
+    new import_obsidian12.Setting(root).setName("Manual open mode").setDesc("What to do with existing tabs when you open the homepage manually.").addDropdown((drop) => {
       for (const [value, label] of Object.entries(OPEN_MODE_LABELS)) {
         drop.addOption(value, label);
       }
@@ -9126,7 +9510,7 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
       });
     });
-    new import_obsidian8.Setting(root).setName("Pin homepage tab").setDesc("Prevent the homepage tab from being closed.").addToggle(
+    new import_obsidian12.Setting(root).setName("Pin homepage tab").setDesc("Prevent the homepage tab from being closed.").addToggle(
       (toggle) => toggle.setValue(pin).onChange((value) => {
         const patch = mobile ? { mobilePin: value } : { pin: value };
         void this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
@@ -9137,17 +9521,17 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     );
   }
   renderLayoutSection(root) {
-    new import_obsidian8.Setting(root).setName("Layout").setHeading();
-    new import_obsidian8.Setting(root).setName("Responsive mode").setDesc("Unified: one layout for all screen sizes. Separate: different layouts for desktop and mobile.").addDropdown(
+    new import_obsidian12.Setting(root).setName("Layout").setHeading();
+    new import_obsidian12.Setting(root).setName("Responsive mode").setDesc("Unified: one layout for all screen sizes. Separate: different layouts for desktop and mobile.").addDropdown(
       (drop) => drop.addOption("unified", "Unified (adaptive)").addOption("separate", "Separate (desktop + mobile)").setValue(this.plugin.layout.responsiveMode).onChange((value) => {
         if (!isResponsiveMode(value)) return;
         void this.applyLayoutChange({ responsiveMode: value }).then(() => this.display());
       })
     );
     if (this.plugin.layout.responsiveMode === "separate") {
-      new import_obsidian8.Setting(root).setName("Desktop layout").setHeading();
+      new import_obsidian12.Setting(root).setName("Desktop layout").setHeading();
     }
-    new import_obsidian8.Setting(root).setName("Default columns").setDesc("Number of grid columns.").addDropdown((drop) => {
+    new import_obsidian12.Setting(root).setName("Default columns").setDesc("Number of grid columns.").addDropdown((drop) => {
       for (const n of [2, 3, 4, 5]) drop.addOption(String(n), `${n} columns`);
       drop.setValue(String(this.plugin.layout.columns)).onChange((value) => {
         void this.applyLayoutChange({ columns: Number(value) });
@@ -9158,27 +9542,32 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
     }
   }
   renderMobileLayoutControls(root) {
-    new import_obsidian8.Setting(root).setName("Mobile layout").setHeading();
-    new import_obsidian8.Setting(root).setName("Mobile columns").setDesc("Number of grid columns on mobile.").addDropdown((drop) => {
+    new import_obsidian12.Setting(root).setName("Mobile layout").setHeading();
+    new import_obsidian12.Setting(root).setName("Mobile columns").setDesc("Number of grid columns on mobile.").addDropdown((drop) => {
       for (const n of [1, 2, 3]) drop.addOption(String(n), `${n} ${n === 1 ? "column" : "columns"}`);
       drop.setValue(String(this.plugin.layout.mobileColumns)).onChange((value) => {
         void this.applyLayoutChange({ mobileColumns: Number(value) });
       });
     });
-    new import_obsidian8.Setting(root).setName("Copy desktop layout to mobile").setDesc("Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.").addButton(
-      (btn) => btn.setButtonText("Copy to mobile").onClick(() => void (async () => {
+    new import_obsidian12.Setting(root).setName("Copy desktop layout to mobile").setDesc("Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.").addButton(
+      (btn) => btn.setButtonText("Copy to mobile").onClick(() => new ConfirmActionModal(this.app, {
+        title: "Replace the mobile layout?",
+        message: "This replaces the mobile layout, with all its blocks and their content, with a copy of the desktop layout. This can\u2019t be undone.",
+        confirm: "Copy"
+      }, async () => {
         this.finishEditSessions();
         const copied = fitBlocksToColumns(this.plugin.layout.blocks, this.plugin.layout.mobileColumns, newId).map((b) => "apiKey" in b.config ? { ...b, config: { ...b.config, apiKey: "" } } : b);
-        await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: copied });
+        await this.plugin.saveLayout({ ...dropPreserved(this.plugin.layout, "mobileBlocks"), mobileBlocks: copied });
         await this.reloadOpenHomepages();
         this.flashButton(btn, "Copied!", "Copy to mobile");
-      })())
+      }).open())
     );
     const mobileBlockCount = this.plugin.layout.mobileBlocks.length;
-    new import_obsidian8.Setting(root).setName("Mobile blocks").setDesc(mobileBlockCount + " block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.");
+    new import_obsidian12.Setting(root).setName("Mobile blocks").setDesc(mobileBlockCount + " block(s) configured for mobile. Edit them on a mobile device, or copy from desktop above.");
   }
   renderDisplaySection(root) {
-    new import_obsidian8.Setting(root).setName("Show scrollbar").setDesc("Show the scrollbar on the homepage. You can still scroll when hidden.").addToggle(
+    new import_obsidian12.Setting(root).setName("Display").setHeading();
+    new import_obsidian12.Setting(root).setName("Show scrollbar").setDesc("Show the scrollbar on the homepage. You can still scroll when hidden.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.showScrollbar !== false).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, showScrollbar: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -9188,12 +9577,12 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         }
       })
     );
-    new import_obsidian8.Setting(root).setName("Compact layout").setDesc("Remove vertical gaps between blocks. Turn off to allow free placement with gaps.").addToggle(
+    new import_obsidian12.Setting(root).setName("Compact layout").setDesc("Remove vertical gaps between blocks. Turn off to allow free placement with gaps.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.compactLayout).onChange(async (value) => {
         await this.applyLayoutChange({ compactLayout: value });
       })
     );
-    new import_obsidian8.Setting(root).setName("Hover highlight").setDesc("Subtly lift blocks on mouseover and reveal the collapse toggle.").addToggle(
+    new import_obsidian12.Setting(root).setName("Hover highlight").setDesc("Subtly lift blocks on mouseover and reveal the collapse toggle.").addToggle(
       (toggle) => toggle.setValue(this.plugin.layout.hoverHighlight).onChange((value) => {
         void this.plugin.saveLayout({ ...this.plugin.layout, hoverHighlight: value });
         for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
@@ -9203,8 +9592,12 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         }
       })
     );
-    new import_obsidian8.Setting(root).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
-      (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => void (async () => {
+    new import_obsidian12.Setting(root).setName("Reset to default layout").setDesc("Restore all blocks to the default layout. This can\u2019t be undone.").addButton(
+      (btn) => btn.setButtonText("Reset layout").setWarning().onClick(() => new ConfirmActionModal(this.app, {
+        title: "Reset the layout?",
+        message: `This replaces the ${this.plugin.isMobileActive() ? "mobile" : "desktop"} layout, with all its blocks and their content, with the default one. Other settings stay. This can\u2019t be undone.`,
+        confirm: "Reset"
+      }, async () => {
         this.finishEditSessions();
         const next2 = buildResetLayout(
           this.plugin.layout,
@@ -9213,12 +9606,12 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         );
         await this.plugin.saveLayout(next2);
         await this.reloadOpenHomepages();
-      })())
+      }).open())
     );
   }
   renderExportImportSection(root) {
-    new import_obsidian8.Setting(root).setName("Export / import").setHeading();
-    new import_obsidian8.Setting(root).setName("Export layout").setDesc("Copy the layout to your clipboard as JSON.").addButton((btn) => {
+    new import_obsidian12.Setting(root).setName("Export / import").setHeading();
+    new import_obsidian12.Setting(root).setName("Export layout").setDesc("Copy the layout to your clipboard as JSON.").addButton((btn) => {
       btn.setButtonText("Copy to clipboard").onClick(() => void (async () => {
         if (!navigator.clipboard?.writeText) {
           this.flashButton(btn, "Clipboard unavailable", "Copy to clipboard");
@@ -9226,6 +9619,7 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         }
         try {
           const exportLayout = structuredClone(this.plugin.layout);
+          delete exportLayout.preserved;
           for (const block of exportLayout.blocks) {
             delete block.config.apiKey;
             delete block.config.customCss;
@@ -9242,7 +9636,7 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
         }
       })());
     });
-    new import_obsidian8.Setting(root).setName("Import layout").setDesc("Paste an exported layout JSON to restore it.").addButton((btn) => {
+    new import_obsidian12.Setting(root).setName("Import layout").setDesc("Paste an exported layout JSON to restore it.").addButton((btn) => {
       btn.setButtonText("Import from clipboard").onClick(() => void (async () => {
         if (!navigator.clipboard?.readText) {
           this.flashButton(btn, "Clipboard unavailable", "Import from clipboard");
@@ -9286,13 +9680,13 @@ var HomepageSettingTab = class extends import_obsidian8.PluginSettingTab {
 };
 
 // src/utils/tags.ts
-var import_obsidian9 = require("obsidian");
+var import_obsidian13 = require("obsidian");
 function cacheHasTag(cache, tag) {
-  if (!cache) return false;
-  if (cache.tags?.some((t) => t.tag === tag)) return true;
-  const rawFmTags = cache.frontmatter?.tags;
-  const fmTagArray = Array.isArray(rawFmTags) ? rawFmTags.filter((t) => typeof t === "string") : typeof rawFmTags === "string" ? [rawFmTags] : [];
-  return fmTagArray.some((t) => (t.startsWith("#") ? t : `#${t}`) === tag);
+  const want = tag.toLowerCase();
+  return ((0, import_obsidian13.getAllTags)(cache ?? {}) ?? []).some((t) => {
+    const have = t.toLowerCase();
+    return have === want || have.startsWith(want + "/");
+  });
 }
 function normalizeTag(tag) {
   const t = tag.trim();
@@ -9336,19 +9730,20 @@ function installTagCacheListeners(plugin) {
   }));
   plugin.registerEvent(plugin.app.vault.on("rename", (f, oldPath) => {
     dropPathFromCache(oldPath);
-    if (f instanceof import_obsidian9.TFile) reindexFile(f, plugin.app.metadataCache.getFileCache(f));
+    if (f instanceof import_obsidian13.TFile) reindexFile(f, plugin.app.metadataCache.getFileCache(f));
   }));
   plugin.registerEvent(plugin.app.metadataCache.on("changed", (f, _data, cache) => {
     reindexFile(f, cache);
   }));
 }
 function getFilesWithTag(app, tag) {
-  const cached = tagCache.get(tag);
+  const key = tag.toLowerCase();
+  const cached = tagCache.get(key);
   if (cached) return cached.slice();
   const files = app.vault.getMarkdownFiles().filter(
-    (file) => cacheHasTag(app.metadataCache.getFileCache(file), tag)
+    (file) => cacheHasTag(app.metadataCache.getFileCache(file), key)
   );
-  tagCache.set(tag, files);
+  tagCache.set(key, files);
   return files.slice();
 }
 
@@ -9359,6 +9754,13 @@ var DB_RECORD = "apiKeyDeviceKey";
 var PREFIX = "enc:v1:";
 var cachedKey = null;
 var inflightKey = null;
+var knownCiphertext = /* @__PURE__ */ new Map();
+function knownCiphertextFor(plaintext) {
+  return knownCiphertext.get(plaintext) ?? null;
+}
+function rememberCiphertext(plaintext, ciphertext) {
+  knownCiphertext.set(plaintext, ciphertext);
+}
 function hasWebCrypto() {
   return typeof window.crypto?.subtle?.generateKey === "function" && typeof indexedDB !== "undefined";
 }
@@ -9483,6 +9885,7 @@ async function decryptStringEx(value) {
 function _resetDeviceKeyCache() {
   cachedKey = null;
   inflightKey = null;
+  knownCiphertext.clear();
 }
 
 // src/utils/apiKeyLayout.ts
@@ -9493,8 +9896,23 @@ function needsEncryption(layout) {
   return anyIn(layout.blocks) || anyIn(layout.mobileBlocks);
 }
 async function persistableLayout(layout, readPrior) {
-  if (!needsEncryption(layout)) return layout;
-  return encryptApiKeys(layout, await readPrior());
+  const known = withKnownCiphertext(layout);
+  if (!needsEncryption(known)) return known;
+  return encryptApiKeys(known, await readPrior());
+}
+function withKnownCiphertext(layout) {
+  let changed = false;
+  const swap = (blocks2) => blocks2.map((b) => {
+    const k = b.config.apiKey;
+    if (typeof k !== "string" || !k || isEncrypted(k)) return b;
+    const ct = knownCiphertextFor(k);
+    if (!ct) return b;
+    changed = true;
+    return { ...b, config: { ...b.config, apiKey: ct } };
+  });
+  const blocks = swap(layout.blocks);
+  const mobileBlocks = swap(layout.mobileBlocks);
+  return changed ? { ...layout, blocks, mobileBlocks } : layout;
 }
 async function encryptApiKeys(layout, priorOnDisk) {
   const buildPriorMap = (blocks2) => {
@@ -9521,6 +9939,7 @@ async function encryptApiKeys(layout, priorOnDisk) {
         return { ...b, config: { ...b.config, apiKey: "" } };
       }
     }
+    if (r.ok) rememberCiphertext(key, r.value);
     return { ...b, config: { ...b.config, apiKey: r.value } };
   }));
   const [blocks, mobileBlocks] = await Promise.all([
@@ -9542,6 +9961,7 @@ async function decryptApiKeys(layout) {
       }
       const r = await decryptStringEx(key);
       if (r.ok) {
+        rememberCiphertext(r.plaintext, key);
         out.push({ ...b, config: { ...b.config, apiKey: r.plaintext } });
       } else if (r.reason === "no-key" && r.transient) {
         stable = false;
@@ -9578,21 +9998,95 @@ function resolveStartup(layout, isMobile) {
   };
 }
 
-// src/blocks/GreetingBlock.ts
-var import_obsidian11 = require("obsidian");
-
-// src/utils/dailySeed.ts
-var import_obsidian10 = require("obsidian");
-var MS_PER_DAY = 864e5;
-function dailyEpochDay() {
-  return Math.floor((0, import_obsidian10.moment)().startOf("day").valueOf() / MS_PER_DAY);
+// src/utils/pathRename.ts
+var stripMd = (p) => p.endsWith(".md") ? p.slice(0, -3) : p;
+function renamePath(value, oldPath, newPath) {
+  if (value === oldPath) return newPath;
+  if (oldPath.endsWith(".md") && value === stripMd(oldPath)) return stripMd(newPath);
+  if (value.startsWith(oldPath + "/")) return newPath + value.slice(oldPath.length);
+  return null;
 }
-function dailyIndex(poolLength) {
-  if (poolLength <= 0) return 0;
-  return (dailyEpochDay() % poolLength + poolLength) % poolLength;
+var baseName = (p) => stripMd(p.slice(p.lastIndexOf("/") + 1));
+function renameLink(value, oldPath, newPath, resolves) {
+  const wiki = /^(\s*\[\[)([\s\S]*)(\]\]\s*)$/.exec(value);
+  const [open, inner, close] = wiki ? [wiki[1], wiki[2], wiki[3]] : ["", value, ""];
+  const bar = inner.indexOf("|");
+  const target = bar === -1 ? inner : inner.slice(0, bar);
+  const alias = bar === -1 ? "" : inner.slice(bar);
+  const hash = target.indexOf("#");
+  const path = (hash === -1 ? target : target.slice(0, hash)).trim();
+  const sub = hash === -1 ? "" : target.slice(hash);
+  let renamed = path ? renamePath(path, oldPath, newPath) : null;
+  if (renamed === null && path && !path.includes("/") && path === baseName(oldPath) && !resolves(path)) {
+    renamed = baseName(newPath);
+  }
+  return renamed === null ? null : `${open}${renamed}${sub}${alias}${close}`;
+}
+var isVaultPath = (value) => !/^[a-z][a-z0-9+.-]*:/i.test(value);
+function renameIn(value, oldPath, newPath) {
+  return typeof value === "string" && value ? renamePath(value, oldPath, newPath) : null;
+}
+function renameInList(list, key, rename, guard = () => true) {
+  if (!Array.isArray(list)) return null;
+  let changed = false;
+  const next2 = list.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const v = item[key];
+    if (typeof v !== "string" || !guard(v)) return item;
+    const renamed = v ? rename(v) : null;
+    if (renamed === null) return item;
+    changed = true;
+    return { ...item, [key]: renamed };
+  });
+  return changed ? next2 : null;
+}
+function followRenameInBlock(b, oldPath, newPath, resolves = () => false) {
+  const c = b.config;
+  const link = (v) => renameLink(v, oldPath, newPath, resolves);
+  const patch = {};
+  const set = (key, value) => {
+    if (value !== null) patch[key] = value;
+  };
+  switch (b.type) {
+    case "embedded-note":
+      set("filePath", renameIn(c.filePath, oldPath, newPath));
+      break;
+    case "image-gallery":
+      set("folder", renameIn(c.folder, oldPath, newPath));
+      break;
+    case "voice-dictation":
+      set("folder", renameIn(c.folder, oldPath, newPath));
+      break;
+    case "folder-links":
+      set("folder", renameIn(c.folder, oldPath, newPath));
+      set("links", renameInList(c.links, "path", link));
+      break;
+    case "button-grid":
+      set("items", renameInList(c.items, "link", link, isVaultPath));
+      break;
+    case "bookmarks":
+      set("items", renameInList(c.items, "url", link, isVaultPath));
+      break;
+    case "recent-files": {
+      if (typeof c.excludeFolders !== "string") break;
+      let changed = false;
+      const parts = c.excludeFolders.split(",").map((part) => {
+        const renamed = renamePath(part.trim(), oldPath, newPath);
+        if (renamed === null) return part;
+        changed = true;
+        return part.replace(part.trim(), renamed);
+      });
+      if (changed) patch.excludeFolders = parts.join(",");
+      break;
+    }
+    default:
+      break;
+  }
+  return Object.keys(patch).length > 0 ? { ...b, config: { ...c, ...patch } } : b;
 }
 
 // src/blocks/GreetingBlock.ts
+var import_obsidian14 = require("obsidian");
 var LANG_PRESETS = {
   it: { label: "Italiano", morning: "Buongiorno", afternoon: "Buon pomeriggio", evening: "Buonasera" },
   en: { label: "English", morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening" },
@@ -9649,7 +10143,13 @@ var LANG_PRESETS = {
 var PRESET_KEYS = Object.keys(LANG_PRESETS).sort(
   (a, b) => LANG_PRESETS[a].label.localeCompare(LANG_PRESETS[b].label)
 );
-var DEFAULT_SALUT = LANG_PRESETS["it"];
+function defaultPresetKey() {
+  const lang = (0, import_obsidian14.getLanguage)().toLowerCase().split(/[-_]/)[0];
+  return lang in LANG_PRESETS ? lang : "en";
+}
+function presetOf(cfg) {
+  return LANG_PRESETS[cfg.salutationPreset ?? ""] ?? LANG_PRESETS[defaultPresetKey()];
+}
 var DEFAULT_EMOJIS = {
   morning: "\u2600\uFE0F",
   afternoon: "\u{1F324}\uFE0F",
@@ -9676,12 +10176,11 @@ function getSalutation(cfg, hour) {
       afternoon: cfg.salutAfternoon,
       evening: cfg.salutEvening
     };
-    const custom = map[slot]?.trim();
+    const raw = map[slot];
+    const custom = typeof raw === "string" ? raw.trim() : "";
     if (custom) return custom;
   }
-  const presetKey = cfg.salutationPreset ?? "it";
-  const preset = LANG_PRESETS[presetKey] ?? DEFAULT_SALUT;
-  return preset[salutSlot(hour)];
+  return presetOf(cfg)[salutSlot(hour)];
 }
 function pickEmoji(cfg, hour) {
   const mode = cfg.emojiMode ?? "auto";
@@ -9693,7 +10192,8 @@ function pickEmoji(cfg, hour) {
       evening: cfg.emojiEvening,
       night: cfg.emojiNight
     };
-    return map[slot]?.trim() || DEFAULT_EMOJIS[slot];
+    const raw = map[slot];
+    return (typeof raw === "string" ? raw.trim() : "") || DEFAULT_EMOJIS[slot];
   }
   if (mode === "random") {
     const pool = parseEmojiPool(cfg.emojiPool ?? "");
@@ -9726,20 +10226,26 @@ var GreetingBlock = class extends BaseBlock {
       this.timeEl = el.createDiv({ cls: "greeting-time" });
     }
     this.tick();
-    this.registerInterval(window.setInterval(() => this.tick(), 6e4));
+    this.registerInterval(window.setInterval(() => this.tick(), 1e3));
   }
+  /** What the last tick drew; a tick that would draw the same is skipped. */
+  shown = "";
   tick() {
-    const now = (0, import_obsidian11.moment)();
+    const now = (0, import_obsidian14.moment)();
     const hour = now.hour();
     const cfg = this.instance.config;
-    const { name = "bentornato", showTime = true, showEmoji = true } = cfg;
+    const { name = "", showTime = true, showEmoji = true } = cfg;
+    const key = `${hour}|${showTime ? now.format("HH:mm") : ""}`;
+    if (key === this.shown) return;
+    this.shown = key;
     if (this.emojiEl && showEmoji) {
       this.emojiEl.setText(pickEmoji(cfg, hour));
     }
     if (this.nameEl) {
       this.nameEl.empty();
-      this.nameEl.createSpan({ cls: "greeting-salut", text: `${getSalutation(cfg, hour)}, ` });
-      this.nameEl.createSpan({ cls: "greeting-user", text: name });
+      const who = name.trim();
+      this.nameEl.createSpan({ cls: "greeting-salut", text: who ? `${getSalutation(cfg, hour)}, ` : getSalutation(cfg, hour) });
+      if (who) this.nameEl.createSpan({ cls: "greeting-user", text: who });
     }
     if (this.timeEl && showTime) {
       this.timeEl.setText(now.format("HH:mm"));
@@ -9747,50 +10253,51 @@ var GreetingBlock = class extends BaseBlock {
   }
   renderContentSettings(body, draft) {
     const cfg = draft;
-    new import_obsidian11.Setting(body).setName("Name").addText(
-      (t) => t.setValue(cfg.name ?? "bentornato").onChange((v) => {
+    new import_obsidian14.Setting(body).setName("Name").addText(
+      (t) => t.setValue(cfg.name ?? "").onChange((v) => {
         cfg.name = v;
       })
     );
-    new import_obsidian11.Setting(body).setName("Show time").addToggle(
+    new import_obsidian14.Setting(body).setName("Show time").addToggle(
       (t) => t.setValue(cfg.showTime ?? true).onChange((v) => {
         cfg.showTime = v;
       })
     );
-    new import_obsidian11.Setting(body).setName("Salutation").setHeading();
+    new import_obsidian14.Setting(body).setName("Salutation").setHeading();
     const salutSection = body.createDiv();
     const buildSalutSettings = () => {
       salutSection.empty();
       const mode = cfg.salutationMode ?? "auto";
-      new import_obsidian11.Setting(salutSection).setName("Salutation mode").setDesc("Auto: language preset. Custom: write your own for each time slot.").addDropdown(
+      new import_obsidian14.Setting(salutSection).setName("Salutation mode").setDesc("Auto: language preset. Custom: write your own for each time slot.").addDropdown(
         (d) => d.addOption("auto", "Language preset").addOption("custom", "Custom text").setValue(mode).onChange((v) => {
           cfg.salutationMode = v === "custom" ? "custom" : "auto";
           buildSalutSettings();
         })
       );
       if (mode === "auto") {
-        new import_obsidian11.Setting(salutSection).setName("Language").addDropdown((d) => {
+        new import_obsidian14.Setting(salutSection).setName("Language").addDropdown((d) => {
           for (const key of PRESET_KEYS) {
             d.addOption(key, LANG_PRESETS[key].label);
           }
-          d.setValue(cfg.salutationPreset ?? "it").onChange((v) => {
+          d.setValue(cfg.salutationPreset ?? defaultPresetKey()).onChange((v) => {
             cfg.salutationPreset = v;
           });
         });
-        const preset = LANG_PRESETS[cfg.salutationPreset ?? "it"] ?? DEFAULT_SALUT;
+        const preset = presetOf(cfg);
         const preview = salutSection.createDiv({ cls: "setting-item-description" });
         preview.addClass("hp-preview-hint");
         preview.setText(`${preset.morning} / ${preset.afternoon} / ${preset.evening}`);
       }
       if (mode === "custom") {
+        const preset = presetOf(cfg);
         const slots = [
-          { key: "salutMorning", label: "Morning", time: "5:00\u201312:00", fallback: DEFAULT_SALUT.morning },
-          { key: "salutAfternoon", label: "Afternoon", time: "12:00\u201318:00", fallback: DEFAULT_SALUT.afternoon },
-          { key: "salutEvening", label: "Evening", time: "18:00\u20135:00", fallback: DEFAULT_SALUT.evening }
+          { key: "salutMorning", label: "Morning", time: "5:00\u201312:00", fallback: preset.morning },
+          { key: "salutAfternoon", label: "Afternoon", time: "12:00\u201318:00", fallback: preset.afternoon },
+          { key: "salutEvening", label: "Evening", time: "18:00\u20135:00", fallback: preset.evening }
         ];
         for (const slot of slots) {
-          new import_obsidian11.Setting(salutSection).setName(`${slot.label} greeting`).setDesc(slot.time).addText(
-            (t) => t.setValue(cfg[slot.key] ?? slot.fallback).setPlaceholder(slot.fallback).onChange((v) => {
+          new import_obsidian14.Setting(salutSection).setName(`${slot.label} greeting`).setDesc(slot.time).addText(
+            (t) => t.setValue(cfg[slot.key] ?? "").setPlaceholder(slot.fallback).onChange((v) => {
               cfg[slot.key] = v;
             })
           );
@@ -9798,8 +10305,8 @@ var GreetingBlock = class extends BaseBlock {
       }
     };
     buildSalutSettings();
-    new import_obsidian11.Setting(body).setName("Emoji").setHeading();
-    new import_obsidian11.Setting(body).setName("Show emoji").addToggle(
+    new import_obsidian14.Setting(body).setName("Emoji").setHeading();
+    new import_obsidian14.Setting(body).setName("Show emoji").addToggle(
       (t) => t.setValue(cfg.showEmoji ?? true).onChange((v) => {
         cfg.showEmoji = v;
         buildEmojiSettings();
@@ -9812,7 +10319,7 @@ var GreetingBlock = class extends BaseBlock {
       slotPickers = [];
       emojiSection.empty();
       if (cfg.showEmoji === false) return;
-      new import_obsidian11.Setting(emojiSection).setName("Emoji mode").setDesc("Auto: based on time of day. Custom: one per time slot. Random: picked from a pool.").addDropdown(
+      new import_obsidian14.Setting(emojiSection).setName("Emoji mode").setDesc("Auto: based on time of day. Custom: one per time slot. Random: picked from a pool.").addDropdown(
         (d) => d.addOption("auto", "Auto (time of day)").addOption("custom", "Custom per slot").addOption("random", "Random pool").setValue(cfg.emojiMode ?? "auto").onChange((v) => {
           cfg.emojiMode = v === "custom" || v === "random" ? v : "auto";
           buildEmojiSettings();
@@ -9837,6 +10344,7 @@ var GreetingBlock = class extends BaseBlock {
             container: control,
             value: cfg[slot.key] ?? slot.default,
             placeholder: slot.default,
+            ariaLabel: `${slot.label} emoji`,
             onSelect: (emoji) => {
               cfg[slot.key] = emoji;
             },
@@ -9888,7 +10396,7 @@ var GreetingBlock = class extends BaseBlock {
           slotPickers.push(addPicker);
         };
         renderPool();
-        new import_obsidian11.Setting(emojiSection).setName("Same emoji all day").setDesc("Pick one at midnight, keep it all day.").addToggle(
+        new import_obsidian14.Setting(emojiSection).setName("Same emoji all day").setDesc("Pick one at midnight, keep it all day.").addToggle(
           (t) => t.setValue(cfg.emojiDailySeed ?? false).onChange((v) => {
             cfg.emojiDailySeed = v;
           })
@@ -9900,18 +10408,21 @@ var GreetingBlock = class extends BaseBlock {
 };
 
 // src/blocks/ClockBlock.ts
-var import_obsidian12 = require("obsidian");
+var import_obsidian15 = require("obsidian");
 var CLOCK_STYLES = {
   minimal: "Minimal",
   centered: "Centered",
   large: "Large",
   accent: "Accent"
 };
+function setIfChanged(el, text) {
+  if (el.textContent !== text) el.setText(text);
+}
 var ClockBlock = class extends BaseBlock {
   timeEl = null;
   dateEl = null;
   render(el) {
-    const { showDate = true, showSeconds = false, clockStyle = "minimal" } = this.instance.config;
+    const { showDate = true, clockStyle = "minimal" } = this.instance.config;
     el.addClass("clock-block");
     const safeStyle = clockStyle in CLOCK_STYLES ? clockStyle : "minimal";
     el.addClass(`clock-style-${safeStyle}`);
@@ -9920,40 +10431,31 @@ var ClockBlock = class extends BaseBlock {
       this.dateEl = el.createDiv({ cls: "clock-date" });
     }
     this.tick();
-    const interval = showSeconds ? 1e3 : 6e4;
-    this.registerInterval(window.setInterval(() => this.tick(), interval));
+    this.registerInterval(window.setInterval(() => this.tick(), 1e3));
   }
   tick() {
-    const now = (0, import_obsidian12.moment)();
+    const now = (0, import_obsidian15.moment)();
     const { showSeconds = false, showDate = true, format = "" } = this.instance.config;
-    if (this.timeEl) {
-      if (format) {
-        this.timeEl.setText(now.format(format));
-      } else {
-        this.timeEl.setText(now.format(showSeconds ? "HH:mm:ss" : "HH:mm"));
-      }
-    }
-    if (this.dateEl && showDate) {
-      this.dateEl.setText(now.format("dddd, D MMMM YYYY"));
-    }
+    if (this.timeEl) setIfChanged(this.timeEl, now.format(format || (showSeconds ? "HH:mm:ss" : "HH:mm")));
+    if (this.dateEl && showDate) setIfChanged(this.dateEl, now.format("dddd, D MMMM YYYY"));
   }
   renderContentSettings(body, draft) {
-    new import_obsidian12.Setting(body).setName("Style").setDesc("How the clock looks.").addDropdown(
+    new import_obsidian15.Setting(body).setName("Style").setDesc("How the clock looks.").addDropdown(
       (d) => d.addOptions(CLOCK_STYLES).setValue(draft.clockStyle ?? "minimal").onChange((v) => {
         draft.clockStyle = v;
       })
     );
-    new import_obsidian12.Setting(body).setName("Show seconds").addToggle(
+    new import_obsidian15.Setting(body).setName("Show seconds").addToggle(
       (t) => t.setValue(draft.showSeconds ?? false).onChange((v) => {
         draft.showSeconds = v;
       })
     );
-    new import_obsidian12.Setting(body).setName("Show date").addToggle(
+    new import_obsidian15.Setting(body).setName("Show date").addToggle(
       (t) => t.setValue(draft.showDate ?? true).onChange((v) => {
         draft.showDate = v;
       })
     );
-    new import_obsidian12.Setting(body).setName("Custom format").setDesc("Moment.js format string. Leave blank for default.").addText(
+    new import_obsidian15.Setting(body).setName("Custom format").setDesc("Moment.js format string. Leave blank for default.").addText(
       (t) => t.setValue(draft.format ?? "").onChange((v) => {
         draft.format = v;
       })
@@ -9962,14 +10464,15 @@ var ClockBlock = class extends BaseBlock {
 };
 
 // src/blocks/FolderLinksBlock.ts
-var import_obsidian14 = require("obsidian");
+var import_obsidian19 = require("obsidian");
 
 // src/utils/FolderSuggestModal.ts
-var import_obsidian13 = require("obsidian");
-var FolderSuggestModal = class extends import_obsidian13.SuggestModal {
-  constructor(app, onChoose) {
+var import_obsidian16 = require("obsidian");
+var FolderSuggestModal = class extends import_obsidian16.SuggestModal {
+  constructor(app, onChoose, opts = {}) {
     super(app);
     this.onChoose = onChoose;
+    this.opts = opts;
     this.setPlaceholder("Type to search vault folders\u2026");
   }
   cachedFolders = null;
@@ -9979,10 +10482,11 @@ var FolderSuggestModal = class extends import_obsidian13.SuggestModal {
     const recurse = (f) => {
       folders.push(f);
       for (const child of f.children) {
-        if (child instanceof import_obsidian13.TFolder) recurse(child);
+        if (child instanceof import_obsidian16.TFolder) recurse(child);
       }
     };
     recurse(this.app.vault.getRoot());
+    if (this.opts.includeRoot === false) folders.shift();
     this.cachedFolders = folders;
     return folders;
   }
@@ -10027,9 +10531,33 @@ function enableDragReorder(row, index, items, state, renderList) {
       renderList();
     }
   });
-  const grip = row.createSpan({ cls: "drag-grip", text: "\u2630" });
-  grip.setAttribute("aria-label", "Drag to reorder");
+  const grip = row.createEl("button", { cls: "drag-grip", text: "\u2630" });
+  grip.setAttribute("aria-label", "Reorder: drag, or hold alt and press the up or down arrow");
+  grip.addEventListener("keydown", (e) => {
+    if (!e.altKey || e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    const to = index + (e.key === "ArrowUp" ? -1 : 1);
+    if (to < 0 || to >= items.length) return;
+    const parent = row.parentElement;
+    const [moved] = items.splice(index, 1);
+    items.splice(to, 0, moved);
+    renderList();
+    parent?.children[to]?.querySelector(".drag-grip")?.focus();
+  });
 }
+
+// src/utils/folderPath.ts
+var import_obsidian17 = require("obsidian");
+function normalizeFolderPath(raw) {
+  const path = (0, import_obsidian17.normalizePath)(raw.trim().replace(/^\/+|\/+$/g, ""));
+  return path === "/" ? "" : path;
+}
+function isInFolder(path, folder) {
+  return folder !== "" && path.toLowerCase().startsWith(folder.toLowerCase() + "/");
+}
+
+// src/utils/openTarget.ts
+var import_obsidian18 = require("obsidian");
 
 // src/utils/urls.ts
 var DANGEROUS_SCHEMES = /* @__PURE__ */ new Set(["javascript:", "data:", "vbscript:", "file:", "blob:"]);
@@ -10042,10 +10570,65 @@ function isDangerousUrl(value) {
   }
 }
 
+// src/utils/openTarget.ts
+function openFile(app, file, evt) {
+  void app.workspace.getLeaf(import_obsidian18.Keymap.isModEvent(evt)).openFile(file);
+}
+function onOpenClick(el, fn) {
+  el.addEventListener("click", fn);
+  el.addEventListener("auxclick", (evt) => {
+    if (evt.button === 1) fn(evt);
+  });
+}
+function cleanLinkText(raw) {
+  let link = raw.trim();
+  const wiki = /^\[\[([\s\S]*)\]\]$/.exec(link);
+  if (wiki) link = wiki[1];
+  const bar = link.indexOf("|");
+  if (bar !== -1) link = link.slice(0, bar);
+  return link.trim();
+}
+function openNoteLink(app, raw, evt) {
+  const link = cleanLinkText(raw);
+  if (!link) return;
+  const { path, subpath } = (0, import_obsidian18.parseLinktext)(link);
+  const file = app.metadataCache.getFirstLinkpathDest(path, "");
+  if (!file) {
+    new import_obsidian18.Notice(`Homepage blocks: no note named \u201C${path}\u201D.`);
+    return;
+  }
+  void app.workspace.getLeaf(import_obsidian18.Keymap.isModEvent(evt)).openFile(file, subpath ? { eState: { subpath } } : void 0);
+}
+var SCHEME_RE = /^[a-z][a-z0-9+.-]+:/i;
+var DOMAIN_RE = /^(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i;
+var FILE_EXT_RE = /^[^/?#]+\.(?:md|canvas|base|pdf|png|jpe?g|gif|webp|svg|txt|mp3|mp4|webm|csv|json)$/i;
+function openLinkTarget(app, raw, evt) {
+  const value = raw.trim();
+  if (!value) return;
+  if (isDangerousUrl(value)) {
+    new import_obsidian18.Notice("Homepage blocks: blocked an unsafe link.");
+    return;
+  }
+  if (SCHEME_RE.test(value)) {
+    window.open(value, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const link = cleanLinkText(value);
+  if (app.metadataCache.getFirstLinkpathDest((0, import_obsidian18.parseLinktext)(link).path, "")) {
+    openNoteLink(app, link, evt);
+    return;
+  }
+  if (DOMAIN_RE.test(value) && !FILE_EXT_RE.test(value)) {
+    window.open(`https://${value}`, "_blank", "noopener,noreferrer");
+    return;
+  }
+  openNoteLink(app, link, evt);
+}
+
 // src/blocks/FolderLinksBlock.ts
 var VALID_ALIGNS = /* @__PURE__ */ new Set(["left", "center", "right"]);
 function parseFolderPattern(input) {
-  const trimmed = (input ?? "").trim().replace(/\/+$/, "");
+  const trimmed = normalizeFolderPath(input ?? "");
   if (!trimmed) return { folder: "", hasPattern: false, matches: () => true };
   const wildcardIdx = trimmed.search(/[*?]/);
   if (wildcardIdx === -1) {
@@ -10113,7 +10696,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
     const links = cfg.links ?? [];
     const linkAlign = VALID_ALIGNS.has(cfg.linkAlign ?? "") ? cfg.linkAlign : "left";
     const folderEmoji = cfg.folderEmoji ?? "";
-    this.renderHeader(el, "Folder links");
+    this.renderHeader(el, blockTitle("folder-links"));
     const list = el.createDiv({ cls: "folder-links-list" });
     list.addClass(`folder-links-align-${linkAlign}`);
     if (folderInput.trim()) {
@@ -10122,7 +10705,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
         list.createEl("p", { text: "Vault root listing is not supported. Select a subfolder.", cls: "block-loading" });
       } else {
         const root = parsed.folder ? this.app.vault.getAbstractFileByPath(parsed.folder) : this.app.vault.getRoot();
-        if (!(root instanceof import_obsidian14.TFolder)) {
+        if (!(root instanceof import_obsidian19.TFolder)) {
           list.createEl("p", { text: `Folder "${parsed.folder}" not found.`, cls: "block-loading" });
         } else {
           const prefix = parsed.folder ? parsed.folder + "/" : "";
@@ -10134,9 +10717,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
               btn.createSpan({ cls: "link-emoji", text: folderEmoji });
             }
             btn.createSpan({ text: file.basename });
-            btn.addEventListener("click", () => {
-              void this.app.workspace.openLinkText(file.path, "");
-            });
+            onOpenClick(btn, (evt) => openFile(this.app, file, evt));
           }
           if (notes.length === 0) {
             const label = parsed.hasPattern ? `matching "${folderInput}"` : `in "${root.path}"`;
@@ -10152,13 +10733,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
         btn.createSpan({ cls: "link-emoji", text: link.emoji });
       }
       btn.createSpan({ text: link.label });
-      btn.addEventListener("click", () => {
-        if (isDangerousUrl(link.path)) {
-          new import_obsidian14.Notice("Homepage blocks: blocked an unsafe link.");
-          return;
-        }
-        void this.app.workspace.openLinkText(link.path, "");
-      });
+      onOpenClick(btn, (evt) => openNoteLink(this.app, link.path, evt));
     }
     if (!folderInput.trim() && links.length === 0) {
       const hint = list.createDiv({ cls: "block-empty-hint" });
@@ -10171,8 +10746,8 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
     const files = [];
     const recurse = (f) => {
       for (const child of f.children) {
-        if (child instanceof import_obsidian14.TFile) files.push(child);
-        else if (child instanceof import_obsidian14.TFolder) recurse(child);
+        if (child instanceof import_obsidian19.TFile) files.push(child);
+        else if (child instanceof import_obsidian19.TFolder) recurse(child);
       }
     };
     recurse(folder);
@@ -10186,13 +10761,13 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
     const closeAllPickers = () => {
       for (const p of pickers) p.close();
     };
-    new import_obsidian14.Setting(body).setName("Link alignment").setDesc("Left, center, or right.").addDropdown(
+    new import_obsidian19.Setting(body).setName("Link alignment").setDesc("Left, center, or right.").addDropdown(
       (d) => d.addOptions({ left: "Left", center: "Center", right: "Right" }).setValue(cfg.linkAlign ?? "left").onChange((v) => {
         cfg.linkAlign = v;
       })
     );
     let folderText;
-    new import_obsidian14.Setting(body).setName("Auto-list folder").setDesc("Folder path, with optional wildcards. Examples: Projects, Projects/*.md, Projects/**/*-draft.md").addText((t) => {
+    new import_obsidian19.Setting(body).setName("Auto-list folder").setDesc("Folder path, with optional wildcards. Examples: Projects, Projects/*.md, Projects/**/*-draft.md").addText((t) => {
       folderText = t;
       t.setValue(cfg.folder ?? "").setPlaceholder("Projects/*.md").onChange((v) => {
         cfg.folder = v;
@@ -10203,7 +10778,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
           const path = folder.path === "/" ? "" : folder.path;
           cfg.folder = path;
           folderText.setValue(path);
-        }).open();
+        }, { includeRoot: false }).open();
       })
     );
     const folderPicker = createEmojiPicker({
@@ -10222,7 +10797,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
       onBeforeOpen: closeAllPickers
     });
     pickers.push(folderPicker);
-    new import_obsidian14.Setting(body).setName("Manual links").setHeading();
+    new import_obsidian19.Setting(body).setName("Manual links").setHeading();
     const linksContainer = body.createDiv();
     const dragState = { dragIdx: -1 };
     const renderLinks = () => {
@@ -10231,7 +10806,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
       links.forEach((link, i) => {
         const row = linksContainer.createDiv({ cls: "settings-link-row" });
         enableDragReorder(row, i, links, dragState, renderLinks);
-        new import_obsidian14.Setting(row).setName(`Link ${i + 1}`).addText((t) => t.setPlaceholder("Label").setValue(link.label).onChange((v) => {
+        new import_obsidian19.Setting(row).setName(`Link ${i + 1}`).addText((t) => t.setPlaceholder("Label").setValue(link.label).onChange((v) => {
           link.label = v;
         })).addText((t) => t.setPlaceholder("Path").setValue(link.path).onChange((v) => {
           link.path = v;
@@ -10258,7 +10833,7 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
       });
     };
     renderLinks();
-    new import_obsidian14.Setting(body).addButton((btn) => btn.setButtonText("Add link").onClick(() => {
+    new import_obsidian19.Setting(body).addButton((btn) => btn.setButtonText("Add link").onClick(() => {
       links.push({ label: "", path: "" });
       renderLinks();
     }));
@@ -10266,16 +10841,16 @@ var FolderLinksBlock = class _FolderLinksBlock extends BaseBlock {
 };
 
 // src/blocks/ButtonGridBlock.ts
-var import_obsidian15 = require("obsidian");
+var import_obsidian20 = require("obsidian");
 var ButtonGridBlock = class extends BaseBlock {
   render(el) {
     el.addClass("button-grid-block");
     this.containerEl = el;
     const { columns = 2, items = [] } = this.instance.config;
-    this.renderHeader(el, "Buttons");
+    this.renderHeader(el, blockTitle("button-grid"));
     const grid = el.createDiv({ cls: "button-grid" });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
-    grid.style.setProperty("--hp-grid-cols", `repeat(${safeCols}, 1fr)`);
+    grid.style.setProperty("--hp-grid-count", String(safeCols));
     grid.setAttribute(AUTO_HEIGHT_ATTR, "");
     this.observeWidthForAutoHeight(grid);
     if (items.length === 0) {
@@ -10291,13 +10866,8 @@ var ButtonGridBlock = class extends BaseBlock {
       }
       btn.createSpan({ text: item.label });
       if (item.link) {
-        btn.addEventListener("click", () => {
-          if (isDangerousUrl(item.link)) {
-            new import_obsidian15.Notice("Homepage blocks: blocked an unsafe link.");
-            return;
-          }
-          void this.app.workspace.openLinkText(item.link, "");
-        });
+        const link = item.link;
+        onOpenClick(btn, (evt) => openLinkTarget(this.app, link, evt));
       } else {
         btn.addClass("hp-cursor-default");
       }
@@ -10306,7 +10876,7 @@ var ButtonGridBlock = class extends BaseBlock {
   renderContentSettings(body, draft) {
     const cfg = draft;
     if (!Array.isArray(cfg.items)) cfg.items = [];
-    new import_obsidian15.Setting(body).setName("Columns").addDropdown(
+    new import_obsidian20.Setting(body).setName("Columns").addDropdown(
       (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(cfg.columns ?? 2)).onChange((v) => {
         cfg.columns = Number(v);
       })
@@ -10358,7 +10928,7 @@ var ButtonGridBlock = class extends BaseBlock {
         linkInput.addEventListener("input", () => {
           item.link = linkInput.value || void 0;
         });
-        const delBtn = row.createEl("button", { cls: "btn-grid-item-del", text: "\u2715" });
+        const delBtn = row.createEl("button", { cls: "btn-grid-item-del", text: "\u2715", attr: { "aria-label": "Remove button" } });
         delBtn.addEventListener("click", () => {
           cfg.items.splice(i, 1);
           renderList();
@@ -10366,7 +10936,7 @@ var ButtonGridBlock = class extends BaseBlock {
       });
     };
     renderList();
-    new import_obsidian15.Setting(body).addButton(
+    new import_obsidian20.Setting(body).addButton(
       (btn) => btn.setButtonText("+ add item").onClick(() => {
         cfg.items.push({ emoji: "", label: "" });
         renderList();
@@ -10376,15 +10946,104 @@ var ButtonGridBlock = class extends BaseBlock {
 };
 
 // src/blocks/QuotesListBlock.ts
-var import_obsidian16 = require("obsidian");
+var import_obsidian21 = require("obsidian");
 
 // src/utils/noteContent.ts
+var HEADING_RE = /^#{1,6}(\s|$)/;
+var FENCE_RE = /^(`{3,}|~{3,})/;
+var TABLE_RE = /^\|/;
+var FIELD_LINE_RE = /^[\p{L}\p{N}_][\p{L}\p{N}_ -]*::/u;
+var LEADING_TAGS_RE = /^(?:#[\p{L}\p{N}_\-/]+\s*)+/u;
+function noteBlocks(content, cache) {
+  const blocks = [];
+  let current = [];
+  const flush = () => {
+    if (current.length) blocks.push(current);
+    current = [];
+  };
+  let text = content.slice(frontmatterEnd(content, cache));
+  text = text.replace(/%%[\s\S]*?%%/g, " ").replace(/<!--[\s\S]*?-->/g, " ");
+  let fence = null;
+  let inMath = false;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (fence) {
+      if (line.startsWith(fence)) fence = null;
+      continue;
+    }
+    if (inMath) {
+      if (line.startsWith("$$")) inMath = false;
+      continue;
+    }
+    const fenceMatch = FENCE_RE.exec(line);
+    if (fenceMatch) {
+      flush();
+      fence = fenceMatch[1];
+      continue;
+    }
+    if (line.startsWith("$$")) {
+      flush();
+      if (!(line.length > 2 && line.endsWith("$$"))) inMath = true;
+      continue;
+    }
+    if (!line) {
+      flush();
+      continue;
+    }
+    if (HEADING_RE.test(line) || TABLE_RE.test(line) || FIELD_LINE_RE.test(line) || /^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
+      flush();
+      continue;
+    }
+    const cleaned = cleanLine(line);
+    if (cleaned) current.push(cleaned);
+  }
+  flush();
+  return blocks;
+}
+function frontmatterEnd(content, cache) {
+  const fromCache = cache?.frontmatterPosition?.end.offset;
+  if (typeof fromCache === "number") return fromCache;
+  const m = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(content);
+  return m ? m[0].length : 0;
+}
+function cleanLine(line) {
+  let s = line;
+  s = s.replace(/^(?:>\s*)+/, "");
+  s = s.replace(/^\[!\w[\w-]*\][+-]?\s*/, "");
+  s = s.replace(/^(?:[-*+]|\d+[.)])\s+(?:\[.\]\s+)?/, "");
+  s = s.replace(/!\[\[[^\]]*\]\]/g, "").replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+  s = s.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, "$2");
+  s = s.replace(/\[\[([^\]]+)\]\]/g, (_m, target) => target.replace(/#/g, " > ").replace(/^ > /, ""));
+  s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+  s = s.replace(/[[(][\p{L}\p{N}_][\p{L}\p{N}_ -]*::[^\])]*[\])]/gu, "");
+  s = s.replace(/\s\^[\w-]+$/, "");
+  s = s.replace(LEADING_TAGS_RE, "");
+  return s.replace(/\s{2,}/g, " ").trim();
+}
 function parseNoteInsight(content, cache) {
-  const heading = cache?.headings?.[0]?.heading ?? "";
-  const fmEnd = cache?.frontmatterPosition?.end.offset ?? 0;
-  const afterFm = content.slice(fmEnd);
-  const body = afterFm.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).join(" ");
-  return { heading, body };
+  const body = noteBlocks(content, cache).map((b) => b.join(" ")).join(" ");
+  return { heading: leadingHeading(content, cache), body };
+}
+function leadingHeading(content, cache) {
+  const text = content.slice(frontmatterEnd(content, cache));
+  const first = text.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? "";
+  return HEADING_RE.test(first) ? first.replace(/^#{1,6}\s*/, "").replace(/\s#+$/, "").trim() : "";
+}
+var AUTHOR_RE = /^(?:—|–|--)\s*/;
+function noteQuote(content, cache, maxChars = 280) {
+  const first = noteBlocks(content, cache)[0] ?? [];
+  const last = first[first.length - 1] ?? "";
+  const hasAuthor = first.length > 1 && AUTHOR_RE.test(last);
+  const lines = hasAuthor ? first.slice(0, -1) : first;
+  return { text: capText(lines.join(" "), maxChars), author: hasAuthor ? last.replace(AUTHOR_RE, "") : "" };
+}
+function notePreview(content, cache, maxChars = 200) {
+  const first = (noteBlocks(content, cache)[0] ?? []).join(" ");
+  return first.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").slice(0, maxChars);
+}
+function capText(text, maxChars) {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, Math.max(0, maxChars - 1)).trimEnd() + "\u2026";
 }
 
 // src/blocks/QuotesListBlock.ts
@@ -10424,6 +11083,9 @@ var QuotesListBlock = class extends BaseBlock {
       e.empty();
       return this.loadAndRender(e);
     });
+    this.onDayChange(() => {
+      if (this.instance.config.dailySeed !== false) trigger();
+    });
     this.registerEvent(this.app.metadataCache.on("changed", (file, _data, cache) => {
       const cfg = this.instance.config;
       if (cfg.source === "text" || !cfg.tag) return;
@@ -10459,7 +11121,7 @@ var QuotesListBlock = class extends BaseBlock {
     const maxItems = rangedNumber("quotes-list", this.instance.config, "maxItems", 20);
     el.style.setProperty("--hp-quote-valign", verticalAlign === "middle" ? "center" : verticalAlign === "bottom" ? "flex-end" : "flex-start");
     el.style.setProperty("--hp-quote-align", textAlign === "center" ? "center" : textAlign === "right" ? "right" : "start");
-    this.renderHeader(el, "Quotes");
+    this.renderHeader(el, blockTitle("quotes-list"));
     const effectiveMax = typeof maxItems === "number" && maxItems > 0 ? maxItems : 0;
     const safeMode = effectiveMax === 1 ? "single" : "list";
     const safeFontStyle = fontStyle === "serif" || fontStyle === "handwriting" ? fontStyle : "default";
@@ -10475,7 +11137,11 @@ var QuotesListBlock = class extends BaseBlock {
     el.toggleClass("quote-no-accent", this.instance.config.showAccentBar === false);
     if (safeMode === "single") {
       if (source === "text") {
-        this.renderSingleTextQuote(el, quotes, dailySeed);
+        const card2 = this.renderSingleTextQuote(el, quotes, dailySeed);
+        if (card2 && heightMode === "extend") {
+          el.toggleClass("quotes-list-block--extend", true);
+          card2.setAttribute(AUTO_HEIGHT_ATTR, "");
+        }
         return;
       }
       if (!tag) {
@@ -10552,6 +11218,12 @@ var QuotesListBlock = class extends BaseBlock {
     }
     const tagSearch = normalizeTag(tag);
     const allFiles = getFilesWithTag(this.app, tagSearch);
+    if (allFiles.length === 0) {
+      const hint = colsEl.createDiv({ cls: "block-empty-hint" });
+      hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F4AC}" });
+      hint.createDiv({ cls: "block-empty-hint-text", text: `No notes tagged ${tagSearch}.` });
+      return;
+    }
     const files = effectiveMax > 0 ? allFiles.slice(0, effectiveMax) : allFiles;
     for (const file of files) this.shownPaths.add(file.path);
     const results = await Promise.allSettled(
@@ -10570,11 +11242,12 @@ var QuotesListBlock = class extends BaseBlock {
       const { file, content, cache } = result.value;
       const rawColor = cache?.frontmatter?.color ?? "";
       const color = typeof rawColor === "string" ? rawColor.slice(0, 64) : "";
-      const body = this.extractBody(content, cache);
+      const { text: body, author } = noteQuote(content, cache);
       if (!body) continue;
       const item = colsEl.createDiv({ cls: "quote-item" });
       const quote = item.createEl("blockquote", { cls: "quote-content" });
       renderFormatted(quote, body);
+      if (author) quote.createDiv({ cls: "quote-author", text: `\u2014 ${author}` });
       if (color && COLOR_RE.test(color)) {
         quote.style.setProperty("--hp-quote-color", color);
         quote.addClass("quote-colored");
@@ -10589,14 +11262,14 @@ var QuotesListBlock = class extends BaseBlock {
       const hint = el.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F4AC}" });
       hint.createDiv({ cls: "block-empty-hint-text", text: "No quotes yet. Add them in settings, separated by ---." });
-      return;
+      return null;
     }
     const blocks = raw.split(/\n---\n/).map((b) => b.trim()).filter(Boolean);
-    if (blocks.length === 0) return;
+    if (blocks.length === 0) return null;
     const index = dailySeed ? dailyIndex(blocks.length) : Math.floor(Math.random() * blocks.length);
     const block = blocks[index];
     const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (lines.length === 0) return;
+    if (lines.length === 0) return null;
     const lastLine = lines[lines.length - 1];
     const hasSource = lines.length > 1 && /^(—|–|--)/.test(lastLine);
     const sourceText = hasSource ? lastLine.replace(/^(—|–|--)\s*/, "") : "";
@@ -10606,6 +11279,7 @@ var QuotesListBlock = class extends BaseBlock {
     if (sourceText) card.createDiv({ cls: "insight-title", text: sourceText });
     const bodyEl = card.createDiv({ cls: "insight-body" });
     renderFormatted(bodyEl, body);
+    return card;
   }
   /**
    * Render quotes from plain text. Each quote is separated by `---` on its own line.
@@ -10641,19 +11315,12 @@ var QuotesListBlock = class extends BaseBlock {
       if (sourceText) item.createDiv({ cls: "quote-source", text: sourceText });
     }
   }
-  /** Extract the first few lines of body content using metadataCache frontmatter offset. */
-  extractBody(content, cache) {
-    const fmEnd = cache?.frontmatterPosition?.end.offset ?? 0;
-    const afterFm = content.slice(fmEnd);
-    const lines = afterFm.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-    return lines.slice(0, 3).join(" ");
-  }
   renderContentSettings(body, draft) {
     const cfg = draft;
     cfg.source ??= "tag";
     let tagSection;
     let textSection;
-    new import_obsidian16.Setting(body).setName("Source").setDesc("From tagged notes, or entered manually.").addDropdown(
+    new import_obsidian21.Setting(body).setName("Source").setDesc("From tagged notes, or entered manually.").addDropdown(
       (d) => d.addOption("tag", "Notes with tag").addOption("text", "Manual text").setValue(cfg.source ?? "tag").onChange((v) => {
         cfg.source = v === "text" ? "text" : "tag";
         tagSection.toggleClass("hp-hidden", v !== "tag");
@@ -10662,19 +11329,19 @@ var QuotesListBlock = class extends BaseBlock {
     );
     tagSection = body.createDiv();
     tagSection.toggleClass("hp-hidden", cfg.source !== "tag");
-    new import_obsidian16.Setting(tagSection).setName("Tag").setDesc("Without # prefix").addText(
+    new import_obsidian21.Setting(tagSection).setName("Tag").setDesc("Without # prefix").addText(
       (t) => t.setValue(cfg.tag ?? "").onChange((v) => {
         cfg.tag = v;
       })
     );
-    new import_obsidian16.Setting(tagSection).setName("Show note title").setDesc("Display the note filename as the quote attribution.").addToggle(
+    new import_obsidian21.Setting(tagSection).setName("Show note title").setDesc("Display the note filename as the quote attribution.").addToggle(
       (t) => t.setValue(cfg.showNoteTitle !== false).onChange((v) => {
         cfg.showNoteTitle = v;
       })
     );
     textSection = body.createDiv();
     textSection.toggleClass("hp-hidden", cfg.source !== "text");
-    const textSetting = new import_obsidian16.Setting(textSection).setName("Quotes").setDesc("Separate quotes with --- on its own line, then add a source with \u2014 (e.g. \u2014 author).");
+    const textSetting = new import_obsidian21.Setting(textSection).setName("Quotes").setDesc("Separate quotes with --- on its own line, then add a source with \u2014 (e.g. \u2014 author).");
     textSetting.settingEl.addClass("hp-setting-column");
     const textarea = textSetting.settingEl.createEl("textarea");
     textarea.rows = 8;
@@ -10683,56 +11350,56 @@ var QuotesListBlock = class extends BaseBlock {
     textarea.addEventListener("input", () => {
       cfg.quotes = textarea.value;
     });
-    new import_obsidian16.Setting(body).setName("Max quotes").setDesc("Leave empty for all. Set to 1 for a daily rotating quote.").addText(
-      (t) => t.setPlaceholder("All").setValue(typeof cfg.maxItems === "number" && cfg.maxItems > 0 ? String(cfg.maxItems) : "").onChange((v) => {
+    new import_obsidian21.Setting(body).setName("Max quotes").setDesc("Leave empty for all. Set to 1 for a daily rotating quote.").addText(
+      (t) => t.setPlaceholder("All").setValue(String(rangedNumber("quotes-list", cfg, "maxItems", 20) || "")).onChange((v) => {
         const n = parseInt(v);
         cfg.maxItems = isNaN(n) || n <= 0 ? 0 : Math.min(n, 500);
         dailySeedSetting.toggleClass("hp-hidden", cfg.maxItems !== 1);
       })
     );
     const dailySeedSetting = body.createDiv();
-    dailySeedSetting.toggleClass("hp-hidden", (cfg.maxItems ?? 0) !== 1);
-    new import_obsidian16.Setting(dailySeedSetting).setName("Daily seed").setDesc("Same quote all day, changes at midnight.").addToggle(
+    dailySeedSetting.toggleClass("hp-hidden", rangedNumber("quotes-list", cfg, "maxItems", 20) !== 1);
+    new import_obsidian21.Setting(dailySeedSetting).setName("Daily seed").setDesc("Same quote all day, changes at midnight.").addToggle(
       (t) => t.setValue(cfg.dailySeed !== false).onChange((v) => {
         cfg.dailySeed = v;
       })
     );
-    new import_obsidian16.Setting(body).setName("Columns").addDropdown(
+    new import_obsidian21.Setting(body).setName("Columns").addDropdown(
       (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(typeof cfg.columns === "number" ? cfg.columns : 2)).onChange((v) => {
         cfg.columns = Number(v);
       })
     );
-    new import_obsidian16.Setting(body).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands to show all quotes.").addDropdown(
+    new import_obsidian21.Setting(body).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands to show all quotes.").addDropdown(
       (d) => d.addOption("wrap", "Scroll (fixed height)").addOption("extend", "Grow to fit all").setValue(typeof cfg.heightMode === "string" ? cfg.heightMode : "extend").onChange((v) => {
         cfg.heightMode = v === "wrap" ? "wrap" : "extend";
       })
     );
-    new import_obsidian16.Setting(body).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
+    new import_obsidian21.Setting(body).setName("Quote style").setDesc("Classic: left accent bar. Centered: single column. Card: each quote in its own box.").addDropdown(
       (d) => d.addOption("classic", "Classic").addOption("centered", "Centered").addOption("card", "Card").setValue(typeof cfg.quoteStyle === "string" ? cfg.quoteStyle : "classic").onChange((v) => {
         cfg.quoteStyle = v === "centered" || v === "card" ? v : "classic";
       })
     );
-    new import_obsidian16.Setting(body).setName("Show accent bar").setDesc("Show the vertical line next to each quote.").addToggle(
+    new import_obsidian21.Setting(body).setName("Show accent bar").setDesc("Show the vertical line next to each quote.").addToggle(
       (t) => t.setValue(cfg.showAccentBar !== false).onChange((v) => {
         cfg.showAccentBar = v;
       })
     );
-    new import_obsidian16.Setting(body).setName("Text alignment").setDesc("Left, center, or right.").addDropdown(
+    new import_obsidian21.Setting(body).setName("Text alignment").setDesc("Left, center, or right.").addDropdown(
       (d) => d.addOption("left", "Left").addOption("center", "Center").addOption("right", "Right").setValue(typeof cfg.textAlign === "string" ? cfg.textAlign : "left").onChange((v) => {
         cfg.textAlign = v;
       })
     );
-    new import_obsidian16.Setting(body).setName("Vertical alignment").setDesc("Vertical alignment within the block.").addDropdown(
+    new import_obsidian21.Setting(body).setName("Vertical alignment").setDesc("Vertical alignment within the block.").addDropdown(
       (d) => d.addOption("top", "Top").addOption("middle", "Middle").addOption("bottom", "Bottom").setValue(typeof cfg.verticalAlign === "string" ? cfg.verticalAlign : "top").onChange((v) => {
         cfg.verticalAlign = v;
       })
     );
-    new import_obsidian16.Setting(body).setName("Font style").setDesc("Font preset. A custom font below will override this (line-height still applies).").addDropdown(
+    new import_obsidian21.Setting(body).setName("Font style").setDesc("Font preset. A custom font below will override this (line-height still applies).").addDropdown(
       (d) => d.addOption("default", "Default").addOption("serif", "Serif").addOption("handwriting", "Handwriting").setValue(typeof cfg.fontStyle === "string" ? cfg.fontStyle : "default").onChange((v) => {
         cfg.fontStyle = v === "serif" || v === "handwriting" ? v : "default";
       })
     );
-    new import_obsidian16.Setting(body).setName("Custom font").setDesc("Any installed font. Overrides the preset above.").addText(
+    new import_obsidian21.Setting(body).setName("Custom font").setDesc("Any installed font. Overrides the preset above.").addText(
       (t) => t.setPlaceholder("Georgia").setValue(typeof cfg.customFont === "string" ? cfg.customFont : "").onChange((v) => {
         cfg.customFont = v;
       })
@@ -10741,11 +11408,11 @@ var QuotesListBlock = class extends BaseBlock {
 };
 
 // src/blocks/ImageGalleryBlock.ts
-var import_obsidian17 = require("obsidian");
+var import_obsidian22 = require("obsidian");
 
 // src/utils/responsiveGrid.ts
-function responsiveGridColumns(safeCols, minPx = 120) {
-  return `repeat(auto-fill, minmax(max(${minPx}px, calc(100% / ${safeCols})), 1fr))`;
+function responsiveGridColumns(safeCols, minPx = 120, gapPx = 8) {
+  return `repeat(auto-fill, minmax(max(${minPx}px, calc((100% - ${(safeCols - 1) * gapPx}px) / ${safeCols})), 1fr))`;
 }
 
 // src/utils/imageCache.ts
@@ -10971,11 +11638,13 @@ function openMediaLightbox(items, startIndex) {
   overlay.setAttribute("aria-label", "Image viewer");
   overlay.tabIndex = -1;
   activeLightbox = { ac, overlay };
+  const closeBtn = overlay.createEl("button", { cls: "gallery-lightbox-close", attr: { "aria-label": "Close" } });
+  (0, import_obsidian22.setIcon)(closeBtn, "x");
   const prevBtn = overlay.createEl("button", { cls: "gallery-lightbox-prev", attr: { "aria-label": "Previous" } });
-  (0, import_obsidian17.setIcon)(prevBtn, "chevron-left");
+  (0, import_obsidian22.setIcon)(prevBtn, "chevron-left");
   const mediaContainer = overlay.createDiv({ cls: "gallery-lightbox-media" });
   const nextBtn = overlay.createEl("button", { cls: "gallery-lightbox-next", attr: { "aria-label": "Next" } });
-  (0, import_obsidian17.setIcon)(nextBtn, "chevron-right");
+  (0, import_obsidian22.setIcon)(nextBtn, "chevron-right");
   const counter = overlay.createSpan({ cls: "gallery-lightbox-counter" });
   if (items.length <= 1) {
     prevBtn.addClass("gallery-lightbox-nav-hidden");
@@ -11019,7 +11688,14 @@ function openMediaLightbox(items, startIndex) {
     if (activeLightbox?.ac === ac) activeLightbox = null;
     if (opener && opener.isConnected) opener.focus();
   };
-  const focusables = () => [prevBtn, nextBtn].filter((b) => !b.hasClass("gallery-lightbox-nav-hidden"));
+  const focusables = () => {
+    const video = mediaContainer.querySelector("video");
+    return [closeBtn, prevBtn, ...video ? [video] : [], nextBtn].filter((b) => !b.hasClass("gallery-lightbox-nav-hidden"));
+  };
+  closeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    close();
+  }, { signal });
   prevBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     showItem(current - 1);
@@ -11039,10 +11715,12 @@ function openMediaLightbox(items, startIndex) {
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (active?.isContentEditable) return;
     if (doc.querySelector(".modal-container")) return;
+    const onVideo = active?.tagName === "VIDEO";
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       close();
+    } else if (onVideo && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       showItem(current - 1);
@@ -11084,14 +11762,20 @@ function openMediaLightbox(items, startIndex) {
   (focusables()[0] ?? overlay).focus();
   return ac;
 }
+var IMAGE_WAIT_MS = 8e3;
 function waitForImage(img) {
   return new Promise((resolve) => {
     if (img.complete && img.naturalHeight > 0) {
       resolve();
       return;
     }
-    img.addEventListener("load", () => resolve(), { once: true });
-    img.addEventListener("error", () => resolve(), { once: true });
+    const timer = window.setTimeout(resolve, IMAGE_WAIT_MS);
+    const done = () => {
+      window.clearTimeout(timer);
+      resolve();
+    };
+    img.addEventListener("load", done, { once: true });
+    img.addEventListener("error", done, { once: true });
   });
 }
 async function runWithConcurrency(thunks, limit) {
@@ -11171,7 +11855,7 @@ var ImageGalleryBlock = class extends BaseBlock {
     });
   }
   isRelevantMedia(path) {
-    const { folder = "" } = this.instance.config;
+    const folder = normalizeFolderPath(this.instance.config.folder ?? "");
     if (!folder) return false;
     if (!path.startsWith(folder + "/")) return false;
     const dot = path.lastIndexOf(".");
@@ -11183,13 +11867,13 @@ var ImageGalleryBlock = class extends BaseBlock {
     const gen = this.nextGeneration();
     this.releaseThumbs();
     const cfg = this.instance.config;
-    const folder = cfg.folder ?? "";
+    const folder = normalizeFolderPath(cfg.folder ?? "");
     const columns = Math.max(1, Math.min(7, Math.floor(Number(cfg.columns) || 3)));
     const rawMax = Number(cfg.maxItems);
     const maxItems = rawMax > 0 ? Math.max(1, Math.min(500, Math.floor(rawMax))) : 0;
     const layout = cfg.layout ?? "grid";
     const heightMode = cfg.heightMode ?? "auto";
-    this.renderHeader(el, "Gallery");
+    this.renderHeader(el, blockTitle("image-gallery"));
     const gallery = el.createDiv({ cls: "image-gallery" });
     if (heightMode === "fixed") {
       gallery.addClass("image-gallery--fixed-height");
@@ -11212,7 +11896,7 @@ var ImageGalleryBlock = class extends BaseBlock {
       this.masonryRo = new ResizeObserver(updateCols);
       this.masonryRo.observe(gallery);
     } else {
-      gallery.style.setProperty("--hp-grid-cols", responsiveGridColumns(columns, 100));
+      gallery.style.setProperty("--hp-grid-cols", responsiveGridColumns(columns, 100, 8));
     }
     if (!folder) {
       const hint = gallery.createDiv({ cls: "block-empty-hint" });
@@ -11221,7 +11905,7 @@ var ImageGalleryBlock = class extends BaseBlock {
       return;
     }
     const folderObj = this.app.vault.getAbstractFileByPath(folder);
-    if (!(folderObj instanceof import_obsidian17.TFolder)) {
+    if (!(folderObj instanceof import_obsidian22.TFolder)) {
       gallery.setText(`Folder "${folder}" not found.`);
       return;
     }
@@ -11237,6 +11921,7 @@ var ImageGalleryBlock = class extends BaseBlock {
     const loadPromises = [];
     const genThunks = [];
     const useLazy = heightMode === "fixed";
+    const settle = (img) => useLazy ? Promise.resolve() : waitForImage(img);
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const ext = `.${file.extension.toLowerCase()}`;
@@ -11262,7 +11947,7 @@ var ImageGalleryBlock = class extends BaseBlock {
         const cached = imageCache.getCached(file.path, file.stat.mtime);
         if (cached) {
           this.showThumb(img, cached.thumbUrl);
-          loadPromises.push(waitForImage(img));
+          loadPromises.push(settle(img));
         } else {
           wrapper.addClass("gallery-item--loading");
           genThunks.push(
@@ -11270,7 +11955,7 @@ var ImageGalleryBlock = class extends BaseBlock {
               if (this.isStale(gen)) return;
               this.showThumb(img, entry.thumbUrl);
               wrapper.removeClass("gallery-item--loading");
-              return waitForImage(img);
+              return settle(img);
             })
           );
         }
@@ -11286,7 +11971,7 @@ var ImageGalleryBlock = class extends BaseBlock {
         video.addEventListener("loadedmetadata", () => {
           video.currentTime = 0.1;
         }, { once: true });
-        loadPromises.push(
+        if (!useLazy) loadPromises.push(
           new Promise((resolve) => {
             if (video.readyState >= 1) {
               resolve();
@@ -11320,12 +12005,12 @@ var ImageGalleryBlock = class extends BaseBlock {
     const recurse = (f) => {
       for (const child of f.children) {
         if (files.length >= limit) return;
-        if (child instanceof import_obsidian17.TFile) {
+        if (child instanceof import_obsidian22.TFile) {
           const ext = `.${child.extension.toLowerCase()}`;
           if (IMAGE_EXTS.has(ext) || VIDEO_EXTS.has(ext)) {
             files.push(child);
           }
-        } else if (child instanceof import_obsidian17.TFolder) {
+        } else if (child instanceof import_obsidian22.TFolder) {
           recurse(child);
         }
       }
@@ -11335,7 +12020,7 @@ var ImageGalleryBlock = class extends BaseBlock {
   }
   renderContentSettings(body, draft) {
     let folderText;
-    new import_obsidian17.Setting(body).setName("Folder").setDesc("Pick a vault folder.").addText((t) => {
+    new import_obsidian22.Setting(body).setName("Folder").setDesc("Pick a vault folder.").addText((t) => {
       folderText = t;
       t.setValue(draft.folder ?? "").setPlaceholder("Attachments/photos").onChange((v) => {
         draft.folder = v;
@@ -11346,25 +12031,25 @@ var ImageGalleryBlock = class extends BaseBlock {
           const path = folder.path === "/" ? "" : folder.path;
           draft.folder = path;
           folderText.setValue(path);
-        }).open();
+        }, { includeRoot: false }).open();
       })
     );
-    new import_obsidian17.Setting(body).setName("Height").setDesc("Auto: expands to fit all images. Fixed: uses the block's row height and scrolls.").addDropdown(
+    new import_obsidian22.Setting(body).setName("Height").setDesc("Auto: expands to fit all images. Fixed: uses the block's row height and scrolls.").addDropdown(
       (d) => d.addOption("auto", "Auto (fit all images)").addOption("fixed", "Fixed (scroll)").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "auto").onChange((v) => {
         draft.heightMode = v === "fixed" ? "fixed" : "auto";
       })
     );
-    new import_obsidian17.Setting(body).setName("Layout").addDropdown(
+    new import_obsidian22.Setting(body).setName("Layout").addDropdown(
       (d) => d.addOption("grid", "Grid").addOption("masonry", "Masonry").setValue(typeof draft.layout === "string" ? draft.layout : "grid").onChange((v) => {
         draft.layout = v;
       })
     );
-    new import_obsidian17.Setting(body).setName("Columns").addDropdown(
+    new import_obsidian22.Setting(body).setName("Columns").addDropdown(
       (d) => d.addOption("2", "2").addOption("3", "3").addOption("4", "4").addOption("5", "5").addOption("6", "6").addOption("7", "7").setValue(String(typeof draft.columns === "number" ? draft.columns : 3)).onChange((v) => {
         draft.columns = Number(v);
       })
     );
-    new import_obsidian17.Setting(body).setName("Max items").setDesc("0 = show all files.").addText(
+    new import_obsidian22.Setting(body).setName("Max items").setDesc("0 = show all files.").addText(
       (t) => t.setValue(String(typeof draft.maxItems === "number" ? draft.maxItems : 0)).onChange((v) => {
         const n = parseInt(v) || 0;
         draft.maxItems = Math.min(Math.max(0, n), 500);
@@ -11374,7 +12059,7 @@ var ImageGalleryBlock = class extends BaseBlock {
 };
 
 // src/blocks/EmbeddedNoteBlock.ts
-var import_obsidian18 = require("obsidian");
+var import_obsidian23 = require("obsidian");
 var DEBOUNCE_MS3 = 300;
 var EmbeddedNoteBlock = class extends BaseBlock {
   render(el) {
@@ -11412,59 +12097,60 @@ var EmbeddedNoteBlock = class extends BaseBlock {
     el.empty();
     el.toggleClass("embedded-note-block--grow", heightMode === "grow");
     if (!filePath) {
-      if (showTitle) this.renderHeader(el, "Embedded note");
+      if (showTitle) this.renderHeader(el, blockTitle("embedded-note"));
       const hint = el.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F4C4}" });
       hint.createDiv({ cls: "block-empty-hint-text", text: "No note selected. Choose a file path in settings to embed it here." });
       return;
     }
     const file = this.app.vault.getAbstractFileByPath(filePath);
-    if (!(file instanceof import_obsidian18.TFile)) {
-      if (showTitle) this.renderHeader(el, "Embedded note");
+    if (!(file instanceof import_obsidian23.TFile)) {
+      if (showTitle) this.renderHeader(el, blockTitle("embedded-note"));
       el.setText(`File not found: ${filePath}`);
       return;
     }
     if (showTitle) {
       this.renderHeader(el, file.basename);
     }
-    const contentEl = el.createDiv({ cls: "embedded-note-content" });
+    const contentEl = el.createDiv({ cls: "embedded-note-content markdown-rendered" });
     if (heightMode === "scroll") {
       contentEl.setAttribute("tabindex", "0");
       contentEl.setAttribute("role", "region");
       contentEl.setAttribute("aria-label", file.basename);
     } else if (heightMode === "grow") {
       contentEl.setAttribute(AUTO_HEIGHT_ATTR, "");
+      this.observeSizeForAutoHeight(contentEl);
     }
     try {
       const content = await this.app.vault.read(file);
       if (this.isStale(gen)) return;
       this.openLinksOnClick(contentEl, file.path);
-      await import_obsidian18.MarkdownRenderer.render(this.app, content, contentEl, file.path, this);
+      await import_obsidian23.MarkdownRenderer.render(this.app, content, contentEl, file.path, this);
     } catch (e) {
       console.error("[Homepage Blocks] EmbeddedNoteBlock MarkdownRenderer failed:", e);
       contentEl.setText("Error rendering file.");
     }
   }
   renderContentSettings(body, draft) {
-    new import_obsidian18.Setting(body).setName("File path").setDesc("Path to the note, such as notes/my-note.md").addText((t) => {
+    new import_obsidian23.Setting(body).setName("File path").setDesc("Path to the note, such as notes/my-note.md").addText((t) => {
       t.setValue(draft.filePath ?? "").setPlaceholder("Start typing to search\u2026").onChange((v) => {
         draft.filePath = v;
       });
       new FileSuggest(this.app, t.inputEl);
     });
-    new import_obsidian18.Setting(body).setName("Show title").addToggle(
+    new import_obsidian23.Setting(body).setName("Show title").addToggle(
       (t) => t.setValue(draft.showTitle ?? true).onChange((v) => {
         draft.showTitle = v;
       })
     );
-    new import_obsidian18.Setting(body).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands the card to show the full note.").addDropdown(
+    new import_obsidian23.Setting(body).setName("Height mode").setDesc("Scroll keeps the block compact. Grow to fit expands the card to show the full note.").addDropdown(
       (d) => d.addOption("scroll", "Scroll (fixed height)").addOption("grow", "Grow to fit all").setValue(draft.heightMode ?? "scroll").onChange((v) => {
         draft.heightMode = v;
       })
     );
   }
 };
-var FileSuggest = class extends import_obsidian18.AbstractInputSuggest {
+var FileSuggest = class extends import_obsidian23.AbstractInputSuggest {
   constructor(app, inputEl) {
     super(app, inputEl);
     this.inputEl = inputEl;
@@ -11484,7 +12170,7 @@ var FileSuggest = class extends import_obsidian18.AbstractInputSuggest {
 };
 
 // src/blocks/StaticTextBlock.ts
-var import_obsidian19 = require("obsidian");
+var import_obsidian24 = require("obsidian");
 var StaticTextBlock = class extends BaseBlock {
   /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
   inlineEditActive = false;
@@ -11516,7 +12202,7 @@ var StaticTextBlock = class extends BaseBlock {
   render(el) {
     el.addClass("static-text-block");
     this.containerEl = el;
-    this.renderContent(el).catch((e) => this.showRenderFailure(el, e));
+    return this.renderContent(el).catch((e) => this.showRenderFailure(el, e));
   }
   showRenderFailure(el, e) {
     console.error("[Homepage Blocks] StaticTextBlock failed to render:", e);
@@ -11526,18 +12212,19 @@ var StaticTextBlock = class extends BaseBlock {
     const gen = this.nextGeneration();
     const { content = "", heightMode = "auto" } = this.liveConfig();
     el.empty();
-    this.renderHeader(el, "Text");
+    this.renderHeader(el, blockTitle("static-text"));
     const editBtn = el.createEl("button", {
       cls: "static-text-edit-btn",
       attr: { "aria-label": "Edit content" }
     });
-    (0, import_obsidian19.setIcon)(editBtn, "pencil");
+    (0, import_obsidian24.setIcon)(editBtn, "pencil");
     editBtn.addEventListener("click", () => {
       this.enterInlineEdit(el);
     });
-    const contentEl = el.createDiv({ cls: "static-text-content" });
+    const contentEl = el.createDiv({ cls: "static-text-content markdown-rendered" });
     if (heightMode !== "fixed") {
       contentEl.setAttribute(AUTO_HEIGHT_ATTR, "");
+      this.observeSizeForAutoHeight(contentEl);
     }
     if (!content) {
       const hint = contentEl.createDiv({ cls: "block-empty-hint" });
@@ -11546,7 +12233,7 @@ var StaticTextBlock = class extends BaseBlock {
       return;
     }
     this.openLinksOnClick(contentEl, "");
-    await import_obsidian19.MarkdownRenderer.render(this.app, content, contentEl, "", this);
+    await import_obsidian24.MarkdownRenderer.render(this.app, content, contentEl, "", this);
     if (this.isStale(gen)) return;
   }
   enterInlineEdit(el) {
@@ -11561,7 +12248,7 @@ var StaticTextBlock = class extends BaseBlock {
     if ((config.heightMode ?? "auto") !== "fixed") {
       editor.setAttribute(AUTO_HEIGHT_ATTR, "");
     }
-    const textarea = editor.createEl("textarea");
+    const textarea = editor.createEl("textarea", { attr: { "aria-label": "Text content" } });
     textarea.value = currentContent;
     this.draft = { textarea, original: currentContent };
     const toolbar = editor.createDiv({ cls: "inline-edit-toolbar" });
@@ -11569,12 +12256,12 @@ var StaticTextBlock = class extends BaseBlock {
       cls: "inline-edit-btn inline-edit-save",
       attr: { "aria-label": "Save" }
     });
-    (0, import_obsidian19.setIcon)(saveBtn, "check");
+    (0, import_obsidian24.setIcon)(saveBtn, "check");
     const cancelBtn = toolbar.createEl("button", {
       cls: "inline-edit-btn inline-edit-cancel",
       attr: { "aria-label": "Cancel" }
     });
-    (0, import_obsidian19.setIcon)(cancelBtn, "x");
+    (0, import_obsidian24.setIcon)(cancelBtn, "x");
     const save = () => {
       textarea.disabled = true;
       saveBtn.disabled = true;
@@ -11603,12 +12290,12 @@ var StaticTextBlock = class extends BaseBlock {
     textarea.focus();
   }
   renderContentSettings(body, draft) {
-    new import_obsidian19.Setting(body).setName("Height").setDesc("Auto: expands to fit content. Fixed: uses grid cell height with scrollbar.").addDropdown(
+    new import_obsidian24.Setting(body).setName("Height").setDesc("Auto: expands to fit content. Fixed: uses grid cell height with scrollbar.").addDropdown(
       (d) => d.addOption("auto", "Auto (fit content)").addOption("fixed", "Fixed (scroll)").setValue(typeof draft.heightMode === "string" ? draft.heightMode : "auto").onChange((v) => {
         draft.heightMode = v;
       })
     );
-    new import_obsidian19.Setting(body).setName("Content").setDesc("Supports Markdown.");
+    new import_obsidian24.Setting(body).setName("Content").setDesc("Supports Markdown.");
     const textarea = body.createEl("textarea", { cls: "static-text-settings-textarea" });
     textarea.value = draft.content ?? "";
     textarea.rows = 10;
@@ -11619,12 +12306,31 @@ var StaticTextBlock = class extends BaseBlock {
 };
 
 // src/blocks/HtmlBlock.ts
-var import_obsidian20 = require("obsidian");
+var import_obsidian25 = require("obsidian");
+var INLINE_MEDIA = "img, video, audio, source, track, picture, iframe, object, embed, link, style, svg, canvas";
+var INLINE_ATTRS = ["style", "src", "srcset", "poster", "background", "data", "action", "formaction"];
+function disarmInline(fragment) {
+  fragment.querySelectorAll(INLINE_MEDIA).forEach((el) => el.remove());
+  fragment.querySelectorAll("*").forEach((el) => {
+    for (const attr of INLINE_ATTRS) el.removeAttribute(attr);
+    if (el.hasAttribute("href")) {
+      const href = el.getAttribute("href") ?? "";
+      let keep = false;
+      try {
+        keep = ["http:", "https:"].includes(new URL(href).protocol);
+      } catch {
+        keep = false;
+      }
+      if (!keep) el.removeAttribute("href");
+    }
+  });
+  return fragment;
+}
 var HtmlBlock = class extends BaseBlock {
   render(el) {
     el.addClass("html-block");
     const { html = "" } = this.instance.config;
-    this.renderHeader(el, "HTML");
+    this.renderHeader(el, blockTitle("html"));
     const contentEl = el.createDiv({ cls: "html-block-content" });
     if (!html) {
       const hint = contentEl.createDiv({ cls: "block-empty-hint" });
@@ -11643,7 +12349,7 @@ var HtmlBlock = class extends BaseBlock {
       prev = sanitized;
       sanitized = sanitized.replace(DANGEROUS_TAGS_RE, "");
     } while (sanitized !== prev);
-    contentEl.appendChild((0, import_obsidian20.sanitizeHTMLToDom)(sanitized));
+    contentEl.appendChild(disarmInline((0, import_obsidian25.sanitizeHTMLToDom)(sanitized)));
   }
   /** Render full HTML documents inside a sandboxed iframe with Obsidian CSS variable bridging. */
   renderIframe(contentEl, html) {
@@ -11661,7 +12367,8 @@ var HtmlBlock = class extends BaseBlock {
     const bridgeParts = [
       "html{height:100%;margin:0;padding:0}",
       "html.hp-clipped{overflow:hidden}",
-      "body{margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}"
+      // flow-root: a first child's top margin stays inside body instead of collapsing through it.
+      "body{display:flow-root;margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}"
     ];
     if (varRefs.size > 0) {
       const rootStyle = contentEl.win.getComputedStyle(contentEl.doc.body);
@@ -11672,46 +12379,70 @@ var HtmlBlock = class extends BaseBlock {
       if (pairs.length > 0) bridgeParts.unshift(`:root{${pairs.join(";")}}`);
     }
     const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; media-src data: https:; font-src data: https:;">`;
-    const bridge = `${csp}<style>${bridgeParts.join("")}</style>`;
-    const headMatch = safe.match(/<head\b[^>]*>/i);
-    if (headMatch && headMatch.index !== void 0) {
-      const pos = headMatch.index + headMatch[0].length;
-      safe = safe.slice(0, pos) + bridge + safe.slice(pos);
-    } else {
-      safe = bridge + safe;
-    }
+    safe = `<!DOCTYPE html>${csp}<style>${bridgeParts.join("")}</style>${safe.replace(/<!doctype[^>]*>/gi, "")}`;
     const iframe = contentEl.createEl("iframe", {
       cls: "hp-html-iframe",
-      attr: { sandbox: "allow-same-origin", referrerpolicy: "no-referrer" }
+      attr: { sandbox: "allow-same-origin", referrerpolicy: "no-referrer", title: "HTML content" }
     });
     iframe.srcdoc = safe;
-    iframe.addEventListener("load", () => {
-      try {
-        const doc = iframe.contentDocument;
-        if (!doc) return;
-        const availableH = iframe.clientHeight;
-        let contentH = doc.documentElement.scrollHeight;
-        if (contentH <= availableH || availableH <= 0) return;
-        let scale = availableH / contentH;
-        for (let i = 0; i < 4; i++) {
-          doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
-          contentH = doc.documentElement.scrollHeight;
-          const next2 = availableH / contentH;
-          if (Math.abs(next2 - scale) < 5e-3) {
-            scale = next2;
-            break;
-          }
-          scale = next2;
-        }
-        doc.documentElement.classList.add("hp-clipped");
-        doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
-        doc.body.style.setProperty("--hp-body-scale", `${scale}`);
-      } catch {
-      }
+    iframe.addEventListener("load", () => this.fitDocument(iframe));
+    let raf = 0;
+    let lastWidth = -1;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? -1;
+      if (iframe.closest(".hp-single-column") && width === lastWidth) return;
+      lastWidth = width;
+      window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(() => this.fitDocument(iframe));
+    });
+    ro.observe(iframe);
+    this.register(() => {
+      ro.disconnect();
+      window.cancelAnimationFrame(raf);
     });
   }
+  /**
+   * Auto-scale: if content overflows vertically, widen + shrink to fill the card.
+   * Iterates because widening the body causes flex-wrap reflow (shorter content),
+   * which changes the required scale. Converges in 2-3 rounds. In single column
+   * the card has no height of its own: the frame takes its document's height
+   * instead, unscaled, where scaling it into the 150 px default made it
+   * unreadable (M38).
+   */
+  fitDocument(iframe) {
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      doc.documentElement.classList.remove("hp-clipped");
+      doc.body.style.removeProperty("--hp-body-width");
+      doc.body.style.removeProperty("--hp-body-scale");
+      if (iframe.closest(".hp-single-column")) {
+        iframe.style.setProperty("--hp-iframe-height", `${doc.documentElement.scrollHeight}px`);
+        return;
+      }
+      iframe.style.removeProperty("--hp-iframe-height");
+      const availableH = iframe.clientHeight;
+      let contentH = doc.documentElement.scrollHeight;
+      if (contentH <= availableH || availableH <= 0) return;
+      let scale = availableH / contentH;
+      for (let i = 0; i < 4; i++) {
+        doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
+        contentH = doc.documentElement.scrollHeight;
+        const next2 = availableH / contentH;
+        if (Math.abs(next2 - scale) < 5e-3) {
+          scale = next2;
+          break;
+        }
+        scale = next2;
+      }
+      doc.documentElement.classList.add("hp-clipped");
+      doc.body.style.setProperty("--hp-body-width", `${1 / scale * 100}%`);
+      doc.body.style.setProperty("--hp-body-scale", `${scale}`);
+    } catch {
+    }
+  }
   renderContentSettings(body, draft) {
-    new import_obsidian20.Setting(body).setName("HTML").setDesc("Supports full HTML documents with <style> blocks.");
+    new import_obsidian25.Setting(body).setName("HTML").setDesc("Supports full HTML documents with <style> blocks.");
     const textarea = body.createEl("textarea", { cls: "html-settings-textarea" });
     textarea.value = draft.html ?? "";
     textarea.rows = 12;
@@ -11723,10 +12454,11 @@ var HtmlBlock = class extends BaseBlock {
 };
 
 // src/blocks/VideoEmbedBlock.ts
-var import_obsidian21 = require("obsidian");
+var import_obsidian26 = require("obsidian");
 var PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;
 var YT_VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 var YT_ORIGIN = "https://www.youtube.com";
+var VIMEO_HASH_RE = /^[0-9a-f]{6,20}$/i;
 function validListId(raw) {
   return raw && PLAYLIST_ID_RE.test(raw) ? raw : null;
 }
@@ -11759,9 +12491,13 @@ function parseUrl(raw) {
       return { type: "video", value: id };
     }
   }
-  if (/^(www\.)?vimeo\.com$/i.test(url.hostname)) {
-    const id = url.pathname.match(/^\/(\d+)/)?.[1];
-    if (id) return { type: "video", value: `https://player.vimeo.com/video/${id}` };
+  if (/^(www\.)?vimeo\.com$|^player\.vimeo\.com$/i.test(url.hostname)) {
+    const m = url.pathname.match(/^\/(?:video\/|channels\/[\w-]+\/|groups\/[\w-]+\/videos\/)?(\d+)(?:\/([0-9a-f]{6,20}))?\/?$/i);
+    if (m) {
+      const hash = m[2] ?? url.searchParams.get("h") ?? "";
+      const h = VIMEO_HASH_RE.test(hash) ? `?h=${hash}` : "";
+      return { type: "video", value: `https://player.vimeo.com/video/${m[1]}${h}` };
+    }
   }
   if (/^(www\.)?dailymotion\.com$/i.test(url.hostname)) {
     const id = url.pathname.match(/^\/video\/([A-Za-z0-9]+)/)?.[1];
@@ -11783,7 +12519,7 @@ var VideoEmbedBlock = class extends BaseBlock {
   render(el) {
     el.addClass("video-embed-block");
     const { url = "", shuffleOnLoad = false } = this.instance.config;
-    this.renderHeader(el, "Video");
+    this.renderHeader(el, blockTitle("video-embed"));
     const wrapper = el.createDiv({ cls: "video-embed-inner" });
     const info = parseUrl(url);
     if (!info) {
@@ -11821,7 +12557,9 @@ var VideoEmbedBlock = class extends BaseBlock {
         allow: "autoplay; encrypted-media; picture-in-picture",
         allowfullscreen: "",
         loading: "lazy",
-        referrerpolicy: "no-referrer",
+        // The origin only: YouTube refuses an embed with no Referer (Error 153,
+        // seen on mobile), and the path of the page is never sent (M48).
+        referrerpolicy: "strict-origin-when-cross-origin",
         // SECURITY: allow-same-origin + allow-scripts is required by YouTube/Vimeo/
         // Dailymotion embeds. Safe because ALLOWED_EMBED_HOSTS ensures these are always
         // cross-origin to the Obsidian app:// origin. Do NOT add same-origin hosts.
@@ -11830,12 +12568,12 @@ var VideoEmbedBlock = class extends BaseBlock {
     });
   }
   renderContentSettings(body, draft) {
-    new import_obsidian21.Setting(body).setName("Video or playlist link").setDesc("Paste a video or playlist link from any supported platform.").addText(
+    new import_obsidian26.Setting(body).setName("Video or playlist link").setDesc("Paste a video or playlist link from any supported platform.").addText(
       (t) => t.setValue(draft.url ?? "").setPlaceholder("https://www.youtube.com/watch?v={video-id}").onChange((v) => {
         draft.url = v;
       })
     );
-    new import_obsidian21.Setting(body).setName("Shuffle on load").setDesc("Start at a random video each time the homepage opens. Only works with playlists.").addToggle(
+    new import_obsidian26.Setting(body).setName("Shuffle on load").setDesc("Start at a random video each time the homepage opens. Only works with playlists.").addToggle(
       (t) => t.setValue(Boolean(draft.shuffleOnLoad)).onChange((v) => {
         draft.shuffleOnLoad = v;
       })
@@ -11844,15 +12582,15 @@ var VideoEmbedBlock = class extends BaseBlock {
 };
 
 // src/blocks/BookmarkBlock.ts
-var import_obsidian22 = require("obsidian");
+var import_obsidian27 = require("obsidian");
 var BookmarkBlock = class extends BaseBlock {
   render(el) {
     el.addClass("bookmark-block");
     const { items = [], columns = 2, showDescriptions = true } = this.instance.config;
-    this.renderHeader(el, "Bookmarks");
+    this.renderHeader(el, blockTitle("bookmarks"));
     const grid = el.createDiv({ cls: "bookmark-grid" });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
-    grid.style.setProperty("--hp-grid-cols", responsiveGridColumns(safeCols));
+    grid.style.setProperty("--hp-grid-cols", responsiveGridColumns(safeCols, 120, 6));
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F517}" });
@@ -11868,32 +12606,18 @@ var BookmarkBlock = class extends BaseBlock {
       if (item.description && showDescriptions) {
         card.createSpan({ cls: "bookmark-desc", text: item.description });
       }
-      card.addEventListener("click", () => {
-        try {
-          const parsed = new URL(item.url);
-          if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-            window.open(item.url, "_blank", "noopener,noreferrer");
-            return;
-          }
-          if (isDangerousUrl(item.url)) {
-            new import_obsidian22.Notice("Homepage blocks: blocked an unsafe link.");
-            return;
-          }
-        } catch {
-        }
-        void this.app.workspace.openLinkText(item.url, "");
-      });
+      onOpenClick(card, (evt) => openLinkTarget(this.app, item.url, evt));
     }
   }
   renderContentSettings(body, draft) {
     const cfg = draft;
     if (!Array.isArray(cfg.items)) cfg.items = [];
-    new import_obsidian22.Setting(body).setName("Columns").addDropdown(
+    new import_obsidian27.Setting(body).setName("Columns").addDropdown(
       (d) => d.addOption("1", "1").addOption("2", "2").addOption("3", "3").setValue(String(cfg.columns ?? 2)).onChange((v) => {
         cfg.columns = Number(v);
       })
     );
-    new import_obsidian22.Setting(body).setName("Show descriptions").addToggle(
+    new import_obsidian27.Setting(body).setName("Show descriptions").addToggle(
       (t) => t.setValue(cfg.showDescriptions !== false).onChange((v) => {
         cfg.showDescriptions = v;
       })
@@ -11930,7 +12654,7 @@ var BookmarkBlock = class extends BaseBlock {
         descInput.addEventListener("input", () => {
           item.description = descInput.value || void 0;
         });
-        const delBtn = row.createEl("button", { cls: "bookmark-item-del", text: "\u2715" });
+        const delBtn = row.createEl("button", { cls: "bookmark-item-del", text: "\u2715", attr: { "aria-label": "Remove bookmark" } });
         delBtn.addEventListener("click", () => {
           cfg.items.splice(i, 1);
           renderList();
@@ -11938,7 +12662,7 @@ var BookmarkBlock = class extends BaseBlock {
       });
     };
     renderList();
-    new import_obsidian22.Setting(body).addButton(
+    new import_obsidian27.Setting(body).addButton(
       (btn) => btn.setButtonText("+ add item").onClick(() => {
         cfg.items.push({ label: "", url: "" });
         renderList();
@@ -11948,9 +12672,14 @@ var BookmarkBlock = class extends BaseBlock {
 };
 
 // src/blocks/RecentFilesBlock.ts
-var import_obsidian23 = require("obsidian");
+var import_obsidian28 = require("obsidian");
 var DEBOUNCE_MS4 = 500;
+function excludedFolders(setting) {
+  return (setting ?? "").split(",").map(normalizeFolderPath).filter(Boolean);
+}
 var RecentFilesBlock = class extends BaseBlock {
+  /** The relative-time labels drawn, with the mtime each one shows. */
+  timeLabels = [];
   /** Path of the currently-displayed most-recent file (set each renderContent). */
   topPath = null;
   render(el) {
@@ -11963,11 +12692,13 @@ var RecentFilesBlock = class extends BaseBlock {
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (!file.path.endsWith(".md")) return;
       const cfg = this.instance.config;
-      const excluded = (cfg.excludeFolders ?? "").split(",").map((f) => f.trim()).filter(Boolean);
-      if (excluded.some((folder) => file.path.startsWith(folder + "/"))) return;
+      if (excludedFolders(cfg.excludeFolders).some((folder) => isInFolder(file.path, folder))) return;
       if (file.path === this.topPath) return;
       trigger();
     }));
+    this.registerInterval(window.setInterval(() => {
+      for (const [label, mtime] of this.timeLabels) label.setText((0, import_obsidian28.moment)(mtime).fromNow());
+    }, 6e4));
     this.registerEvent(this.app.vault.on("create", () => trigger()));
     this.registerEvent(this.app.vault.on("delete", () => trigger()));
     this.registerEvent(this.app.vault.on("rename", () => trigger()));
@@ -11979,11 +12710,12 @@ var RecentFilesBlock = class extends BaseBlock {
       showTimestamp = true,
       excludeFolders = ""
     } = this.instance.config;
-    this.renderHeader(el, "Recent files");
-    const excluded = excludeFolders.split(",").map((f) => f.trim()).filter(Boolean);
-    const files = this.app.vault.getMarkdownFiles().filter((file) => !excluded.some((folder) => file.path.startsWith(folder + "/"))).sort((a, b) => b.stat.mtime - a.stat.mtime).slice(0, maxItems);
+    this.renderHeader(el, blockTitle("recent-files"));
+    const excluded = excludedFolders(excludeFolders);
+    const files = this.app.vault.getMarkdownFiles().filter((file) => !excluded.some((folder) => isInFolder(file.path, folder))).sort((a, b) => b.stat.mtime - a.stat.mtime).slice(0, maxItems);
     this.topPath = files[0]?.path ?? null;
     const list = el.createDiv({ cls: "recent-files-list" });
+    this.timeLabels = [];
     if (files.length === 0) {
       const hint = list.createDiv({ cls: "block-empty-hint" });
       hint.createDiv({ cls: "block-empty-hint-icon", text: "\u{1F4C4}" });
@@ -11995,26 +12727,25 @@ var RecentFilesBlock = class extends BaseBlock {
       const btn = item.createEl("button", { cls: "recent-file-btn" });
       btn.createSpan({ cls: "recent-file-name", text: file.basename });
       if (showTimestamp) {
-        btn.createSpan({ cls: "recent-file-time", text: (0, import_obsidian23.moment)(file.stat.mtime).fromNow() });
+        const label = btn.createSpan({ cls: "recent-file-time", text: (0, import_obsidian28.moment)(file.stat.mtime).fromNow() });
+        this.timeLabels.push([label, file.stat.mtime]);
       }
-      btn.addEventListener("click", () => {
-        void this.app.workspace.openLinkText(file.path, "");
-      });
+      onOpenClick(btn, (evt) => openFile(this.app, file, evt));
     }
   }
   renderContentSettings(body, draft) {
     const cfg = draft;
-    new import_obsidian23.Setting(body).setName("Max items").setDesc("How many files to show (5\u201320).").addSlider(
+    new import_obsidian28.Setting(body).setName("Max items").setDesc("How many files to show (5\u201320).").addSlider(
       (s) => s.setLimits(5, 20, 1).setValue(cfg.maxItems ?? 10).setDynamicTooltip().onChange((v) => {
         cfg.maxItems = v;
       })
     );
-    new import_obsidian23.Setting(body).setName("Show timestamps").setDesc("Show relative time next to each file.").addToggle(
+    new import_obsidian28.Setting(body).setName("Show timestamps").setDesc("Show relative time next to each file.").addToggle(
       (t) => t.setValue(cfg.showTimestamp ?? true).onChange((v) => {
         cfg.showTimestamp = v;
       })
     );
-    new import_obsidian23.Setting(body).setName("Exclude folders").setDesc("Comma-separated folder paths to exclude.").addText(
+    new import_obsidian28.Setting(body).setName("Exclude folders").setDesc("Comma-separated folder paths to exclude.").addText(
       (t) => t.setPlaceholder("Templates, archive/old").setValue(cfg.excludeFolders ?? "").onChange((v) => {
         cfg.excludeFolders = v;
       })
@@ -12023,7 +12754,7 @@ var RecentFilesBlock = class extends BaseBlock {
 };
 
 // src/blocks/PomodoroBlock.ts
-var import_obsidian24 = require("obsidian");
+var import_obsidian29 = require("obsidian");
 
 // src/utils/pomodoroTimer.ts
 var MINUTE = 6e4;
@@ -12086,7 +12817,7 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
   startPauseBtn = null;
   render(el) {
     el.addClass("pomodoro-block");
-    this.renderHeader(el, "Pomodoro");
+    this.renderHeader(el, blockTitle("pomodoro"));
     const container = el.createDiv({ cls: "pomodoro-container" });
     const ringWrap = container.createDiv({ cls: "pomodoro-ring" });
     const svg = ringWrap.createSvg("svg", { attr: { viewBox: "0 0 120 120" } });
@@ -12123,7 +12854,7 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
       cls: "pomodoro-btn is-primary"
     });
     const startPauseIcon = startPauseBtn.createSpan({ cls: "pomodoro-btn-icon" });
-    (0, import_obsidian24.setIcon)(startPauseIcon, "play");
+    (0, import_obsidian29.setIcon)(startPauseIcon, "play");
     startPauseBtn.createSpan({ cls: "pomodoro-btn-label", text: "Start" });
     this.registerDomEvent(startPauseBtn, "click", () => this.toggleStartPause());
     this.startPauseBtn = startPauseBtn;
@@ -12131,14 +12862,14 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
       cls: "pomodoro-btn pomodoro-btn-reset"
     });
     const resetIcon = resetBtn.createSpan({ cls: "pomodoro-btn-icon" });
-    (0, import_obsidian24.setIcon)(resetIcon, "rotate-ccw");
+    (0, import_obsidian29.setIcon)(resetIcon, "rotate-ccw");
     resetBtn.createSpan({ cls: "pomodoro-btn-label", text: "Reset" });
     this.registerDomEvent(resetBtn, "click", () => this.resetTimer());
     const skipBtn = controls.createEl("button", {
       cls: "pomodoro-btn pomodoro-btn-skip"
     });
     const skipIcon = skipBtn.createSpan({ cls: "pomodoro-btn-icon" });
-    (0, import_obsidian24.setIcon)(skipIcon, "skip-forward");
+    (0, import_obsidian29.setIcon)(skipIcon, "skip-forward");
     skipBtn.createSpan({ cls: "pomodoro-btn-label", text: "Skip" });
     this.registerDomEvent(skipBtn, "click", () => this.skipPhase());
     const s = this.settings();
@@ -12282,39 +13013,39 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
       const icon = this.startPauseBtn.querySelector(".pomodoro-btn-icon");
       if (this.state.phase === "idle") {
         label?.setText("Start");
-        if (icon instanceof HTMLElement) (0, import_obsidian24.setIcon)(icon, "play");
+        if (icon instanceof HTMLElement) (0, import_obsidian29.setIcon)(icon, "play");
       } else if (this.state.running) {
         label?.setText("Pause");
-        if (icon instanceof HTMLElement) (0, import_obsidian24.setIcon)(icon, "pause");
+        if (icon instanceof HTMLElement) (0, import_obsidian29.setIcon)(icon, "pause");
       } else {
         label?.setText("Resume");
-        if (icon instanceof HTMLElement) (0, import_obsidian24.setIcon)(icon, "play");
+        if (icon instanceof HTMLElement) (0, import_obsidian29.setIcon)(icon, "play");
       }
     }
   }
   // ── Settings ───────────────────────────────────────────────────────────
   renderContentSettings(body, draft) {
-    new import_obsidian24.Setting(body).setName("Work duration").setDesc("Minutes per work session.").addSlider(
+    new import_obsidian29.Setting(body).setName("Work duration").setDesc("Minutes per work session.").addSlider(
       (s) => s.setLimits(1, 60, 1).setValue(draft.workMinutes ?? 25).setDynamicTooltip().onChange((v) => {
         draft.workMinutes = v;
       })
     );
-    new import_obsidian24.Setting(body).setName("Break duration").setDesc("Minutes per short break.").addSlider(
+    new import_obsidian29.Setting(body).setName("Break duration").setDesc("Minutes per short break.").addSlider(
       (s) => s.setLimits(1, 30, 1).setValue(draft.breakMinutes ?? 5).setDynamicTooltip().onChange((v) => {
         draft.breakMinutes = v;
       })
     );
-    new import_obsidian24.Setting(body).setName("Long break duration").setDesc("Minutes per long break.").addSlider(
+    new import_obsidian29.Setting(body).setName("Long break duration").setDesc("Minutes per long break.").addSlider(
       (s) => s.setLimits(1, 60, 1).setValue(draft.longBreakMinutes ?? 15).setDynamicTooltip().onChange((v) => {
         draft.longBreakMinutes = v;
       })
     );
-    new import_obsidian24.Setting(body).setName("Sessions before long break").setDesc("Work sessions before a long break.").addSlider(
+    new import_obsidian29.Setting(body).setName("Sessions before long break").setDesc("Work sessions before a long break.").addSlider(
       (s) => s.setLimits(2, 8, 1).setValue(draft.sessionsBeforeLong ?? 4).setDynamicTooltip().onChange((v) => {
         draft.sessionsBeforeLong = v;
       })
     );
-    new import_obsidian24.Setting(body).setName("Notification sound").setDesc("Play a sound when a phase ends.").addDropdown((d) => {
+    new import_obsidian29.Setting(body).setName("Notification sound").setDesc("Play a sound when a phase ends.").addDropdown((d) => {
       d.addOption("none", "None").addOption("crystal", "Crystal").addOption("chime", "Chime").addOption("bowl", "Singing bowl").setValue(draft.soundType ?? "crystal").onChange((v) => {
         draft.soundType = v;
         if (v !== "none") {
@@ -12322,7 +13053,7 @@ var PomodoroBlock = class _PomodoroBlock extends BaseBlock {
         }
       });
     });
-    new import_obsidian24.Setting(body).setName("Auto-start next session").setDesc("Start the next phase automatically.").addToggle(
+    new import_obsidian29.Setting(body).setName("Auto-start next session").setDesc("Start the next phase automatically.").addToggle(
       (t) => t.setValue(draft.autoStartCycle ?? false).onChange((v) => {
         draft.autoStartCycle = v;
       })
@@ -12338,7 +13069,7 @@ var SpacerBlock = class extends BaseBlock {
 };
 
 // src/blocks/RandomNoteBlock.ts
-var import_obsidian25 = require("obsidian");
+var import_obsidian30 = require("obsidian");
 var DEBOUNCE_MS5 = 500;
 var DELETE_RENAME_DEBOUNCE_MS = 2e3;
 function stripWikiLink(raw) {
@@ -12364,6 +13095,9 @@ var RandomNoteBlock = class extends BaseBlock {
     const slowTrigger = () => this.scheduleRender(DELETE_RENAME_DEBOUNCE_MS, (e) => {
       e.empty();
       return this.loadAndRender(e);
+    });
+    this.onDayChange(() => {
+      if (this.instance.config.dailySeed !== false) trigger();
     });
     this.registerEvent(this.app.metadataCache.on("changed", (file, _data, cache) => {
       const tag = this.getTag();
@@ -12394,7 +13128,7 @@ var RandomNoteBlock = class extends BaseBlock {
       showImage = true,
       showPreview = true
     } = this.instance.config;
-    this.renderHeader(el, "Random note");
+    this.renderHeader(el, blockTitle("random-note"));
     this.shownPath = null;
     if (!tag) {
       const hint = el.createDiv({ cls: "block-empty-hint" });
@@ -12424,7 +13158,7 @@ var RandomNoteBlock = class extends BaseBlock {
         try {
           const content = await this.app.vault.read(file);
           if (this.isStale(gen)) return;
-          preview = this.extractPreview(content, cache?.frontmatterPosition?.end.offset ?? 0);
+          preview = notePreview(content, cache);
         } catch (e) {
           console.error("[Homepage Blocks] RandomNoteBlock failed to read file:", e);
         }
@@ -12446,7 +13180,7 @@ var RandomNoteBlock = class extends BaseBlock {
           const imagePath = stripWikiLink(trimmed);
           const resolved = this.app.metadataCache.getFirstLinkpathDest(imagePath, file.path);
           const imageFile = resolved ?? this.app.vault.getAbstractFileByPath(imagePath) ?? null;
-          if (imageFile instanceof import_obsidian25.TFile) {
+          if (imageFile instanceof import_obsidian30.TFile) {
             imgSrc = this.app.vault.getResourcePath(imageFile);
           }
         }
@@ -12462,18 +13196,14 @@ var RandomNoteBlock = class extends BaseBlock {
     const title = typeof rawTitle === "string" && rawTitle ? rawTitle : file.basename;
     const titleEl = body.createEl("button", { cls: "random-note-title" });
     titleEl.setText(title);
-    titleEl.addEventListener("click", () => {
-      void this.app.workspace.openLinkText(file.path, "");
-    });
+    onOpenClick(titleEl, (evt) => openFile(this.app, file, evt));
     if (preview) {
       body.createDiv({ cls: "random-note-preview", text: preview });
     }
     const footer = body.createDiv({ cls: "random-note-footer" });
     footer.createSpan({ cls: "random-note-filename", text: file.basename });
     const openBtn = footer.createEl("button", { cls: "random-note-open-btn", text: "Open" });
-    openBtn.addEventListener("click", () => {
-      void this.app.workspace.openLinkText(file.path, "");
-    });
+    onOpenClick(openBtn, (evt) => openFile(this.app, file, evt));
     this.requestAutoHeight();
   }
   /** Pick the file to display. Daily seed caches the path so the selection
@@ -12490,45 +13220,34 @@ var RandomNoteBlock = class extends BaseBlock {
     this.dailyCache = { dayIndex, path: picked.path };
     return picked;
   }
-  extractPreview(content, fmEnd) {
-    const afterFm = content.slice(fmEnd);
-    for (const line of afterFm.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith("#") && !trimmed.startsWith("!") && !trimmed.startsWith("```") && !trimmed.startsWith("---")) {
-        const capped = trimmed.slice(0, 500);
-        return capped.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1").slice(0, 200);
-      }
-    }
-    return "";
-  }
   renderContentSettings(body, draft) {
     const cfg = draft;
-    new import_obsidian25.Setting(body).setName("Tag filter").setDesc("Only notes with this tag will appear.").addText(
+    new import_obsidian30.Setting(body).setName("Tag filter").setDesc("Only notes with this tag will appear.").addText(
       (t) => t.setPlaceholder("Tag, with or without #").setValue(cfg.tag ?? "").onChange((v) => {
         cfg.tag = v.trim();
       })
     );
-    new import_obsidian25.Setting(body).setName("Daily seed").setDesc("Same note all day, changes at midnight.").addToggle(
+    new import_obsidian30.Setting(body).setName("Daily seed").setDesc("Same note all day, changes at midnight.").addToggle(
       (t) => t.setValue(cfg.dailySeed ?? false).onChange((v) => {
         cfg.dailySeed = v;
       })
     );
-    new import_obsidian25.Setting(body).setName("Show cover image").addToggle(
+    new import_obsidian30.Setting(body).setName("Show cover image").addToggle(
       (t) => t.setValue(cfg.showImage ?? true).onChange((v) => {
         cfg.showImage = v;
       })
     );
-    new import_obsidian25.Setting(body).setName("Cover image property").setDesc("Frontmatter property with the image path.").addText(
+    new import_obsidian30.Setting(body).setName("Cover image property").setDesc("Frontmatter property with the image path.").addText(
       (t) => t.setPlaceholder("Cover").setValue(cfg.imageProperty ?? "").onChange((v) => {
         cfg.imageProperty = v.trim() || "cover";
       })
     );
-    new import_obsidian25.Setting(body).setName("Title property").setDesc("Frontmatter property for the title. Falls back to filename.").addText(
+    new import_obsidian30.Setting(body).setName("Title property").setDesc("Frontmatter property for the title. Falls back to filename.").addText(
       (t) => t.setPlaceholder("Title").setValue(cfg.titleProperty ?? "title").onChange((v) => {
         cfg.titleProperty = v.trim() || "title";
       })
     );
-    new import_obsidian25.Setting(body).setName("Show content preview").setDesc("Show the first paragraph or frontmatter description.").addToggle(
+    new import_obsidian30.Setting(body).setName("Show content preview").setDesc("Show the first paragraph or frontmatter description.").addToggle(
       (t) => t.setValue(cfg.showPreview ?? true).onChange((v) => {
         cfg.showPreview = v;
       })
@@ -12537,21 +13256,23 @@ var RandomNoteBlock = class extends BaseBlock {
 };
 
 // src/blocks/VoiceDictationBlock.ts
-var import_obsidian27 = require("obsidian");
+var import_obsidian32 = require("obsidian");
 
 // src/utils/voiceNote.ts
-var import_obsidian26 = require("obsidian");
+var import_obsidian31 = require("obsidian");
 var PLACEHOLDER = "{{transcript}}";
-function voiceNotePath(folder, timestamp, exists) {
+function sanitizeVoiceFolder(folder) {
   const raw = folder.replace(/^[/\\~]+/, "").replace(/^[A-Za-z]:/, "").replaceAll("\0", "").replace(/\\/g, "/").trim();
   const segments = raw.split("/").filter(Boolean);
   if (segments.some((s) => s === "..")) return null;
-  const safe = (0, import_obsidian26.normalizePath)(segments.join("/"));
-  const dir = safe && safe !== "/" ? safe : "";
-  const base = dir ? `${dir}/${timestamp}` : timestamp;
-  let path = `${base}.md`;
-  for (let n = 2; exists(path); n++) path = `${base} ${n}.md`;
-  return { folder: dir, path };
+  const safe = (0, import_obsidian31.normalizePath)(segments.join("/"));
+  return safe && safe !== "/" ? safe : "";
+}
+function uniqueFilePath(dir, base, ext, exists) {
+  const stem = dir ? `${dir}/${base}` : base;
+  let path = `${stem}.${ext}`;
+  for (let n = 2; exists(path); n++) path = `${stem} ${n}.${ext}`;
+  return path;
 }
 var BLANK_LINE_RE = /\n[ \t]*\r?\n/g;
 function inPlainText(template, index) {
@@ -12574,6 +13295,44 @@ ${transcript}`, templateIgnored: false };
     if (!inPlainText(template, i)) return { content: transcript, templateIgnored: true };
   }
   return { content: template.split(PLACEHOLDER).join(transcript), templateIgnored: false };
+}
+
+// src/utils/voiceProviders.ts
+var PROVIDER_MODELS = {
+  whisper: {
+    "gpt-transcribe": "GPT Transcribe",
+    "whisper-1": "Whisper 1 (retires Feb 2027)",
+    "gpt-4o-transcribe": "GPT-4o Transcribe (retires Feb 2027)",
+    "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (retires Feb 2027)"
+  },
+  gemini: {
+    "gemini-3.8-flash": "Gemini 3.8 Flash",
+    "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite"
+  }
+};
+var DEFAULT_MODELS = {
+  whisper: "gpt-transcribe",
+  gemini: "gemini-3.8-flash"
+};
+var RETIRED_MODELS = /* @__PURE__ */ new Set(["gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite", "gemini-2.0-flash-lite-001"]);
+function effectiveModel(provider, model) {
+  return model && !RETIRED_MODELS.has(model) ? model : DEFAULT_MODELS[provider];
+}
+var PROVIDER_MAX_BYTES = {
+  whisper: 25e6,
+  gemini: 145e5
+};
+var PROVIDER_STOP_BYTES = {
+  whisper: 23e6,
+  gemini: 13e6
+};
+function geminiEmptyReason(json) {
+  const r = json ?? {};
+  const blocked = r.promptFeedback?.blockReason;
+  if (blocked) return `blocked: ${blocked}`;
+  const finish = r.candidates?.[0]?.finishReason;
+  if (finish && finish !== "STOP") return `stopped: ${finish}`;
+  return "no speech recognised";
 }
 
 // src/utils/timeout.ts
@@ -12626,22 +13385,11 @@ function forgetConsent(app, provider) {
   }
 }
 var PROVIDER_NAMES = { whisper: "OpenAI Whisper", gemini: "Google Gemini" };
-var WHISPER_MODELS = {
-  "whisper-1": "Whisper 1",
-  "gpt-4o-transcribe": "GPT-4o Transcribe",
-  "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe"
-};
-var GEMINI_MODELS = {
-  "gemini-2.0-flash": "Gemini 2.0 Flash",
-  "gemini-2.5-flash": "Gemini 2.5 Flash",
-  "gemini-2.5-pro": "Gemini 2.5 Pro",
-  "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite"
-};
 var TRANSCRIBE_TIMEOUT_MS = 12e4;
 var MODEL_NAME_RE = /^[a-zA-Z0-9._-]+$/;
 var LANGUAGE_RE = /^[a-z]{2,3}(-[A-Z]{2})?$/;
 function whisperTextFields(cfg) {
-  const model = cfg.model || "whisper-1";
+  const model = effectiveModel("whisper", cfg.model);
   if (!MODEL_NAME_RE.test(model)) throw new Error("Invalid Whisper model name");
   const fields = { model };
   if (cfg.language && LANGUAGE_RE.test(cfg.language)) fields.language = cfg.language;
@@ -12649,6 +13397,28 @@ function whisperTextFields(cfg) {
 }
 var NoteSaveError = class extends Error {
 };
+var ModelUnavailableError = class extends Error {
+  constructor(model) {
+    super(`model ${model} unavailable`);
+    this.model = model;
+  }
+};
+var EmptyTranscriptError = class extends Error {
+};
+var RecordingTooLargeError = class extends Error {
+};
+function failureMessage(err) {
+  if (err instanceof RequestTimeoutError) return "Transcription timed out.";
+  if (err instanceof ModelUnavailableError) {
+    return `The transcription model \u201C${err.model}\u201D is not available to this API key. Pick another model in block settings.`;
+  }
+  if (err instanceof EmptyTranscriptError) return `No transcript (${err.message}).`;
+  if (err instanceof RecordingTooLargeError) return "The recording is larger than the transcription service accepts.";
+  return "Transcription failed.";
+}
+function audioExtension(mimeType) {
+  return mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : mimeType.includes("aac") ? "aac" : "webm";
+}
 var VoiceDictationBlock = class extends BaseBlock {
   statusEl = null;
   micBtn = null;
@@ -12677,7 +13447,7 @@ var VoiceDictationBlock = class extends BaseBlock {
       this.stopActiveStream();
       if (this.flashTimer !== null) window.clearTimeout(this.flashTimer);
     });
-    this.renderHeader(el, "Voice notes");
+    this.renderHeader(el, blockTitle("voice-dictation"));
     const body = el.createDiv({ cls: "voice-body" });
     this.statusEl = body.createDiv({
       cls: "voice-status",
@@ -12689,11 +13459,11 @@ var VoiceDictationBlock = class extends BaseBlock {
     this.micBtn = micZone.createEl("button", { cls: "voice-mic" });
     this.micBtn.setAttribute("aria-label", "Start recording voice note");
     this.micIconEl = this.micBtn.createSpan({ cls: "voice-mic-icon" });
-    (0, import_obsidian27.setIcon)(this.micIconEl, "microphone");
+    (0, import_obsidian32.setIcon)(this.micIconEl, "microphone");
     this.timerEl = micZone.createDiv({ cls: "voice-timer", text: "0:00" });
     const flash = body.createDiv({ cls: "voice-saved-flash" });
     const checkIconEl = flash.createSpan();
-    (0, import_obsidian27.setIcon)(checkIconEl, "check");
+    (0, import_obsidian32.setIcon)(checkIconEl, "check");
     flash.createSpan({ cls: "voice-saved-label", text: "Saved" });
     if (!cfg.apiKey) {
       this.statusEl.setText("Add an API key in block settings");
@@ -12716,6 +13486,7 @@ var VoiceDictationBlock = class extends BaseBlock {
     if (cfg.triggerMode === "push") {
       this.micBtn.setAttribute("aria-label", "Hold to record voice note");
       const mic = this.micBtn;
+      mic.addClass("voice-mic--push");
       mic.addEventListener("pointerdown", (e) => {
         this.pushHeld = true;
         try {
@@ -12732,6 +13503,19 @@ var VoiceDictationBlock = class extends BaseBlock {
       };
       mic.addEventListener("pointerup", release);
       mic.addEventListener("pointercancel", release);
+      const isHoldKey = (e) => e.key === " " || e.key === "Enter";
+      mic.addEventListener("keydown", (e) => {
+        if (!isHoldKey(e)) return;
+        e.preventDefault();
+        if (e.repeat) return;
+        this.pushHeld = true;
+        void this.startRecording();
+      });
+      mic.addEventListener("keyup", (e) => {
+        if (!isHoldKey(e)) return;
+        e.preventDefault();
+        release();
+      });
     } else {
       this.micBtn.addEventListener("click", () => {
         const state = this.getState(el);
@@ -12767,13 +13551,13 @@ var VoiceDictationBlock = class extends BaseBlock {
     this.statusEl.setText(labels[state]);
     if (state === "recording") {
       this.micBtn.setAttribute("aria-label", "Stop recording");
-      (0, import_obsidian27.setIcon)(this.micIconEl, "square");
+      (0, import_obsidian32.setIcon)(this.micIconEl, "square");
       this.startElapsedTimer();
     } else {
       const cfg = this.instance.config;
       const ariaLabel = cfg.triggerMode === "push" ? "Hold to record voice note" : "Start recording voice note";
       this.micBtn.setAttribute("aria-label", ariaLabel);
-      (0, import_obsidian27.setIcon)(this.micIconEl, "microphone");
+      (0, import_obsidian32.setIcon)(this.micIconEl, "microphone");
       this.stopElapsedTimer();
     }
   }
@@ -12806,24 +13590,62 @@ var VoiceDictationBlock = class extends BaseBlock {
   // ── Note creation ──────────────────────────────────────────────────────────
   async saveNote(transcript, cfg) {
     if (!transcript.trim()) return { templateIgnored: false };
-    const target = voiceNotePath(
-      cfg.folder ?? "",
-      (0, import_obsidian27.moment)().format("YYYY-MM-DD HH-mm-ss"),
-      (path) => this.app.vault.getAbstractFileByPath(path) !== null
-    );
-    if (!target) throw new NoteSaveError("The destination folder can\u2019t contain \u201C..\u201D.");
-    if (target.folder) {
-      let accumulated = "";
-      for (const seg of target.folder.split("/")) {
-        accumulated = accumulated ? `${accumulated}/${seg}` : seg;
-        if (!this.app.vault.getAbstractFileByPath(accumulated)) {
-          await this.app.vault.createFolder(accumulated);
-        }
-      }
-    }
+    const dir = await this.resolveFolder(cfg.folder ?? "");
+    const path = uniqueFilePath(dir, (0, import_obsidian32.moment)().format("YYYY-MM-DD HH-mm-ss"), "md", this.fileExists);
     const { content, templateIgnored } = buildNoteContent(cfg.noteTemplate ?? "", transcript);
-    await this.app.vault.create(target.path, content);
+    await this.app.vault.create(path, content);
     return { templateIgnored };
+  }
+  /**
+   * Keep a recording whose transcription failed: the audio as a file and a note
+   * that names the reason and embeds it, in the destination folder, so the user
+   * can listen to it or try again instead of losing it (M19, M63). Returns the
+   * audio file name.
+   */
+  async saveFailedRecording(blob, mimeType, cfg, reason) {
+    const dir = await this.resolveFolder(cfg.folder ?? "");
+    const stamp = (0, import_obsidian32.moment)().format("YYYY-MM-DD HH-mm-ss");
+    const audioPath = uniqueFilePath(dir, stamp, audioExtension(mimeType), this.fileExists);
+    await this.app.vault.createBinary(audioPath, await blob.arrayBuffer());
+    const name = audioPath.slice(audioPath.lastIndexOf("/") + 1);
+    await this.app.vault.create(uniqueFilePath(dir, stamp, "md", this.fileExists), `${reason}
+
+![[${name}]]
+`);
+    return name;
+  }
+  fileExists = (path) => this.app.vault.getAbstractFileByPath(path) !== null;
+  /**
+   * The destination folder, created when missing. Defence in depth:
+   * sanitizeVoiceFolder strips anything that could escape the vault, and a `..`
+   * segment is an error the user is told about, not a silent skip (M17). Each
+   * segment matches an existing folder whatever its letter case, and "already
+   * exists" counts as success: on a case-insensitive file system, a folder that
+   * differed only in case made every save fail (M18).
+   */
+  async resolveFolder(folder) {
+    const dir = sanitizeVoiceFolder(folder);
+    if (dir === null) throw new NoteSaveError("The destination folder can\u2019t contain \u201C..\u201D.");
+    let parent = this.app.vault.getRoot();
+    let path = "";
+    for (const seg of dir.split("/").filter(Boolean)) {
+      const match = parent?.children.find(
+        (c) => c instanceof import_obsidian32.TFolder && c.name.toLowerCase() === seg.toLowerCase()
+      );
+      path = path ? `${path}/${match?.name ?? seg}` : match?.name ?? seg;
+      if (match) {
+        parent = match;
+        continue;
+      }
+      try {
+        await this.app.vault.createFolder(path);
+      } catch (e) {
+        if (!/already exists/i.test(e instanceof Error ? e.message : "")) throw e;
+      }
+      const created = this.app.vault.getAbstractFileByPath(path);
+      parent = created instanceof import_obsidian32.TFolder ? created : null;
+    }
+    return path;
   }
   // ── Recording ─────────────────────────────────────────────────────────────
   async startRecording() {
@@ -12831,7 +13653,7 @@ var VoiceDictationBlock = class extends BaseBlock {
     if (!el || this.getState(el) !== "idle") return;
     const cfg = this.instance.config;
     if (!cfg.apiKey || isEncrypted(cfg.apiKey)) {
-      new import_obsidian27.Notice("API key required \u2014 configure it in block settings");
+      new import_obsidian32.Notice("API key required \u2014 configure it in block settings");
       return;
     }
     const gen = ++this.recordingGen;
@@ -12854,11 +13676,11 @@ var VoiceDictationBlock = class extends BaseBlock {
     } catch (err) {
       const name = err?.name ?? "";
       if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-        new import_obsidian27.Notice("No microphone found on this device");
+        new import_obsidian32.Notice("No microphone found on this device");
       } else if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-        new import_obsidian27.Notice("Microphone access denied");
+        new import_obsidian32.Notice("Microphone access denied");
       } else {
-        new import_obsidian27.Notice("Microphone unavailable");
+        new import_obsidian32.Notice("Microphone unavailable");
       }
       if (live()) this.setState(el, "idle");
       return;
@@ -12888,8 +13710,15 @@ var VoiceDictationBlock = class extends BaseBlock {
     }
     this.activeStream = stream;
     this.mediaRecorder = recorder;
+    const cap = PROVIDER_STOP_BYTES[provider];
+    let recorded = 0;
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
+      recorded += e.data.size;
+      if (recorded >= cap && recorder.state !== "inactive" && gen === this.recordingGen) {
+        new import_obsidian32.Notice(`Recording stopped near the ${Math.round(PROVIDER_MAX_BYTES[provider] / 1e6)} MB limit of the transcription service.`);
+        this.stopRecording(el);
+      }
     };
     recorder.onstop = () => {
       if (gen !== this.recordingGen) {
@@ -12899,7 +13728,7 @@ var VoiceDictationBlock = class extends BaseBlock {
       void this.handleCloudStop(el, gen, chunks, recordedMimeType);
     };
     try {
-      recorder.start();
+      recorder.start(1e3);
     } catch (err) {
       this.abandonStart(el, stream, err);
       return;
@@ -12912,7 +13741,7 @@ var VoiceDictationBlock = class extends BaseBlock {
     stream.getTracks().forEach((t) => t.stop());
     if (this.activeStream === stream) this.activeStream = null;
     this.mediaRecorder = null;
-    new import_obsidian27.Notice("Recording could not start on this device");
+    new import_obsidian32.Notice("Recording could not start on this device");
     this.setState(el, "idle");
   }
   /** Push-to-talk released while the start was pending: cancel it. */
@@ -12938,21 +13767,26 @@ var VoiceDictationBlock = class extends BaseBlock {
     this.stopActiveStream();
     if (blob.size === 0) {
       if (gen === this.recordingGen && el.isConnected) {
-        new import_obsidian27.Notice("No audio captured");
+        new import_obsidian32.Notice("No audio captured");
         this.setState(el, "idle");
       }
       return;
     }
+    const provider = cfg.provider ?? "whisper";
     let transcript = "";
     try {
-      transcript = (cfg.provider ?? "whisper") === "gemini" ? await this.transcribeWithGemini(blob, cfg, mimeType) : await this.transcribeWithWhisper(blob, cfg, mimeType);
+      if (blob.size > PROVIDER_MAX_BYTES[provider]) throw new RecordingTooLargeError("recording too large");
+      transcript = provider === "gemini" ? await this.transcribeWithGemini(blob, cfg, mimeType) : await this.transcribeWithWhisper(blob, cfg, mimeType);
     } catch (err) {
       const safe = err instanceof Error ? err.message : "unknown error";
       console.error("[Homepage Blocks] VoiceDictation transcription failed:", safe);
-      if (gen === this.recordingGen && el.isConnected) {
-        new import_obsidian27.Notice(err instanceof RequestTimeoutError ? "Transcription timed out" : "Transcription failed");
-        this.setState(el, "idle");
-      }
+      const reason = failureMessage(err);
+      const saved = await this.saveFailedRecording(blob, mimeType, cfg, reason).catch((e) => {
+        console.error("[Homepage Blocks] VoiceDictation could not keep the recording:", e instanceof Error ? e.message : "unknown error");
+        return null;
+      });
+      new import_obsidian32.Notice(saved ? `${reason} The recording was saved as ${saved}.` : reason, 1e4);
+      if (gen === this.recordingGen && el.isConnected) this.setState(el, "idle");
       return;
     }
     if (gen !== this.recordingGen || !el.isConnected) return;
@@ -12962,20 +13796,20 @@ var VoiceDictationBlock = class extends BaseBlock {
     }
     try {
       const { templateIgnored } = await this.saveNote(transcript, cfg);
-      if (templateIgnored) new import_obsidian27.Notice("Note template ignored: {{transcript}} sits inside a link or an HTML tag.");
+      if (templateIgnored) new import_obsidian32.Notice("Note template ignored: {{transcript}} sits inside a link or an HTML tag.");
       if (gen === this.recordingGen && el.isConnected) this.showSavedFlash(el);
     } catch (e) {
       const safe = e instanceof Error ? e.message : "unknown error";
       console.error("[Homepage Blocks] VoiceDictation save failed:", safe);
       if (gen === this.recordingGen && el.isConnected) {
-        new import_obsidian27.Notice(e instanceof NoteSaveError ? e.message : "Failed to save note");
+        new import_obsidian32.Notice(e instanceof NoteSaveError ? e.message : "Failed to save note");
         this.setState(el, "idle");
       }
     }
   }
   // ── Whisper transcription ───────────────────────────────────────────────
   async transcribeWithWhisper(blob, cfg, mimeType) {
-    const ext = mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : mimeType.includes("aac") ? "aac" : "webm";
+    const ext = audioExtension(mimeType);
     const boundary = "----FormBoundary" + Math.random().toString(36).slice(2);
     const encoder = new TextEncoder();
     const textFields = whisperTextFields(cfg);
@@ -13001,7 +13835,7 @@ Content-Type: ${mimeType}\r
     body.set(prefix, 0);
     body.set(fileBytes, prefix.length);
     body.set(suffix, prefix.length + fileBytes.length);
-    const res = await withTimeout((0, import_obsidian27.requestUrl)({
+    const res = await withTimeout((0, import_obsidian32.requestUrl)({
       url: "https://api.openai.com/v1/audio/transcriptions",
       method: "POST",
       headers: {
@@ -13011,11 +13845,14 @@ Content-Type: ${mimeType}\r
       body: body.buffer,
       throw: false
     }), TRANSCRIBE_TIMEOUT_MS);
+    if (res.status === 403 || res.status === 404) throw new ModelUnavailableError(textFields.model);
     if (res.status !== 200) {
       throw new Error(`Whisper API error ${res.status}`);
     }
     const json = res.json;
-    return (json.text ?? "").trim();
+    const text = (json.text ?? "").trim();
+    if (!text) throw new EmptyTranscriptError("no speech recognised");
+    return text;
   }
   // ── Gemini transcription ────────────────────────────────────────────────
   async transcribeWithGemini(blob, cfg, mimeType) {
@@ -13028,14 +13865,14 @@ Content-Type: ${mimeType}\r
       reader.onerror = () => reject(reader.error ?? new Error("FileReader failed"));
       reader.readAsDataURL(blob);
     });
-    const rawModel = cfg.model || "gemini-2.0-flash";
+    const rawModel = effectiveModel("gemini", cfg.model);
     if (!MODEL_NAME_RE.test(rawModel)) {
       throw new Error("Invalid Gemini model name");
     }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModel}:generateContent`;
     const lang = cfg.language ?? "";
     const langHint = LANGUAGE_RE.test(lang) ? ` The audio is in language code "${lang}".` : "";
-    const res = await withTimeout((0, import_obsidian27.requestUrl)({
+    const res = await withTimeout((0, import_obsidian32.requestUrl)({
       url,
       method: "POST",
       headers: {
@@ -13052,17 +13889,21 @@ Content-Type: ${mimeType}\r
       }),
       throw: false
     }), TRANSCRIBE_TIMEOUT_MS);
+    if (res.status === 403 || res.status === 404) throw new ModelUnavailableError(rawModel);
     if (res.status !== 200) {
       throw new Error(`Gemini API error ${res.status}`);
     }
     const json = res.json;
-    return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+    const text = (json.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+    if (!text) throw new EmptyTranscriptError(geminiEmptyReason(json));
+    return text;
   }
   renderContentSettings(body, draft) {
     const cfg = draft;
+    const otherDeviceKey = cfg.apiKey && isEncrypted(cfg.apiKey) ? cfg.apiKey : null;
     const renderSettings = () => {
       body.empty();
-      new import_obsidian27.Setting(body).setName("Destination folder").setDesc("Where new voice notes go. Leave blank for vault root.").addText((t) => {
+      new import_obsidian32.Setting(body).setName("Destination folder").setDesc("Where new voice notes go. Leave blank for vault root.").addText((t) => {
         t.setPlaceholder("Voice notes").setValue(cfg.folder ?? "").onChange((v) => {
           cfg.folder = v.trim();
         });
@@ -13073,50 +13914,60 @@ Content-Type: ${mimeType}\r
           }).open();
         });
       });
-      new import_obsidian27.Setting(body).setName("Trigger mode").setDesc("How the mic button starts recording.").addDropdown((d) => {
+      new import_obsidian32.Setting(body).setName("Trigger mode").setDesc("How the mic button starts recording.").addDropdown((d) => {
         d.addOption("tap", "Tap to record").addOption("push", "Push to talk").setValue(cfg.triggerMode ?? "tap").onChange((v) => {
           cfg.triggerMode = v;
         });
       });
-      new import_obsidian27.Setting(body).setName("Transcription provider").setDesc("Service used for transcription.").addDropdown((d) => {
+      new import_obsidian32.Setting(body).setName("Transcription provider").setDesc("Service used for transcription.").addDropdown((d) => {
         d.addOption("whisper", "Whisper").addOption("gemini", "Gemini").setValue(cfg.provider ?? "whisper").onChange((v) => {
           cfg.provider = v;
-          cfg.model = v === "gemini" ? "gemini-2.0-flash" : "whisper-1";
+          cfg.model = DEFAULT_MODELS[v];
           renderSettings();
         });
       });
       const provider = cfg.provider ?? "whisper";
       if (hasConsent(this.app, provider)) {
-        new import_obsidian27.Setting(body).setName("Upload consent").setDesc(`You allowed recordings to be uploaded to ${PROVIDER_NAMES[provider]} on this device.`).addButton((b) => b.setButtonText("Forget").onClick(() => {
+        new import_obsidian32.Setting(body).setName("Upload consent").setDesc(`You allowed recordings to be uploaded to ${PROVIDER_NAMES[provider]} on this device.`).addButton((b) => b.setButtonText("Forget").onClick(() => {
           forgetConsent(this.app, provider);
           renderSettings();
         }));
       }
       const isGemini = (cfg.provider ?? "whisper") === "gemini";
-      const otherDeviceKey = cfg.apiKey && isEncrypted(cfg.apiKey) ? cfg.apiKey : null;
-      new import_obsidian27.Setting(body).setName("API key").setDesc(`${isGemini ? "Google AI API key for Gemini." : "OpenAI API key for Whisper."} Encrypted at rest with a key that never leaves this device, so other devices cannot read it; entering a key on another device replaces it. Never included in layout exports.`).addText((t) => {
+      new import_obsidian32.Setting(body).setName("API key").setDesc(`${isGemini ? "Google AI API key for Gemini." : "OpenAI API key for Whisper."} Encrypted at rest with a key that never leaves this device, so other devices cannot read it; entering a key on another device replaces it. Never included in layout exports.`).addText((t) => {
         t.inputEl.type = "password";
-        t.setPlaceholder(otherDeviceKey ? "Stored key unreadable on this device" : isGemini ? "AIza..." : "sk-...").setValue(otherDeviceKey ? "" : cfg.apiKey ?? "").onChange((v) => {
+        t.setPlaceholder(otherDeviceKey ? "Stored key unreadable on this device" : isGemini ? "AIza..." : "sk-...").setValue(cfg.apiKey && isEncrypted(cfg.apiKey) ? "" : cfg.apiKey ?? "").onChange((v) => {
           cfg.apiKey = v.trim() || (otherDeviceKey ?? "");
         });
       });
-      const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
-      const defaultModel = isGemini ? "gemini-2.0-flash" : "whisper-1";
-      new import_obsidian27.Setting(body).setName("Model").setDesc("Transcription model.").addDropdown((d) => {
-        for (const [value, label] of Object.entries(models)) {
-          d.addOption(value, label);
-        }
-        d.setValue(cfg.model && cfg.model in models ? cfg.model : defaultModel);
+      const modelProvider = cfg.provider ?? "whisper";
+      const models = PROVIDER_MODELS[modelProvider];
+      const current = effectiveModel(modelProvider, cfg.model);
+      const isCustom = !(current in models);
+      let customEl = null;
+      new import_obsidian32.Setting(body).setName("Model").setDesc("Transcription model.").addDropdown((d) => {
+        for (const [value, label] of Object.entries(models)) d.addOption(value, label);
+        d.addOption("custom", "Custom\u2026");
+        d.setValue(isCustom ? "custom" : current);
         d.onChange((v) => {
-          cfg.model = v;
+          if (v !== "custom") cfg.model = v;
+          customEl?.toggleClass("hp-hidden", v !== "custom");
         });
       });
-      new import_obsidian27.Setting(body).setName("Language").setDesc("Language code (en, it, fr). Leave blank to auto-detect.").addText((t) => {
+      const custom = new import_obsidian32.Setting(body).setName("Custom model").setDesc("A model ID the provider offers, for example one released after this plugin version.").addText((t) => {
+        t.setPlaceholder(DEFAULT_MODELS[modelProvider]).setValue(isCustom ? current : "").onChange((v) => {
+          const id = v.trim();
+          if (id === "" || MODEL_NAME_RE.test(id)) cfg.model = id;
+        });
+      });
+      customEl = custom.settingEl;
+      customEl.toggleClass("hp-hidden", !isCustom);
+      new import_obsidian32.Setting(body).setName("Language").setDesc("Language code (en, it, fr). Leave blank to auto-detect.").addText((t) => {
         t.setPlaceholder("Auto").setValue(cfg.language ?? "").onChange((v) => {
           cfg.language = v.trim();
         });
       });
-      new import_obsidian27.Setting(body).setName("Note template").setDesc("Optional. Use {{transcript}} where the text should appear.").addTextArea((t) => {
+      new import_obsidian32.Setting(body).setName("Note template").setDesc("Optional. Use {{transcript}} where the text should appear.").addTextArea((t) => {
         t.setPlaceholder("{{transcript}}").setValue(cfg.noteTemplate ?? "").onChange((v) => {
           cfg.noteTemplate = v;
         });
@@ -13126,7 +13977,7 @@ Content-Type: ${mimeType}\r
     renderSettings();
   }
 };
-var VoiceConsentModal = class extends import_obsidian27.Modal {
+var VoiceConsentModal = class extends import_obsidian32.Modal {
   constructor(app, provider, onResult) {
     super(app);
     this.provider = provider;
@@ -13136,7 +13987,7 @@ var VoiceConsentModal = class extends import_obsidian27.Modal {
   onOpen() {
     const { contentEl } = this;
     contentEl.empty();
-    new import_obsidian27.Setting(contentEl).setName("Voice dictation consent").setHeading();
+    new import_obsidian32.Setting(contentEl).setName("Voice dictation consent").setHeading();
     const providerName = PROVIDER_NAMES[this.provider];
     const endpoint = this.provider === "gemini" ? "generativelanguage.googleapis.com" : "api.openai.com";
     contentEl.createEl("p", {
@@ -13170,10 +14021,11 @@ function confirmVoiceConsent(app, provider) {
 }
 
 // src/blocks/VaultSearchBlock.ts
-var import_obsidian28 = require("obsidian");
+var import_obsidian33 = require("obsidian");
 var DEBOUNCE_MS6 = 150;
 var MAX_RESULTS = 10;
 var BLUR_DELAY_MS = 50;
+var listSeq = 0;
 var VaultSearchBlock = class extends BaseBlock {
   dropdownEl = null;
   inputEl = null;
@@ -13182,6 +14034,10 @@ var VaultSearchBlock = class extends BaseBlock {
   debounceTimer = null;
   blurTimer = null;
   results = [];
+  /** id of the result list, which the input names as the list it controls. */
+  listId = "";
+  /** Polite live region that says how many results there are (M114). */
+  liveEl = null;
   repositionRaf = 0;
   viewportTracking = false;
   /** The window the dropdown's listeners live on: the block's own, also in a popout (W1). */
@@ -13203,22 +14059,32 @@ var VaultSearchBlock = class extends BaseBlock {
   render(el) {
     const cfg = this.instance.config;
     el.addClass("vault-search-block");
-    this.renderHeader(el, "Vault Search");
+    this.renderHeader(el, blockTitle("vault-search"));
     const wrapper = el.createDiv({ cls: "vault-search-input-wrapper" });
     this.wrapperEl = wrapper;
     const iconEl = wrapper.createSpan({ cls: "vault-search-icon" });
-    (0, import_obsidian28.setIcon)(iconEl, "search");
+    (0, import_obsidian33.setIcon)(iconEl, "search");
     const input = wrapper.createEl("input", {
       cls: "vault-search-input",
       attr: {
         type: "text",
         placeholder: cfg.placeholder || "Search vault...",
         spellcheck: "false",
-        autocomplete: "off"
+        autocomplete: "off",
+        // Combobox semantics: screen readers are told which result is highlighted (M114).
+        role: "combobox",
+        "aria-autocomplete": "list",
+        "aria-expanded": "false",
+        "aria-label": cfg.placeholder || "Search vault"
       }
     });
     this.inputEl = input;
+    this.liveEl = el.createDiv({ cls: "hp-visually-hidden", attr: { "aria-live": "polite" } });
     const dropdown = el.doc.body.createDiv({ cls: "vault-search-dropdown vault-search-dropdown--hidden" });
+    this.listId = `hp-vault-search-${++listSeq}`;
+    dropdown.id = this.listId;
+    dropdown.setAttribute("role", "listbox");
+    input.setAttribute("aria-controls", this.listId);
     this.dropdownEl = dropdown;
     this.register(() => {
       dropdown.remove();
@@ -13245,7 +14111,7 @@ var VaultSearchBlock = class extends BaseBlock {
           this.debounceTimer = null;
           this.search(input.value.trim());
         }
-        this.openSelected();
+        this.openSelected(e);
       } else if (e.key === "Escape") {
         e.preventDefault();
         this.closeDropdown();
@@ -13279,13 +14145,14 @@ var VaultSearchBlock = class extends BaseBlock {
     for (const file of files) {
       const idx = file.basename.toLowerCase().indexOf(lower);
       if (idx >= 0) {
-        matches.push({ name: file.basename, path: file.path, score: idx });
+        matches.push({ name: file.basename, path: file.path, file, score: idx });
       }
     }
     matches.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
     this.results = matches.slice(0, MAX_RESULTS);
     this.selectedIndex = -1;
     this.renderResults();
+    this.liveEl?.setText(this.results.length === 1 ? "1 result" : `${this.results.length} results`);
     if (this.results.length > 0) {
       this.showDropdown();
     } else {
@@ -13297,10 +14164,11 @@ var VaultSearchBlock = class extends BaseBlock {
     this.dropdownEl.empty();
     for (const [i, result] of this.results.entries()) {
       const item = this.dropdownEl.createDiv({
-        cls: "vault-search-result" + (i === this.selectedIndex ? " is-selected" : "")
+        cls: "vault-search-result" + (i === this.selectedIndex ? " is-selected" : ""),
+        attr: { role: "option", id: `${this.listId}-${i}`, "aria-selected": String(i === this.selectedIndex) }
       });
       const iconEl = item.createSpan({ cls: "vault-search-result-icon" });
-      (0, import_obsidian28.setIcon)(iconEl, "file-text");
+      (0, import_obsidian33.setIcon)(iconEl, "file-text");
       const textEl = item.createDiv({ cls: "vault-search-result-text" });
       textEl.createDiv({ cls: "vault-search-result-name", text: result.name });
       const folder = result.path.substring(0, result.path.lastIndexOf("/"));
@@ -13309,14 +14177,12 @@ var VaultSearchBlock = class extends BaseBlock {
       }
       const openResult = (e) => {
         e.preventDefault();
-        void this.app.workspace.openLinkText(result.path, "");
-        this.closeDropdown();
-        if (this.inputEl) this.inputEl.value = "";
+        this.openResult(result.file, e);
       };
       item.addEventListener("mousedown", (e) => {
         e.preventDefault();
       });
-      item.addEventListener("click", openResult);
+      onOpenClick(item, openResult);
       item.addEventListener("mouseenter", () => {
         this.selectedIndex = i;
         this.updateSelection();
@@ -13333,16 +14199,21 @@ var VaultSearchBlock = class extends BaseBlock {
     const items = this.dropdownEl.querySelectorAll(".vault-search-result");
     items.forEach((el, i) => {
       el.toggleClass("is-selected", i === this.selectedIndex);
+      el.setAttribute("aria-selected", String(i === this.selectedIndex));
     });
+    if (this.selectedIndex >= 0) this.inputEl?.setAttribute("aria-activedescendant", `${this.listId}-${this.selectedIndex}`);
+    else this.inputEl?.removeAttribute("aria-activedescendant");
   }
-  openSelected() {
+  openSelected(evt) {
     const index = this.selectedIndex >= 0 ? this.selectedIndex : 0;
     const result = this.results[index];
-    if (result) {
-      void this.app.workspace.openLinkText(result.path, "");
-      this.closeDropdown();
-      if (this.inputEl) this.inputEl.value = "";
-    }
+    if (result) this.openResult(result.file, evt);
+  }
+  /** Open a picked result: Ctrl/Cmd or a middle click opens a new tab (M21, M65). */
+  openResult(file, evt) {
+    openFile(this.app, file, evt);
+    this.closeDropdown();
+    if (this.inputEl) this.inputEl.value = "";
   }
   positionDropdown() {
     if (!this.dropdownEl || !this.wrapperEl) return;
@@ -13355,6 +14226,7 @@ var VaultSearchBlock = class extends BaseBlock {
     if (this.dropdownEl) {
       this.positionDropdown();
       this.dropdownEl.removeClass("vault-search-dropdown--hidden");
+      this.inputEl?.setAttribute("aria-expanded", "true");
       this.startViewportTracking();
     }
   }
@@ -13362,6 +14234,8 @@ var VaultSearchBlock = class extends BaseBlock {
     if (this.dropdownEl) {
       this.dropdownEl.addClass("vault-search-dropdown--hidden");
     }
+    this.inputEl?.setAttribute("aria-expanded", "false");
+    this.inputEl?.removeAttribute("aria-activedescendant");
     this.stopViewportTracking();
     this.selectedIndex = -1;
     this.results = [];
@@ -13391,7 +14265,7 @@ var VaultSearchBlock = class extends BaseBlock {
   }
   renderContentSettings(body, draft) {
     const cfg = draft;
-    new import_obsidian28.Setting(body).setName("Placeholder text").setDesc("Text shown when the search field is empty.").addText(
+    new import_obsidian33.Setting(body).setName("Placeholder text").setDesc("Text shown when the search field is empty.").addText(
       (t) => t.setPlaceholder("Search vault...").setValue(cfg.placeholder ?? "").onChange((v) => {
         cfg.placeholder = v;
       })
@@ -13406,7 +14280,7 @@ function registerBlocks() {
     type: "greeting",
     displayName: "Greeting",
     defaultConfig: {
-      name: "World",
+      name: "",
       showTime: true,
       showEmoji: true,
       emojiMode: "auto",
@@ -13417,7 +14291,7 @@ function registerBlocks() {
       emojiPool: "",
       emojiDailySeed: false,
       salutationMode: "auto",
-      salutationPreset: "it",
+      salutationPreset: void 0,
       salutMorning: void 0,
       salutAfternoon: void 0,
       salutEvening: void 0
@@ -13572,7 +14446,7 @@ function registerBlocks() {
   });
   BlockRegistry.register({
     type: "vault-search",
-    displayName: "Vault Search",
+    displayName: "Vault search",
     defaultConfig: { placeholder: "Search vault..." },
     defaultSize: { w: 2, h: 2 },
     create: (app, instance, plugin) => new VaultSearchBlock(app, instance, plugin)
@@ -13583,8 +14457,16 @@ function commandTarget(views, active, forAdd) {
   if (forAdd && editing) return editing;
   return active ?? editing ?? views[0] ?? null;
 }
+function homepageCommand(target, run) {
+  return (checking) => {
+    const view = target();
+    if (!view) return false;
+    if (!checking) run(view);
+    return true;
+  };
+}
 var UNREADABLE_KEYS_STORAGE_KEY = "hp-unreadable-api-keys";
-var HomepagePlugin = class extends import_obsidian29.Plugin {
+var HomepagePlugin = class extends import_obsidian34.Plugin {
   layout = getDefaultLayout();
   async onload() {
     registerBlocks();
@@ -13597,16 +14479,18 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
     const loaded = await loadLayoutWithRecovery(raw, this.dataFilePath(), this.app.vault.adapter);
     if (loaded.problem) {
       if (loaded.problem.kind === "blocks-dropped") {
-        console.warn(`[Homepage Blocks] ${loaded.problem.count} invalid block(s) were dropped from the layout on load`);
+        console.warn(`[Homepage Blocks] ${loaded.problem.count} block(s) were dropped from the layout on load (invalid, or past the block limit)`);
       }
-      new import_obsidian29.Notice(loadProblemMessage(loaded.problem, loaded.backupPath), 12e3);
+      new import_obsidian34.Notice(loadProblemMessage(loaded.problem, loaded.backupPath), 12e3);
     }
+    const newer = newerVersionMessage(loaded.layout);
+    if (newer) new import_obsidian34.Notice(newer, 12e3);
     this.dataGuard = loaded.guard;
     const validated = loaded.layout;
     const decryptResult = await decryptApiKeys(validated);
     this.layout = decryptResult.layout;
     if (!decryptResult.stable) {
-      new import_obsidian29.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
+      new import_obsidian34.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
     }
     this.announceUnreadableKeys(decryptResult.unreadable, decryptResult.layout);
     if (decryptResult.stable) {
@@ -13623,16 +14507,12 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
     this.addCommand({
       id: "toggle-edit-mode",
       name: "Toggle edit mode",
-      callback: () => {
-        this.targetHomepage(false)?.toggleEditMode();
-      }
+      checkCallback: homepageCommand(() => this.targetHomepage(false), (view) => view.toggleEditMode())
     });
     this.addCommand({
       id: "add-block",
       name: "Add block",
-      callback: () => {
-        this.targetHomepage(true)?.openAddBlockModal();
-      }
+      checkCallback: homepageCommand(() => this.targetHomepage(true), (view) => view.openAddBlockModal())
     });
     this.addRibbonIcon("home", "Open homepage", () => {
       void this.openHomepage(this.activeManualOpenMode());
@@ -13683,7 +14563,7 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
    * saying so; repeating a Notice on every launch would only nag.
    */
   announceUnreadableKeys(unreadable, layout) {
-    const rendered = import_obsidian29.Platform.isMobile && layout.responsiveMode === "separate" ? "mobileBlocks" : "blocks";
+    const rendered = import_obsidian34.Platform.isMobile && layout.responsiveMode === "separate" ? "mobileBlocks" : "blocks";
     let recorded = null;
     try {
       recorded = this.app.loadLocalStorage(UNREADABLE_KEYS_STORAGE_KEY);
@@ -13695,7 +14575,7 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
     } catch {
     }
     if (notify) {
-      new import_obsidian29.Notice("Homepage blocks: the voice notes API key can't be read on this device, most likely because it was saved on another one. It was kept as it is; entering a key here replaces it.", 12e3);
+      new import_obsidian34.Notice("Homepage blocks: the voice notes API key can't be read on this device, most likely because it was saved on another one. It was kept as it is; entering a key here replaces it.", 12e3);
     }
   }
   /** The homepage a command acts on (see commandTarget). */
@@ -13704,7 +14584,7 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
   }
   // ── Platform-aware layout helpers ─────────────────────────────────
   isMobileActive() {
-    return import_obsidian29.Platform.isMobile && this.layout.responsiveMode === "separate";
+    return import_obsidian34.Platform.isMobile && this.layout.responsiveMode === "separate";
   }
   activeBlocks() {
     return this.isMobileActive() ? this.layout.mobileBlocks : this.layout.blocks;
@@ -13722,22 +14602,22 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
   // off, every accessor returns the desktop value, so existing vaults behave
   // exactly as before.
   isMobileStartupActive() {
-    return mobileStartupActive(this.layout, import_obsidian29.Platform.isMobile);
+    return mobileStartupActive(this.layout, import_obsidian34.Platform.isMobile);
   }
   activeOpenOnStartup() {
-    return resolveStartup(this.layout, import_obsidian29.Platform.isMobile).openOnStartup;
+    return resolveStartup(this.layout, import_obsidian34.Platform.isMobile).openOnStartup;
   }
   activeOpenMode() {
-    return resolveStartup(this.layout, import_obsidian29.Platform.isMobile).openMode;
+    return resolveStartup(this.layout, import_obsidian34.Platform.isMobile).openMode;
   }
   activeManualOpenMode() {
-    return resolveStartup(this.layout, import_obsidian29.Platform.isMobile).manualOpenMode;
+    return resolveStartup(this.layout, import_obsidian34.Platform.isMobile).manualOpenMode;
   }
   activeOpenWhenEmpty() {
-    return resolveStartup(this.layout, import_obsidian29.Platform.isMobile).openWhenEmpty;
+    return resolveStartup(this.layout, import_obsidian34.Platform.isMobile).openWhenEmpty;
   }
   activePin() {
-    return resolveStartup(this.layout, import_obsidian29.Platform.isMobile).pin;
+    return resolveStartup(this.layout, import_obsidian34.Platform.isMobile).pin;
   }
   // ── Persistence ───────────────────────────────────────────────────
   savePromise = Promise.resolve();
@@ -13751,12 +14631,12 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
     this.savePromise = this.savePromise.then(async () => {
       if (this.dataGuard) {
         const { allowed, backupPath } = await this.dataGuard.allowWrite();
-        if (backupPath) new import_obsidian29.Notice(`Homepage blocks: the original data.json was saved as ${fileName(backupPath)}; saving resumes.`, 12e3);
+        if (backupPath) new import_obsidian34.Notice(`Homepage blocks: the original data.json was saved as ${fileName(backupPath)}; saving resumes.`, 12e3);
         if (!allowed) return;
       }
-      const persistable = await persistableLayout(layout, () => this.readPriorLayout());
-      await this.saveData(persistable);
-      this.lastWrittenJson = JSON.stringify(persistable);
+      const stored = toStoredLayout(await persistableLayout(layout, () => this.readPriorLayout()));
+      await this.saveData(stored);
+      this.lastWrittenJson = JSON.stringify(stored);
     }).then(
       () => {
         this.saveErrorNotified = false;
@@ -13766,27 +14646,32 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
         console.error("[Homepage Blocks] Failed to save layout:", safeMsg);
         if (!this.saveErrorNotified) {
           this.saveErrorNotified = true;
-          new import_obsidian29.Notice("Homepage blocks: failed to save layout. Check disk space / permissions.", 8e3);
+          new import_obsidian34.Notice("Homepage blocks: failed to save layout. Check disk space / permissions.", 8e3);
         }
       }
     );
     await this.savePromise;
   }
-  /** Point every Embedded note block (desktop and mobile) that shows `oldPath` at `newPath`. */
+  /**
+   * Update every path a block's config names (desktop and mobile) for a renamed
+   * file or folder: embedded notes, folder settings and typed note links
+   * (utils/pathRename.ts).
+   */
   async followRename(oldPath, newPath) {
-    const follow = (blocks2) => blocks2.map(
-      (b) => b.type === "embedded-note" && b.config.filePath === oldPath ? { ...b, config: { ...b.config, filePath: newPath } } : b
-    );
+    const resolves = (name) => !!this.app.metadataCache?.getFirstLinkpathDest(name, "");
+    const follow = (blocks2) => blocks2.map((b) => followRenameInBlock(b, oldPath, newPath, resolves));
     for (const view of this.homepageViews()) view.mapEditSnapshot(follow);
     const blocks = follow(this.layout.blocks);
     const mobileBlocks = follow(this.layout.mobileBlocks);
     const changed = blocks.some((b, i) => b !== this.layout.blocks[i]) || mobileBlocks.some((b, i) => b !== this.layout.mobileBlocks[i]);
-    if (changed) await this.saveLayout({ ...this.layout, blocks, mobileBlocks });
+    if (!changed) return;
+    await this.saveLayout({ ...this.layout, blocks, mobileBlocks });
+    for (const view of this.homepageViews()) if (!view.isEditing()) void view.reload();
   }
   /** data.json of this plugin, in the vault's plugin folder. */
   dataFilePath() {
     const dir = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
-    return (0, import_obsidian29.normalizePath)(`${dir}/data.json`);
+    return (0, import_obsidian34.normalizePath)(`${dir}/data.json`);
   }
   /** What the last write put in data.json: a change event for it is this device's own save. */
   lastWrittenJson = null;
@@ -13814,12 +14699,12 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
       this.dataGuard = loaded.guard;
       console.warn("[Homepage Blocks] data.json changed on disk but holds no usable layout; the loaded layout was kept");
       const backup = loaded.backupPath ? ` The file was saved as ${fileName(loaded.backupPath)}.` : "";
-      new import_obsidian29.Notice(`Homepage blocks: data.json changed on disk but could not be used, so the current layout was kept.${backup}`, 12e3);
+      new import_obsidian34.Notice(`Homepage blocks: data.json changed on disk but could not be used, so the current layout was kept.${backup}`, 12e3);
       return;
     }
     const views = this.homepageViews();
     if (views.some((v) => v.isEditing())) {
-      new import_obsidian29.Notice("Homepage blocks: the layout changed on another device. Leaving edit mode keeps the layout shown here.", 1e4);
+      new import_obsidian34.Notice("Homepage blocks: the layout changed on another device. Leaving edit mode keeps the layout shown here.", 1e4);
       return;
     }
     const { layout, stable, unreadable } = await decryptApiKeys(loaded.layout);
@@ -13827,7 +14712,7 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
     for (const view of views) view.cancelPendingPersist();
     this.layout = layout;
     if (!stable) {
-      new import_obsidian29.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
+      new import_obsidian34.Notice("Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.", 1e4);
     }
     this.announceUnreadableKeys(unreadable, layout);
     for (const view of views) await view.reload(true);
@@ -13868,10 +14753,11 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
       console.warn(`[Homepage Blocks] updateBlockConfig: block ${id} no longer exists; config patch dropped`);
       return;
     }
-    const next2 = live.map(
+    const apply = (blocks) => blocks.map(
       (b) => b.id === id ? { ...b, config: { ...b.config, ...patch } } : b
     );
-    await this.saveActiveBlocks(next2);
+    for (const view of this.homepageViews()) view.mapEditSnapshot(apply);
+    await this.saveActiveBlocks(apply(live));
   }
   async openHomepage(mode = "retain") {
     const { workspace } = this.app;
@@ -13895,6 +14781,7 @@ var HomepagePlugin = class extends import_obsidian29.Plugin {
       toClose.forEach((l) => l.detach());
     }
     await workspace.revealLeaf(leaf);
+    workspace.setActiveLeaf(leaf, { focus: true });
     if (this.activePin()) leaf.setPinned(true);
   }
 };

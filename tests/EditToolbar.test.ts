@@ -5,6 +5,7 @@ import { EditToolbar, type EditSessionHooks } from '../src/EditToolbar';
 import { BlockRegistry } from '../src/BlockRegistry';
 import { GridLayout } from '../src/GridLayout';
 import { StaticTextBlock } from '../src/blocks/StaticTextBlock';
+import { SpacerBlock } from '../src/blocks/SpacerBlock';
 import { getDefaultLayout } from '../src/validation';
 import type { BlockFactory, BlockInstance, IHomepagePlugin } from '../src/types';
 
@@ -136,18 +137,23 @@ describe('EditToolbar Discard', () => {
     expect(plugin.layout.blocks[0].config.content).toBe('typed but not saved');
   });
 
-  it('restores the column count changed during the session (N4)', () => {
-    const plugin = makeLivePlugin([]);
+  it('restores the column count and the widths changed during the session (N4)', () => {
+    BlockRegistry.register({
+      type: 'spacer', displayName: 'Spacer', defaultConfig: {}, defaultSize: { w: 1, h: 2 },
+      create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin),
+    });
+    const plugin = makeLivePlugin([{ id: 'wide', type: 'spacer', x: 0, y: 0, w: 3, h: 3, config: {} }]);
     const view = document.body.createDiv({ cls: 'homepage-view' });
     const grid = new GridLayout(view, {} as App, plugin, (l) => { plugin.layout = l; });
     const toolbar = new EditToolbar(view, {} as App, plugin, grid, (n) => grid.setColumns(n));
     grid.render(plugin.activeBlocks(), 3, true);
 
     toolbar.toggleEditMode();
-    grid.setColumns(5);
+    grid.setColumns(2); // clamps the wide block to two columns
     (view.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
 
     expect(plugin.layout.columns).toBe(3);
+    expect(plugin.layout.blocks[0].w).toBe(3);
   });
 });
 
@@ -192,5 +198,15 @@ describe('EditToolbar edit sessions across homepage views (N22)', () => {
     (document.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
 
     expect(ended).toBe(2);
+  });
+
+  it('tells the other views when a tab is closed while it is being edited', () => {
+    let ended = 0;
+    const { toolbar } = makeSessionToolbar({ canStart: () => true, ended: () => { ended++; } });
+
+    toolbar.toggleEditMode();
+    toolbar.destroy();
+
+    expect(ended).toBe(1);
   });
 });

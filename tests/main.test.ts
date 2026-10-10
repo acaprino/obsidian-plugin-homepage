@@ -1,8 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import type { App, PluginManifest } from 'obsidian';
-import HomepagePlugin from '../src/main';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import type { App, PluginManifest, WorkspaceLeaf } from 'obsidian';
+import HomepagePlugin, { commandTarget, registerBlocks } from '../src/main';
 import { HomepageView, VIEW_TYPE } from '../src/HomepageView';
+import { BlockRegistry } from '../src/BlockRegistry';
+import { BaseBlock } from '../src/blocks/BaseBlock';
+import { AUTO_HEIGHT_ATTR } from '../src/grid/AutoHeight';
 import { getDefaultLayout } from '../src/validation';
+import type { BlockInstance, LayoutConfig } from '../src/types';
 
 type Root = 'root' | 'floating';
 
@@ -127,6 +131,8 @@ function pluginWithDisk(initial: unknown, views: HomepageView[] = []) {
     workspace: { getLeavesOfType: () => views.map(view => ({ view })) },
     vault: {
       configDir: '.obsidian',
+      on: () => ({}),
+      getAbstractFileByPath: () => null,
       adapter: {
         exists: async () => true,
         read: async () => JSON.stringify(disk),
@@ -139,7 +145,7 @@ function pluginWithDisk(initial: unknown, views: HomepageView[] = []) {
     loadData: async () => structuredClone(disk),
     saveData: async (data: unknown) => { disk = structuredClone(data); },
   });
-  return { plugin, setDisk: (d: unknown) => { disk = structuredClone(d); }, writes };
+  return { plugin, setDisk: (d: unknown) => { disk = structuredClone(d); }, disk: () => disk as LayoutConfig, writes };
 }
 
 describe('data.json changed on disk by another device (R3)', () => {
@@ -209,5 +215,126 @@ describe('embedded notes follow a rename while no block is mounted (R8)', () => 
 
     expect(plugin.layout.blocks[0].config.filePath).toBe('New.md');
     expect(plugin.layout.mobileBlocks.map(b => b.config.filePath)).toEqual(['New.md', 'Other.md']);
+  });
+});
+
+/** A real homepage view on `plugin`, opened in the document, as Obsidian opens one. */
+function openRealView(plugin: HomepagePlugin): HomepageView {
+  const view = new HomepageView({} as WorkspaceLeaf, plugin);
+  (view as unknown as { app: App }).app = plugin.app;
+  document.body.appendChild(view.contentEl);
+  void view.onOpen();
+  return view;
+}
+
+/** An auto-height block whose content measures 600 px: 9 rows instead of the stored 3. */
+class TallBlock extends BaseBlock {
+  render(el: HTMLElement): void {
+    const body = el.createDiv();
+    body.setAttribute(AUTO_HEIGHT_ATTR, '');
+    Object.defineProperty(body, 'offsetHeight', { configurable: true, get: () => 600 });
+  }
+}
+
+const block = (id: string, type: BlockInstance['type'], over: Partial<BlockInstance> = {}): BlockInstance =>
+  ({ id, type, x: 0, y: 0, w: 1, h: 3, config: {}, ...over });
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+describe('homepage views and a layout synced from another device', () => {
+  beforeEach(() => { document.body.empty(); registerBlocks(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('shows the synced layout without writing back the positions it measures, so two running devices cannot rewrite each other forever', async () => {
+    BlockRegistry.register({
+      type: 'static-text', displayName: 'Text', defaultConfig: {}, defaultSize: { w: 1, h: 3 }, autoHeight: true,
+      create: (app, instance, plugin) => new TallBlock(app, instance, plugin),
+    });
+    // happy-dom computes no padding: report the card's 12 px top and bottom.
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({ paddingTop: '12px', paddingBottom: '12px', gap: '0px' } as CSSStyleDeclaration);
+    const local = { ...getDefaultLayout(), blocks: [block('c', 'clock')], mobileBlocks: [] };
+    const views: HomepageView[] = [];
+    const { plugin, setDisk, disk } = pluginWithDisk(local, views);
+    plugin.layout = structuredClone(local);
+    views.push(openRealView(plugin));
+    const remote = { ...getDefaultLayout(), blocks: [block('t', 'static-text'), block('below', 'clock', { y: 3 })], mobileBlocks: [] };
+    setDisk(remote);
+
+    await plugin.onExternalSettingsChange();
+    await wait(150);
+
+    const shown = views[0].contentEl.querySelector('[gs-id="t"]') as HTMLElement & { gridstackNode?: { h: number } };
+    expect(shown.gridstackNode?.h).toBe(9); // measured and drawn here...
+    expect(disk().blocks.map(b => b.y)).toEqual([0, 3]); // ...but not written back
+  });
+
+  it('keeps a Static Text draft that was open when the synced layout arrived (review focus 1)', async () => {
+    const local = { ...getDefaultLayout(), blocks: [block('s', 'static-text', { config: { content: 'old' } })], mobileBlocks: [] };
+    const views: HomepageView[] = [];
+    const { plugin, setDisk } = pluginWithDisk(local, views);
+    plugin.layout = structuredClone(local);
+    views.push(openRealView(plugin));
+    await wait(5);
+    (views[0].contentEl.querySelector('.static-text-edit-btn') as HTMLButtonElement).click();
+    (views[0].contentEl.querySelector('.static-text-inline-editor textarea') as HTMLTextAreaElement).value = 'typed here';
+    setDisk({ ...local, columns: 5 });
+
+    await plugin.onExternalSettingsChange();
+
+    expect(plugin.layout.columns).toBe(5);
+    expect(plugin.layout.blocks[0].config.content).toBe('typed here');
+  });
+
+  it('drops that draft when the other device changed the same text', async () => {
+    const local = { ...getDefaultLayout(), blocks: [block('s', 'static-text', { config: { content: 'old' } })], mobileBlocks: [] };
+    const views: HomepageView[] = [];
+    const { plugin, setDisk } = pluginWithDisk(local, views);
+    plugin.layout = structuredClone(local);
+    views.push(openRealView(plugin));
+    await wait(5);
+    (views[0].contentEl.querySelector('.static-text-edit-btn') as HTMLButtonElement).click();
+    (views[0].contentEl.querySelector('.static-text-inline-editor textarea') as HTMLTextAreaElement).value = 'typed here';
+    setDisk({ ...local, blocks: [block('s', 'static-text', { config: { content: 'changed elsewhere' } })] });
+
+    await plugin.onExternalSettingsChange();
+
+    expect(plugin.layout.blocks[0].config.content).toBe('changed elsewhere');
+  });
+
+  it('keeps a rename that was followed during an edit session the user then discards (R8)', async () => {
+    const local = { ...getDefaultLayout(), blocks: [block('e', 'embedded-note', { config: { filePath: 'Old.md' } })], mobileBlocks: [] };
+    const views: HomepageView[] = [];
+    const { plugin } = pluginWithDisk(local, views);
+    plugin.layout = structuredClone(local);
+    views.push(openRealView(plugin));
+
+    views[0].toggleEditMode();
+    await plugin.followRename('Old.md', 'New.md');
+    (views[0].contentEl.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
+
+    expect(plugin.layout.blocks[0].config.filePath).toBe('New.md');
+  });
+});
+
+describe('commandTarget (N22)', () => {
+  const view = (editing: boolean) => ({ isEditing: () => editing });
+
+  it('acts on the active homepage', () => {
+    const a = view(false);
+    const b = view(false);
+    expect(commandTarget([a, b], b, false)).toBe(b);
+  });
+
+  it('adds a block to the homepage being edited, even when another one is active', () => {
+    const editing = view(true);
+    const active = view(false);
+    expect(commandTarget([editing, active], active, true)).toBe(editing);
+  });
+
+  it('falls back to the edited homepage, then the first one', () => {
+    const a = view(false);
+    const b = view(true);
+    expect(commandTarget([a, b], null, false)).toBe(b);
+    expect(commandTarget([a], null, false)).toBe(a);
+    expect(commandTarget([], null, false)).toBeNull();
   });
 });

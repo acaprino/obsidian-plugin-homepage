@@ -31,18 +31,29 @@ export function voiceNotePath(
   return { folder: dir, path };
 }
 
-/** True when the placeholder at `index` sits in plain text, where no URL can carry it. */
+/** A blank line: where a Markdown paragraph, or an HTML block other than <style>/<pre>/<script>, ends. */
+const BLANK_LINE_RE = /\n[ \t]*\r?\n/g;
+
+/**
+ * True when the placeholder at `index` sits in plain text, where no URL can
+ * carry it. Conservative on purpose: the Markdown block that holds it (the text
+ * since the last blank line) must contain no HTML (`<`), no link or image target
+ * (`](`), no reference definition (`]:`) and no CSS `url(`, and it must not sit
+ * inside a <style> or <svg> element, which can span blank lines. Counting
+ * brackets or quotes instead was fooled by `alt=">"` and by balanced
+ * parentheses in a link target. A template that trips this is ignored for the
+ * note, which then holds the transcript alone.
+ */
 function inPlainText(template: string, index: number): boolean {
   const before = template.slice(0, index);
-  if (before.lastIndexOf('<') > before.lastIndexOf('>')) return false; // inside an HTML tag
   const lower = before.toLowerCase();
   for (const tag of ['style', 'svg']) {
-    if (lower.lastIndexOf(`<${tag}`) > lower.lastIndexOf(`</${tag}`)) return false; // inside <style> / <svg>
+    if (lower.lastIndexOf(`<${tag}`) > lower.lastIndexOf(`</${tag}`)) return false;
   }
-  if (before.lastIndexOf('](') > before.lastIndexOf(')')) return false; // link or image target
-  const line = before.slice(before.lastIndexOf('\n') + 1);
-  if (/^\s*\[[^\]]*\]:/.test(line)) return false; // reference definition
-  return true;
+  let blockStart = 0;
+  for (const m of lower.matchAll(BLANK_LINE_RE)) blockStart = (m.index ?? 0) + m[0].length;
+  const block = lower.slice(blockStart);
+  return !['<', '](', ']:', 'url('].some(token => block.includes(token));
 }
 
 /**

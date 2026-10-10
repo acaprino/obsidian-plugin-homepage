@@ -82,6 +82,11 @@ export class EditToolbar {
     if (!this.editMode) this.session.ended();
   }
 
+  /** Rewrite the Discard snapshot of an open session (a note renamed meanwhile, R8). */
+  mapSnapshot(fn: (blocks: BlockInstance[]) => BlockInstance[]): void {
+    if (this.blocksSnapshot) this.blocksSnapshot = fn(this.blocksSnapshot);
+  }
+
   /** True while this view is in edit mode. */
   isEditing(): boolean {
     return this.editMode;
@@ -255,6 +260,12 @@ export class EditToolbar {
 
   destroy(): void {
     this.destroyed = true;
+    // A tab closed mid-session: its drags are already in the layout, and the
+    // other views must redraw it (they would save their stale positions over it).
+    if (this.editMode) {
+      this.editMode = false;
+      this.session.ended();
+    }
     // Close any open Add Block modal so its callback can't fire against this
     // toolbar's about-to-be-destroyed grid reference.
     this.openModal?.close();

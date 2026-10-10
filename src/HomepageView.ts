@@ -1,5 +1,5 @@
 import { ItemView, WorkspaceLeaf } from 'obsidian';
-import { IHomepagePlugin, LayoutConfig } from './types';
+import { BlockInstance, IHomepagePlugin, LayoutConfig } from './types';
 import { GridLayout } from './GridLayout';
 import { EditToolbar } from './EditToolbar';
 
@@ -8,6 +8,8 @@ export const VIEW_TYPE = 'homepage-blocks';
 export class HomepageView extends ItemView {
   private grid: GridLayout | null = null;
   private toolbar: EditToolbar | null = null;
+  /** Set by reload(true): the next grid redraws a layout synced from another device. */
+  private syncReload = false;
 
   constructor(leaf: WorkspaceLeaf, private plugin: IHomepagePlugin) {
     super(leaf);
@@ -37,6 +39,10 @@ export class HomepageView extends ItemView {
     };
 
     this.grid = new GridLayout(contentEl, this.app, this.plugin, onLayoutChange);
+    if (this.syncReload) {
+      this.syncReload = false;
+      this.grid.holdDerivedPersist();
+    }
 
     this.toolbar = new EditToolbar(
       contentEl,
@@ -91,9 +97,19 @@ export class HomepageView extends ItemView {
     this.toolbar?.finishEditing();
   }
 
-  /** Re-render the view from scratch (e.g. after settings reset). An edit session ends as Done first. */
-  async reload(): Promise<void> {
+  /**
+   * Re-render the view from scratch (e.g. after settings reset). An edit session
+   * ends as Done first. `fromSync`: the layout came from another device, so the
+   * redraw must not write back the positions it measures (GridLayout.holdDerivedPersist).
+   */
+  async reload(fromSync = false): Promise<void> {
     this.finishEditing();
+    this.syncReload = fromSync;
     await this.onOpen();
+  }
+
+  /** Rewrite the Discard snapshot of an open edit session (a note renamed meanwhile). */
+  mapEditSnapshot(fn: (blocks: BlockInstance[]) => BlockInstance[]): void {
+    this.toolbar?.mapSnapshot(fn);
   }
 }

@@ -209,6 +209,19 @@ export function registerBlocks(): void {
 // ── Plugin ───────────────────────────────────────────────────────────────────
 
 /**
+ * The homepage a command acts on: the active one, else the one being edited,
+ * else the first open. Acting on every open homepage put each of them in edit
+ * mode, and their saves overwrote each other (N22). Add block (`forAdd`) goes
+ * to the homepage being edited whatever is active: added elsewhere, that
+ * session's Discard would drop the block.
+ */
+export function commandTarget<V extends { isEditing(): boolean }>(views: V[], active: V | null, forAdd: boolean): V | null {
+  const editing = views.find(v => v.isEditing()) ?? null;
+  if (forAdd && editing) return editing;
+  return active ?? editing ?? views[0] ?? null;
+}
+
+/**
  * Vault-scoped localStorage key (per device): ids of the blocks whose API key
  * this device was already told it cannot read.
  */
@@ -274,13 +287,13 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     this.addCommand({
       id: 'toggle-edit-mode',
       name: 'Toggle edit mode',
-      callback: () => { this.targetHomepage()?.toggleEditMode(); },
+      callback: () => { this.targetHomepage(false)?.toggleEditMode(); },
     });
 
     this.addCommand({
       id: 'add-block',
       name: 'Add block',
-      callback: () => { this.targetHomepage()?.openAddBlockModal(); },
+      callback: () => { this.targetHomepage(true)?.openAddBlockModal(); },
     });
 
     this.addRibbonIcon('home', 'Open homepage', () => { void this.openHomepage(this.activeManualOpenMode()); });
@@ -356,18 +369,9 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     }
   }
 
-  /**
-   * The homepage a command acts on: the active one, else the one being edited,
-   * else the first open. Acting on every open homepage put each of them in edit
-   * mode, and their saves overwrote each other (N22).
-   */
-  private targetHomepage(): HomepageView | null {
-    const active = this.app.workspace.getActiveViewOfType(HomepageView);
-    if (active) return active;
-    const views = this.app.workspace.getLeavesOfType(VIEW_TYPE)
-      .map(leaf => leaf.view)
-      .filter((v): v is HomepageView => v instanceof HomepageView);
-    return views.find(v => v.isEditing()) ?? views[0] ?? null;
+  /** The homepage a command acts on (see commandTarget). */
+  private targetHomepage(forAdd: boolean): HomepageView | null {
+    return commandTarget(this.homepageViews(), this.app.workspace.getActiveViewOfType(HomepageView), forAdd);
   }
 
   // ── Platform-aware layout helpers ─────────────────────────────────
@@ -464,14 +468,17 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
   /** Point every Embedded note block (desktop and mobile) that shows `oldPath` at `newPath`. */
   async followRename(oldPath: string, newPath: string): Promise<void> {
-    let changed = false;
-    const follow = (blocks: BlockInstance[]) => blocks.map(b => {
-      if (b.type !== 'embedded-note' || b.config.filePath !== oldPath) return b;
-      changed = true;
-      return { ...b, config: { ...b.config, filePath: newPath } };
-    });
+    const follow = (blocks: BlockInstance[]) => blocks.map(b =>
+      b.type === 'embedded-note' && b.config.filePath === oldPath
+        ? { ...b, config: { ...b.config, filePath: newPath } }
+        : b,
+    );
+    // Discard restores the snapshot an edit session took: it must name the new path too.
+    for (const view of this.homepageViews()) view.mapEditSnapshot(follow);
     const blocks = follow(this.layout.blocks);
     const mobileBlocks = follow(this.layout.mobileBlocks);
+    const changed = blocks.some((b, i) => b !== this.layout.blocks[i])
+      || mobileBlocks.some((b, i) => b !== this.layout.mobileBlocks[i]);
     if (changed) await this.saveLayout({ ...this.layout, blocks, mobileBlocks });
   }
 
@@ -520,7 +527,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     }
     const { layout } = await decryptApiKeys(loaded.layout);
     this.layout = layout;
-    for (const view of views) await view.reload();
+    for (const view of views) await view.reload(true);
   }
 
   /**

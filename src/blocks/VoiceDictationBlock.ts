@@ -398,9 +398,15 @@ export class VoiceDictationBlock extends BaseBlock {
     // Per-recording state — bound into the onstop closure so a rapid stop→start
     // can't make the previous recorder's onstop clobber the new recording's chunks.
     const chunks: Blob[] = [];
-    const recorder = new MediaRecorder(stream, {
-      mimeType: MediaRecorder.isTypeSupported(recordedMimeType) ? recordedMimeType : undefined,
-    });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported(recordedMimeType) ? recordedMimeType : undefined,
+      });
+    } catch (err: unknown) {
+      this.abandonStart(el, stream, err);
+      return;
+    }
 
     this.activeStream = stream;
     this.mediaRecorder = recorder;
@@ -419,8 +425,23 @@ export class VoiceDictationBlock extends BaseBlock {
       void this.handleCloudStop(el, gen, chunks, recordedMimeType);
     };
 
-    recorder.start();
+    try {
+      recorder.start();
+    } catch (err: unknown) {
+      this.abandonStart(el, stream, err);
+      return;
+    }
     this.setState(el, 'recording');
+  }
+
+  /** The recorder could not be created or started: close the stream and go back to idle. */
+  private abandonStart(el: HTMLElement, stream: MediaStream, err: unknown): void {
+    console.error('[Homepage Blocks] VoiceDictation recorder failed to start:', err instanceof Error ? err.message : 'unknown error');
+    stream.getTracks().forEach(t => t.stop());
+    if (this.activeStream === stream) this.activeStream = null;
+    this.mediaRecorder = null;
+    new Notice('Recording could not start on this device');
+    this.setState(el, 'idle');
   }
 
   /** Push-to-talk released while the start was pending: cancel it. */
@@ -746,7 +767,7 @@ class VoiceConsentModal extends Modal {
       text: `Do not record sensitive information unless you trust ${providerName}'s data handling.`,
     });
     contentEl.createEl('p', {
-      text: 'This confirmation is remembered per provider — you will not see it again for this provider.',
+      text: 'This confirmation is remembered per provider on this device. You can withdraw it in the block settings.',
       cls: 'setting-item-description',
     });
     const buttons = contentEl.createDiv({ cls: 'modal-button-container' });

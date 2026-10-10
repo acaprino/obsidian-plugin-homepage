@@ -92,12 +92,16 @@ describe('VoiceDictationBlock with a key it cannot use', () => {
 
 class FakeRecorder {
   static instances: FakeRecorder[] = [];
+  static failStart = false;
   static isTypeSupported(): boolean { return true; }
   state: 'inactive' | 'recording' = 'inactive';
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   constructor(public stream: unknown) { FakeRecorder.instances.push(this); }
-  start(): void { this.state = 'recording'; }
+  start(): void {
+    if (FakeRecorder.failStart) throw new Error('NotSupportedError');
+    this.state = 'recording';
+  }
   stop(): void { this.state = 'inactive'; this.onstop?.(); }
 }
 
@@ -108,6 +112,7 @@ describe('VoiceDictationBlock recording lifecycle', () => {
 
   beforeEach(() => {
     FakeRecorder.instances = [];
+    FakeRecorder.failStart = false;
     micRequests = 0;
     track = { stopped: false, stop() { this.stopped = true; } };
     (globalThis as Record<string, unknown>).MediaRecorder = FakeRecorder;
@@ -177,6 +182,34 @@ describe('VoiceDictationBlock recording lifecycle', () => {
     openMic();
     await settle();
     expect(FakeRecorder.instances).toHaveLength(1);
+  });
+
+  it('returns to idle and closes the stream when the recorder cannot start', async () => {
+    FakeRecorder.failStart = true;
+    const { el, mic } = mountRecorder({ triggerMode: 'tap' });
+
+    mic.click();
+    openMic();
+    await settle();
+
+    expect(el.dataset.voiceState).toBe('idle');
+    expect(track.stopped).toBe(true);
+  });
+
+  it('says in the consent dialog that the consent can be withdrawn (N18)', async () => {
+    let text = '';
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
+      this.onOpen();
+      text = this.contentEl.textContent ?? '';
+      this.close();
+    });
+    const { mic } = mountRecorder({ triggerMode: 'tap' }, null);
+
+    mic.click();
+    await settle();
+
+    expect(text).toMatch(/block settings/);
+    expect(text).not.toMatch(/not see it again/);
   });
 
   it('closes the stream of a start that was still pending when the block unloaded (N21)', async () => {

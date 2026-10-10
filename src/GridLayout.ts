@@ -38,6 +38,8 @@ export class GridLayout {
   onRequestAddBlock: (() => void) | null = null;
   /** ID of the most recently added block — used for scroll-into-view. */
   private lastAddedBlockId: string | null = null;
+  /** Set by holdDerivedPersist: view-mode auto-height persists are skipped. */
+  private derivedPersistHeld = false;
 
   private autoHeight: AutoHeightManager;
   private responsiveColumns: ResponsiveColumnsManager;
@@ -168,6 +170,8 @@ export class GridLayout {
 
   setEditMode(enabled: boolean, skipRepack = false, flushInFlight = true): void {
     if (this.phase === Phase.Destroyed) return;
+    // A deliberate change: from here on, measured positions are saved as usual.
+    this.derivedPersistHeld = false;
     // A view-mode persist still debounced (an auto-height resize) must run against
     // the columns it was computed for. Entering edit mode forces effectiveColumns to
     // the canonical count below, and the teardown flush would then save a narrow
@@ -615,8 +619,20 @@ export class GridLayout {
     }
   }
 
+  /**
+   * Skip saving the positions this grid derives itself (view-mode auto-height
+   * measurement and repack) until the user switches edit mode. Set on the grid
+   * that redraws a data.json synced from another device: measured heights depend
+   * on the pane width, so two running devices would otherwise keep rewriting
+   * each other's layout, each write reloading the other.
+   */
+  holdDerivedPersist(): void {
+    this.derivedPersistHeld = true;
+  }
+
   /** Debounced persistLayout — coalesces rapid auto-height resize saves into one write. */
   persistLayoutDebounced(): void {
+    if (this.derivedPersistHeld) return;
     this.persister.persistDebounced();
   }
 

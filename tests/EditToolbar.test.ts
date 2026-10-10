@@ -75,6 +75,18 @@ describe('EditToolbar Add Block picker', () => {
     expect(added.map(b => b.type)).toEqual(['clock']);
   });
 
+  it('gives the new block its own copy of nested default settings (N24)', () => {
+    const listFactory: BlockFactory = { ...clockFactory, type: 'bookmarks', defaultConfig: { items: [] } };
+    BlockRegistry.register(listFactory);
+    const { toolbar, added } = makeToolbar();
+    const picker = openPicker(toolbar);
+
+    picker.selectSuggestion(listFactory, new MouseEvent('click'));
+
+    expect(added[0].config.items).toEqual([]);
+    expect(added[0].config.items).not.toBe(listFactory.defaultConfig.items);
+  });
+
   it('adds nothing when the pick arrives after the toolbar was destroyed', () => {
     const { toolbar, added } = makeToolbar();
     const picker = openPicker(toolbar);

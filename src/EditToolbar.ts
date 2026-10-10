@@ -226,7 +226,8 @@ export class EditToolbar {
         y: 0,
         w: Math.min(factory.defaultSize.w, this.plugin.activeColumns()),
         h: factory.defaultSize.h,
-        config: { ...factory.defaultConfig },
+        // A copy: nested defaults (items: []) must not be shared with the registry.
+        config: structuredClone(factory.defaultConfig),
       };
 
       this.grid.addBlock(instance);

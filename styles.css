@@ -3,7 +3,10 @@
 
 /* ── Homepage View & Design Tokens ────────────────────────── */
 /* Override in snippets/homepage.css via .homepage-view { ... } */
-.homepage-view {
+/* Tokens on the settings modal too: its preview card is outside .homepage-view
+   and showed no padding and no elevation (M103). */
+.homepage-view,
+.hp-block-settings-modal {
   --hp-padding: clamp(8px, 1.5cqi, 16px);
   --hp-card-padding: clamp(6px, 1.5cqi, 12px);
   --hp-content-max-width: 1400px;
@@ -30,7 +33,9 @@
   --hp-elevation-2: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
   --hp-elevation-3: 0 10px 30px rgba(0, 0, 0, 0.15), 0 4px 8px rgba(0, 0, 0, 0.08);
   --hp-elevation-drag: 0 16px 40px rgba(0, 0, 0, 0.28), 0 6px 16px rgba(0, 0, 0, 0.2);
+}
 
+.homepage-view {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -56,8 +61,9 @@
   scroll-padding-top: 8px;
 }
 
-/* The .grid-stack-item-content is our card container */
-.homepage-grid .grid-stack-item-content {
+/* The .grid-stack-item-content is our card container. (0,4,0): the bundled
+   GridStack rule clipped the card's elevation and hover shadows (M102). */
+.homepage-grid.grid-stack > .grid-stack-item > .grid-stack-item-content {
   overflow: visible;
 }
 
@@ -396,8 +402,18 @@
 .homepage-block-wrapper.block-no-border.block-accented,
 .homepage-block-wrapper.block-no-border.block-accented:hover {
   border-color: transparent;
+}
+/* No border: no hover shadow either, but a chosen Elevation stays (M103). */
+.homepage-block-wrapper.block-no-border:hover,
+.homepage-block-wrapper.block-no-border.block-accented:hover {
   box-shadow: none;
 }
+.homepage-block-wrapper.block-no-border.block-elevation-1,
+.homepage-block-wrapper.block-no-border.block-elevation-1:hover { box-shadow: var(--hp-elevation-1); }
+.homepage-block-wrapper.block-no-border.block-elevation-2,
+.homepage-block-wrapper.block-no-border.block-elevation-2:hover { box-shadow: var(--hp-elevation-2); }
+.homepage-block-wrapper.block-no-border.block-elevation-3,
+.homepage-block-wrapper.block-no-border.block-elevation-3:hover { box-shadow: var(--hp-elevation-3); }
 
 .homepage-block-wrapper.block-no-background,
 .homepage-block-wrapper.block-no-background:hover,
@@ -641,7 +657,9 @@
   padding: calc(var(--hp-card-padding) + var(--hp-title-gap, 8px) + 1.2em) var(--hp-card-padding) var(--hp-card-padding);
   pointer-events: none;
   border-radius: inherit;
-  background: var(--background-secondary);
+  /* The card's own background: an opaque, untinted card covered accented,
+     translucent and gradient blocks on every open (M109). */
+  background: inherit;
   transition: opacity 0.2s ease-out;
 }
 
@@ -3909,9 +3927,26 @@
 .hp-no-transition { transition: none !important; }
 .hp-auto-rows { grid-template-rows: max-content !important; }
 
-/* Gradient background for cards (blockStyling.ts) */
-.homepage-block-wrapper.block-has-gradient {
+/* Gradient background for cards (blockStyling.ts). (0,3,0) and later in the
+   file: an accent with opacity below 100 replaced the gradient (M111). */
+.homepage-block-wrapper.homepage-block-wrapper.block-has-gradient {
   background: var(--hp-bg-gradient);
+}
+/* Opacity applies to the gradient through a layer behind the content; the
+   card stays transparent, so its Backdrop blur still shows (M111). */
+.homepage-block-wrapper.homepage-block-wrapper.block-has-gradient.block-custom-opacity {
+  background: transparent;
+  isolation: isolate;
+}
+.homepage-block-wrapper.block-has-gradient.block-custom-opacity::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--hp-bg-gradient);
+  opacity: var(--hp-bg-opacity, 100%);
+  pointer-events: none;
 }
 
 /* No cursor pointer for unlinked buttons (ButtonGridBlock.ts) */
@@ -3984,4 +4019,13 @@ button.drag-grip {
   padding: 0 4px;
   cursor: grab;
   color: var(--text-muted);
+}
+
+/* Visible focus for the collapse toggle and scrollable regions (M117). */
+.homepage-block-wrapper .block-header-zone[role="button"]:focus-visible,
+.homepage-view .embedded-note-content:focus-visible,
+.homepage-view [role="region"][tabindex="0"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-s, 4px);
 }

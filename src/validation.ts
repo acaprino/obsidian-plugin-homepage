@@ -268,11 +268,23 @@ export function validateBlocks(
     seen.add(b.id);
     return true;
   });
-  return dedup.map(b => ({
-    ...b,
-    w: Math.min(b.w, columns),
-    x: Math.min(b.x, Math.max(0, columns - Math.min(b.w, columns))),
-  }));
+  return dedup.map(b => {
+    const w = Math.min(b.w, columns);
+    const out: BlockInstance = {
+      id: b.id, type: b.type,
+      x: Math.min(b.x, Math.max(0, columns - w)), y: b.y, w, h: b.h,
+      config: b.config,
+    };
+    // Optional fields keep only well-formed values: a non-number _expandedH
+    // reached GridStack and h on expand (and the block was dropped at the next
+    // load), and top-level keys nothing reads have no business in data.json (N19).
+    if (b.collapsed === true) out.collapsed = true;
+    const expandedH: unknown = b._expandedH;
+    if (typeof expandedH === 'number' && Number.isFinite(expandedH) && expandedH >= 1) {
+      out._expandedH = Math.round(expandedH);
+    }
+    return out;
+  });
 }
 
 /**

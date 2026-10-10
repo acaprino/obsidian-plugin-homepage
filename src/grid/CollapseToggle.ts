@@ -70,7 +70,8 @@ export function attachCollapseToggle(
     } else {
       // Restore the saved expanded height
       const currentBlock = host.plugin.activeBlocks().find(b => b.id === instance.id);
-      const origH = currentBlock?._expandedH ?? instance.h;
+      const stored = currentBlock?._expandedH;
+      const origH = typeof stored === 'number' && stored >= 1 ? stored : instance.h;
       if (host.gridStack) host.gridStack.update(gsEl, { h: origH });
       newBlocks = host.plugin.activeBlocks().map(b =>
         b.id === instance.id ? { ...b, collapsed: false, h: origH } : b,

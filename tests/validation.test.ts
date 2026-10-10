@@ -522,3 +522,28 @@ describe('validateLayout', () => {
     expect(b.config._showBorder).toBe(false);
   });
 });
+
+describe('validateBlocks optional fields (N19)', () => {
+  const raw = (over: Record<string, unknown>) => [{ id: 'a', type: 'clock', x: 0, y: 0, w: 1, h: 3, config: {}, ...over }];
+
+  it('drops a non-number _expandedH, which expand would otherwise write into h', () => {
+    const [b] = validateBlocks(raw({ collapsed: true, _expandedH: '9' }), 3, []);
+    expect(b.collapsed).toBe(true);
+    expect('_expandedH' in b).toBe(false);
+  });
+
+  it('keeps a valid _expandedH as a whole number of rows', () => {
+    const [b] = validateBlocks(raw({ collapsed: true, _expandedH: 4.6 }), 3, []);
+    expect(b._expandedH).toBe(5);
+  });
+
+  it('drops a non-boolean collapsed and top-level keys nothing reads', () => {
+    const [b] = validateBlocks(raw({ collapsed: 'yes', note: 'x' }), 3, []);
+    expect(Object.keys(b).sort()).toEqual(['config', 'h', 'id', 'type', 'w', 'x', 'y']);
+  });
+
+  it('stays idempotent', () => {
+    const once = validateBlocks(raw({ collapsed: true, _expandedH: 4 }), 3, []);
+    expect(validateBlocks(once, 3, [])).toStrictEqual(once);
+  });
+});

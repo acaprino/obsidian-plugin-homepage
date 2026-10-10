@@ -19,10 +19,13 @@ export class VaultSearchBlock extends BaseBlock {
   private results: { name: string; path: string }[] = [];
   private repositionRaf = 0;
   private viewportTracking = false;
+  /** The window the dropdown's listeners live on: the block's own, also in a popout (W1). */
+  private trackedWin: Window | null = null;
   /** rAF-throttled reposition so the fixed dropdown follows the input on scroll/resize. */
   private readonly onViewportChange = (): void => {
-    window.cancelAnimationFrame(this.repositionRaf);
-    this.repositionRaf = window.requestAnimationFrame(() => this.positionDropdown());
+    const win = this.trackedWin ?? window;
+    win.cancelAnimationFrame(this.repositionRaf);
+    this.repositionRaf = win.requestAnimationFrame(() => this.positionDropdown());
   };
 
   /**
@@ -167,8 +170,11 @@ export class VaultSearchBlock extends BaseBlock {
         this.closeDropdown();
         if (this.inputEl) this.inputEl.value = '';
       };
-      item.addEventListener('mousedown', openResult);
-      item.addEventListener('touchstart', openResult, { passive: false });
+      // mousedown only keeps the focus in the field, so its blur doesn't close
+      // the list first; the pick is the click. A touch that starts a scroll of
+      // the list is not a pick (N11).
+      item.addEventListener('mousedown', (e) => { e.preventDefault(); });
+      item.addEventListener('click', openResult);
 
       item.addEventListener('mouseenter', () => {
         this.selectedIndex = i;
@@ -239,16 +245,20 @@ export class VaultSearchBlock extends BaseBlock {
   private startViewportTracking(): void {
     if (this.viewportTracking) return;
     this.viewportTracking = true;
-    window.addEventListener('scroll', this.onViewportChange, true);
-    window.addEventListener('resize', this.onViewportChange);
+    const win = this.inputEl?.win ?? window;
+    this.trackedWin = win;
+    win.addEventListener('scroll', this.onViewportChange, true);
+    win.addEventListener('resize', this.onViewportChange);
   }
 
   private stopViewportTracking(): void {
     if (!this.viewportTracking) return;
     this.viewportTracking = false;
-    window.removeEventListener('scroll', this.onViewportChange, true);
-    window.removeEventListener('resize', this.onViewportChange);
-    cancelAnimationFrame(this.repositionRaf);
+    const win = this.trackedWin ?? window;
+    win.removeEventListener('scroll', this.onViewportChange, true);
+    win.removeEventListener('resize', this.onViewportChange);
+    win.cancelAnimationFrame(this.repositionRaf);
+    this.trackedWin = null;
   }
 
   renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {

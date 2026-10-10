@@ -61,6 +61,22 @@ describe('VoiceDictationBlock API key setting', () => {
     expect(draft.apiKey).toBe('sk-new-key');
   });
 
+  it('keeps a key saved on another device after typing, switching provider and clearing the field (M56)', () => {
+    const draft: Record<string, unknown> = { provider: 'whisper', apiKey: CIPHERTEXT };
+    const body = document.body.createDiv();
+    makeBlock({}).renderContentSettings(body, draft);
+    typeInto(body.querySelector('input[type="password"]') as HTMLInputElement, 'sk-typo');
+    const provider = [...body.querySelectorAll('.setting-item')]
+      .find(el => el.querySelector('.setting-item-name')?.textContent === 'Transcription provider')!
+      .querySelector('select') as HTMLSelectElement;
+    provider.value = 'gemini';
+    provider.dispatchEvent(new Event('change')); // re-renders the settings
+
+    typeInto(body.querySelector('input[type="password"]') as HTMLInputElement, '');
+
+    expect(draft.apiKey).toBe(CIPHERTEXT);
+  });
+
   it('still clears a key this device can read when the field is emptied', () => {
     const draft: Record<string, unknown> = { provider: 'whisper', apiKey: 'sk-readable' };
     const field = renderKeyField(draft);

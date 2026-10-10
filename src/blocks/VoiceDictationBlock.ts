@@ -625,6 +625,10 @@ export class VoiceDictationBlock extends BaseBlock {
 
   override renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
     const cfg = draft as VoiceDictationConfig;
+    // A key still encrypted here was saved on another device. Captured once, when
+    // the settings open: a re-render after typing (a provider change) must not
+    // lose it, or clearing the field would erase it for that device (M56).
+    const otherDeviceKey = cfg.apiKey && isEncrypted(cfg.apiKey) ? cfg.apiKey : null;
     const renderSettings = () => {
       body.empty();
 
@@ -683,17 +687,15 @@ export class VoiceDictationBlock extends BaseBlock {
 
       // API key (label + placeholder change based on provider)
       const isGemini = (cfg.provider ?? 'whisper') === 'gemini';
-      // A key still encrypted here was saved on another device: show an empty
-      // field, and keep that key unless a new one is typed, so clearing the
-      // field on this device cannot erase it for the device that can use it.
-      const otherDeviceKey = cfg.apiKey && isEncrypted(cfg.apiKey) ? cfg.apiKey : null;
+      // Show an empty field for another device's key, and keep that key unless a
+      // new one is typed, so clearing the field cannot erase it for that device.
       new Setting(body)
         .setName('API key')
         .setDesc(`${isGemini ? 'Google AI API key for Gemini.' : 'OpenAI API key for Whisper.'} Encrypted at rest with a key that never leaves this device, so other devices cannot read it; entering a key on another device replaces it. Never included in layout exports.`)
         .addText(t => {
           t.inputEl.type = 'password';
           t.setPlaceholder(otherDeviceKey ? 'Stored key unreadable on this device' : isGemini ? 'AIza...' : 'sk-...')
-           .setValue(otherDeviceKey ? '' : cfg.apiKey ?? '')
+           .setValue(cfg.apiKey && isEncrypted(cfg.apiKey) ? '' : cfg.apiKey ?? '')
            .onChange(v => { cfg.apiKey = v.trim() || (otherDeviceKey ?? ''); });
         });
 

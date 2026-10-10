@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { App } from 'obsidian';
+import { AUTO_HEIGHT_ATTR } from '../../src/grid/AutoHeight';
 import { QuotesListBlock } from '../../src/blocks/QuotesListBlock';
 import { BlockRegistry } from '../../src/BlockRegistry';
 import { registerBlocks } from '../../src/main';
@@ -80,5 +81,19 @@ describe('QuotesListBlock Max quotes setting (N16)', () => {
   it('shows all for 0 and the stored number otherwise', () => {
     expect(maxQuotesField({ maxItems: 0 }).value).toBe('');
     expect(maxQuotesField({ maxItems: 7 }).value).toBe('7');
+  });
+});
+
+describe('QuotesListBlock single text quote, Grow to fit (M36)', () => {
+  it('is measured for auto-height like the other modes', () => {
+    const { el } = mountQuotes({ source: 'text', maxItems: 1, quotes: 'A long quote\n— Someone', heightMode: 'extend' });
+    const card = el.querySelector('.insight-card') as HTMLElement;
+    expect(card.hasAttribute(AUTO_HEIGHT_ATTR)).toBe(true);
+    expect(el.classList.contains('quotes-list-block--extend')).toBe(true);
+  });
+
+  it('is not in Wrap mode', () => {
+    const { el } = mountQuotes({ source: 'text', maxItems: 1, quotes: 'A quote', heightMode: 'wrap' });
+    expect((el.querySelector('.insight-card') as HTMLElement).hasAttribute(AUTO_HEIGHT_ATTR)).toBe(false);
   });
 });

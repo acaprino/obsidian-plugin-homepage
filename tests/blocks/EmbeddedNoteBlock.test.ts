@@ -124,3 +124,48 @@ describe('EmbeddedNoteBlock header (N17)', () => {
     expect(header.textContent).not.toContain('Old');
   });
 });
+
+/** happy-dom lays nothing out: a ResizeObserver stub that lets the test report sizes by hand. */
+function stubResizeObserver() {
+  const observers: { cb: (entries: { target: Element; contentRect: { width: number; height: number } }[]) => void; targets: Element[] }[] = [];
+  const original = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    private rec: (typeof observers)[number];
+    constructor(cb: (typeof observers)[number]['cb']) { this.rec = { cb, targets: [] }; observers.push(this.rec); }
+    observe(t: Element): void { this.rec.targets.push(t); }
+    unobserve(): void {}
+    disconnect(): void { this.rec.targets = []; }
+  } as unknown as typeof ResizeObserver;
+  return {
+    /** Report a size for `el` to every observer watching it. */
+    resize(el: Element, width: number, height: number): void {
+      for (const o of observers) if (o.targets.includes(el)) o.cb([{ target: el, contentRect: { width, height } }]);
+    },
+    restore(): void { globalThis.ResizeObserver = original; },
+  };
+}
+
+const frame = () => new Promise(resolve => window.requestAnimationFrame(() => resolve(undefined)));
+
+describe('EmbeddedNoteBlock grow mode after the first render (M34)', () => {
+  it('asks to be measured again when the note changes size', async () => {
+    const ro = stubResizeObserver();
+    try {
+      const v = makeVault({ 'N.md': 'Body' });
+      const instance: BlockInstance = { id: 'e1', type: 'embedded-note', x: 0, y: 0, w: 1, h: 3, config: { filePath: 'N.md', heightMode: 'grow' } };
+      const el = document.body.createDiv();
+      const block = new EmbeddedNoteBlock({ vault: v.vault } as unknown as App, instance, makePlugin([instance]));
+      block.load();
+      await block.render(el);
+      let requests = 0;
+      el.addEventListener('request-auto-height', () => { requests++; });
+      const content = el.querySelector('.embedded-note-content') as HTMLElement;
+
+      ro.resize(content, 300, 100);
+      ro.resize(content, 300, 400);
+      await frame();
+
+      expect(requests).toBeGreaterThan(0);
+    } finally { ro.restore(); }
+  });
+});

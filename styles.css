@@ -2186,6 +2186,18 @@
   background: transparent;
 }
 
+/* Single column: the card has no height of its own. The HTML frame takes its
+   document's height (set by HtmlBlock) and a video keeps 16:9 (M38). */
+.homepage-grid.grid-stack.hp-single-column .hp-html-iframe {
+  height: var(--hp-iframe-height, 150px);
+}
+.homepage-grid.grid-stack.hp-single-column .video-embed-inner,
+.homepage-grid.grid-stack.hp-single-column .video-embed-container,
+.homepage-grid.grid-stack.hp-single-column .video-embed-iframe {
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
 /* ── Settings textarea (Static Text and HTML blocks) ────── */
 .static-text-settings-textarea,
 .html-settings-textarea {
@@ -3065,6 +3077,16 @@
   container-type: inline-size;
   height: auto;
 }
+/* Size containment resolved these to the 60 px floor in single column (M39). */
+.homepage-grid.grid-stack.hp-single-column .random-note-block,
+.homepage-grid.grid-stack.hp-single-column .clock-block,
+.homepage-grid.grid-stack.hp-single-column .greeting-block {
+  container-type: inline-size;
+}
+/* A collapsed block keeps no 60 px band in single column (M79). */
+.homepage-grid.grid-stack.hp-single-column .homepage-block-wrapper.block-collapsed .block-content {
+  min-height: 0;
+}
 .homepage-grid.grid-stack.hp-single-column .pomodoro-container {
   flex-direction: row;
   gap: 20px;
@@ -3154,9 +3176,10 @@
     padding: 8px;
   }
 
-  /* Slightly smaller card padding */
-  .homepage-block-wrapper {
-    padding: var(--hp-card-padding, 10px);
+  /* Slightly smaller card padding: the default token, so a block's own Padding
+     still wins (M80). */
+  .homepage-grid {
+    --hp-card-padding: 10px;
   }
 
   /* Disable staggered block entry animation */
@@ -3220,9 +3243,10 @@
     padding: 4px;
   }
 
-  /* Reduce block card padding */
-  .homepage-block-wrapper {
-    padding: 8px;
+  /* Reduce block card padding: the default token, so a block's own Padding
+     still wins (M80). */
+  .homepage-grid {
+    --hp-card-padding: 8px;
   }
 
   /* Hide zoom group — auto-columns handles layout */

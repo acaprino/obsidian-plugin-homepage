@@ -485,3 +485,22 @@ describe('GridLayout — animations (M74, M75)', () => {
     expect(wrapper.classList.contains('block-just-added')).toBe(false);
   });
 });
+
+describe('GridLayout — loading skeleton (M77)', () => {
+  it('comes off once the block has drawn, even while its content still loads', async () => {
+    BlockRegistry.register({
+      type: 'embedded-note', displayName: 'Embedded note', defaultConfig: {}, defaultSize: { w: 1, h: 3 },
+      create: (app, instance, plugin) => new (class extends BaseBlock {
+        render(el: HTMLElement): Promise<void> { el.setText('drawn'); return new Promise(() => {}); } // an image host that never answers
+      })(app, instance, plugin),
+    });
+    const plugin = makePlugin({ blocks: [{ id: 'e', type: 'embedded-note', x: 0, y: 0, w: 1, h: 3, config: {} }] });
+    const grid = new GridLayout(host, plugin.app, plugin, () => {});
+    grid.render(plugin.activeBlocks(), 3, true);
+    expect(host.querySelector('.hp-skeleton-overlay')).toBeTruthy();
+
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    expect(host.querySelector('.hp-skeleton-overlay')).toBeNull();
+  });
+});

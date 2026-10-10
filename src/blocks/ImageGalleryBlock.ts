@@ -175,12 +175,17 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
   return ac;
 }
 
-/** Resolve when an <img> finishes loading (or has already loaded). */
+/** Longest wait for one image: a host that never answers must not hold the render (M42). */
+const IMAGE_WAIT_MS = 8000;
+
+/** Resolve when an <img> finishes loading (or has already loaded), or after IMAGE_WAIT_MS. */
 function waitForImage(img: HTMLImageElement): Promise<void> {
   return new Promise(resolve => {
     if (img.complete && img.naturalHeight > 0) { resolve(); return; }
-    img.addEventListener('load', () => resolve(), { once: true });
-    img.addEventListener('error', () => resolve(), { once: true });
+    const timer = window.setTimeout(resolve, IMAGE_WAIT_MS);
+    const done = () => { window.clearTimeout(timer); resolve(); };
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
   });
 }
 
@@ -361,6 +366,10 @@ export class ImageGalleryBlock extends BaseBlock {
     // Only use lazy loading in fixed-height (scrollable) mode — auto-height
     // needs all dimensions upfront for GridStack measurement.
     const useLazy = heightMode === 'fixed';
+    // A fixed-height gallery is not measured, so nothing waits for its images:
+    // lazy ones inside the clipped box never load, and waiting on them kept the
+    // skeleton up and the thumbnail pool parked (M42).
+    const settle = (img: HTMLImageElement): Promise<void> => (useLazy ? Promise.resolve() : waitForImage(img));
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -387,7 +396,7 @@ export class ImageGalleryBlock extends BaseBlock {
         const cached = imageCache.getCached(file.path, file.stat.mtime);
         if (cached) {
           this.showThumb(img, cached.thumbUrl);
-          loadPromises.push(waitForImage(img));
+          loadPromises.push(settle(img));
         } else {
           // Show shimmer placeholder while thumbnail is generated. Deferred into
           // the bounded pool below so decode/canvas work doesn't all fire at once.
@@ -397,7 +406,7 @@ export class ImageGalleryBlock extends BaseBlock {
               if (this.isStale(gen)) return;
               this.showThumb(img, entry.thumbUrl);
               wrapper.removeClass('gallery-item--loading');
-              return waitForImage(img);
+              return settle(img);
             }),
           );
         }

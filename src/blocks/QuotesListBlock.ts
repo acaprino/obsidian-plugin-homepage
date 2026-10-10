@@ -141,7 +141,12 @@ export class QuotesListBlock extends BaseBlock {
     // ── Single mode ──────────────────────────────────────────────────────────
     if (safeMode === 'single') {
       if (source === 'text') {
-        this.renderSingleTextQuote(el, quotes, dailySeed);
+        const card = this.renderSingleTextQuote(el, quotes, dailySeed);
+        // Grow to fit, as the other modes: the card was clipped at 3 rows (M36).
+        if (card && heightMode === 'extend') {
+          el.toggleClass('quotes-list-block--extend', true);
+          card.setAttribute(AUTO_HEIGHT_ATTR, '');
+        }
         return;
       }
 
@@ -286,23 +291,23 @@ export class QuotesListBlock extends BaseBlock {
   }
 
   /** Render a single quote picked from the text list (daily or random). */
-  private renderSingleTextQuote(el: HTMLElement, raw: string, dailySeed: boolean): void {
+  private renderSingleTextQuote(el: HTMLElement, raw: string, dailySeed: boolean): HTMLElement | null {
     if (!raw.trim()) {
       const hint = el.createDiv({ cls: 'block-empty-hint' });
       hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4AC}' });
       hint.createDiv({ cls: 'block-empty-hint-text', text: 'No quotes yet. Add them in settings, separated by ---.' });
-      return;
+      return null;
     }
 
     const blocks = raw.split(/\n---\n/).map(b => b.trim()).filter(Boolean);
-    if (blocks.length === 0) return;
+    if (blocks.length === 0) return null;
     const index = dailySeed
       ? dailyIndex(blocks.length)
       : Math.floor(Math.random() * blocks.length);
 
     const block = blocks[index];
     const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length === 0) return;
+    if (lines.length === 0) return null;
     const lastLine = lines[lines.length - 1];
     const hasSource = lines.length > 1 && /^(—|–|--)/.test(lastLine);
     const sourceText = hasSource ? lastLine.replace(/^(—|–|--)\s*/, '') : '';
@@ -313,6 +318,7 @@ export class QuotesListBlock extends BaseBlock {
     if (sourceText) card.createDiv({ cls: 'insight-title', text: sourceText });
     const bodyEl = card.createDiv({ cls: 'insight-body' });
     renderFormatted(bodyEl, body);
+    return card;
   }
 
   /**

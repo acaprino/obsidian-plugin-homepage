@@ -33,11 +33,12 @@ export class StaticTextBlock extends BaseBlock {
     super.onunload();
   }
 
-  render(el: HTMLElement): void {
+  render(el: HTMLElement): Promise<void> {
     el.addClass('static-text-block');
     // requestAutoHeight() dispatches from here once an inline save re-renders.
     this.containerEl = el;
-    this.renderContent(el).catch(e => this.showRenderFailure(el, e));
+    // Returned, so the grid measures the rendered Markdown rather than an empty box (M34).
+    return this.renderContent(el).catch(e => this.showRenderFailure(el, e));
   }
 
   private showRenderFailure(el: HTMLElement, e: unknown): void {
@@ -69,6 +70,7 @@ export class StaticTextBlock extends BaseBlock {
     const contentEl = el.createDiv({ cls: 'static-text-content' });
     if (heightMode !== 'fixed') {
       contentEl.setAttribute(AUTO_HEIGHT_ATTR, '');
+      this.observeSizeForAutoHeight(contentEl);
     }
 
     if (!content) {

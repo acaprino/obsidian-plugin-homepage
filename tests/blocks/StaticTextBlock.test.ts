@@ -208,3 +208,51 @@ describe('StaticTextBlock render failures (R5)', () => {
     vi.restoreAllMocks();
   });
 });
+
+/** happy-dom lays nothing out: a ResizeObserver stub that lets the test report sizes by hand. */
+function stubResizeObserver() {
+  const observers: { cb: (entries: { target: Element; contentRect: { width: number; height: number } }[]) => void; targets: Element[] }[] = [];
+  const original = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    private rec: (typeof observers)[number];
+    constructor(cb: (typeof observers)[number]['cb']) { this.rec = { cb, targets: [] }; observers.push(this.rec); }
+    observe(t: Element): void { this.rec.targets.push(t); }
+    unobserve(): void {}
+    disconnect(): void { this.rec.targets = []; }
+  } as unknown as typeof ResizeObserver;
+  return {
+    /** Report a size for `el` to every observer watching it. */
+    resize(el: Element, width: number, height: number): void {
+      for (const o of observers) if (o.targets.includes(el)) o.cb([{ target: el, contentRect: { width, height } }]);
+    },
+    restore(): void { globalThis.ResizeObserver = original; },
+  };
+}
+
+const frame = () => new Promise(resolve => window.requestAnimationFrame(() => resolve(undefined)));
+
+describe('StaticTextBlock auto-height after the first render (M34)', () => {
+  it('asks to be measured again when its content changes size', async () => {
+    const ro = stubResizeObserver();
+    try {
+      const { el } = mount('Some **text**');
+      await new Promise(resolve => setTimeout(resolve, 5));
+      const content = el.querySelector('.static-text-content') as HTMLElement;
+      let requests = 0;
+      el.addEventListener('request-auto-height', () => { requests++; });
+
+      ro.resize(content, 300, 120);
+      ro.resize(content, 300, 480); // an image loaded, a callout opened
+      await frame();
+
+      expect(requests).toBeGreaterThan(0);
+    } finally { ro.restore(); }
+  });
+
+  it('lets the grid wait for its Markdown before measuring', () => {
+    const instance: BlockInstance = { id: 't1', type: 'static-text', x: 0, y: 0, w: 1, h: 3, config: { content: 'x' } };
+    const block = new StaticTextBlock({} as App, instance, makePlugin([instance]));
+    block.load();
+    expect(block.render(document.body.createDiv())).toBeInstanceOf(Promise);
+  });
+});

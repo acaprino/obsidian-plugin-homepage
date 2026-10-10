@@ -10,6 +10,8 @@ export abstract class BaseBlock extends Component {
   private _renderGen = 0;
   private _widthObserver: ResizeObserver | null = null;
   private _widthRafId = 0;
+  private _sizeObserver: ResizeObserver | null = null;
+  private _sizeRafId = 0;
 
   /** Set by subclasses in render() to enable scheduleRender(). */
   protected containerEl: HTMLElement | null = null;
@@ -184,6 +186,33 @@ export abstract class BaseBlock extends Component {
     this._widthObserver.observe(el);
   }
 
+  /**
+   * Like observeWidthForAutoHeight, for content whose height changes after the
+   * first render without the block re-rendering: an image that loads late, a
+   * folded callout opened, a Dataview refresh (M34). `el` must be content-sized
+   * (the AUTO_HEIGHT_ATTR element), or the cell's own resize would feed back.
+   */
+  protected observeSizeForAutoHeight(el: HTMLElement): void {
+    this.stopSizeObserver();
+    let prev: { width: number; height: number } | null = null; // the first report is the size at mount
+    this._sizeObserver = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect || rect.width <= 0) return;
+      if (prev && (rect.width !== prev.width || rect.height !== prev.height)) {
+        window.cancelAnimationFrame(this._sizeRafId);
+        this._sizeRafId = window.requestAnimationFrame(() => this.requestAutoHeight());
+      }
+      prev = { width: rect.width, height: rect.height };
+    });
+    this._sizeObserver.observe(el);
+  }
+
+  private stopSizeObserver(): void {
+    this._sizeObserver?.disconnect();
+    this._sizeObserver = null;
+    window.cancelAnimationFrame(this._sizeRafId);
+  }
+
   /** Increment and return a new render generation. Call at the start of async renders. */
   protected nextGeneration(): number {
     return ++this._renderGen;
@@ -204,5 +233,6 @@ export abstract class BaseBlock extends Component {
       this._widthObserver = null;
       window.cancelAnimationFrame(this._widthRafId);
     }
+    this.stopSizeObserver();
   }
 }

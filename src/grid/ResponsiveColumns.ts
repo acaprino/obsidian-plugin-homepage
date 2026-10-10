@@ -3,6 +3,7 @@ import { BlockInstance, IHomepagePlugin, LayoutPriority } from '../types';
 import { Scheduler } from '../utils/Scheduler';
 import { Phase } from './phase';
 import { viewModeHeight } from './CollapseToggle';
+import { orderChildren } from './domOrder';
 
 /**
  * Width breakpoints (px) where the grid drops a column. The container queries in
@@ -204,9 +205,7 @@ export class ResponsiveColumnsManager {
     // elements by packed position using the user's priority.
     if (next === 1) {
       const sorted = nodeItems.slice().sort((a, b) => (a.y - b.y || a.x - b.x));
-      for (const item of sorted) {
-        this.host.gridEl.appendChild(item.el);
-      }
+      orderChildren(this.host.gridEl, sorted.map(item => item.el));
     }
   }
 }

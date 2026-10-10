@@ -92,6 +92,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
       contentEl.setAttribute('aria-label', file.basename);
     } else if (heightMode === 'grow') {
       contentEl.setAttribute(AUTO_HEIGHT_ATTR, '');
+      this.observeSizeForAutoHeight(contentEl);
     }
 
     try {

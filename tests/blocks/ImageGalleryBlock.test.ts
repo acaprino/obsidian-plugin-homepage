@@ -73,3 +73,26 @@ describe('ImageGalleryBlock folder input (M67)', () => {
     block.unload();
   });
 });
+
+describe('ImageGalleryBlock fixed height (M42)', () => {
+  it('finishes rendering without waiting for images that may never load', async () => {
+    const folder = new TFolder();
+    folder.path = 'Pics';
+    folder.children = [png('Pics/a.png'), png('Pics/b.png'), png('Pics/c.png'), png('Pics/d.png')];
+    const app = {
+      vault: { on: () => ({}), getAbstractFileByPath: () => folder, getResourcePath: (f: TFile) => `app://${f.path}` },
+    } as unknown as App;
+    vi.spyOn(imageCache, 'get').mockResolvedValue({ thumbUrl: 'u', fullUrl: 'u', mtime: 1, isBlob: false });
+    const instance: BlockInstance = { id: 'g1', type: 'image-gallery', x: 0, y: 0, w: 3, h: 3, config: { folder: 'Pics', heightMode: 'fixed', columns: 2 } };
+    const block = new ImageGalleryBlock(app, instance, {} as IHomepagePlugin);
+    block.load();
+
+    const done = await Promise.race([
+      Promise.resolve(block.render(document.body.createDiv())).then(() => 'done'),
+      new Promise(resolve => setTimeout(() => resolve('still waiting'), 200)),
+    ]);
+
+    expect(done).toBe('done');
+    block.unload();
+  });
+});

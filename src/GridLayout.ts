@@ -13,11 +13,15 @@ import { attachEditHandleBar } from './grid/EditHandleBar';
 import { packRows, repackEditLayout } from './grid/packing';
 import { canAddBlock } from './grid/blockLimit';
 import { buildBlockWrapper, createSkeleton, removeSkeleton, renderCompactPlaceholder, renderEmptyState } from './grid/BlockWrapper';
+import { orderChildren } from './grid/domOrder';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
 /** Compact grid-row height for edit-mode placeholders (cellHeight = 80px). */
 const COMPACT_EDIT_H = 2;
+
+/** Longest time the loading skeleton covers a block that has drawn (M77). */
+const SKELETON_MAX_MS = 300;
 
 export class GridLayout {
   // NOTE: several fields below are intentionally non-private (package-visible). AutoHeightManager
@@ -483,9 +487,7 @@ export class GridLayout {
         const nb = (b as HTMLElement & { gridstackNode?: { x?: number; y?: number } }).gridstackNode;
         return ((na?.y ?? 0) - (nb?.y ?? 0)) || ((na?.x ?? 0) - (nb?.x ?? 0));
       });
-      for (const el of gridItems) {
-        this.gridEl.appendChild(el);
-      }
+      orderChildren(this.gridEl, gridItems);
     }
 
     // GridStack already compensates for CSS transform via getValuesFromTransformedElement
@@ -601,6 +603,10 @@ export class GridLayout {
       }
       // Skeleton overlay: show shimmer placeholder during initial load
       const skeletonEl = isInitial ? createSkeleton(wrapper) : null;
+      // Off once the block has drawn, at most SKELETON_MAX_MS: an Embedded Note
+      // waited for every remote image in the note, forever if a host never
+      // answered (M77). Its measurement still waits for the whole render.
+      if (skeletonEl) this.scheduler.timeout(`skeleton-cap-${instance.id}`, SKELETON_MAX_MS, () => removeSkeleton(skeletonEl, this.scheduler));
       // A synchronous throw (typically a malformed config value) takes the same
       // path as a failed async render. Escaping here would abort initGridStack's
       // loop: the blocks after this one, the drag handlers and the Ready phase

@@ -108,31 +108,55 @@ export class HtmlBlock extends BaseBlock {
     });
     iframe.srcdoc = safe;
 
-    // Auto-scale: if content overflows vertically, widen + shrink to fill the card.
-    // Iterates because widening the body causes flex-wrap reflow (shorter content),
-    // which changes the required scale. Converges in 2-3 rounds.
-    iframe.addEventListener('load', () => {
-      try {
-        const doc = iframe.contentDocument;
-        if (!doc) return;
-        const availableH = iframe.clientHeight;
-        let contentH = doc.documentElement.scrollHeight;
-        if (contentH <= availableH || availableH <= 0) return;
-
-        let scale = availableH / contentH;
-        for (let i = 0; i < 4; i++) {
-          doc.body.style.setProperty('--hp-body-width', `${(1 / scale) * 100}%`);
-          contentH = doc.documentElement.scrollHeight;
-          const next = availableH / contentH;
-          if (Math.abs(next - scale) < 0.005) { scale = next; break; }
-          scale = next;
-        }
-
-        doc.documentElement.classList.add('hp-clipped');
-        doc.body.style.setProperty('--hp-body-width', `${(1 / scale) * 100}%`);
-        doc.body.style.setProperty('--hp-body-scale', `${scale}`);
-      } catch { /* cross-origin fallback */ }
+    // Fitted on load and whenever the frame changes size: a frame that loaded in a
+    // hidden tab has no size then, and stayed at 100%, clipped (M37).
+    iframe.addEventListener('load', () => this.fitDocument(iframe));
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(() => this.fitDocument(iframe));
     });
+    ro.observe(iframe);
+    this.register(() => { ro.disconnect(); window.cancelAnimationFrame(raf); });
+  }
+
+  /**
+   * Auto-scale: if content overflows vertically, widen + shrink to fill the card.
+   * Iterates because widening the body causes flex-wrap reflow (shorter content),
+   * which changes the required scale. Converges in 2-3 rounds. In single column
+   * the card has no height of its own: the frame takes its document's height
+   * instead, unscaled, where scaling it into the 150 px default made it
+   * unreadable (M38).
+   */
+  private fitDocument(iframe: HTMLIFrameElement): void {
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      doc.documentElement.classList.remove('hp-clipped');
+      doc.body.style.removeProperty('--hp-body-width');
+      doc.body.style.removeProperty('--hp-body-scale');
+      if (iframe.closest('.hp-single-column')) {
+        iframe.style.setProperty('--hp-iframe-height', `${doc.documentElement.scrollHeight}px`);
+        return;
+      }
+      iframe.style.removeProperty('--hp-iframe-height');
+      const availableH = iframe.clientHeight;
+      let contentH = doc.documentElement.scrollHeight;
+      if (contentH <= availableH || availableH <= 0) return;
+
+      let scale = availableH / contentH;
+      for (let i = 0; i < 4; i++) {
+        doc.body.style.setProperty('--hp-body-width', `${(1 / scale) * 100}%`);
+        contentH = doc.documentElement.scrollHeight;
+        const next = availableH / contentH;
+        if (Math.abs(next - scale) < 0.005) { scale = next; break; }
+        scale = next;
+      }
+
+      doc.documentElement.classList.add('hp-clipped');
+      doc.body.style.setProperty('--hp-body-width', `${(1 / scale) * 100}%`);
+      doc.body.style.setProperty('--hp-body-scale', `${scale}`);
+    } catch { /* cross-origin fallback */ }
   }
 
   renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {

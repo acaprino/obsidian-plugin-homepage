@@ -289,6 +289,22 @@ export const Keymap = {
   },
 };
 
+/**
+ * As Obsidian's getAllTags: the inline tags, then the frontmatter tags under a
+ * `tags` or `tag` key in any letter case (a list, or a string split at commas
+ * and spaces), each with a leading '#'. Null for no cache.
+ */
+export function getAllTags(cache: { tags?: { tag: string }[]; frontmatter?: Record<string, unknown> } | null): string[] | null {
+  if (!cache) return null;
+  const out = (cache.tags ?? []).map(t => t.tag);
+  for (const [key, value] of Object.entries(cache.frontmatter ?? {})) {
+    if (!/^tags?$/i.test(key)) continue;
+    const list = Array.isArray(value) ? value : typeof value === 'string' ? value.split(/[,\s]+/) : [];
+    for (const t of list) if (typeof t === 'string' && t) out.push(t.startsWith('#') ? t : `#${t}`);
+  }
+  return out;
+}
+
 /** As Obsidian's: the link path, and the subpath from the first '#' (kept with its '#'). */
 export function parseLinktext(linktext: string): { path: string; subpath: string } {
   const i = linktext.indexOf('#');

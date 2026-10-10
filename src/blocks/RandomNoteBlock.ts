@@ -4,6 +4,7 @@ import { dailyEpochDay } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 import { onOpenClick, openFile } from '../utils/openTarget';
+import { notePreview } from '../utils/noteContent';
 
 const DEBOUNCE_MS = 500;
 const DELETE_RENAME_DEBOUNCE_MS = 2000;
@@ -112,7 +113,7 @@ export class RandomNoteBlock extends BaseBlock {
         try {
           const content = await this.app.vault.read(file);
           if (this.isStale(gen)) return;
-          preview = this.extractPreview(content, cache?.frontmatterPosition?.end.offset ?? 0);
+          preview = notePreview(content, cache);
         } catch (e) {
           console.error('[Homepage Blocks] RandomNoteBlock failed to read file:', e);
         }
@@ -200,30 +201,6 @@ export class RandomNoteBlock extends BaseBlock {
     const picked = files[idx];
     this.dailyCache = { dayIndex, path: picked.path };
     return picked;
-  }
-
-  private extractPreview(content: string, fmEnd: number): string {
-    const afterFm = content.slice(fmEnd);
-    for (const line of afterFm.split('\n')) {
-      const trimmed = line.trim();
-      if (
-        trimmed
-        && !trimmed.startsWith('#')
-        && !trimmed.startsWith('!')
-        && !trimmed.startsWith('```')
-        && !trimmed.startsWith('---')
-      ) {
-        // Strip basic markdown (bold, italic, links) before capping length
-        const capped = trimmed.slice(0, 500);
-        return capped
-          .replace(/\*\*(.+?)\*\*/g, '$1')
-          .replace(/\*(.+?)\*/g, '$1')
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-          .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')
-          .slice(0, 200);
-      }
-    }
-    return '';
   }
 
   renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {

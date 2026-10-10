@@ -22,6 +22,22 @@ describe('cacheHasTag', () => {
   });
 });
 
+describe('cacheHasTag matches as Obsidian does (M43)', () => {
+  it('ignores letter case', () => {
+    expect(cacheHasTag({ tags: [{ tag: '#quote' }] } as unknown as CachedMetadata, '#Quote')).toBe(true);
+  });
+
+  it('reads a frontmatter key spelled Tags or tag', () => {
+    expect(cacheHasTag({ frontmatter: { Tags: ['x'] } } as unknown as CachedMetadata, '#x')).toBe(true);
+    expect(cacheHasTag({ frontmatter: { tag: 'x' } } as unknown as CachedMetadata, '#x')).toBe(true);
+  });
+
+  it('counts nested tags', () => {
+    expect(cacheHasTag({ tags: [{ tag: '#quotes/stoic' }] } as unknown as CachedMetadata, '#quotes')).toBe(true);
+    expect(cacheHasTag({ tags: [{ tag: '#quotesx' }] } as unknown as CachedMetadata, '#quotes')).toBe(false);
+  });
+});
+
 // ── Per-file invalidation (M5) ────────────────────────────────────────────────
 
 type Listener = (...args: unknown[]) => void;

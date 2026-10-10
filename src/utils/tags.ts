@@ -1,20 +1,17 @@
-import { App, CachedMetadata, Plugin, TFile } from 'obsidian';
+import { App, CachedMetadata, Plugin, TFile, getAllTags } from 'obsidian';
 
 /**
- * Check whether a metadata cache entry contains the given tag.
- * `tag` must include the leading `#` (e.g. `#values`).
+ * Check whether a metadata cache entry contains the given tag, as Obsidian's tag
+ * search matches it: in any letter case, with a `Tags:`/`tag:` frontmatter key,
+ * and counting nested tags (`#quotes/stoic` has `#quotes`). Exact strings missed
+ * all three (M43). `tag` must include the leading `#` (e.g. `#values`).
  */
 export function cacheHasTag(cache: CachedMetadata | null, tag: string): boolean {
-  if (!cache) return false;
-
-  if (cache.tags?.some(t => t.tag === tag)) return true;
-
-  const rawFmTags: unknown = cache.frontmatter?.tags;
-  const fmTagArray: string[] =
-    Array.isArray(rawFmTags) ? rawFmTags.filter((t): t is string => typeof t === 'string') :
-    typeof rawFmTags === 'string' ? [rawFmTags] :
-    [];
-  return fmTagArray.some(t => (t.startsWith('#') ? t : `#${t}`) === tag);
+  const want = tag.toLowerCase();
+  return (getAllTags(cache ?? ({} as CachedMetadata)) ?? []).some(t => {
+    const have = t.toLowerCase();
+    return have === want || have.startsWith(want + '/');
+  });
 }
 
 /** Normalize a tag to include the leading `#` (e.g. `values` -> `#values`). */
@@ -101,12 +98,14 @@ export function installTagCacheListeners(plugin: Plugin): void {
  * list every other caller reads (N13).
  */
 export function getFilesWithTag(app: App, tag: string): TFile[] {
-  const cached = tagCache.get(tag);
+  // One entry per tag whatever its letter case: matching ignores case (M43).
+  const key = tag.toLowerCase();
+  const cached = tagCache.get(key);
   if (cached) return cached.slice();
   const files = app.vault.getMarkdownFiles().filter(file =>
-    cacheHasTag(app.metadataCache.getFileCache(file), tag),
+    cacheHasTag(app.metadataCache.getFileCache(file), key),
   );
-  tagCache.set(tag, files);
+  tagCache.set(key, files);
   return files.slice();
 }
 

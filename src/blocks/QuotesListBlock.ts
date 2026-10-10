@@ -1,6 +1,6 @@
-import { CachedMetadata, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import { cacheHasTag, getFilesWithTag, normalizeTag } from '../utils/tags';
-import { parseNoteInsight } from '../utils/noteContent';
+import { noteQuote, parseNoteInsight } from '../utils/noteContent';
 import { dailyIndex } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 import { rangedNumber } from '../utils/configRanges';
@@ -247,6 +247,13 @@ export class QuotesListBlock extends BaseBlock {
 
     const tagSearch = normalizeTag(tag);
     const allFiles = getFilesWithTag(this.app, tagSearch);
+    if (allFiles.length === 0) {
+      // As the other branches: an empty card with no hint looked broken (M87).
+      const hint = colsEl.createDiv({ cls: 'block-empty-hint' });
+      hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4AC}' });
+      hint.createDiv({ cls: 'block-empty-hint-text', text: `No notes tagged ${tagSearch}.` });
+      return;
+    }
     const files = effectiveMax > 0 ? allFiles.slice(0, effectiveMax) : allFiles;
 
     for (const file of files) this.shownPaths.add(file.path);
@@ -272,12 +279,13 @@ export class QuotesListBlock extends BaseBlock {
       // blocks CSS injection — this guards against a multi-MB tampered value).
       const rawColor = cache?.frontmatter?.color as string ?? '';
       const color = typeof rawColor === 'string' ? rawColor.slice(0, 64) : '';
-      const body = this.extractBody(content, cache);
+      const { text: body, author } = noteQuote(content, cache);
       if (!body) continue;
 
       const item = colsEl.createDiv({ cls: 'quote-item' });
       const quote = item.createEl('blockquote', { cls: 'quote-content' });
       renderFormatted(quote, body);
+      if (author) quote.createDiv({ cls: 'quote-author', text: `— ${author}` });
 
       // Validate color before applying to prevent CSS injection
       if (color && COLOR_RE.test(color)) {
@@ -357,17 +365,6 @@ export class QuotesListBlock extends BaseBlock {
       renderFormatted(quote, body);
       if (sourceText) item.createDiv({ cls: 'quote-source', text: sourceText });
     }
-  }
-
-  /** Extract the first few lines of body content using metadataCache frontmatter offset. */
-  private extractBody(content: string, cache: CachedMetadata | null): string {
-    const fmEnd = cache?.frontmatterPosition?.end.offset ?? 0;
-    const afterFm = content.slice(fmEnd);
-    const lines = afterFm
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith('#'));
-    return lines.slice(0, 3).join(' ');
   }
 
   renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {

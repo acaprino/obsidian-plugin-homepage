@@ -1636,6 +1636,14 @@
   padding-left: 0;
 }
 
+/* The "— Author" line of a quote taken from a note (M88). */
+.quote-author {
+  margin-top: 4px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  font-style: normal;
+}
+
 .quote-source {
   font-size: var(--font-interface-size, 0.8125rem);
   color: var(--text-muted);

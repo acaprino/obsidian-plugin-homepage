@@ -97,3 +97,29 @@ describe('QuotesListBlock single text quote, Grow to fit (M36)', () => {
     expect((el.querySelector('.insight-card') as HTMLElement).hasAttribute(AUTO_HEIGHT_ATTR)).toBe(false);
   });
 });
+
+describe('QuotesListBlock list mode from a tag (M87, M88)', () => {
+  it('says so when no note has the tag', async () => {
+    const { el, rendered } = mountQuotes({ source: 'tag', tag: 'none', maxItems: 5 });
+    await rendered;
+    expect(el.querySelector('.block-empty-hint')?.textContent).toMatch(/No notes/);
+  });
+
+  it('shows the whole first paragraph and its author line', async () => {
+    const files = [{ path: 'q.md', basename: 'q' }];
+    const handlers: Record<string, (() => void)[]> = {};
+    const on = (e: string, h: () => void) => { (handlers[e] ??= []).push(h); return {}; };
+    const app = {
+      vault: { on, getMarkdownFiles: () => files, read: async () => 'One\nTwo\nThree\nFour\n— Seneca' },
+      metadataCache: { on, getFileCache: () => ({ tags: [{ tag: '#q' }] }) },
+    } as unknown as App;
+    const instance: BlockInstance = { id: 'q9', type: 'quotes-list', x: 0, y: 0, w: 2, h: 3, config: { source: 'tag', tag: 'q', maxItems: 5 } };
+    const el = document.body.createDiv({ cls: 'block-content' });
+    const block = new QuotesListBlock(app, instance, { activeBlocks: () => [instance] } as unknown as IHomepagePlugin);
+    block.load();
+    await block.render(el);
+
+    expect(el.querySelector('.quote-content')?.textContent).toContain('One Two Three Four');
+    expect(el.querySelector('.quote-author')?.textContent).toBe('— Seneca');
+  });
+});

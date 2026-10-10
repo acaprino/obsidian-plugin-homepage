@@ -1415,10 +1415,13 @@
 
 /* ── Random Note Block ──────────────────────────────────── */
 .random-note-block {
+  container-type: size;
+}
+
+.random-note-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  container-type: size;
 }
 
 .random-note-cover {
@@ -1495,7 +1498,7 @@
 /* Random note: short card — hide cover, compact layout */
 @container (max-height: 160px) {
   .random-note-cover { display: none; }
-  .random-note-block { gap: 4px; }
+  .random-note-body { gap: 4px; }
   .random-note-title { font-size: clamp(0.9rem, 25cqh, 1.3rem); }
   .random-note-preview { display: none; }
   .random-note-footer { gap: 4px; }

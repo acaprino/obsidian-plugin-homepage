@@ -118,9 +118,12 @@ export class RandomNoteBlock extends BaseBlock {
 
     // ── Render all content atomically after async work completes ────────────
 
-    // Mark for auto-height measurement
-    el.setAttribute(AUTO_HEIGHT_ATTR, '');
-    this.observeWidthForAutoHeight(el);
+    // The card gets its own element, and that element is measured: the content
+    // element fills the grid cell, so measuring it returned the cell plus
+    // padding and grew the block by one row per measurement (M33).
+    const body = el.createDiv({ cls: 'random-note-body' });
+    body.setAttribute(AUTO_HEIGHT_ATTR, '');
+    this.observeWidthForAutoHeight(body);
 
     // Cover image — supports vault paths, [[wiki-links]], https:// URLs,
     // and Obsidian Properties arrays (takes first element).
@@ -147,7 +150,7 @@ export class RandomNoteBlock extends BaseBlock {
           }
         }
         if (imgSrc) {
-          const img = el.createEl('img', { cls: 'random-note-cover' });
+          const img = body.createEl('img', { cls: 'random-note-cover' });
           img.src = imgSrc;
           img.alt = file.basename;
           img.referrerPolicy = 'no-referrer';
@@ -159,7 +162,7 @@ export class RandomNoteBlock extends BaseBlock {
     const rawTitle: unknown = fm[titleProperty];
     const title = (typeof rawTitle === 'string' && rawTitle) ? rawTitle : file.basename;
 
-    const titleEl = el.createEl('button', { cls: 'random-note-title' });
+    const titleEl = body.createEl('button', { cls: 'random-note-title' });
     titleEl.setText(title);
     titleEl.addEventListener('click', () => {
       void this.app.workspace.openLinkText(file.path, '');
@@ -167,11 +170,11 @@ export class RandomNoteBlock extends BaseBlock {
 
     // Preview
     if (preview) {
-      el.createDiv({ cls: 'random-note-preview', text: preview });
+      body.createDiv({ cls: 'random-note-preview', text: preview });
     }
 
     // Footer
-    const footer = el.createDiv({ cls: 'random-note-footer' });
+    const footer = body.createDiv({ cls: 'random-note-footer' });
     footer.createSpan({ cls: 'random-note-filename', text: file.basename });
     const openBtn = footer.createEl('button', { cls: 'random-note-open-btn', text: 'Open' });
     openBtn.addEventListener('click', () => {

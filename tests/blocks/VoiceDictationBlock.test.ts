@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Modal } from 'obsidian';
+import { Modal, Notice, TFolder, requestUrlMock } from 'obsidian';
 import type { App } from 'obsidian';
 import { VoiceDictationBlock, whisperTextFields } from '../../src/blocks/VoiceDictationBlock';
 import type { IHomepagePlugin, BlockInstance } from '../../src/types';
@@ -114,11 +114,17 @@ class FakeRecorder {
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   constructor(public stream: unknown) { FakeRecorder.instances.push(this); }
-  start(): void {
+  timeslice: number | undefined;
+  start(timeslice?: number): void {
     if (FakeRecorder.failStart) throw new Error('NotSupportedError');
+    this.timeslice = timeslice;
     this.state = 'recording';
   }
-  stop(): void { this.state = 'inactive'; this.onstop?.(); }
+  stop(): void {
+    this.state = 'inactive';
+    this.ondataavailable?.({ data: new Blob(['audio bytes']) });
+    this.onstop?.();
+  }
 }
 
 describe('VoiceDictationBlock recording lifecycle', () => {
@@ -253,11 +259,11 @@ describe('VoiceDictationBlock without an API key (N9)', () => {
 
 describe('Whisper form fields (N20)', () => {
   it('sends the model and a language code', () => {
-    expect(whisperTextFields({ language: 'it' })).toEqual({ model: 'whisper-1', language: 'it' });
+    expect(whisperTextFields({ language: 'it' })).toEqual({ model: 'gpt-transcribe', language: 'it' });
   });
 
   it('leaves out a language that is not a language code, so it cannot change the request body', () => {
-    expect(whisperTextFields({ language: 'en\r\n--x' })).toEqual({ model: 'whisper-1' });
+    expect(whisperTextFields({ language: 'en\r\n--x' })).toEqual({ model: 'gpt-transcribe' });
   });
 
   it('refuses a model name with characters no model name has (N20)', () => {
@@ -277,5 +283,170 @@ describe('VoiceDictationBlock upload consent (N18)', () => {
 
     expect(stored).toEqual({ whisper: false });
     expect([...body.querySelectorAll('button')].some(b => b.textContent === 'Forget')).toBe(false);
+  });
+});
+
+/** A vault double that records the notes and files the block writes. */
+function makeVault(folders: string[] = []) {
+  const created: Record<string, string> = {};
+  const binaries: string[] = [];
+  const createdFolders: string[] = [];
+  const root = new TFolder();
+  root.path = '';
+  const folderObjs = folders.map(path => {
+    const f = new TFolder();
+    f.path = path;
+    (f as unknown as { name: string }).name = path.split('/').pop() ?? path;
+    return f;
+  });
+  root.children = folderObjs;
+  const byPath = (p: string) => folderObjs.find(f => f.path === p) ?? (p in created ? { path: p } : null);
+  return {
+    created, binaries, createdFolders,
+    vault: {
+      getRoot: () => root,
+      getAbstractFileByPath: (p: string) => byPath(p),
+      createFolder: async (p: string) => {
+        if (folders.some(f => f.toLowerCase() === p.toLowerCase())) throw new Error('Folder already exists.');
+        createdFolders.push(p);
+      },
+      create: async (p: string, data: string) => { created[p] = data; return {}; },
+      createBinary: async (p: string) => { binaries.push(p); return {}; },
+    },
+  };
+}
+
+describe('VoiceDictationBlock transcription and saving', () => {
+  let openMic: () => void = () => {};
+  const settle = (ms = 20) => new Promise(resolve => setTimeout(resolve, ms));
+
+  beforeEach(() => {
+    FakeRecorder.instances = [];
+    FakeRecorder.failStart = false;
+    Notice.messages = [];
+    requestUrlMock.reset();
+    (globalThis as Record<string, unknown>).MediaRecorder = FakeRecorder;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: () => new Promise(resolve => { openMic = () => resolve({ getTracks: () => [{ stop() {} }] }); }) },
+    });
+  });
+  afterEach(() => { requestUrlMock.reset(); vi.restoreAllMocks(); });
+
+  function mountWithVault(config: Record<string, unknown>, folders: string[] = []) {
+    const v = makeVault(folders);
+    const app = { loadLocalStorage: () => ({ whisper: true, gemini: true }), saveLocalStorage: () => {}, vault: v.vault } as unknown as App;
+    const instance: BlockInstance = { id: 'v1', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-key', triggerMode: 'tap', ...config } };
+    const block = new VoiceDictationBlock(app, instance, {} as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    block.render(el);
+    const mic = el.querySelector('button.voice-mic') as HTMLButtonElement;
+    const record = async () => { mic.click(); openMic(); await settle(); };
+    const stop = async () => { mic.click(); await settle(); };
+    return { ...v, el, mic, record, stop };
+  }
+
+  it('sends the current default model, gpt-transcribe (M15)', async () => {
+    requestUrlMock.handler = async () => ({ status: 200, text: '', json: { text: 'hello' } });
+    const b = mountWithVault({});
+    await b.record();
+    await b.stop();
+
+    const body = new TextDecoder().decode(requestUrlMock.calls[0].body as ArrayBuffer);
+    expect(body).toContain('gpt-transcribe');
+  });
+
+  it('says which model the key cannot use on a 404 (M15)', async () => {
+    requestUrlMock.handler = async () => ({ status: 404, text: '', json: {} });
+    const b = mountWithVault({ provider: 'gemini', model: 'gemini-9-ultra' });
+    await b.record();
+    await b.stop();
+
+    expect(Notice.messages.some(m => m.includes('gemini-9-ultra'))).toBe(true);
+  });
+
+  it('keeps the recording as a file, linked from a note, when transcription fails (M19)', async () => {
+    requestUrlMock.handler = async () => ({ status: 500, text: '', json: {} });
+    const b = mountWithVault({ folder: 'Voice' }, ['Voice']);
+    await b.record();
+    await b.stop();
+
+    expect(b.binaries).toHaveLength(1);
+    expect(b.binaries[0]).toMatch(/^Voice\/.+\.webm$/);
+    const note = Object.values(b.created)[0];
+    expect(note).toContain(`![[${b.binaries[0].split('/').pop()}]]`);
+  });
+
+  it('keeps the recording and says why when Gemini returns no text (M63)', async () => {
+    requestUrlMock.handler = async () => ({ status: 200, text: '', json: { promptFeedback: { blockReason: 'SAFETY' } } });
+    const b = mountWithVault({ provider: 'gemini' });
+    await b.record();
+    await b.stop();
+
+    expect(b.binaries).toHaveLength(1);
+    expect(Notice.messages.some(m => /blocked: SAFETY/.test(m))).toBe(true);
+  });
+
+  it('stops recording before the provider size limit (M19)', async () => {
+    const b = mountWithVault({});
+    await b.record();
+    const rec = FakeRecorder.instances[0];
+    expect(rec.timeslice).toBeGreaterThan(0);
+
+    rec.ondataavailable?.({ data: { size: 30 * 1024 * 1024 } as Blob });
+    await settle();
+
+    expect(rec.state).toBe('inactive');
+    expect(Notice.messages.some(m => /limit/i.test(m))).toBe(true);
+  });
+
+  it('saves into an existing folder whose name differs only in letter case (M18)', async () => {
+    requestUrlMock.handler = async () => ({ status: 200, text: '', json: { text: 'hello' } });
+    const b = mountWithVault({ folder: 'voice' }, ['Voice']);
+    await b.record();
+    await b.stop();
+
+    expect(b.createdFolders).toEqual([]);
+    expect(Object.keys(b.created)[0]).toMatch(/^Voice\/.+\.md$/);
+  });
+});
+
+describe('VoiceDictationBlock push-to-talk (M62)', () => {
+  beforeEach(() => {
+    FakeRecorder.instances = [];
+    (globalThis as Record<string, unknown>).MediaRecorder = FakeRecorder;
+  });
+
+  it('can be held with Space or Enter from the keyboard', async () => {
+    let opened = 0;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: () => { opened++; return Promise.resolve({ getTracks: () => [{ stop() {} }] }); } },
+    });
+    const app = { loadLocalStorage: () => ({ whisper: true }), saveLocalStorage: () => {} } as unknown as App;
+    const instance: BlockInstance = { id: 'v1', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-key', triggerMode: 'push' } };
+    const block = new VoiceDictationBlock(app, instance, {} as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    block.render(el);
+    const mic = el.querySelector('button.voice-mic') as HTMLButtonElement;
+
+    mic.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(el.dataset.voiceState).toBe('recording');
+    mic.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
+
+    expect(opened).toBe(1);
+    expect(FakeRecorder.instances[0].state).toBe('inactive');
+  });
+
+  it('is not cancelled by a slight pan: the button takes no touch gestures', () => {
+    const app = { loadLocalStorage: () => ({ whisper: true }), saveLocalStorage: () => {} } as unknown as App;
+    const instance: BlockInstance = { id: 'v1', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-key', triggerMode: 'push' } };
+    const el = document.body.createDiv();
+    new VoiceDictationBlock(app, instance, {} as IHomepagePlugin).render(el);
+
+    expect(el.querySelector('button.voice-mic')?.classList.contains('voice-mic--push')).toBe(true);
   });
 });

@@ -291,8 +291,19 @@ export const Keymap = {
 
 export function setIcon(_el: HTMLElement, _name: string): void {}
 
-export async function requestUrl(_opts: unknown): Promise<{ status: number; text: string; json: unknown }> {
-  return { status: 200, text: '', json: {} };
+type RequestUrlResponseLike = { status: number; text: string; json: unknown };
+/** Tests set `handler` to answer requestUrl calls; `calls` records each request. */
+export const requestUrlMock = {
+  calls: [] as Record<string, unknown>[],
+  handler: async (_opts: Record<string, unknown>): Promise<RequestUrlResponseLike> => ({ status: 200, text: '', json: {} }),
+  reset(): void {
+    this.calls = [];
+    this.handler = async () => ({ status: 200, text: '', json: {} });
+  },
+};
+export async function requestUrl(opts: Record<string, unknown>): Promise<RequestUrlResponseLike> {
+  requestUrlMock.calls.push(opts);
+  return requestUrlMock.handler(opts);
 }
 
 /**

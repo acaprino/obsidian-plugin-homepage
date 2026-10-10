@@ -1230,6 +1230,11 @@
   flex-shrink: 0;
 }
 
+/* Push-to-talk: no pan or zoom gesture, which would cancel the hold (M62). */
+.voice-mic.voice-mic--push {
+  touch-action: none;
+}
+
 .voice-mic:active {
   transform: scale(0.95);
 }

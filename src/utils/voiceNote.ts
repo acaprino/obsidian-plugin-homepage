@@ -13,6 +13,13 @@ export function voiceNotePath(
   timestamp: string,
   exists: (path: string) => boolean,
 ): { folder: string; path: string } | null {
+  const dir = sanitizeVoiceFolder(folder);
+  if (dir === null) return null;
+  return { folder: dir, path: uniqueFilePath(dir, timestamp, 'md', exists) };
+}
+
+/** The destination folder with anything that could leave the vault removed; null for a `..` segment. */
+export function sanitizeVoiceFolder(folder: string): string | null {
   const raw = folder
     .replace(/^[/\\~]+/, '')
     .replace(/^[A-Za-z]:/, '')
@@ -24,11 +31,15 @@ export function voiceNotePath(
   const segments = raw.split('/').filter(Boolean);
   if (segments.some(s => s === '..')) return null;
   const safe = normalizePath(segments.join('/'));
-  const dir = safe && safe !== '/' ? safe : '';
-  const base = dir ? `${dir}/${timestamp}` : timestamp;
-  let path = `${base}.md`;
-  for (let n = 2; exists(path); n++) path = `${base} ${n}.md`;
-  return { folder: dir, path };
+  return safe && safe !== '/' ? safe : '';
+}
+
+/** `dir/base.ext`, numbered (`base 2.ext`, ...) while a file of that name exists. */
+export function uniqueFilePath(dir: string, base: string, ext: string, exists: (path: string) => boolean): string {
+  const stem = dir ? `${dir}/${base}` : base;
+  let path = `${stem}.${ext}`;
+  for (let n = 2; exists(path); n++) path = `${stem} ${n}.${ext}`;
+  return path;
 }
 
 /** A blank line: where a Markdown paragraph, or an HTML block other than <style>/<pre>/<script>, ends. */

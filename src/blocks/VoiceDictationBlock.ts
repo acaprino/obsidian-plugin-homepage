@@ -2,7 +2,8 @@ import { App, Modal, Notice, Setting, TFolder, moment, setIcon, requestUrl } fro
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { isEncrypted } from '../utils/apiKeyCrypto';
-import { buildNoteContent, voiceNotePath } from '../utils/voiceNote';
+import { buildNoteContent, sanitizeVoiceFolder, uniqueFilePath } from '../utils/voiceNote';
+import { DEFAULT_MODELS, PROVIDER_MAX_BYTES, PROVIDER_MODELS, effectiveModel, geminiEmptyReason, type TranscriptionProvider } from '../utils/voiceProviders';
 import { RequestTimeoutError, withTimeout } from '../utils/timeout';
 
 const CONSENT_STORAGE_KEY = 'hp-voice-consent';
@@ -50,22 +51,8 @@ function forgetConsent(app: App, provider: TranscriptionProvider): void {
   }
 }
 
-type TranscriptionProvider = 'whisper' | 'gemini';
 
 const PROVIDER_NAMES: Record<TranscriptionProvider, string> = { whisper: 'OpenAI Whisper', gemini: 'Google Gemini' };
-
-const WHISPER_MODELS: Record<string, string> = {
-  'whisper-1': 'Whisper 1',
-  'gpt-4o-transcribe': 'GPT-4o Transcribe',
-  'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
-};
-
-const GEMINI_MODELS: Record<string, string> = {
-  'gemini-2.0-flash': 'Gemini 2.0 Flash',
-  'gemini-2.5-flash': 'Gemini 2.5 Flash',
-  'gemini-2.5-pro': 'Gemini 2.5 Pro',
-  'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite',
-};
 
 /** A transcription that has not answered by then is reported, not awaited forever (R10). */
 const TRANSCRIBE_TIMEOUT_MS = 120_000;
@@ -81,7 +68,7 @@ const LANGUAGE_RE = /^[a-z]{2,3}(-[A-Z]{2})?$/;
  * such a model name is refused (N20).
  */
 export function whisperTextFields(cfg: { model?: string; language?: string }): Record<string, string> {
-  const model = cfg.model || 'whisper-1';
+  const model = effectiveModel('whisper', cfg.model);
   if (!MODEL_NAME_RE.test(model)) throw new Error('Invalid Whisper model name');
   const fields: Record<string, string> = { model };
   if (cfg.language && LANGUAGE_RE.test(cfg.language)) fields.language = cfg.language;
@@ -102,6 +89,36 @@ type VoiceState = 'idle' | 'starting' | 'recording' | 'transcribing' | 'saved';
 
 /** A save failure whose message can be shown to the user as it is. */
 class NoteSaveError extends Error {}
+
+/** The provider refused the model for this key (HTTP 403 or 404), say a retired or unreleased one. */
+class ModelUnavailableError extends Error {
+  constructor(readonly model: string) { super(`model ${model} unavailable`); }
+}
+
+/** The provider answered without any text; `reason` says why when it told. */
+class EmptyTranscriptError extends Error {}
+
+/** The recording is larger than the provider accepts. */
+class RecordingTooLargeError extends Error {}
+
+/** The Notice for a failed transcription. */
+function failureMessage(err: unknown): string {
+  if (err instanceof RequestTimeoutError) return 'Transcription timed out.';
+  if (err instanceof ModelUnavailableError) {
+    return `The transcription model “${err.model}” is not available to this API key. Pick another model in block settings.`;
+  }
+  if (err instanceof EmptyTranscriptError) return `No transcript (${err.message}).`;
+  if (err instanceof RecordingTooLargeError) return 'The recording is larger than the transcription service accepts.';
+  return 'Transcription failed.';
+}
+
+/** File extension of a recorded mime type. */
+function audioExtension(mimeType: string): string {
+  return mimeType.includes('mp4') ? 'mp4'
+    : mimeType.includes('ogg') ? 'ogg'
+    : mimeType.includes('aac') ? 'aac'
+    : 'webm';
+}
 
 export class VoiceDictationBlock extends BaseBlock {
   private statusEl: HTMLElement | null = null;
@@ -192,6 +209,8 @@ export class VoiceDictationBlock extends BaseBlock {
     if (cfg.triggerMode === 'push') {
       this.micBtn.setAttribute('aria-label', 'Hold to record voice note');
       const mic = this.micBtn;
+      // touch-action: none, so a slight pan is not a pointercancel that ends the hold (M62).
+      mic.addClass('voice-mic--push');
       mic.addEventListener('pointerdown', (e: PointerEvent) => {
         this.pushHeld = true;
         // Keep the release on the button even when the pointer leaves it.
@@ -206,6 +225,20 @@ export class VoiceDictationBlock extends BaseBlock {
       };
       mic.addEventListener('pointerup', release);
       mic.addEventListener('pointercancel', release);
+      // Held from the keyboard too: Space or Enter down starts, up stops (M62).
+      const isHoldKey = (e: KeyboardEvent) => e.key === ' ' || e.key === 'Enter';
+      mic.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (!isHoldKey(e)) return;
+        e.preventDefault();
+        if (e.repeat) return;
+        this.pushHeld = true;
+        void this.startRecording();
+      });
+      mic.addEventListener('keyup', (e: KeyboardEvent) => {
+        if (!isHoldKey(e)) return;
+        e.preventDefault();
+        release();
+      });
     } else {
       this.micBtn.addEventListener('click', () => {
         const state = this.getState(el);
@@ -301,29 +334,62 @@ export class VoiceDictationBlock extends BaseBlock {
 
   private async saveNote(transcript: string, cfg: VoiceDictationConfig): Promise<{ templateIgnored: boolean }> {
     if (!transcript.trim()) return { templateIgnored: false };
-    // Defence in depth: voiceNotePath strips anything that could escape the vault.
-    const target = voiceNotePath(
-      cfg.folder ?? '',
-      moment().format('YYYY-MM-DD HH-mm-ss'),
-      path => this.app.vault.getAbstractFileByPath(path) !== null,
-    );
-    // Said, not skipped: the block used to show "Saved" for a note it never wrote (M17).
-    if (!target) throw new NoteSaveError('The destination folder can’t contain “..”.');
-
-    // Recursive folder creation
-    if (target.folder) {
-      let accumulated = '';
-      for (const seg of target.folder.split('/')) {
-        accumulated = accumulated ? `${accumulated}/${seg}` : seg;
-        if (!this.app.vault.getAbstractFileByPath(accumulated)) {
-          await this.app.vault.createFolder(accumulated);
-        }
-      }
-    }
-
+    const dir = await this.resolveFolder(cfg.folder ?? '');
+    const path = uniqueFilePath(dir, moment().format('YYYY-MM-DD HH-mm-ss'), 'md', this.fileExists);
     const { content, templateIgnored } = buildNoteContent(cfg.noteTemplate ?? '', transcript);
-    await this.app.vault.create(target.path, content);
+    await this.app.vault.create(path, content);
     return { templateIgnored };
+  }
+
+  /**
+   * Keep a recording whose transcription failed: the audio as a file and a note
+   * that names the reason and embeds it, in the destination folder, so the user
+   * can listen to it or try again instead of losing it (M19, M63). Returns the
+   * audio file name.
+   */
+  private async saveFailedRecording(blob: Blob, mimeType: string, cfg: VoiceDictationConfig, reason: string): Promise<string> {
+    const dir = await this.resolveFolder(cfg.folder ?? '');
+    const stamp = moment().format('YYYY-MM-DD HH-mm-ss');
+    const audioPath = uniqueFilePath(dir, stamp, audioExtension(mimeType), this.fileExists);
+    await this.app.vault.createBinary(audioPath, await blob.arrayBuffer());
+    const name = audioPath.slice(audioPath.lastIndexOf('/') + 1);
+    await this.app.vault.create(uniqueFilePath(dir, stamp, 'md', this.fileExists), `${reason}\n\n![[${name}]]\n`);
+    return name;
+  }
+
+  private readonly fileExists = (path: string): boolean => this.app.vault.getAbstractFileByPath(path) !== null;
+
+  /**
+   * The destination folder, created when missing. Defence in depth:
+   * sanitizeVoiceFolder strips anything that could escape the vault, and a `..`
+   * segment is an error the user is told about, not a silent skip (M17). Each
+   * segment matches an existing folder whatever its letter case, and "already
+   * exists" counts as success: on a case-insensitive file system, a folder that
+   * differed only in case made every save fail (M18).
+   */
+  private async resolveFolder(folder: string): Promise<string> {
+    const dir = sanitizeVoiceFolder(folder);
+    if (dir === null) throw new NoteSaveError('The destination folder can’t contain “..”.');
+    let parent: TFolder | null = this.app.vault.getRoot();
+    let path = '';
+    for (const seg of dir.split('/').filter(Boolean)) {
+      const match: TFolder | undefined = parent?.children.find(
+        (c): c is TFolder => c instanceof TFolder && c.name.toLowerCase() === seg.toLowerCase(),
+      );
+      path = path ? `${path}/${match?.name ?? seg}` : (match?.name ?? seg);
+      if (match) {
+        parent = match;
+        continue;
+      }
+      try {
+        await this.app.vault.createFolder(path);
+      } catch (e: unknown) {
+        if (!/already exists/i.test(e instanceof Error ? e.message : '')) throw e;
+      }
+      const created = this.app.vault.getAbstractFileByPath(path);
+      parent = created instanceof TFolder ? created : null;
+    }
+    return path;
   }
 
   // ── Recording ─────────────────────────────────────────────────────────────
@@ -411,8 +477,17 @@ export class VoiceDictationBlock extends BaseBlock {
     this.activeStream = stream;
     this.mediaRecorder = recorder;
 
+    // Data arrives every second, so the recording stops before the provider's
+    // size limit instead of failing after it (M19).
+    const cap = PROVIDER_MAX_BYTES[provider];
+    let recorded = 0;
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
+      recorded += e.data.size;
+      if (recorded >= cap && recorder.state !== 'inactive' && gen === this.recordingGen) {
+        new Notice(`Recording stopped at the ${Math.round(cap / (1024 * 1024))} MB limit of the transcription service.`);
+        this.stopRecording(el);
+      }
     };
 
     recorder.onstop = () => {
@@ -426,7 +501,7 @@ export class VoiceDictationBlock extends BaseBlock {
     };
 
     try {
-      recorder.start();
+      recorder.start(1000);
     } catch (err: unknown) {
       this.abandonStart(el, stream, err);
       return;
@@ -483,19 +558,25 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
+    const provider = cfg.provider ?? 'whisper';
     let transcript = '';
     try {
-      transcript = (cfg.provider ?? 'whisper') === 'gemini'
+      if (blob.size > PROVIDER_MAX_BYTES[provider]) throw new RecordingTooLargeError('recording too large');
+      transcript = provider === 'gemini'
         ? await this.transcribeWithGemini(blob, cfg, mimeType)
         : await this.transcribeWithWhisper(blob, cfg, mimeType);
     } catch (err: unknown) {
       // Log only the status / message — the raw body may contain user-supplied text.
       const safe = err instanceof Error ? err.message : 'unknown error';
       console.error('[Homepage Blocks] VoiceDictation transcription failed:', safe);
-      if (gen === this.recordingGen && el.isConnected) {
-        new Notice(err instanceof RequestTimeoutError ? 'Transcription timed out' : 'Transcription failed');
-        this.setState(el, 'idle');
-      }
+      if (gen !== this.recordingGen || !el.isConnected) return;
+      const reason = failureMessage(err);
+      const saved = await this.saveFailedRecording(blob, mimeType, cfg, reason).catch((e: unknown) => {
+        console.error('[Homepage Blocks] VoiceDictation could not keep the recording:', e instanceof Error ? e.message : 'unknown error');
+        return null;
+      });
+      new Notice(saved ? `${reason} The recording was saved as ${saved}.` : reason, 10_000);
+      if (el.isConnected) this.setState(el, 'idle');
       return;
     }
 
@@ -526,10 +607,7 @@ export class VoiceDictationBlock extends BaseBlock {
   // ── Whisper transcription ───────────────────────────────────────────────
 
   private async transcribeWithWhisper(blob: Blob, cfg: VoiceDictationConfig, mimeType: string): Promise<string> {
-    const ext = mimeType.includes('mp4') ? 'mp4'
-      : mimeType.includes('ogg') ? 'ogg'
-      : mimeType.includes('aac') ? 'aac'
-      : 'webm';
+    const ext = audioExtension(mimeType);
 
     const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);
     const encoder = new TextEncoder();
@@ -561,13 +639,16 @@ export class VoiceDictationBlock extends BaseBlock {
       throw: false,
     }), TRANSCRIBE_TIMEOUT_MS);
 
+    if (res.status === 403 || res.status === 404) throw new ModelUnavailableError(textFields.model);
     if (res.status !== 200) {
       // Don't include the raw body — it may echo user-supplied content or bits of the audio filename.
       throw new Error(`Whisper API error ${res.status}`);
     }
 
     const json = res.json as { text?: string };
-    return (json.text ?? '').trim();
+    const text = (json.text ?? '').trim();
+    if (!text) throw new EmptyTranscriptError('no speech recognised');
+    return text;
   }
 
   // ── Gemini transcription ────────────────────────────────────────────────
@@ -583,7 +664,7 @@ export class VoiceDictationBlock extends BaseBlock {
       reader.readAsDataURL(blob);
     });
 
-    const rawModel = cfg.model || 'gemini-2.0-flash';
+    const rawModel = effectiveModel('gemini', cfg.model);
     if (!MODEL_NAME_RE.test(rawModel)) {
       throw new Error('Invalid Gemini model name');
     }
@@ -612,6 +693,7 @@ export class VoiceDictationBlock extends BaseBlock {
       throw: false,
     }), TRANSCRIBE_TIMEOUT_MS);
 
+    if (res.status === 403 || res.status === 404) throw new ModelUnavailableError(rawModel);
     if (res.status !== 200) {
       throw new Error(`Gemini API error ${res.status}`);
     }
@@ -620,7 +702,9 @@ export class VoiceDictationBlock extends BaseBlock {
       candidates?: { content?: { parts?: { text?: string }[] } }[];
     }
     const json = res.json as GeminiResponse;
-    return (json.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+    const text = (json.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+    if (!text) throw new EmptyTranscriptError(geminiEmptyReason(json));
+    return text;
   }
 
   override renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {
@@ -670,7 +754,7 @@ export class VoiceDictationBlock extends BaseBlock {
            .onChange(v => {
              cfg.provider = v as TranscriptionProvider;
              // Reset model to default for new provider
-             cfg.model = v === 'gemini' ? 'gemini-2.0-flash' : 'whisper-1';
+             cfg.model = DEFAULT_MODELS[v as TranscriptionProvider];
              // Re-render body to update model dropdown and API key placeholder
              renderSettings();
            });
@@ -699,21 +783,37 @@ export class VoiceDictationBlock extends BaseBlock {
            .onChange(v => { cfg.apiKey = v.trim() || (otherDeviceKey ?? ''); });
         });
 
-      // Model (options change based on provider)
-      const models = isGemini ? GEMINI_MODELS : WHISPER_MODELS;
-      const defaultModel = isGemini ? 'gemini-2.0-flash' : 'whisper-1';
+      // Model: the current models of the provider, or any id typed as a custom one (M15)
+      const modelProvider = cfg.provider ?? 'whisper';
+      const models = PROVIDER_MODELS[modelProvider];
+      const current = effectiveModel(modelProvider, cfg.model);
+      const isCustom = !(current in models);
+      let customEl: HTMLElement | null = null;
       new Setting(body)
         .setName('Model')
         .setDesc('Transcription model.')
         .addDropdown(d => {
-          for (const [value, label] of Object.entries(models)) {
-            d.addOption(value, label);
-          }
-          d.setValue(cfg.model && cfg.model in models
-            ? cfg.model
-            : defaultModel);
-          d.onChange(v => { cfg.model = v; });
+          for (const [value, label] of Object.entries(models)) d.addOption(value, label);
+          d.addOption('custom', 'Custom…');
+          d.setValue(isCustom ? 'custom' : current);
+          d.onChange(v => {
+            if (v !== 'custom') cfg.model = v;
+            customEl?.toggleClass('hp-hidden', v !== 'custom');
+          });
         });
+      const custom = new Setting(body)
+        .setName('Custom model')
+        .setDesc('A model ID the provider offers, for example one released after this plugin version.')
+        .addText(t => {
+          t.setPlaceholder(DEFAULT_MODELS[modelProvider])
+           .setValue(isCustom ? current : '')
+           .onChange(v => {
+             const id = v.trim();
+             if (id === '' || MODEL_NAME_RE.test(id)) cfg.model = id;
+           });
+        });
+      customEl = custom.settingEl;
+      customEl.toggleClass('hp-hidden', !isCustom);
 
       // Language
       new Setting(body)

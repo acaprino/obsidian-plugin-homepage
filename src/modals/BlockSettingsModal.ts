@@ -250,6 +250,9 @@ export class BlockSettingsModal extends Modal {
         ? this.draft._gradientStart : '#667eea';
       cp.setValue(seed).onChange(v => {
         this.draft._gradientStart = v;
+        // The other picker shows a seed the draft does not hold yet: take it, or
+        // one changed colour gives no gradient (M105).
+        if (!this.gradDirty && gradEndRef) this.draft._gradientEnd = gradEndRef.getValue();
         this.gradDirty = true;
         this.refreshPreview();
       });
@@ -261,6 +264,7 @@ export class BlockSettingsModal extends Modal {
         ? this.draft._gradientEnd : '#764ba2';
       cp.setValue(seed).onChange(v => {
         this.draft._gradientEnd = v;
+        if (!this.gradDirty && gradStartRef) this.draft._gradientStart = gradStartRef.getValue();
         this.gradDirty = true;
         this.refreshPreview();
       });
@@ -278,11 +282,13 @@ export class BlockSettingsModal extends Modal {
     new Setting(body)
       .addButton(btn =>
         btn.setButtonText('Clear gradient').onClick(() => {
+          // Seed the pickers first: setValue fires onChange, which would write the
+          // seed back into the draft and mark it dirty (M10).
+          gradStartRef?.setValue('#667eea');
+          gradEndRef?.setValue('#764ba2');
           this.draft._gradientStart = '';
           this.draft._gradientEnd = '';
           this.gradDirty = false;
-          gradStartRef?.setValue('#667eea');
-          gradEndRef?.setValue('#764ba2');
           this.refreshPreview();
         }),
       );
@@ -303,9 +309,10 @@ export class BlockSettingsModal extends Modal {
     });
     accentRow.addExtraButton(btn =>
       btn.setIcon('x').setTooltip('Clear accent color').onClick(() => {
+        // Seed the picker first: its setValue fires onChange (M10).
+        cpRef?.setValue('#888888');
         this.draft._accentColor = '';
         this.accentDirty = false;
-        cpRef?.setValue('#888888');
         this.refreshPreview();
       }),
     );

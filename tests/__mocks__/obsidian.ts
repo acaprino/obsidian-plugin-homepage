@@ -216,10 +216,10 @@ export class Setting {
   addTextArea(_cb: unknown): this { return this; }
   addToggle(cb: (t: ToggleComponent) => unknown): this { cb(new ToggleComponent(this.controlEl)); return this; }
   addDropdown(cb: (d: DropdownComponent) => unknown): this { cb(new DropdownComponent(this.controlEl)); return this; }
-  addSlider(_cb: unknown): this { return this; }
+  addSlider(cb: (s: SliderComponent) => unknown): this { cb(new SliderComponent(this.controlEl)); return this; }
   addButton(cb: (b: ButtonComponent) => unknown): this { cb(new ButtonComponent(this.controlEl)); return this; }
-  addExtraButton(_cb: unknown): this { return this; }
-  addColorPicker(_cb: unknown): this { return this; }
+  addExtraButton(cb: (b: ExtraButtonComponent) => unknown): this { cb(new ExtraButtonComponent(this.controlEl)); return this; }
+  addColorPicker(cb: (c: ColorComponent) => unknown): this { cb(new ColorComponent(this.controlEl)); return this; }
 }
 
 export class SuggestModal<T> extends Modal {
@@ -295,9 +295,53 @@ export async function requestUrl(_opts: unknown): Promise<{ status: number; text
   return { status: 200, text: '', json: {} };
 }
 
+/**
+ * Mirrors Obsidian's ColorComponent (1.13.7): setValue fires the change
+ * callback when the value actually changes (a picker cleared in code reports
+ * the seed it was set to).
+ */
 export class ColorComponent {
-  setValue(_v: string): this { return this; }
-  onChange(_cb: (v: string) => void): this { return this; }
+  colorPickerEl: HTMLInputElement;
+  private changeCallback: ((v: string) => unknown) | null = null;
+  constructor(containerEl?: HTMLElement) {
+    this.colorPickerEl = (containerEl ?? document.createElement('div')).createEl('input', { type: 'color' });
+    this.colorPickerEl.addEventListener('input', () => { this.changeCallback?.(this.colorPickerEl.value); });
+  }
+  getValue(): string { return this.colorPickerEl.value; }
+  setValue(v: string): this {
+    if (this.colorPickerEl.value !== v) {
+      this.colorPickerEl.value = v;
+      this.changeCallback?.(v);
+    }
+    return this;
+  }
+  onChange(cb: (v: string) => unknown): this { this.changeCallback = cb; return this; }
+}
+
+/** Obsidian's ExtraButtonComponent: an icon button whose clicks feed onClick. */
+export class ExtraButtonComponent {
+  extraSettingsEl: HTMLElement;
+  constructor(containerEl: HTMLElement) { this.extraSettingsEl = containerEl.createDiv({ cls: 'clickable-icon extra-setting-button' }); }
+  setIcon(_icon: string): this { return this; }
+  setTooltip(t: string): this { this.extraSettingsEl.setAttribute('aria-label', t); return this; }
+  onClick(cb: () => unknown): this { this.extraSettingsEl.addEventListener('click', () => { cb(); }); return this; }
+}
+
+/** Obsidian's SliderComponent, reduced to the chain the plugin uses. */
+export class SliderComponent {
+  sliderEl: HTMLInputElement;
+  constructor(containerEl: HTMLElement) { this.sliderEl = containerEl.createEl('input', { type: 'range' }); }
+  setLimits(min: number, max: number, step: number): this {
+    this.sliderEl.min = String(min); this.sliderEl.max = String(max); this.sliderEl.step = String(step);
+    return this;
+  }
+  getValue(): number { return Number(this.sliderEl.value); }
+  setValue(v: number): this { this.sliderEl.value = String(v); return this; }
+  setDynamicTooltip(): this { return this; }
+  onChange(cb: (v: number) => unknown): this {
+    this.sliderEl.addEventListener('input', () => { cb(this.getValue()); });
+    return this;
+  }
 }
 
 export class WorkspaceLeaf {}

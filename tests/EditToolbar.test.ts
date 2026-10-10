@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Modal, Platform, SuggestModal } from 'obsidian';
 import type { App } from 'obsidian';
-import { EditToolbar } from '../src/EditToolbar';
+import { EditToolbar, type EditSessionHooks } from '../src/EditToolbar';
 import { BlockRegistry } from '../src/BlockRegistry';
 import { GridLayout } from '../src/GridLayout';
 import { StaticTextBlock } from '../src/blocks/StaticTextBlock';
@@ -136,5 +136,49 @@ describe('EditToolbar Discard', () => {
     (view.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
 
     expect(plugin.layout.columns).toBe(3);
+  });
+});
+
+describe('EditToolbar edit sessions across homepage views (N22)', () => {
+  function makeSessionToolbar(session: EditSessionHooks): { toolbar: EditToolbar; switches: boolean[] } {
+    const switches: boolean[] = [];
+    const grid = {
+      setEditMode: (on: boolean) => { switches.push(on); },
+      computeFitZoom: () => 1,
+      setZoom: () => {},
+      cancelPendingPersist: () => {},
+      buildLayoutUpdate: (b: BlockInstance[]) => ({ ...getDefaultLayout(), blocks: b }),
+      onRequestAddBlock: null,
+    } as unknown as GridLayout;
+    const plugin = {
+      layout: getDefaultLayout(),
+      saveLayout: async () => {},
+      isMobileActive: () => false,
+      activeColumns: () => 3,
+      activeBlocks: () => [],
+    } as unknown as IHomepagePlugin;
+    const toolbar = new EditToolbar(document.body.createDiv(), {} as App, plugin, grid, () => {}, session);
+    return { toolbar, switches };
+  }
+
+  it('does not start editing while another homepage view is being edited', () => {
+    const { toolbar, switches } = makeSessionToolbar({ canStart: () => false, ended: () => {} });
+
+    toolbar.toggleEditMode();
+
+    expect(switches).toEqual([]);
+    expect(toolbar.isEditing()).toBe(false);
+  });
+
+  it('tells the other views when a session ends, with Done or with Discard', () => {
+    let ended = 0;
+    const { toolbar } = makeSessionToolbar({ canStart: () => true, ended: () => { ended++; } });
+
+    toolbar.toggleEditMode();
+    toolbar.toggleEditMode(); // Done
+    toolbar.toggleEditMode();
+    (document.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
+
+    expect(ended).toBe(2);
   });
 });

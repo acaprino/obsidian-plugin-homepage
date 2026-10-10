@@ -270,27 +270,13 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     this.addCommand({
       id: 'toggle-edit-mode',
       name: 'Toggle edit mode',
-      callback: () => {
-        const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
-        for (const leaf of leaves) {
-          if (leaf.view instanceof HomepageView) {
-            leaf.view.toggleEditMode();
-          }
-        }
-      },
+      callback: () => { this.targetHomepage()?.toggleEditMode(); },
     });
 
     this.addCommand({
       id: 'add-block',
       name: 'Add block',
-      callback: () => {
-        const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE);
-        for (const leaf of leaves) {
-          if (leaf.view instanceof HomepageView) {
-            leaf.view.openAddBlockModal();
-          }
-        }
-      },
+      callback: () => { this.targetHomepage()?.openAddBlockModal(); },
     });
 
     this.addRibbonIcon('home', 'Open homepage', () => { void this.openHomepage(this.activeManualOpenMode()); });
@@ -364,6 +350,20 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     if (notify) {
       new Notice('Homepage blocks: the voice notes API key can\'t be read on this device, most likely because it was saved on another one. It was kept as it is; entering a key here replaces it.', 12_000);
     }
+  }
+
+  /**
+   * The homepage a command acts on: the active one, else the one being edited,
+   * else the first open. Acting on every open homepage put each of them in edit
+   * mode, and their saves overwrote each other (N22).
+   */
+  private targetHomepage(): HomepageView | null {
+    const active = this.app.workspace.getActiveViewOfType(HomepageView);
+    if (active) return active;
+    const views = this.app.workspace.getLeavesOfType(VIEW_TYPE)
+      .map(leaf => leaf.view)
+      .filter((v): v is HomepageView => v instanceof HomepageView);
+    return views.find(v => v.isEditing()) ?? views[0] ?? null;
   }
 
   // ── Platform-aware layout helpers ─────────────────────────────────

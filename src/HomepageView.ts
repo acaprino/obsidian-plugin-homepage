@@ -44,6 +44,10 @@ export class HomepageView extends ItemView {
       this.plugin,
       this.grid,
       (columns) => { this.grid?.setColumns(columns); },
+      {
+        canStart: () => !this.otherHomepages().some(v => v.isEditing()),
+        ended: () => { for (const v of this.otherHomepages()) void v.reload(); },
+      },
     );
 
     // Toolbar above grid; FAB floats independently (already in contentEl via EditToolbar)
@@ -68,6 +72,13 @@ export class HomepageView extends ItemView {
   /** Open the Add Block modal — called from command palette. */
   openAddBlockModal(): void {
     this.toolbar?.openAddBlockModal();
+  }
+
+  /** The other homepage views open in this workspace. */
+  private otherHomepages(): HomepageView[] {
+    return this.app.workspace.getLeavesOfType(VIEW_TYPE)
+      .map(leaf => leaf.view)
+      .filter((v): v is HomepageView => v instanceof HomepageView && v !== this);
   }
 
   /** True while this homepage is in edit mode. */

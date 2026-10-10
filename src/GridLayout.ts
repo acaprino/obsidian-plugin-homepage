@@ -284,7 +284,10 @@ export class GridLayout {
     const newBlocks = [...this.plugin.activeBlocks(), positioned];
     this.lastAddedBlockId = positioned.id;
     this.onLayoutChange(this.buildLayoutUpdate(newBlocks));
-    this.rerender();
+    // A deliberate user action, like setEditMode: draw even when a block holds
+    // unsaved input (rerender() would skip it, N3). A Static Text draft is saved
+    // as its block unloads.
+    this.render(this.plugin.activeBlocks(), this.plugin.activeColumns());
   }
 
   // ── Rendering ──────────────────────────────────────────────────────────

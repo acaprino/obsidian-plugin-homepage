@@ -300,3 +300,25 @@ describe('GridLayout — REG-1: Discard must not re-persist edited positions', (
     expect(emits[emits.length - 1].blocks[0].x).toBe(2);
   });
 });
+
+describe('GridLayout.addBlock while a block holds unsaved input (N3)', () => {
+  it('draws the new block anyway', () => {
+    class BusyBlock extends BaseBlock {
+      render(): void {}
+      hasUnsavedInlineState(): boolean { return true; }
+    }
+    registerTestBlocks();
+    BlockRegistry.register({
+      type: 'spacer', displayName: 'Spacer', defaultConfig: {}, defaultSize: { w: 1, h: 2 },
+      create: (app, instance, plugin) => new BusyBlock(app, instance, plugin),
+    });
+    const busy: BlockInstance = { id: 'busy', type: 'spacer', x: 0, y: 0, w: 1, h: 2, config: {} };
+    const plugin = makePlugin({ blocks: [busy] });
+    const grid = new GridLayout(host, {} as App, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 3);
+
+    grid.addBlock(clock('new'));
+
+    expect(host.querySelector('[gs-id="new"]')).toBeTruthy();
+  });
+});

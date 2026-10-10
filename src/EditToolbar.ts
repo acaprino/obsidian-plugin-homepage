@@ -1,9 +1,17 @@
-import { App, SuggestModal, setIcon } from 'obsidian';
+import { App, Notice, SuggestModal, setIcon } from 'obsidian';
 import { BlockInstance, BlockType, BlockFactory, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
 import { GridLayout } from './GridLayout';
 import { BLOCK_META } from './blockMeta';
 import { newId } from './utils/ids';
+
+/** How an edit session coordinates with the other homepage views. */
+export interface EditSessionHooks {
+  /** False while another homepage view is being edited: two sessions would overwrite each other's saves. */
+  canStart(): boolean;
+  /** Called after Done or Discard, so the other views redraw the layout just saved. */
+  ended(): void;
+}
 
 export class EditToolbar {
   private toolbarEl: HTMLElement;
@@ -21,6 +29,7 @@ export class EditToolbar {
     private plugin: IHomepagePlugin,
     private grid: GridLayout,
     private onColumnsChange: (n: number) => void,
+    private session: EditSessionHooks = { canStart: () => true, ended: () => {} },
   ) {
     // Floating action button — visible in read mode, triggers edit mode
     this.fabEl = containerEl.createDiv({ cls: 'homepage-edit-fab' });
@@ -41,6 +50,10 @@ export class EditToolbar {
 
   /** Toggle edit mode — called from FAB, Done button, and keyboard shortcut command. */
   toggleEditMode(): void {
+    if (!this.editMode && !this.session.canStart()) {
+      new Notice('The homepage is already being edited in another tab.');
+      return;
+    }
     this.editMode = !this.editMode;
     if (!this.editMode) {
       this.blocksSnapshot = null;
@@ -66,6 +79,7 @@ export class EditToolbar {
         this.renderToolbar();
       });
     }
+    if (!this.editMode) this.session.ended();
   }
 
   /** True while this view is in edit mode. */
@@ -110,6 +124,7 @@ export class EditToolbar {
     this.grid.setEditMode(false, true, false);
     this.syncVisibility();
     this.renderToolbar();
+    this.session.ended();
   }
 
   private syncVisibility(): void {

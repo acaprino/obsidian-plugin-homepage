@@ -70,8 +70,19 @@ export class HomepageView extends ItemView {
     this.toolbar?.openAddBlockModal();
   }
 
-  /** Re-render the view from scratch (e.g. after settings reset). */
+  /** True while this homepage is in edit mode. */
+  isEditing(): boolean {
+    return this.toolbar?.isEditing() ?? false;
+  }
+
+  /** Leave edit mode as Done does; nothing when not editing. */
+  finishEditing(): void {
+    this.toolbar?.finishEditing();
+  }
+
+  /** Re-render the view from scratch (e.g. after settings reset). An edit session ends as Done first. */
   async reload(): Promise<void> {
+    this.finishEditing();
     await this.onOpen();
   }
 }

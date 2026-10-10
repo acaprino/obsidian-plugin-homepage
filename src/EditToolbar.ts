@@ -64,6 +64,16 @@ export class EditToolbar {
     }
   }
 
+  /** True while this view is in edit mode. */
+  isEditing(): boolean {
+    return this.editMode;
+  }
+
+  /** Leave edit mode as Done does (repack, persist); nothing when not editing. */
+  finishEditing(): void {
+    if (this.editMode) this.toggleEditMode();
+  }
+
   /** Exit edit mode and revert all block changes made during this edit session. */
   private discardChanges(): void {
     if (!this.editMode) return; // re-entrancy guard

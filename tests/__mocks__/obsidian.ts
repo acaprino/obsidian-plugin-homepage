@@ -170,6 +170,21 @@ export class ToggleComponent {
   onChange(cb: (v: boolean) => unknown): this { this.changeCallback = cb; return this; }
 }
 
+/** Mirrors Obsidian's DropdownComponent: a select whose `change` events feed onChange. */
+export class DropdownComponent {
+  selectEl: HTMLSelectElement;
+  constructor(containerEl: HTMLElement) {
+    this.selectEl = containerEl.createEl('select', { cls: 'dropdown' });
+  }
+  addOption(value: string, display: string): this { this.selectEl.createEl('option', { value, text: display }); return this; }
+  setValue(v: string): this { this.selectEl.value = v; return this; }
+  getValue(): string { return this.selectEl.value; }
+  onChange(cb: (v: string) => unknown): this {
+    this.selectEl.addEventListener('change', () => { cb(this.getValue()); });
+    return this;
+  }
+}
+
 export class Setting {
   settingEl: HTMLElement;
   nameEl: HTMLElement;
@@ -185,7 +200,7 @@ export class Setting {
   addText(cb: (t: TextComponent) => unknown): this { cb(new TextComponent(this.controlEl)); return this; }
   addTextArea(_cb: unknown): this { return this; }
   addToggle(cb: (t: ToggleComponent) => unknown): this { cb(new ToggleComponent(this.controlEl)); return this; }
-  addDropdown(_cb: unknown): this { return this; }
+  addDropdown(cb: (d: DropdownComponent) => unknown): this { cb(new DropdownComponent(this.controlEl)); return this; }
   addSlider(_cb: unknown): this { return this; }
   addButton(_cb: unknown): this { return this; }
   addExtraButton(_cb: unknown): this { return this; }

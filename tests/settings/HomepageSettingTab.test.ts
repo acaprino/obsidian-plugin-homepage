@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { App, WorkspaceLeaf } from 'obsidian';
 import { HomepageSettingTab } from '../../src/settings/HomepageSettingTab';
 import { HomepageView } from '../../src/HomepageView';
@@ -12,7 +12,7 @@ function openHomepage(plugin: IHomepagePlugin): HomepageView {
   return view;
 }
 
-function renderTab(): { tab: HomepageSettingTab; view: HomepageView } {
+function renderTab(): { tab: HomepageSettingTab; view: HomepageView; plugin: IHomepagePlugin } {
   const plugin = {
     layout: getDefaultLayout(),
     saveLayout: async (l: LayoutConfig) => { plugin.layout = l; },
@@ -22,7 +22,7 @@ function renderTab(): { tab: HomepageSettingTab; view: HomepageView } {
   const app = { workspace: { getLeavesOfType: () => [{ view }] } } as unknown as App;
   const tab = new HomepageSettingTab(app, plugin as never);
   tab.display();
-  return { tab, view };
+  return { tab, view, plugin };
 }
 
 function toggleNamed(root: HTMLElement, name: string): HTMLElement {
@@ -50,5 +50,38 @@ describe('HomepageSettingTab display toggles', () => {
     toggleNamed(tab.containerEl, 'Hover highlight').click();
 
     expect(view.contentEl.hasClass('homepage-hover-highlight')).toBe(false);
+  });
+});
+
+function selectNamed(root: HTMLElement, name: string, value: string): void {
+  const item = [...root.querySelectorAll('.setting-item')]
+    .find(el => el.querySelector('.setting-item-name')?.textContent === name);
+  if (!item) throw new Error(`no setting named "${name}"`);
+  const select = item.querySelector('select') as HTMLSelectElement;
+  select.value = value;
+  select.dispatchEvent(new Event('change'));
+}
+
+describe('HomepageSettingTab layout settings', () => {
+  it('redraws an open homepage when the column count changes (N8)', async () => {
+    const { tab, view, plugin } = renderTab();
+    const reload = vi.spyOn(view, 'reload').mockResolvedValue();
+
+    selectNamed(tab.containerEl, 'Default columns', '4');
+
+    await vi.waitFor(() => expect(reload).toHaveBeenCalled());
+    expect(plugin.layout.columns).toBe(4);
+  });
+
+  it('ends an edit session before the responsive mode changes, so it is saved where it was made (M6)', async () => {
+    const { tab, view, plugin } = renderTab();
+    const order: string[] = [];
+    vi.spyOn(view, 'finishEditing').mockImplementation(() => { order.push(`finish:${plugin.layout.responsiveMode}`); });
+    vi.spyOn(view, 'reload').mockImplementation(async () => { order.push(`reload:${plugin.layout.responsiveMode}`); });
+
+    selectNamed(tab.containerEl, 'Responsive mode', 'separate');
+
+    await vi.waitFor(() => expect(order).toContain('reload:separate'));
+    expect(order[0]).toBe('finish:unified');
   });
 });

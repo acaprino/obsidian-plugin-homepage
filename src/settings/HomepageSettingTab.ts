@@ -50,6 +50,25 @@ export class HomepageSettingTab extends PluginSettingTab {
     }
   }
 
+  /**
+   * End every open edit session as Done does. A setting that moves where a
+   * session writes (responsive mode, column count) or replaces the layout must
+   * not run under one: Done or Discard would then write the session's blocks
+   * into the other platform's array (M6).
+   */
+  private finishEditSessions(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+      if (leaf.view instanceof HomepageView) leaf.view.finishEditing();
+    }
+  }
+
+  /** Save a setting that shapes the grid and redraw every open homepage with it (N8). */
+  private async applyLayoutChange(patch: Partial<LayoutConfig>): Promise<void> {
+    this.finishEditSessions();
+    await this.plugin.saveLayout({ ...this.plugin.layout, ...patch });
+    await this.reloadOpenHomepages();
+  }
+
   /** Briefly change a button's label, then restore it. Timeout is auto-cleaned on plugin unload. */
   private flashButton(btn: { setButtonText(text: string): unknown }, label: string, original: string, ms = 2000): void {
     btn.setButtonText(label);
@@ -216,7 +235,7 @@ export class HomepageSettingTab extends PluginSettingTab {
           .setValue(this.plugin.layout.responsiveMode)
           .onChange((value) => {
             if (!isResponsiveMode(value)) return;
-            void this.plugin.saveLayout({ ...this.plugin.layout, responsiveMode: value }).then(() => this.display());
+            void this.applyLayoutChange({ responsiveMode: value }).then(() => this.display());
           }),
       );
 
@@ -232,7 +251,7 @@ export class HomepageSettingTab extends PluginSettingTab {
         drop
           .setValue(String(this.plugin.layout.columns))
           .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, columns: Number(value) });
+            void this.applyLayoutChange({ columns: Number(value) });
           });
       });
 
@@ -252,7 +271,7 @@ export class HomepageSettingTab extends PluginSettingTab {
         drop
           .setValue(String(this.plugin.layout.mobileColumns))
           .onChange((value) => {
-            void this.plugin.saveLayout({ ...this.plugin.layout, mobileColumns: Number(value) });
+            void this.applyLayoutChange({ mobileColumns: Number(value) });
           });
       });
 
@@ -261,6 +280,7 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.')
       .addButton(btn =>
         btn.setButtonText('Copy to mobile').onClick(() => void (async () => {
+          this.finishEditSessions();
           // Drop any apiKey: the desktop device-key ciphertext can't be
           // decrypted on another device anyway, and carrying the in-memory
           // plaintext here would leak it into the synced mobile layout (and,
@@ -306,8 +326,7 @@ export class HomepageSettingTab extends PluginSettingTab {
         toggle
           .setValue(this.plugin.layout.compactLayout)
           .onChange(async (value) => {
-            await this.plugin.saveLayout({ ...this.plugin.layout, compactLayout: value });
-            await this.reloadOpenHomepages();
+            await this.applyLayoutChange({ compactLayout: value });
           }),
       );
 
@@ -332,6 +351,7 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Restore all blocks to the default layout. This can’t be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
+          this.finishEditSessions();
           // Reset ONLY the active platform's layout half (utils/layoutReset.ts):
           // a phone in Separate mode resets its mobile half, every other device
           // the desktop half; everything else survives.
@@ -412,6 +432,7 @@ export class HomepageSettingTab extends PluginSettingTab {
               + (strippedCount > 0 ? ` · stripped ${strippedCount} unsafe / unknown field(s)` : '')
               + (hadKey ? ' · your saved API key will be removed' : '');
             new ConfirmPresetModal(this.app, `Import (${summary})`, async () => {
+              this.finishEditSessions();
               await this.plugin.saveLayout(safe);
               await this.reloadOpenHomepages();
               this.flashButton(btn, 'Imported!', 'Import from clipboard');

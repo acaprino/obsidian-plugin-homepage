@@ -85,3 +85,26 @@ describe('HomepageSettingTab layout settings', () => {
     expect(order[0]).toBe('finish:unified');
   });
 });
+
+describe('HomepageSettingTab import errors (R6)', () => {
+  function importButton(root: HTMLElement): HTMLButtonElement {
+    return [...root.querySelectorAll('button')].find(b => b.textContent === 'Import from clipboard') as HTMLButtonElement;
+  }
+  function useClipboard(readText: () => Promise<string>): void {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText, writeText: async () => {} } });
+  }
+
+  it.each([
+    ['text that is not JSON', () => Promise.resolve('not json'), 'Invalid JSON'],
+    ['JSON that is not a layout', () => Promise.resolve('[1, 2]'), 'Not a layout'],
+    ['a clipboard that cannot be read', () => Promise.reject(new Error('denied')), 'Clipboard unavailable'],
+  ])('names the problem for %s', async (_what, readText, label) => {
+    useClipboard(readText);
+    const { tab } = renderTab();
+    const btn = importButton(tab.containerEl);
+
+    btn.click();
+
+    await vi.waitFor(() => expect(btn.textContent).toBe(label));
+  });
+});

@@ -136,3 +136,48 @@ export function sanitizeImportedLayout(layout: LayoutConfig): { layout: LayoutCo
     strippedCount,
   };
 }
+
+/**
+ * Config keys whose text the plugin renders as Markdown/HTML or writes into new
+ * notes. Imported, they are content from whoever made the layout: a live page
+ * over the homepage, DataviewJS, a template that leaks transcripts (M11, M12).
+ */
+const ACTIVE_CONTENT_KEYS: Partial<Record<BlockType, readonly string[]>> = {
+  'static-text': ['content'],
+  'html': ['html'],
+  'voice-dictation': ['noteTemplate', 'folder'],
+};
+
+/** One active-content value of an imported layout, as the confirmation shows it. */
+export interface ActiveContent { blockType: BlockType; title: string; key: string; excerpt: string; }
+
+const EXCERPT_LENGTH = 80;
+
+/** Every non-empty active-content value in `layout` (desktop, then mobile blocks). */
+export function findActiveContent(layout: LayoutConfig): ActiveContent[] {
+  const found: ActiveContent[] = [];
+  for (const b of [...layout.blocks, ...layout.mobileBlocks]) {
+    for (const key of ACTIVE_CONTENT_KEYS[b.type] ?? []) {
+      const value = b.config[key];
+      if (typeof value !== 'string' || !value.trim()) continue;
+      const label = b.config._titleLabel;
+      const title = typeof label === 'string' && label.trim() ? label.trim() : BlockRegistry.get(b.type)?.displayName ?? b.type;
+      const flat = value.replace(/\s+/g, ' ').trim();
+      found.push({ blockType: b.type, title, key, excerpt: flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH)}…` : flat });
+    }
+  }
+  return found;
+}
+
+/** `layout` with every active-content value reset to its factory default. */
+export function withoutActiveContent(layout: LayoutConfig): LayoutConfig {
+  const strip = (b: BlockInstance): BlockInstance => {
+    const keys = ACTIVE_CONTENT_KEYS[b.type];
+    if (!keys) return b;
+    const defaults = BlockRegistry.get(b.type)?.defaultConfig ?? {};
+    const config = { ...b.config };
+    for (const key of keys) config[key] = typeof defaults[key] === 'string' ? defaults[key] : '';
+    return { ...b, config };
+  };
+  return { ...layout, blocks: layout.blocks.map(strip), mobileBlocks: layout.mobileBlocks.map(strip) };
+}

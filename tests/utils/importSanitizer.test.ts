@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { sanitizeImportedConfig, sanitizeImportedLayout } from '../../src/utils/importSanitizer';
-import type { BlockType, LayoutConfig } from '../../src/types';
+import { findActiveContent, sanitizeImportedConfig, sanitizeImportedLayout, withoutActiveContent } from '../../src/utils/importSanitizer';
+import type { BlockInstance, BlockType, LayoutConfig } from '../../src/types';
 import { getDefaultLayout } from '../../src/validation';
 import { BlockRegistry } from '../../src/BlockRegistry';
 import { registerBlocks } from '../../src/main';
@@ -207,5 +207,32 @@ describe('sanitizeImportedLayout', () => {
     expect(safe.mobileBlocks[0].config.bogus).toBeUndefined();
     expect(safe.mobileBlocks[0].config.showSeconds).toBe(true);
     expect(strippedCount).toBe(3); // apiKey + desktop bogus + mobile bogus
+  });
+});
+
+describe('active content in an imported layout (M11, M12)', () => {
+  beforeEach(() => { registerBlocks(); });
+
+  const layoutWith = (blocks: BlockInstance[]): LayoutConfig => ({ ...getDefaultLayout(), blocks, mobileBlocks: [] });
+  const text = (content: string): BlockInstance => ({ id: 't', type: 'static-text', x: 0, y: 0, w: 1, h: 3, config: { content } });
+  const voice = (noteTemplate: string): BlockInstance => ({ id: 'v', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { noteTemplate, folder: 'Voice' } });
+
+  it('lists every non-empty markup field with a short excerpt', () => {
+    const found = findActiveContent(layoutWith([text('<iframe src="https://x.test"></iframe>\n\nmore'), voice('{{transcript}}')]));
+
+    expect(found.map(f => `${f.blockType}.${f.key}`)).toEqual(['static-text.content', 'voice-dictation.noteTemplate', 'voice-dictation.folder']);
+    expect(found[0].excerpt).toBe('<iframe src="https://x.test"></iframe> more');
+  });
+
+  it('lists nothing for empty fields', () => {
+    expect(findActiveContent(layoutWith([text('')]))).toEqual([]);
+  });
+
+  it('resets those fields to the factory defaults on request, leaving the rest', () => {
+    const out = withoutActiveContent(layoutWith([text('hello'), voice('{{transcript}}')]));
+
+    expect(out.blocks[0].config.content).toBe('');
+    expect(out.blocks[1].config).toMatchObject({ noteTemplate: '', folder: '' });
+    expect(out.blocks[1].x).toBe(0);
   });
 });

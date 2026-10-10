@@ -1,7 +1,7 @@
 /**
  * Polyfill for the subset of Obsidian's HTMLElement DOM-extension API that the
  * plugin's render paths rely on (createEl/createDiv/createSpan/empty/setText/
- * addClass/removeClass/toggleClass/hasClass/setAttr/detach). Obsidian augments
+ * addClass/removeClass/toggleClass/hasClass/setAttr/detach/appendText). Obsidian augments
  * HTMLElement.prototype at runtime; happy-dom ships only the standard DOM, so
  * render-level tests need this shim. Mirrors Obsidian's documented behaviour.
  *
@@ -80,6 +80,9 @@ function install(): void {
   };
   proto.detach = function (this: HTMLElement): void {
     this.remove();
+  };
+  proto.appendText = function (this: HTMLElement, text: string): void {
+    this.appendChild(document.createTextNode(text));
   };
 
   // Obsidian exposes `doc`/`win` on every Node — the node's owner document and

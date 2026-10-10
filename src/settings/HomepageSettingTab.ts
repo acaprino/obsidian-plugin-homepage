@@ -3,8 +3,8 @@ import { VIEW_TYPE, HomepageView } from '../HomepageView';
 import { IHomepagePlugin, LayoutConfig } from '../types';
 import { getDefaultLayout, isOpenMode, isResponsiveMode, validateLayout } from '../validation';
 import { buildResetLayout, fitBlocksToColumns } from '../utils/layoutReset';
-import { ConfirmPresetModal } from '../modals/ConfirmPresetModal';
-import { sanitizeImportedLayout } from '../utils/importSanitizer';
+import { ConfirmImportModal } from '../modals/ConfirmImportModal';
+import { findActiveContent, sanitizeImportedLayout, withoutActiveContent } from '../utils/importSanitizer';
 import { newId } from '../utils/ids';
 
 /**
@@ -406,40 +406,52 @@ export class HomepageSettingTab extends PluginSettingTab {
             this.flashButton(btn, 'Clipboard unavailable', 'Import from clipboard');
             return;
           }
+          // Each step names its own failure: one catch around everything said
+          // "Invalid JSON" for a clipboard that could not be read as well (R6).
+          let text: string;
           try {
-            const text = await navigator.clipboard.readText();
-            const parsed = JSON.parse(text) as unknown;
-            // Well-formed JSON that isn't a layout object (a bare string, array
-            // or number) would otherwise validate to full defaults and silently
-            // overwrite the user's layout on confirm. Abort instead.
-            let corrupt = false;
-            const validated = validateLayout(parsed, () => { corrupt = true; });
-            if (corrupt) {
-              this.flashButton(btn, 'Not a layout', 'Import from clipboard');
-              return;
-            }
-            // Scrub apiKey + unknown config fields from the imported layout.
-            // Imported layouts must never carry credentials, and a hand-crafted
-            // payload with extra keys would be trusted by the block-specific cast.
-            const { layout: safe, strippedCount } = sanitizeImportedLayout(validated);
-            const blockTypes = safe.blocks.map(b => b.type);
-            // Import replaces the whole layout, including any block that holds a
-            // saved (encrypted) API key. Warn so the user isn't surprised that
-            // importing silently drops a stored credential.
-            const hadKey = [...this.plugin.layout.blocks, ...this.plugin.layout.mobileBlocks]
-              .some(b => typeof b.config.apiKey === 'string' && b.config.apiKey.length > 0);
-            const summary = `${safe.blocks.length} block(s): ${[...new Set(blockTypes)].join(', ')}`
-              + (strippedCount > 0 ? ` · stripped ${strippedCount} unsafe / unknown field(s)` : '')
-              + (hadKey ? ' · your saved API key will be removed' : '');
-            new ConfirmPresetModal(this.app, `Import (${summary})`, async () => {
-              this.finishEditSessions();
-              await this.plugin.saveLayout(safe);
-              await this.reloadOpenHomepages();
-              this.flashButton(btn, 'Imported!', 'Import from clipboard');
-            }).open();
+            text = await navigator.clipboard.readText();
+          } catch {
+            this.flashButton(btn, 'Clipboard unavailable', 'Import from clipboard');
+            return;
+          }
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(text) as unknown;
           } catch {
             this.flashButton(btn, 'Invalid JSON', 'Import from clipboard');
+            return;
           }
+          // Well-formed JSON that isn't a layout object (a bare string, array
+          // or number) would otherwise validate to full defaults and silently
+          // overwrite the user's layout on confirm. Abort instead.
+          let corrupt = false;
+          const validated = validateLayout(parsed, () => { corrupt = true; });
+          if (corrupt) {
+            this.flashButton(btn, 'Not a layout', 'Import from clipboard');
+            return;
+          }
+          // Scrub apiKey + unknown config fields from the imported layout.
+          // Imported layouts must never carry credentials, and a hand-crafted
+          // payload with extra keys would be trusted by the block-specific cast.
+          const { layout: safe, strippedCount } = sanitizeImportedLayout(validated);
+          const blockTypes = safe.blocks.map(b => b.type);
+          // Import replaces the whole layout, including any block that holds a
+          // saved (encrypted) API key. Warn so the user isn't surprised that
+          // importing silently drops a stored credential.
+          const hadKey = [...this.plugin.layout.blocks, ...this.plugin.layout.mobileBlocks]
+            .some(b => typeof b.config.apiKey === 'string' && b.config.apiKey.length > 0);
+          const summary = `${safe.blocks.length} block(s): ${[...new Set(blockTypes)].join(', ')}`
+            + (strippedCount > 0 ? ` · stripped ${strippedCount} unsafe / unknown field(s)` : '')
+            + (hadKey ? ' · your saved API key will be removed' : '');
+          // Content that is rendered or written into notes is listed, and can be
+          // left out of the import (M11, M12).
+          new ConfirmImportModal(this.app, summary, findActiveContent(safe), async (choice) => {
+            this.finishEditSessions();
+            await this.plugin.saveLayout(choice === 'all' ? safe : withoutActiveContent(safe));
+            await this.reloadOpenHomepages();
+            this.flashButton(btn, 'Imported!', 'Import from clipboard');
+          }).open();
         })());
       });
   }

@@ -36,6 +36,23 @@ const PREFIX = 'enc:v1:';
 let cachedKey: CryptoKey | null = null;
 /** The device-key load in progress, shared by every caller that asks meanwhile. */
 let inflightKey: Promise<DeviceKeyResult> | null = null;
+/**
+ * Plaintext -> the ciphertext this device last produced or read for it, under
+ * the current device key. Saving an unchanged key writes that ciphertext again:
+ * a fresh IV on every save changed data.json each time, so every save was a new
+ * synced version (M57). Cleared with the cached key.
+ */
+const knownCiphertext = new Map<string, string>();
+
+/** The ciphertext this device already holds for `plaintext`, if any. */
+export function knownCiphertextFor(plaintext: string): string | null {
+  return knownCiphertext.get(plaintext) ?? null;
+}
+
+/** Record that `ciphertext` (made or read under the current device key) holds `plaintext`. */
+export function rememberCiphertext(plaintext: string, ciphertext: string): void {
+  knownCiphertext.set(plaintext, ciphertext);
+}
 
 function hasWebCrypto(): boolean {
   return typeof window.crypto?.subtle?.generateKey === 'function'
@@ -259,4 +276,5 @@ export async function decryptString(value: string): Promise<string | null> {
 export function _resetDeviceKeyCache(): void {
   cachedKey = null;
   inflightKey = null;
+  knownCiphertext.clear();
 }

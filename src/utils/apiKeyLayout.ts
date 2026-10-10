@@ -1,5 +1,5 @@
 import type { BlockInstance, LayoutConfig } from '../types';
-import { decryptStringEx, encryptStringEx, isEncrypted } from './apiKeyCrypto';
+import { decryptStringEx, encryptStringEx, isEncrypted, knownCiphertextFor, rememberCiphertext } from './apiKeyCrypto';
 
 // ── API key encryption helpers ──────────────────────────────────────────────
 //
@@ -32,8 +32,29 @@ export async function persistableLayout(
   layout: LayoutConfig,
   readPrior: () => Promise<LayoutConfig | null>,
 ): Promise<LayoutConfig> {
-  if (!needsEncryption(layout)) return layout;
-  return encryptApiKeys(layout, await readPrior());
+  const known = withKnownCiphertext(layout);
+  if (!needsEncryption(known)) return known;
+  return encryptApiKeys(known, await readPrior());
+}
+
+/**
+ * `layout` with each plaintext key this device already encrypted or decrypted
+ * replaced by that same ciphertext (M57): an unchanged key costs no encryption,
+ * no read of data.json and no change to the file.
+ */
+function withKnownCiphertext(layout: LayoutConfig): LayoutConfig {
+  let changed = false;
+  const swap = (blocks: BlockInstance[]): BlockInstance[] => blocks.map(b => {
+    const k = b.config.apiKey;
+    if (typeof k !== 'string' || !k || isEncrypted(k)) return b;
+    const ct = knownCiphertextFor(k);
+    if (!ct) return b;
+    changed = true;
+    return { ...b, config: { ...b.config, apiKey: ct } };
+  });
+  const blocks = swap(layout.blocks);
+  const mobileBlocks = swap(layout.mobileBlocks);
+  return changed ? { ...layout, blocks, mobileBlocks } : layout;
 }
 
 /**
@@ -82,6 +103,7 @@ export async function encryptApiKeys(layout: LayoutConfig, priorOnDisk: LayoutCo
         // nothing to protect, so let the plaintext fallback proceed (the warn
         // is logged inside encryptStringEx).
       }
+      if (r.ok) rememberCiphertext(key, r.value);
       return { ...b, config: { ...b.config, apiKey: r.value } };
     }));
 
@@ -125,6 +147,7 @@ export async function decryptApiKeys(layout: LayoutConfig): Promise<{ layout: La
       }
       const r = await decryptStringEx(key);
       if (r.ok) {
+        rememberCiphertext(r.plaintext, key);
         out.push({ ...b, config: { ...b.config, apiKey: r.plaintext } });
       } else if (r.reason === 'no-key' && r.transient) {
         // IndexedDB/WebCrypto hiccuped. Keep the ciphertext on disk untouched

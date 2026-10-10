@@ -101,6 +101,7 @@ describe('unreadableKeyNotice', () => {
   it('does not tell again when the device that owns the key saves it anew (Unified mode)', async () => {
     useNewDevice(); // device A: two sessions with the same key, each save a fresh IV
     const firstSave = await encryptApiKeys(layoutWithVoiceKey('sk-device-a'), null);
+    _resetDeviceKeyCache(); // A restarts: its next session encrypts anew
     const secondSave = await encryptApiKeys(layoutWithVoiceKey('sk-device-a'), null);
     expect(secondSave.blocks[0].config.apiKey).not.toBe(firstSave.blocks[0].config.apiKey);
 
@@ -144,5 +145,41 @@ describe('decryptApiKeys leaves its input alone', () => {
 
     expect(atRest).toStrictEqual(before);
     expect(layout.blocks[0].config.apiKey).toBe('sk-test');
+  });
+});
+
+describe('persistableLayout reuses the ciphertext of an unchanged key (M57)', () => {
+  it('writes the same ciphertext on every save, without reading the file again', async () => {
+    useNewDevice();
+    let reads = 0;
+    const readPrior = async () => { reads++; return null; };
+    const layout = layoutWithVoiceKey('sk-same');
+
+    const first = await persistableLayout(layout, readPrior);
+    const second = await persistableLayout(layout, readPrior);
+
+    expect(second.blocks[0].config.apiKey).toBe(first.blocks[0].config.apiKey);
+    expect(reads).toBe(1);
+  });
+
+  it('writes back the ciphertext it decrypted at load', async () => {
+    useNewDevice();
+    const atRest = await encryptApiKeys(layoutWithVoiceKey('sk-loaded'), null);
+    const { layout } = await decryptApiKeys(structuredClone(atRest));
+    let reads = 0;
+
+    const saved = await persistableLayout(layout, async () => { reads++; return null; });
+
+    expect(saved.blocks[0].config.apiKey).toBe(atRest.blocks[0].config.apiKey);
+    expect(reads).toBe(0);
+  });
+
+  it('encrypts a key that changed', async () => {
+    useNewDevice();
+    const first = await persistableLayout(layoutWithVoiceKey('sk-one'), async () => null);
+    const second = await persistableLayout(layoutWithVoiceKey('sk-two'), async () => null);
+
+    expect(second.blocks[0].config.apiKey).not.toBe(first.blocks[0].config.apiKey);
+    expect((await decryptStringEx(second.blocks[0].config.apiKey as string))).toMatchObject({ ok: true, plaintext: 'sk-two' });
   });
 });

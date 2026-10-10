@@ -12,6 +12,8 @@ export class EditToolbar {
   private zoomScale = 1;
   /** Snapshot of blocks array taken when entering edit mode — used by Discard. */
   private blocksSnapshot: BlockInstance[] | null = null;
+  /** Column count when edit mode started — Discard restores it with the blocks. */
+  private columnsSnapshot: number | null = null;
 
   constructor(
     private containerEl: HTMLElement,
@@ -42,15 +44,17 @@ export class EditToolbar {
     this.editMode = !this.editMode;
     if (!this.editMode) {
       this.blocksSnapshot = null;
+      this.columnsSnapshot = null;
       this.zoomScale = 1;
     }
     this.grid.setEditMode(this.editMode);
     if (this.editMode) {
-      // Snapshot blocks so Discard can restore them (not the full layout — settings changes must survive).
+      // Snapshot blocks and the column count so Discard can restore them (not the full layout — settings changes must survive).
       // Taken after the switch: tearing down the view-mode blocks can still write
       // what predates this edit session (a pending view-mode persist, an open
       // Static Text draft), and Discard must not revert that.
       this.blocksSnapshot = structuredClone(this.plugin.activeBlocks());
+      this.columnsSnapshot = this.plugin.activeColumns();
     }
     this.syncVisibility();
     this.renderToolbar();
@@ -87,11 +91,15 @@ export class EditToolbar {
       // a single function rather than duplicated here. Without this routing,
       // a new field added to buildLayoutUpdate would silently fail to revert
       // on Discard.
-      const restored = this.grid.buildLayoutUpdate(this.blocksSnapshot);
+      const restored = this.grid.buildLayoutUpdate(
+        this.blocksSnapshot,
+        this.columnsSnapshot !== null ? { columns: this.columnsSnapshot } : undefined,
+      );
       // Set synchronously so the rerender triggered by setEditMode(false) reads the correct state
       this.plugin.layout = restored;
       void this.plugin.saveLayout(restored);
       this.blocksSnapshot = null;
+      this.columnsSnapshot = null;
     }
     this.editMode = false;
     this.zoomScale = 1;

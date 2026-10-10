@@ -123,4 +123,18 @@ describe('EditToolbar Discard', () => {
 
     expect(plugin.layout.blocks[0].config.content).toBe('typed but not saved');
   });
+
+  it('restores the column count changed during the session (N4)', () => {
+    const plugin = makeLivePlugin([]);
+    const view = document.body.createDiv({ cls: 'homepage-view' });
+    const grid = new GridLayout(view, {} as App, plugin, (l) => { plugin.layout = l; });
+    const toolbar = new EditToolbar(view, {} as App, plugin, grid, (n) => grid.setColumns(n));
+    grid.render(plugin.activeBlocks(), 3, true);
+
+    toolbar.toggleEditMode();
+    grid.setColumns(5);
+    (view.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
+
+    expect(plugin.layout.columns).toBe(3);
+  });
 });

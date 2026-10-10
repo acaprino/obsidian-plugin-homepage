@@ -3841,9 +3841,13 @@
    Some rules intentionally duplicate the @container (max-width: 540px) block
    above because .is-mobile catches the app even on wide viewports (e.g.
    iPad landscape) while container queries only fire on narrow containers. */
-.is-mobile .homepage-view {
+/* :where() keeps the mobile defaults at the specificity of .homepage-view, so a
+   CSS snippet that sets these tokens on .homepage-view wins on mobile too (M118). */
+:where(.is-mobile) .homepage-view {
   --hp-padding: 6px;
   --hp-card-padding: 10px;
+}
+.is-mobile .homepage-view {
   padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));
 }
 

@@ -86,7 +86,12 @@ export class Component {
   onunload(): void {}
   register(cb: () => void): void { this._cleanups.push(cb); }
   registerEvent(_ref: unknown): void {}
-  registerInterval(id: number): number { return id; }
+  /** Like Obsidian: a registered interval is cleared when the component unloads. */
+  registerInterval(id: number): number { this.register(() => window.clearInterval(id)); return id; }
+  registerDomEvent(el: HTMLElement, type: string, cb: (e: Event) => unknown): void {
+    el.addEventListener(type, cb);
+    this.register(() => el.removeEventListener(type, cb));
+  }
   addChild<T extends Component>(child: T): T {
     this._children.push(child);
     if (this._loaded) child.load();

@@ -1,7 +1,7 @@
 /**
  * Polyfill for the subset of Obsidian's HTMLElement DOM-extension API that the
  * plugin's render paths rely on (createEl/createDiv/createSpan/empty/setText/
- * addClass/removeClass/toggleClass/hasClass/setAttr/detach/appendText). Obsidian augments
+ * addClass/removeClass/toggleClass/hasClass/setAttr/detach/appendText/createSvg). Obsidian augments
  * HTMLElement.prototype at runtime; happy-dom ships only the standard DOM, so
  * render-level tests need this shim. Mirrors Obsidian's documented behaviour.
  *
@@ -84,6 +84,19 @@ function install(): void {
   proto.appendText = function (this: HTMLElement, text: string): void {
     this.appendChild(document.createTextNode(text));
   };
+
+  // Obsidian's createSvg: an SVG child in the SVG namespace, on HTML and SVG elements.
+  const createSvg = function (this: Element, tag: string, info?: DomElInfo | string): SVGElement {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    if (typeof info === 'object' && info !== null) {
+      if (info.cls != null) el.setAttribute('class', Array.isArray(info.cls) ? info.cls.join(' ') : info.cls);
+      for (const [k, v] of Object.entries(info.attr ?? {})) if (v != null && v !== false) el.setAttribute(k, String(v));
+    }
+    this.appendChild(el);
+    return el;
+  };
+  proto.createSvg = createSvg;
+  (SVGElement.prototype as unknown as Record<string, unknown>).createSvg = createSvg;
 
   // Obsidian's global createEl: a detached element (off-screen canvases, popout-safe builders).
   (globalThis as unknown as Record<string, unknown>).createEl = (tag: string, info?: DomElInfo | string): HTMLElement => {

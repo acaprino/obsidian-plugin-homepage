@@ -1,7 +1,7 @@
 import { Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
-
-type PomodoroPhase = 'idle' | 'work' | 'break' | 'longBreak';
+import { rangedNumber } from '../utils/configRanges';
+import { advance, initialState, remainingMs, skip, startOrPause, type PomodoroPhase, type PomodoroSettings, type PomodoroState } from '../utils/pomodoroTimer';
 
 interface PomodoroConfig {
   workMinutes?: number;
@@ -14,15 +14,12 @@ interface PomodoroConfig {
 
 const CIRCUMFERENCE = 2 * Math.PI * 52; // ≈ 326.73
 
-/** Module-level store so timer state survives block re-renders (edit mode toggle, settings save, etc.). */
-interface TimerState {
-  phase: PomodoroPhase;
-  secondsLeft: number;
-  totalSeconds: number;
-  completedSessions: number;
-  running: boolean;
-}
-const timerStore = new Map<string, TimerState>();
+/**
+ * Module-level store so timer state survives re-renders and unmounts (edit mode
+ * toggle, settings save, homepage closed) for the session. A running phase is
+ * anchored to the clock (utils/pomodoroTimer.ts), so it keeps counting meanwhile.
+ */
+const timerStore = new Map<string, PomodoroState>();
 let sharedAudioCtx: AudioContext | null = null;
 
 /** Plugin unload cleanup: drop all per-instance timer state. */
@@ -38,24 +35,14 @@ export function closeSharedAudioCtx(): void {
 }
 
 export class PomodoroBlock extends BaseBlock {
-  private phase: PomodoroPhase = 'idle';
-  private secondsLeft = 0;
-  private completedSessions = 0;
-  private running = false;
+  private state!: PomodoroState;
   private timerEl: HTMLElement | null = null;
   private ringEl: SVGCircleElement | null = null;
   private phaseEl: HTMLElement | null = null;
   private sessionDotsEl: HTMLElement | null = null;
   private startPauseBtn: HTMLButtonElement | null = null;
 
-  /** Total seconds for the current phase (used to compute ring progress). */
-  private totalSeconds = 0;
-
   render(el: HTMLElement): void {
-    const {
-      workMinutes = 25,
-    } = this.instance.config as PomodoroConfig;
-
     el.addClass('pomodoro-block');
 
     this.renderHeader(el, 'Pomodoro');
@@ -131,97 +118,53 @@ export class PomodoroBlock extends BaseBlock {
     skipBtn.createSpan({ cls: 'pomodoro-btn-label', text: 'Skip' });
     this.registerDomEvent(skipBtn, 'click', () => this.skipPhase());
 
-    // ── Restore state from module-level store (survives re-renders) ────
+    // ── Restore state (survives re-renders and unmounts in this session) ──
+    // An idle timer is rebuilt from the settings, which may have changed. Phases
+    // that ended while no block was mounted are caught up silently.
+    const s = this.settings();
     const saved = timerStore.get(this.instance.id);
-    if (saved) {
-      this.phase = saved.phase;
-      this.secondsLeft = saved.secondsLeft;
-      this.totalSeconds = saved.totalSeconds;
-      this.completedSessions = saved.completedSessions;
-      this.running = saved.running;
-    } else {
-      this.secondsLeft = workMinutes * 60;
-      this.totalSeconds = this.secondsLeft;
-    }
-    this.updateDisplay();
+    const restored = saved && saved.phase !== 'idle' ? saved : initialState(s);
+    this.setState(advance(restored, s, Date.now()).state);
 
-    // ── Tick interval ──────────────────────────────────────────────────
+    // ── Tick: the clock decides, the interval only refreshes the display ──
     this.registerInterval(window.setInterval(() => this.tick(), 1000));
 
-    // Clean up store entry when block is unloaded and timer is idle
+    // An idle timer holds nothing worth keeping; a paused or running one stays
+    // for the next mount (R7).
     this.register(() => {
-      const s = timerStore.get(this.instance.id);
-      if (!s || !s.running) timerStore.delete(this.instance.id);
+      if (timerStore.get(this.instance.id)?.phase === 'idle') timerStore.delete(this.instance.id);
     });
   }
 
   // ── Timer logic ────────────────────────────────────────────────────────
 
-  /** Persist timer state to module-level store so it survives re-renders. */
-  private saveState(): void {
-    timerStore.set(this.instance.id, {
-      phase: this.phase,
-      secondsLeft: this.secondsLeft,
-      totalSeconds: this.totalSeconds,
-      completedSessions: this.completedSessions,
-      running: this.running,
-    });
+  /** Settings as numbers in their ranges (configRanges.ts, M13). */
+  private settings(): PomodoroSettings {
+    const c = this.instance.config;
+    return {
+      workMinutes: rangedNumber('pomodoro', c, 'workMinutes', 25),
+      breakMinutes: rangedNumber('pomodoro', c, 'breakMinutes', 5),
+      longBreakMinutes: rangedNumber('pomodoro', c, 'longBreakMinutes', 15),
+      sessionsBeforeLong: rangedNumber('pomodoro', c, 'sessionsBeforeLong', 4),
+      autoStartCycle: c.autoStartCycle === true,
+    };
+  }
+
+  /** Keep `next` as the shown and the stored state: they never differ (R7). */
+  private setState(next: PomodoroState): void {
+    this.state = next;
+    timerStore.set(this.instance.id, next);
+    this.updateDisplay();
   }
 
   private tick(): void {
-    if (!this.running || this.phase === 'idle') return;
-
-    this.secondsLeft--;
-
-    if (this.secondsLeft <= 0) {
-      this.secondsLeft = 0;
-      this.onPhaseComplete();
-    }
-
-    this.updateDisplay();
-    this.saveState();
-  }
-
-  private onPhaseComplete(): void {
-    const {
-      breakMinutes = 5,
-      longBreakMinutes = 15,
-      sessionsBeforeLong = 4,
-      workMinutes = 25,
-      soundType = 'crystal',
-      autoStartCycle = false,
-    } = this.instance.config as PomodoroConfig;
-
-    if (soundType !== 'none') {
-      PomodoroBlock.playNotificationSound(soundType);
-    }
-
-    const previousPhase = this.phase;
-
-    if (this.phase === 'work') {
-      this.completedSessions++;
-      if (this.completedSessions % sessionsBeforeLong === 0) {
-        this.startPhase('longBreak', longBreakMinutes);
-        if (!autoStartCycle) this.running = false;
-      } else {
-        this.startPhase('break', breakMinutes);
-        if (!autoStartCycle) this.running = false;
-      }
-    } else {
-      // After break or long break, set up next work
-      this.phase = 'work';
-      this.secondsLeft = workMinutes * 60;
-      this.totalSeconds = this.secondsLeft;
-      
-      // Auto-start next work phase if enabled, UNLESS we just finished a long break (cycle complete).
-      if (previousPhase === 'longBreak') {
-        this.running = false;
-        this.completedSessions = 0; // reset cycle
-      } else {
-        this.running = !!autoStartCycle;
-      }
+    const { state, completed } = advance(this.state, this.settings(), Date.now());
+    if (completed > 0) {
+      const { soundType = 'crystal' } = this.instance.config as PomodoroConfig;
+      if (soundType !== 'none') PomodoroBlock.playNotificationSound(soundType);
+      this.setState(state);
+    } else if (this.state.running) {
       this.updateDisplay();
-      this.saveState();
     }
   }
 
@@ -289,51 +232,28 @@ export class PomodoroBlock extends BaseBlock {
     }
   }
 
-  private startPhase(phase: PomodoroPhase, minutes: number): void {
-    this.phase = phase;
-    this.secondsLeft = minutes * 60;
-    this.totalSeconds = this.secondsLeft;
-    this.running = true;
-    this.updateDisplay();
-    this.saveState();
-  }
-
   private toggleStartPause(): void {
-    if (this.phase === 'idle') {
-      const { workMinutes = 25 } = this.instance.config as PomodoroConfig;
-      this.startPhase('work', workMinutes);
-      return;
-    }
-    this.running = !this.running;
-    this.updateDisplay();
-    this.saveState();
+    this.setState(startOrPause(this.state, this.settings(), Date.now()));
   }
 
   private resetTimer(): void {
-    const { workMinutes = 25 } = this.instance.config as PomodoroConfig;
-    this.phase = 'idle';
-    this.running = false;
-    this.completedSessions = 0;
-    this.secondsLeft = workMinutes * 60;
-    this.totalSeconds = this.secondsLeft;
-    this.updateDisplay();
-    this.saveState();
+    this.setState(initialState(this.settings()));
   }
 
   private skipPhase(): void {
-    if (this.phase === 'idle') return;
-    this.secondsLeft = 0;
-    this.onPhaseComplete();
-    this.updateDisplay();
+    this.setState(skip(this.state, this.settings(), Date.now()));
   }
 
   // ── Display ────────────────────────────────────────────────────────────
 
   private updateDisplay(): void {
+    const left = remainingMs(this.state, Date.now());
+    const secsLeft = Math.ceil(left / 1000);
+
     // Time text
     if (this.timerEl) {
-      const mins = Math.floor(this.secondsLeft / 60);
-      const secs = this.secondsLeft % 60;
+      const mins = Math.floor(secsLeft / 60);
+      const secs = secsLeft % 60;
       this.timerEl.setText(
         `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`,
       );
@@ -341,8 +261,8 @@ export class PomodoroBlock extends BaseBlock {
 
     // Ring progress
     if (this.ringEl) {
-      const progress = this.totalSeconds > 0
-        ? (this.totalSeconds - this.secondsLeft) / this.totalSeconds
+      const progress = this.state.totalMs > 0
+        ? (this.state.totalMs - left) / this.state.totalMs
         : 0;
       const offset = CIRCUMFERENCE * (1 - progress);
       this.ringEl.setAttribute('stroke-dashoffset', String(offset));
@@ -356,16 +276,16 @@ export class PomodoroBlock extends BaseBlock {
         break: 'Break',
         longBreak: 'Long break',
       };
-      this.phaseEl.setText(labels[this.phase]);
+      this.phaseEl.setText(labels[this.state.phase]);
     }
 
     // Session dots
     if (this.sessionDotsEl) {
-      const { sessionsBeforeLong = 4 } = this.instance.config as PomodoroConfig;
+      const { sessionsBeforeLong } = this.settings();
       this.sessionDotsEl.empty();
       for (let i = 0; i < sessionsBeforeLong; i++) {
         const dot = this.sessionDotsEl.createSpan({ cls: 'pomodoro-dot' });
-        if (i < this.completedSessions % sessionsBeforeLong) {
+        if (i < this.state.completedSessions % sessionsBeforeLong) {
           dot.addClass('is-complete');
         }
       }
@@ -375,10 +295,10 @@ export class PomodoroBlock extends BaseBlock {
     if (this.startPauseBtn) {
       const label = this.startPauseBtn.querySelector('.pomodoro-btn-label');
       const icon = this.startPauseBtn.querySelector('.pomodoro-btn-icon');
-      if (this.phase === 'idle') {
+      if (this.state.phase === 'idle') {
         label?.setText('Start');
         if (icon instanceof HTMLElement) setIcon(icon, 'play');
-      } else if (this.running) {
+      } else if (this.state.running) {
         label?.setText('Pause');
         if (icon instanceof HTMLElement) setIcon(icon, 'pause');
       } else {

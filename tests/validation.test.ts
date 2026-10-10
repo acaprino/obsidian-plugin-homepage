@@ -591,3 +591,18 @@ describe('default layout Quick actions (M95)', () => {
     expect(items.filter(i => !i.link)).toEqual([]);
   });
 });
+
+describe('validateBlocks id dedup (M127)', () => {
+  it('keeps the first block of each id', () => {
+    const out = validateBlocks([block({ id: 'a', x: 0 }), block({ id: 'b' }), block({ id: 'a', x: 1 })], 3, []);
+    expect(out.map(b => b.id)).toEqual(['a', 'b']);
+    expect(out[0].x).toBe(0);
+  });
+
+  it('dedups the desktop and the mobile arrays each on its own', () => {
+    const dup = [block({ id: 'x' }), block({ id: 'x' })];
+    const layout = validateLayout({ blocks: dup, mobileBlocks: dup, responsiveMode: 'separate' });
+    expect(layout.blocks.map(b => b.id)).toEqual(['x']);
+    expect(layout.mobileBlocks.map(b => b.id)).toEqual(['x']);
+  });
+});

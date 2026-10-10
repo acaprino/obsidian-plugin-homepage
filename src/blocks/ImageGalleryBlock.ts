@@ -52,6 +52,9 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
   overlay.tabIndex = -1;
   activeLightbox = { ac, overlay };
 
+  // A visible, labelled way out besides Escape and a click beside the image (M113).
+  const closeBtn = overlay.createEl('button', { cls: 'gallery-lightbox-close', attr: { 'aria-label': 'Close' } });
+  setIcon(closeBtn, 'x');
   const prevBtn = overlay.createEl('button', { cls: 'gallery-lightbox-prev', attr: { 'aria-label': 'Previous' } });
   setIcon(prevBtn, 'chevron-left');
   const mediaContainer = overlay.createDiv({ cls: 'gallery-lightbox-media' });
@@ -104,10 +107,15 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
     if (opener && opener.isConnected) opener.focus();
   };
 
-  // Focusable controls inside the overlay (nav buttons that aren't hidden).
-  const focusables = (): HTMLElement[] =>
-    [prevBtn, nextBtn].filter(b => !b.hasClass('gallery-lightbox-nav-hidden'));
+  // Focusable controls inside the overlay, in visual order: a video's own
+  // controls are reachable too (M113).
+  const focusables = (): HTMLElement[] => {
+    const video = mediaContainer.querySelector('video');
+    return [closeBtn, prevBtn, ...(video ? [video] : []), nextBtn]
+      .filter(b => !b.hasClass('gallery-lightbox-nav-hidden'));
+  };
 
+  closeBtn.addEventListener('click', (e) => { e.stopPropagation(); close(); }, { signal });
   prevBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current - 1); }, { signal });
   nextBtn.addEventListener('click', (e) => { e.stopPropagation(); showItem(current + 1); }, { signal });
 
@@ -132,7 +140,10 @@ function openMediaLightbox(items: LightboxItem[], startIndex: number): AbortCont
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     if (active?.isContentEditable) return;
     if (doc.querySelector('.modal-container')) return;
+    // Arrow keys seek a focused video, as its controls expect (M113).
+    const onVideo = active?.tagName === 'VIDEO';
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (onVideo && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { /* the video's */ }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); showItem(current - 1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); showItem(current + 1); }
     else if (e.key === 'Tab') {
@@ -423,8 +434,9 @@ export class ImageGalleryBlock extends BaseBlock {
         video.src = lightboxItems[index].src;
         // Seek to first frame so thumbnail isn't a black box
         video.addEventListener('loadedmetadata', () => { video.currentTime = 0.1; }, { once: true });
-        // Wait for metadata so natural aspect ratio dimensions are available for auto-height
-        loadPromises.push(
+        // Wait for metadata so natural aspect ratio dimensions are available for
+        // auto-height; a fixed-height gallery is not measured and waits for none (M42).
+        if (!useLazy) loadPromises.push(
           new Promise<void>(resolve => {
             if (video.readyState >= 1) { resolve(); return; }
             video.addEventListener('loadedmetadata', () => resolve(), { once: true });

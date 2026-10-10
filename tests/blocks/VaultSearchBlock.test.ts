@@ -118,3 +118,34 @@ describe('VaultSearchBlock opening (M21, M65)', () => {
     expect(s.opened).toEqual([]);
   });
 });
+
+describe('VaultSearchBlock screen reader semantics (M114)', () => {
+  beforeEach(() => { document.body.empty(); });
+
+  it('is a combobox whose highlighted result is announced', async () => {
+    const app = {
+      vault: { getMarkdownFiles: () => [{ basename: 'Meeting', path: 'Meeting.md' }, { basename: 'Meetup', path: 'Meetup.md' }] },
+      workspace: { getLeaf: () => ({ openFile: async () => {} }) },
+    } as unknown as App;
+    const instance: BlockInstance = { id: 's1', type: 'vault-search', x: 0, y: 0, w: 2, h: 2, config: {} };
+    const el = document.body.createDiv();
+    new VaultSearchBlock(app, instance, { app } as unknown as IHomepagePlugin).render(el);
+    const input = el.querySelector('.vault-search-input') as HTMLInputElement;
+    expect(input.getAttribute('role')).toBe('combobox');
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+
+    input.value = 'meet';
+    input.dispatchEvent(new Event('input'));
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const list = document.getElementById(input.getAttribute('aria-controls') ?? '') as HTMLElement;
+    expect(list.getAttribute('role')).toBe('listbox');
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+    expect([...list.querySelectorAll('[role="option"]')]).toHaveLength(2);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' }));
+    const active = document.getElementById(input.getAttribute('aria-activedescendant') ?? '');
+    expect(active?.getAttribute('aria-selected')).toBe('true');
+    expect(active?.textContent).toContain('Meeting');
+    expect(el.querySelector('[aria-live="polite"]')?.textContent).toMatch(/2 results/);
+  });
+});

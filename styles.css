@@ -3912,3 +3912,31 @@
 .image-gallery:not(.masonry-layout) { grid-template-columns: var(--hp-grid-cap, var(--hp-grid-cols)); }
 .image-gallery.masonry-layout { column-count: min(var(--hp-masonry-cap, 99), var(--hp-masonry-cols, 3)); }
 .quotes-columns { grid-template-columns: repeat(var(--hp-column-count, 2), 1fr); }
+
+/* Read by screen readers, not shown (the Vault search result count, M114). */
+.hp-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Lightbox Close button (M113). */
+.gallery-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+}
+
+/* The reorder grip of settings rows is a button now (M115). */
+button.drag-grip {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0 4px;
+  cursor: grab;
+  color: var(--text-muted);
+}

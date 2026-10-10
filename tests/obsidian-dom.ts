@@ -115,6 +115,10 @@ function install(): void {
     configurable: true,
     get(this: Node) { return (this.ownerDocument ?? document).defaultView ?? window; },
   });
+
+  // Obsidian's activeDocument / activeWindow: the focused window's (one window here).
+  (globalThis as unknown as Record<string, unknown>).activeDocument = document;
+  (globalThis as unknown as Record<string, unknown>).activeWindow = window;
 }
 
 install();

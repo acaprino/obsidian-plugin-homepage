@@ -96,3 +96,46 @@ describe('ImageGalleryBlock fixed height (M42)', () => {
     block.unload();
   });
 });
+
+describe('ImageGalleryBlock lightbox keyboard (M113)', () => {
+  async function openLightbox(files: TFile[]) {
+    const folder = new TFolder();
+    folder.path = 'Pics';
+    folder.children = files;
+    const app = { vault: { on: () => ({}), getAbstractFileByPath: () => folder, getResourcePath: (f: TFile) => `app://${f.path}` } } as unknown as App;
+    vi.spyOn(imageCache, 'get').mockResolvedValue({ thumbUrl: 'u', fullUrl: 'u', mtime: 1, isBlob: false });
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    const instance: BlockInstance = { id: 'g1', type: 'image-gallery', x: 0, y: 0, w: 3, h: 3, config: { folder: 'Pics', heightMode: 'fixed' } };
+    const block = new ImageGalleryBlock(app, instance, {} as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    await block.render(el);
+    (el.querySelector('.gallery-item') as HTMLElement).click();
+    return { block, overlay: document.querySelector('.gallery-lightbox') as HTMLElement };
+  }
+  const tab = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true }));
+
+  it('has a labelled Close button', async () => {
+    const { block, overlay } = await openLightbox([png('Pics/a.png'), png('Pics/b.png')]);
+    const close = overlay.querySelector('[aria-label="Close"]') as HTMLButtonElement;
+    expect(close).toBeTruthy();
+    close.click();
+    expect(document.querySelector('.gallery-lightbox')).toBeNull();
+    block.unload();
+  });
+
+  it('lets Tab reach a video, and arrow keys then stay with the video', async () => {
+    const clip = Object.assign(new TFile(), { path: 'Pics/v.mp4', basename: 'v', extension: 'mp4', stat: { mtime: 1, ctime: 1, size: 1 } });
+    const { block, overlay } = await openLightbox([clip, png('Pics/a.png')]);
+    const video = overlay.querySelector('video') as HTMLVideoElement;
+    const reached = new Set<Element | null>();
+    for (let i = 0; i < 5; i++) { tab(); reached.add(document.activeElement); }
+    expect(reached.has(video)).toBe(true);
+
+    video.focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true }));
+    expect(overlay.querySelector('video')).toBe(video); // still the same item
+    block.unload();
+    document.querySelector('.gallery-lightbox')?.remove();
+  });
+});

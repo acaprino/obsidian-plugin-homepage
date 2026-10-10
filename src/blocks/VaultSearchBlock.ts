@@ -11,6 +11,9 @@ const DEBOUNCE_MS = 150;
 const MAX_RESULTS = 10;
 const BLUR_DELAY_MS = 50;
 
+/** Distinct ids for the result lists of several Vault search blocks. */
+let listSeq = 0;
+
 export class VaultSearchBlock extends BaseBlock {
   private dropdownEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
@@ -19,6 +22,10 @@ export class VaultSearchBlock extends BaseBlock {
   private debounceTimer: number | null = null;
   private blurTimer: number | null = null;
   private results: { name: string; path: string; file: TFile }[] = [];
+  /** id of the result list, which the input names as the list it controls. */
+  private listId = '';
+  /** Polite live region that says how many results there are (M114). */
+  private liveEl: HTMLElement | null = null;
   private repositionRaf = 0;
   private viewportTracking = false;
   /** The window the dropdown's listeners live on: the block's own, also in a popout (W1). */
@@ -57,14 +64,24 @@ export class VaultSearchBlock extends BaseBlock {
         placeholder: cfg.placeholder || 'Search vault...',
         spellcheck: 'false',
         autocomplete: 'off',
+        // Combobox semantics: screen readers are told which result is highlighted (M114).
+        role: 'combobox',
+        'aria-autocomplete': 'list',
+        'aria-expanded': 'false',
+        'aria-label': cfg.placeholder || 'Search vault',
       },
     });
     this.inputEl = input;
+    this.liveEl = el.createDiv({ cls: 'hp-visually-hidden', attr: { 'aria-live': 'polite' } });
 
     // Dropdown appended to the owning document's body (popout-safe) with
     // position:fixed to escape all overflow:hidden/auto ancestors in the
     // GridStack layout.
     const dropdown = el.doc.body.createDiv({ cls: 'vault-search-dropdown vault-search-dropdown--hidden' });
+    this.listId = `hp-vault-search-${++listSeq}`;
+    dropdown.id = this.listId;
+    dropdown.setAttribute('role', 'listbox');
+    input.setAttribute('aria-controls', this.listId);
     this.dropdownEl = dropdown;
 
     this.register(() => { dropdown.remove(); });
@@ -139,6 +156,7 @@ export class VaultSearchBlock extends BaseBlock {
 
     this.selectedIndex = -1;
     this.renderResults();
+    this.liveEl?.setText(this.results.length === 1 ? '1 result' : `${this.results.length} results`);
     if (this.results.length > 0) {
       this.showDropdown();
     } else {
@@ -153,6 +171,7 @@ export class VaultSearchBlock extends BaseBlock {
     for (const [i, result] of this.results.entries()) {
       const item = this.dropdownEl.createDiv({
         cls: 'vault-search-result' + (i === this.selectedIndex ? ' is-selected' : ''),
+        attr: { role: 'option', id: `${this.listId}-${i}`, 'aria-selected': String(i === this.selectedIndex) },
       });
 
       const iconEl = item.createSpan({ cls: 'vault-search-result-icon' });
@@ -194,7 +213,10 @@ export class VaultSearchBlock extends BaseBlock {
     const items = this.dropdownEl.querySelectorAll('.vault-search-result');
     items.forEach((el, i) => {
       el.toggleClass('is-selected', i === this.selectedIndex);
+      el.setAttribute('aria-selected', String(i === this.selectedIndex));
     });
+    if (this.selectedIndex >= 0) this.inputEl?.setAttribute('aria-activedescendant', `${this.listId}-${this.selectedIndex}`);
+    else this.inputEl?.removeAttribute('aria-activedescendant');
   }
 
   private openSelected(evt?: KeyboardEvent): void {
@@ -226,6 +248,7 @@ export class VaultSearchBlock extends BaseBlock {
     if (this.dropdownEl) {
       this.positionDropdown();
       this.dropdownEl.removeClass('vault-search-dropdown--hidden');
+      this.inputEl?.setAttribute('aria-expanded', 'true');
       this.startViewportTracking();
     }
   }
@@ -234,6 +257,8 @@ export class VaultSearchBlock extends BaseBlock {
     if (this.dropdownEl) {
       this.dropdownEl.addClass('vault-search-dropdown--hidden');
     }
+    this.inputEl?.setAttribute('aria-expanded', 'false');
+    this.inputEl?.removeAttribute('aria-activedescendant');
     this.stopViewportTracking();
     this.selectedIndex = -1;
     this.results = [];

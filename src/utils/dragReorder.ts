@@ -27,6 +27,19 @@ export function enableDragReorder<T>(
       renderList();
     }
   });
-  const grip = row.createSpan({ cls: 'drag-grip', text: '\u2630' });
-  grip.setAttribute('aria-label', 'Drag to reorder');
+  // A button, so the keyboard reaches it: Alt+Arrow up or down moves the row,
+  // which only a mouse drag could do (M115).
+  const grip = row.createEl('button', { cls: 'drag-grip', text: '\u2630' });
+  grip.setAttribute('aria-label', 'Reorder: drag, or hold alt and press the up or down arrow');
+  grip.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const to = index + (e.key === 'ArrowUp' ? -1 : 1);
+    if (to < 0 || to >= items.length) return;
+    const parent = row.parentElement;
+    const [moved] = items.splice(index, 1);
+    items.splice(to, 0, moved);
+    renderList();
+    parent?.children[to]?.querySelector<HTMLElement>('.drag-grip')?.focus();
+  });
 }

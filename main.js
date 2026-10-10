@@ -6414,17 +6414,29 @@ function isUnknownTypeBlock(b) {
 var RETIRED_BLOCK_TYPES = /* @__PURE__ */ new Set(["insight"]);
 function validateBlocks(raw, columns, defaults, onInvalidDropped, onUnknownType) {
   if (!Array.isArray(raw)) return defaults;
+  const unknown = [];
   const known = onUnknownType ? raw.filter((b) => {
     if (!isUnknownTypeBlock(b)) return true;
-    onUnknownType(b);
+    unknown.push(b);
     return false;
   }) : raw;
   const migrated = known.map((b) => migrateBlockInstance(b));
   const validAll = migrated.filter(isValidBlockInstance);
   const invalidCount = migrated.length - validAll.length;
   const overLimit = Math.max(0, validAll.length - MAX_BLOCKS);
-  if (invalidCount + overLimit > 0) onInvalidDropped?.(invalidCount + overLimit);
   const valid = validAll.slice(0, MAX_BLOCKS);
+  const knownIds = new Set(valid.map((b) => b.id));
+  const keptIds = /* @__PURE__ */ new Set();
+  const keep = unknown.filter((b) => {
+    const id = b.id;
+    if (knownIds.has(id) || keptIds.has(id)) return false;
+    keptIds.add(id);
+    return true;
+  });
+  const room = Math.max(0, MAX_BLOCKS - knownIds.size);
+  const unknownOver = Math.max(0, keep.length - room);
+  for (const b of keep.slice(0, room)) onUnknownType?.(b);
+  if (invalidCount + overLimit + unknownOver > 0) onInvalidDropped?.(invalidCount + overLimit + unknownOver);
   const seen = /* @__PURE__ */ new Set();
   const dedup = valid.filter((b) => {
     if (seen.has(b.id)) return false;
@@ -6843,7 +6855,7 @@ function accentColors(accent, pct, opaque, theme, headerAccent = true) {
   const other = theme === "dark" ? DARK_TEXT : LIGHT_TEXT;
   const flipText = opaque && contrastRatio(t.text, bg) < MIN_CONTRAST && contrastRatio(other, bg) > contrastRatio(t.text, bg);
   const text = flipText ? other : t.text;
-  const darkCard = contrastRatio(LIGHT_TEXT, bg) >= contrastRatio(DARK_TEXT, bg);
+  const darkCard = theme === "dark" ? !flipText : flipText;
   const ctrl = darkCard ? mix(accent, 60, "#ffffff") : mix(accent, theme === "dark" ? 50 : 60, "#000000");
   const plainAccentText = contrastRatio(ctrl, bg) < MIN_CONTRAST;
   const headerBg = headerAccent ? mix(accent, 22, bg) : bg;
@@ -8319,17 +8331,18 @@ var GridLayout = class {
   /** Wheel listener that holds the scroll during a zoomed drag (M26). */
   wheelHold = null;
   holdWheelWhileDragging(on) {
-    const view = this.gridEl.closest(".homepage-view");
-    const target = view instanceof HTMLElement ? view : this.gridEl;
     if (this.wheelHold) {
-      target.removeEventListener("wheel", this.wheelHold);
+      this.wheelHold.target.removeEventListener("wheel", this.wheelHold.fn);
       this.wheelHold = null;
     }
     if (!on) return;
-    this.wheelHold = (e) => {
+    const view = this.gridEl.closest(".homepage-view");
+    const target = view instanceof HTMLElement ? view : this.gridEl;
+    const fn = (e) => {
       e.preventDefault();
     };
-    target.addEventListener("wheel", this.wheelHold, { passive: false });
+    target.addEventListener("wheel", fn, { passive: false });
+    this.wheelHold = { target, fn };
   }
   /**
    * Cancel any queued debounced layout persist + auto-height measurement.
@@ -9088,6 +9101,15 @@ function loadProblemMessage(problem, backupPath) {
 function newerVersionMessage(layout) {
   const n = (layout.preserved?.blocks.length ?? 0) + (layout.preserved?.mobileBlocks.length ?? 0);
   return n > 0 ? `Homepage blocks: ${n} block(s) need a newer version of the plugin. They are kept and not shown.` : null;
+}
+function newerVersionNotice(layout, told) {
+  const message = newerVersionMessage(layout);
+  if (!message) return null;
+  const ids = [...layout.preserved?.blocks ?? [], ...layout.preserved?.mobileBlocks ?? []].map((b) => {
+    const id = b.id;
+    return typeof id === "string" ? id : "";
+  }).sort().join(",");
+  return ids === told ? null : { message, told: ids };
 }
 function fileName(path) {
   return path.slice(path.lastIndexOf("/") + 1);
@@ -10001,9 +10023,12 @@ function resolveStartup(layout, isMobile) {
 // src/utils/pathRename.ts
 var stripMd = (p) => p.endsWith(".md") ? p.slice(0, -3) : p;
 function renamePath(value, oldPath, newPath) {
-  if (value === oldPath) return newPath;
-  if (oldPath.endsWith(".md") && value === stripMd(oldPath)) return stripMd(newPath);
-  if (value.startsWith(oldPath + "/")) return newPath + value.slice(oldPath.length);
+  const v = value.trim().replace(/^\/+|\/+$/g, "");
+  const lower = v.toLowerCase();
+  const old = oldPath.toLowerCase();
+  if (lower === old) return newPath;
+  if (old.endsWith(".md") && lower === stripMd(old)) return stripMd(newPath);
+  if (lower.startsWith(old + "/")) return newPath + v.slice(oldPath.length);
   return null;
 }
 var baseName = (p) => stripMd(p.slice(p.lastIndexOf("/") + 1));
@@ -10601,7 +10626,57 @@ function openNoteLink(app, raw, evt) {
 }
 var SCHEME_RE = /^[a-z][a-z0-9+.-]+:/i;
 var DOMAIN_RE = /^(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i;
-var FILE_EXT_RE = /^[^/?#]+\.(?:md|canvas|base|pdf|png|jpe?g|gif|webp|svg|txt|mp3|mp4|webm|csv|json)$/i;
+var FILE_EXT_RE = new RegExp("^[^/?#]+\\.(?:" + [
+  "md",
+  "canvas",
+  "base",
+  "txt",
+  "pdf",
+  "csv",
+  "json",
+  "xml",
+  "html?",
+  "epub",
+  "docx?",
+  "xlsx?",
+  "pptx?",
+  "od[tsp]",
+  "rtf",
+  "pages",
+  "numbers",
+  "key",
+  "zip",
+  "rar",
+  "7z",
+  "tar",
+  "gz",
+  "tgz",
+  "png",
+  "jpe?g",
+  "gif",
+  "webp",
+  "svg",
+  "bmp",
+  "tiff?",
+  "heic",
+  "avif",
+  "mp3",
+  "m4a",
+  "wav",
+  "ogg",
+  "flac",
+  "opus",
+  "mp4",
+  "m4v",
+  "mov",
+  "avi",
+  "mkv",
+  "webm",
+  "js",
+  "ts",
+  "py",
+  "css"
+].join("|") + ")$", "i");
 function openLinkTarget(app, raw, evt) {
   const value = raw.trim();
   if (!value) return;
@@ -13503,6 +13578,9 @@ var VoiceDictationBlock = class extends BaseBlock {
       };
       mic.addEventListener("pointerup", release);
       mic.addEventListener("pointercancel", release);
+      mic.addEventListener("blur", () => {
+        if (this.pushHeld) release();
+      });
       const isHoldKey = (e) => e.key === " " || e.key === "Enter";
       mic.addEventListener("keydown", (e) => {
         if (!isHoldKey(e)) return;
@@ -13603,12 +13681,17 @@ var VoiceDictationBlock = class extends BaseBlock {
    * audio file name.
    */
   async saveFailedRecording(blob, mimeType, cfg, reason) {
-    const dir = await this.resolveFolder(cfg.folder ?? "");
+    const dir = await this.resolveFolder(cfg.folder ?? "").catch((e) => {
+      if (e instanceof NoteSaveError) return "";
+      throw e;
+    });
     const stamp = (0, import_obsidian32.moment)().format("YYYY-MM-DD HH-mm-ss");
-    const audioPath = uniqueFilePath(dir, stamp, audioExtension(mimeType), this.fileExists);
+    const notePath = uniqueFilePath(dir, stamp, "md", this.fileExists);
+    const fileName2 = `${stamp}.${audioExtension(mimeType)}`;
+    const audioPath = this.app.fileManager?.getAvailablePathForAttachment ? await this.app.fileManager.getAvailablePathForAttachment(fileName2, notePath) : uniqueFilePath(dir, stamp, audioExtension(mimeType), this.fileExists);
     await this.app.vault.createBinary(audioPath, await blob.arrayBuffer());
     const name = audioPath.slice(audioPath.lastIndexOf("/") + 1);
-    await this.app.vault.create(uniqueFilePath(dir, stamp, "md", this.fileExists), `${reason}
+    await this.app.vault.create(notePath, `${reason}
 
 ![[${name}]]
 `);
@@ -14466,6 +14549,7 @@ function homepageCommand(target, run) {
   };
 }
 var UNREADABLE_KEYS_STORAGE_KEY = "hp-unreadable-api-keys";
+var NEWER_VERSION_STORAGE_KEY = "hp-newer-version-told";
 var HomepagePlugin = class extends import_obsidian34.Plugin {
   layout = getDefaultLayout();
   async onload() {
@@ -14483,8 +14567,19 @@ var HomepagePlugin = class extends import_obsidian34.Plugin {
       }
       new import_obsidian34.Notice(loadProblemMessage(loaded.problem, loaded.backupPath), 12e3);
     }
-    const newer = newerVersionMessage(loaded.layout);
-    if (newer) new import_obsidian34.Notice(newer, 12e3);
+    let told = null;
+    try {
+      told = this.app.loadLocalStorage(NEWER_VERSION_STORAGE_KEY) ?? null;
+    } catch {
+    }
+    const newer = newerVersionNotice(loaded.layout, told);
+    if (newer) {
+      new import_obsidian34.Notice(newer.message, 12e3);
+      try {
+        this.app.saveLocalStorage(NEWER_VERSION_STORAGE_KEY, newer.told);
+      } catch {
+      }
+    }
     this.dataGuard = loaded.guard;
     const validated = loaded.layout;
     const decryptResult = await decryptApiKeys(validated);

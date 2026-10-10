@@ -48,3 +48,28 @@ describe('ImageGalleryBlock thumbnails (M96)', () => {
     expect(retain).not.toHaveBeenCalled();
   });
 });
+
+describe('ImageGalleryBlock folder input (M67)', () => {
+  it('finds a folder typed with slashes around it', async () => {
+    const folder = new TFolder();
+    folder.path = 'Pics';
+    folder.children = [png('Pics/a.png')];
+    const app = {
+      vault: {
+        on: () => ({}),
+        getAbstractFileByPath: (p: string) => (p === 'Pics' ? folder : null),
+        getResourcePath: (f: TFile) => `app://${f.path}`,
+      },
+    } as unknown as App;
+    vi.spyOn(imageCache, 'get').mockResolvedValue({ thumbUrl: 'u', fullUrl: 'u', mtime: 1, isBlob: false });
+    const instance: BlockInstance = { id: 'g1', type: 'image-gallery', x: 0, y: 0, w: 3, h: 3, config: { folder: ' /Pics/ ', heightMode: 'fixed' } };
+    const el = document.body.createDiv();
+    const block = new ImageGalleryBlock(app, instance, {} as IHomepagePlugin);
+    block.load();
+    void block.render(el);
+    await new Promise(resolve => setTimeout(resolve, 5));
+
+    expect(el.textContent).not.toContain('not found');
+    block.unload();
+  });
+});

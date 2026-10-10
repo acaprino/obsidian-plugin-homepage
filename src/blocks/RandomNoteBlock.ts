@@ -3,6 +3,7 @@ import { cacheHasTag, getFilesWithTag, normalizeTag } from '../utils/tags';
 import { dailyEpochDay } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
+import { onOpenClick, openFile } from '../utils/openTarget';
 
 const DEBOUNCE_MS = 500;
 const DELETE_RENAME_DEBOUNCE_MS = 2000;
@@ -168,9 +169,7 @@ export class RandomNoteBlock extends BaseBlock {
 
     const titleEl = body.createEl('button', { cls: 'random-note-title' });
     titleEl.setText(title);
-    titleEl.addEventListener('click', () => {
-      void this.app.workspace.openLinkText(file.path, '');
-    });
+    onOpenClick(titleEl, evt => openFile(this.app, file, evt));
 
     // Preview
     if (preview) {
@@ -181,9 +180,7 @@ export class RandomNoteBlock extends BaseBlock {
     const footer = body.createDiv({ cls: 'random-note-footer' });
     footer.createSpan({ cls: 'random-note-filename', text: file.basename });
     const openBtn = footer.createEl('button', { cls: 'random-note-open-btn', text: 'Open' });
-    openBtn.addEventListener('click', () => {
-      void this.app.workspace.openLinkText(file.path, '');
-    });
+    onOpenClick(openBtn, evt => openFile(this.app, file, evt));
 
     this.requestAutoHeight();
   }

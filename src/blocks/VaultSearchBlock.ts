@@ -1,5 +1,6 @@
-import { Setting, setIcon } from 'obsidian';
+import { Setting, TFile, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { onOpenClick, openFile } from '../utils/openTarget';
 
 interface VaultSearchConfig {
   placeholder?: string;
@@ -16,7 +17,7 @@ export class VaultSearchBlock extends BaseBlock {
   private selectedIndex = -1;
   private debounceTimer: number | null = null;
   private blurTimer: number | null = null;
-  private results: { name: string; path: string }[] = [];
+  private results: { name: string; path: string; file: TFile }[] = [];
   private repositionRaf = 0;
   private viewportTracking = false;
   /** The window the dropdown's listeners live on: the block's own, also in a popout (W1). */
@@ -92,7 +93,7 @@ export class VaultSearchBlock extends BaseBlock {
           this.debounceTimer = null;
           this.search(input.value.trim());
         }
-        this.openSelected();
+        this.openSelected(e);
       } else if (e.key === 'Escape') {
         e.preventDefault();
         this.closeDropdown();
@@ -124,12 +125,12 @@ export class VaultSearchBlock extends BaseBlock {
 
     const lower = query.toLowerCase();
     const files = this.app.vault.getMarkdownFiles();
-    const matches: { name: string; path: string; score: number }[] = [];
+    const matches: { name: string; path: string; file: TFile; score: number }[] = [];
 
     for (const file of files) {
       const idx = file.basename.toLowerCase().indexOf(lower);
       if (idx >= 0) {
-        matches.push({ name: file.basename, path: file.path, score: idx });
+        matches.push({ name: file.basename, path: file.path, file, score: idx });
       }
     }
     matches.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
@@ -164,17 +165,15 @@ export class VaultSearchBlock extends BaseBlock {
         textEl.createDiv({ cls: 'vault-search-result-path', text: folder });
       }
 
-      const openResult = (e: Event) => {
+      const openResult = (e: MouseEvent) => {
         e.preventDefault(); // prevent blur before click registers
-        void this.app.workspace.openLinkText(result.path, '');
-        this.closeDropdown();
-        if (this.inputEl) this.inputEl.value = '';
+        this.openResult(result.file, e);
       };
       // mousedown only keeps the focus in the field, so its blur doesn't close
       // the list first; the pick is the click. A touch that starts a scroll of
       // the list is not a pick (N11).
       item.addEventListener('mousedown', (e) => { e.preventDefault(); });
-      item.addEventListener('click', openResult);
+      onOpenClick(item, openResult);
 
       item.addEventListener('mouseenter', () => {
         this.selectedIndex = i;
@@ -197,14 +196,17 @@ export class VaultSearchBlock extends BaseBlock {
     });
   }
 
-  private openSelected(): void {
+  private openSelected(evt?: KeyboardEvent): void {
     const index = this.selectedIndex >= 0 ? this.selectedIndex : 0;
     const result = this.results[index];
-    if (result) {
-      void this.app.workspace.openLinkText(result.path, '');
-      this.closeDropdown();
-      if (this.inputEl) this.inputEl.value = '';
-    }
+    if (result) this.openResult(result.file, evt);
+  }
+
+  /** Open a picked result: Ctrl/Cmd or a middle click opens a new tab (M21, M65). */
+  private openResult(file: TFile, evt?: MouseEvent | KeyboardEvent): void {
+    openFile(this.app, file, evt);
+    this.closeDropdown();
+    if (this.inputEl) this.inputEl.value = '';
   }
 
   private positionDropdown(): void {

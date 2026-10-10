@@ -1,9 +1,9 @@
-import { Notice, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
-import { isDangerousUrl } from '../utils/urls';
+import { onOpenClick, openLinkTarget } from '../utils/openTarget';
 
 interface ButtonItem {
   emoji: string;
@@ -44,14 +44,8 @@ export class ButtonGridBlock extends BaseBlock {
       }
       btn.createSpan({ text: item.label });
       if (item.link) {
-        btn.addEventListener('click', () => {
-          // Guard against a dangerous-scheme link arriving via an imported layout.
-          if (isDangerousUrl(item.link!)) {
-            new Notice('Homepage blocks: blocked an unsafe link.');
-            return;
-          }
-          void this.app.workspace.openLinkText(item.link!, '');
-        });
+        const link = item.link;
+        onOpenClick(btn, evt => openLinkTarget(this.app, link, evt));
       } else {
         btn.addClass('hp-cursor-default');
       }

@@ -4,6 +4,7 @@ import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
 import { imageCache } from '../utils/imageCache';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
+import { normalizeFolderPath } from '../utils/folderPath';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -269,7 +270,7 @@ export class ImageGalleryBlock extends BaseBlock {
   }
 
   private isRelevantMedia(path: string): boolean {
-    const { folder = '' } = this.instance.config as { folder?: string };
+    const folder = normalizeFolderPath((this.instance.config as { folder?: string }).folder ?? '');
     if (!folder) return false;
     if (!path.startsWith(folder + '/')) return false;
     const dot = path.lastIndexOf('.');
@@ -288,7 +289,7 @@ export class ImageGalleryBlock extends BaseBlock {
       layout?: 'grid' | 'masonry';
       heightMode?: 'auto' | 'fixed';
     };
-    const folder = cfg.folder ?? '';
+    const folder = normalizeFolderPath(cfg.folder ?? '');
     const columns = Math.max(1, Math.min(7, Math.floor(Number(cfg.columns) || 3)));
     const rawMax = Number(cfg.maxItems);
     const maxItems = rawMax > 0 ? Math.max(1, Math.min(500, Math.floor(rawMax))) : 0;
@@ -476,7 +477,7 @@ export class ImageGalleryBlock extends BaseBlock {
             const path = folder.path === '/' ? '' : folder.path;
             draft.folder = path;
             folderText.setValue(path);
-          }).open();
+          }, { includeRoot: false }).open();
         }),
       );
     new Setting(body)

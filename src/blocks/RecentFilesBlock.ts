@@ -1,6 +1,8 @@
 import { Setting, moment } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { rangedNumber } from '../utils/configRanges';
+import { isInFolder, normalizeFolderPath } from '../utils/folderPath';
+import { onOpenClick, openFile } from '../utils/openTarget';
 
 const DEBOUNCE_MS = 500;
 
@@ -8,6 +10,11 @@ interface RecentFilesConfig {
   maxItems?: number;
   showTimestamp?: boolean;
   excludeFolders?: string;
+}
+
+/** The folders 'Exclude folders' names, written with or without slashes (M68). */
+function excludedFolders(setting: string | undefined): string[] {
+  return (setting ?? '').split(',').map(normalizeFolderPath).filter(Boolean);
 }
 
 export class RecentFilesBlock extends BaseBlock {
@@ -28,8 +35,7 @@ export class RecentFilesBlock extends BaseBlock {
       // already the top item. So: re-render unless the file is already #1.
       if (!file.path.endsWith('.md')) return;
       const cfg = this.instance.config as RecentFilesConfig;
-      const excluded = (cfg.excludeFolders ?? '').split(',').map(f => f.trim()).filter(Boolean);
-      if (excluded.some(folder => file.path.startsWith(folder + '/'))) return;
+      if (excludedFolders(cfg.excludeFolders).some(folder => isInFolder(file.path, folder))) return;
       if (file.path === this.topPath) return;
       trigger();
     }));
@@ -49,10 +55,10 @@ export class RecentFilesBlock extends BaseBlock {
 
     this.renderHeader(el, 'Recent files');
 
-    const excluded = excludeFolders.split(',').map(f => f.trim()).filter(Boolean);
+    const excluded = excludedFolders(excludeFolders);
 
     const files = this.app.vault.getMarkdownFiles()
-      .filter(file => !excluded.some(folder => file.path.startsWith(folder + '/')))
+      .filter(file => !excluded.some(folder => isInFolder(file.path, folder)))
       .sort((a, b) => b.stat.mtime - a.stat.mtime)
       .slice(0, maxItems);
 
@@ -76,9 +82,7 @@ export class RecentFilesBlock extends BaseBlock {
       if (showTimestamp) {
         btn.createSpan({ cls: 'recent-file-time', text: moment(file.stat.mtime).fromNow() });
       }
-      btn.addEventListener('click', () => {
-        void this.app.workspace.openLinkText(file.path, '');
-      });
+      onOpenClick(btn, evt => openFile(this.app, file, evt));
     }
   }
 

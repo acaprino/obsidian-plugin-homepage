@@ -223,6 +223,19 @@ export function commandTarget<V extends { isEditing(): boolean }>(views: V[], ac
 }
 
 /**
+ * A command's checkCallback that acts on a homepage: offered in the palette only
+ * while one is open, instead of doing nothing there (M69).
+ */
+export function homepageCommand<V>(target: () => V | null, run: (view: V) => void): (checking: boolean) => boolean {
+  return (checking: boolean) => {
+    const view = target();
+    if (!view) return false;
+    if (!checking) run(view);
+    return true;
+  };
+}
+
+/**
  * Vault-scoped localStorage key (per device): ids of the blocks whose API key
  * this device was already told it cannot read.
  */
@@ -290,13 +303,13 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     this.addCommand({
       id: 'toggle-edit-mode',
       name: 'Toggle edit mode',
-      callback: () => { this.targetHomepage(false)?.toggleEditMode(); },
+      checkCallback: homepageCommand(() => this.targetHomepage(false), view => view.toggleEditMode()),
     });
 
     this.addCommand({
       id: 'add-block',
       name: 'Add block',
-      callback: () => { this.targetHomepage(true)?.openAddBlockModal(); },
+      checkCallback: homepageCommand(() => this.targetHomepage(true), view => view.openAddBlockModal()),
     });
 
     this.addRibbonIcon('home', 'Open homepage', () => { void this.openHomepage(this.activeManualOpenMode()); });
@@ -637,6 +650,9 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     }
 
     await workspace.revealLeaf(leaf);
+    // Shown is not active: without this, Ctrl+W closed the tab that was active
+    // before, now hidden behind the homepage (M64).
+    workspace.setActiveLeaf(leaf, { focus: true });
 
     if (this.activePin()) leaf.setPinned(true);
   }

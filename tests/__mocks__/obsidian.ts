@@ -289,6 +289,12 @@ export const Keymap = {
   },
 };
 
+/** As Obsidian's: the link path, and the subpath from the first '#' (kept with its '#'). */
+export function parseLinktext(linktext: string): { path: string; subpath: string } {
+  const i = linktext.indexOf('#');
+  return i === -1 ? { path: linktext, subpath: '' } : { path: linktext.slice(0, i), subpath: linktext.slice(i) };
+}
+
 export function setIcon(_el: HTMLElement, _name: string): void {}
 
 type RequestUrlResponseLike = { status: number; text: string; json: unknown };

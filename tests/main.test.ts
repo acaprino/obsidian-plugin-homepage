@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Notice } from 'obsidian';
 import type { App, PluginManifest, WorkspaceLeaf } from 'obsidian';
 import { _resetDeviceKeyCache } from '../src/utils/apiKeyCrypto';
-import HomepagePlugin, { commandTarget, registerBlocks } from '../src/main';
+import HomepagePlugin, { commandTarget, homepageCommand, registerBlocks } from '../src/main';
 import { HomepageView, VIEW_TYPE } from '../src/HomepageView';
 import { BlockRegistry } from '../src/BlockRegistry';
 import { BaseBlock } from '../src/blocks/BaseBlock';
@@ -65,6 +65,8 @@ function makeWorkspace(initial: { type: string; root?: Root }[]) {
       return mostRecent() ?? new FakeLeaf('empty', 'root');
     },
     revealLeaf: async (_leaf: FakeLeaf) => {},
+    active: null as { leaf: FakeLeaf; focus: boolean } | null,
+    setActiveLeaf(leaf: FakeLeaf, opts?: { focus?: boolean }) { this.active = { leaf, focus: opts?.focus ?? false }; },
   };
   const tabs = (root: Root = 'root') => leaves.filter(l => l.root === root).map(l => l.type);
   return { workspace, tabs, leaves };
@@ -103,6 +105,33 @@ describe('openHomepage: Close all tabs', () => {
     await Promise.resolve();
 
     expect(ws.tabs()).toEqual([VIEW_TYPE]);
+  });
+});
+
+describe('openHomepage: an already open homepage (M64)', () => {
+  it('becomes the active, focused tab', async () => {
+    const ws = makeWorkspace([{ type: VIEW_TYPE }, { type: 'markdown' }]);
+
+    await pluginWith(ws.workspace).openHomepage('retain');
+
+    expect(ws.workspace.active?.leaf.type).toBe(VIEW_TYPE);
+    expect(ws.workspace.active?.focus).toBe(true);
+  });
+});
+
+describe('homepage commands (M69)', () => {
+  it('are offered only while a homepage is open, and run on it', () => {
+    const ran: string[] = [];
+    let open: { id: string } | null = null;
+    const check = homepageCommand(() => open, v => { ran.push(v.id); });
+
+    expect(check(true)).toBe(false);
+    expect(check(false)).toBe(false);
+    open = { id: 'home' };
+    expect(check(true)).toBe(true);
+    expect(ran).toEqual([]);
+    expect(check(false)).toBe(true);
+    expect(ran).toEqual(['home']);
   });
 });
 

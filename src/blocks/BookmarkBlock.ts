@@ -1,8 +1,8 @@
-import { Notice, Setting } from 'obsidian';
+import { Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
-import { isDangerousUrl } from '../utils/urls';
+import { onOpenClick, openLinkTarget } from '../utils/openTarget';
 
 interface BookmarkItem {
   label: string;
@@ -46,23 +46,7 @@ export class BookmarkBlock extends BaseBlock {
       if (item.description && showDescriptions) {
         card.createSpan({ cls: 'bookmark-desc', text: item.description });
       }
-      card.addEventListener('click', () => {
-        try {
-          const parsed = new URL(item.url);
-          if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-            window.open(item.url, '_blank', 'noopener,noreferrer');
-            return;
-          }
-          // Parses as an absolute URL but isn't http(s). Reject dangerous
-          // schemes (javascript:/data:/file:/…) outright rather than forwarding
-          // them to openLinkText.
-          if (isDangerousUrl(item.url)) {
-            new Notice('Homepage blocks: blocked an unsafe link.');
-            return;
-          }
-        } catch { /* not a valid absolute URL — treat as vault path */ }
-        void this.app.workspace.openLinkText(item.url, '');
-      });
+      onOpenClick(card, evt => openLinkTarget(this.app, item.url, evt));
     }
   }
 

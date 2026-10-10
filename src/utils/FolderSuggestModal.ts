@@ -6,6 +6,8 @@ export class FolderSuggestModal extends SuggestModal<TFolder> {
   constructor(
     app: App,
     private onChoose: (folder: TFolder) => void,
+    /** includeRoot false leaves the vault root out, for blocks that need a subfolder (M67). */
+    private opts: { includeRoot?: boolean } = {},
   ) {
     super(app);
     this.setPlaceholder('Type to search vault folders\u2026');
@@ -21,6 +23,7 @@ export class FolderSuggestModal extends SuggestModal<TFolder> {
       }
     };
     recurse(this.app.vault.getRoot());
+    if (this.opts.includeRoot === false) folders.shift();
     this.cachedFolders = folders;
     return folders;
   }

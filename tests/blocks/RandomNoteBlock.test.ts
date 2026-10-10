@@ -64,3 +64,44 @@ describe('RandomNoteBlock live updates (R9)', () => {
     expect(reads()).toBe(2);
   });
 });
+
+/** A workspace double that records each open: the file and the leaf mode asked for. */
+function recordingWorkspace() {
+  const opened: { path: string; mode: unknown }[] = [];
+  const linkText: string[] = [];
+  return {
+    opened, linkText,
+    workspace: {
+      getLeaf: (mode: unknown) => ({ openFile: async (f: { path: string }) => { opened.push({ path: f.path, mode }); } }),
+      openLinkText: async (t: string) => { linkText.push(t); },
+      onLayoutReady: (cb: () => void) => { cb(); },
+    },
+  };
+}
+
+
+describe('RandomNoteBlock opening (M21, M65)', () => {
+  it('opens the picked file itself, in a new tab on Ctrl-click', async () => {
+    const ws = recordingWorkspace();
+    const tag = '#idea';
+    const f = Object.assign(new TFile(), { path: 'Ideas/#1 Idea.md', basename: '#1 Idea', extension: 'md' });
+    const on = () => ({});
+    const app = {
+      vault: { on, getMarkdownFiles: () => [f], read: async () => 'Body', getAbstractFileByPath: () => null, getResourcePath: () => '' },
+      metadataCache: { on, getFileCache: () => ({ tags: [{ tag }] }), getFirstLinkpathDest: () => null },
+      workspace: ws.workspace,
+    } as unknown as App;
+    const instance: BlockInstance = { id: 'r1', type: 'random-note', x: 0, y: 0, w: 1, h: 4, config: { tag } };
+    const block = new RandomNoteBlock(app, instance, { activeBlocks: () => [instance] } as unknown as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    block.render(el);
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    (el.querySelector('.random-note-title') as HTMLButtonElement).dispatchEvent(new MouseEvent('click', { ctrlKey: true }));
+    (el.querySelector('.random-note-open-btn') as HTMLButtonElement).dispatchEvent(new MouseEvent('auxclick', { button: 1 }));
+
+    expect(ws.opened).toEqual([{ path: 'Ideas/#1 Idea.md', mode: 'tab' }, { path: 'Ideas/#1 Idea.md', mode: 'tab' }]);
+    expect(ws.linkText).toEqual([]);
+  });
+});

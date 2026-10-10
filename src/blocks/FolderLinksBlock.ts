@@ -1,9 +1,10 @@
-import { Notice, Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
+import { Setting, TAbstractFile, TFile, TFolder } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { enableDragReorder } from '../utils/dragReorder';
-import { isDangerousUrl } from '../utils/urls';
+import { normalizeFolderPath } from '../utils/folderPath';
+import { onOpenClick, openFile, openNoteLink } from '../utils/openTarget';
 
 interface LinkItem {
   label: string;
@@ -32,7 +33,7 @@ interface ParsedFolder {
 }
 
 function parseFolderPattern(input: string): ParsedFolder {
-  const trimmed = (input ?? '').trim().replace(/\/+$/, '');
+  const trimmed = normalizeFolderPath(input ?? '');
   if (!trimmed) return { folder: '', hasPattern: false, matches: () => true };
 
   const wildcardIdx = trimmed.search(/[*?]/);
@@ -140,9 +141,7 @@ export class FolderLinksBlock extends BaseBlock {
               btn.createSpan({ cls: 'link-emoji', text: folderEmoji });
             }
             btn.createSpan({ text: file.basename });
-            btn.addEventListener('click', () => {
-              void this.app.workspace.openLinkText(file.path, '');
-            });
+            onOpenClick(btn, evt => openFile(this.app, file, evt));
           }
 
           if (notes.length === 0) {
@@ -161,16 +160,9 @@ export class FolderLinksBlock extends BaseBlock {
         btn.createSpan({ cls: 'link-emoji', text: link.emoji });
       }
       btn.createSpan({ text: link.label });
-      btn.addEventListener('click', () => {
-        // Guard against a dangerous-scheme link arriving via an imported layout
-        // (manual links are user/import-supplied config, unlike the auto-listed
-        // folder notes above which are real vault files). Mirrors ButtonGrid/Bookmark.
-        if (isDangerousUrl(link.path)) {
-          new Notice('Homepage blocks: blocked an unsafe link.');
-          return;
-        }
-        void this.app.workspace.openLinkText(link.path, '');
-      });
+      // A typed note link opens only when it resolves: a dangerous-scheme value
+      // from an imported layout resolves to no note (M22, M66).
+      onOpenClick(btn, evt => openNoteLink(this.app, link.path, evt));
     }
 
     if (!folderInput.trim() && links.length === 0) {
@@ -227,7 +219,7 @@ export class FolderLinksBlock extends BaseBlock {
             const path = folder.path === '/' ? '' : folder.path;
             cfg.folder = path;
             folderText.setValue(path);
-          }).open();
+          }, { includeRoot: false }).open();
         }),
       );
 

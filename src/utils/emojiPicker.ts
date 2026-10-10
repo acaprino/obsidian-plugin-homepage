@@ -7,6 +7,8 @@ interface EmojiPickerOptions {
   panelContainer?: HTMLElement;
   /** Optional label text shown before the trigger button. */
   label?: string;
+  /** Accessible name of the trigger when no `label` is shown (M112). */
+  ariaLabel?: string;
   /** Current emoji value ('' = none). */
   value: string;
   /** Text shown when no emoji is selected (e.g. '＋', 'None', 'Emoji'). */
@@ -38,7 +40,7 @@ export interface EmojiPickerInstance {
  */
 export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance {
   const {
-    container, panelContainer, label, value, placeholder,
+    container, panelContainer, label, ariaLabel, value, placeholder,
     rowClass, panelClass, onSelect, onClear, onBeforeOpen,
   } = opts;
 
@@ -50,7 +52,7 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
     row.createSpan({ cls: 'setting-item-name', text: label });
   }
 
-  const triggerBtn = row.createEl('button', { cls: 'emoji-picker-trigger' });
+  const triggerBtn = row.createEl('button', { cls: 'emoji-picker-trigger', attr: { 'aria-label': label ?? ariaLabel ?? 'Choose emoji' } });
   const clearBtn = row.createEl('button', { cls: 'emoji-picker-clear', text: '✕' });
   clearBtn.setAttribute('aria-label', 'Clear emoji');
 
@@ -132,6 +134,16 @@ export function createEmojiPicker(opts: EmojiPickerOptions): EmojiPickerInstance
     updateTrigger();
     onClear();
     close();
+  });
+
+  // Escape closes the panel only: it reached the settings dialog, which closed
+  // and discarded every unsaved change (M116).
+  panel.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || panel.hasClass('hp-hidden')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+    triggerBtn.focus();
   });
 
   let searchTimer: number | null = null;

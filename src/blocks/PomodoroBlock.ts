@@ -2,6 +2,7 @@ import { Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { rangedNumber } from '../utils/configRanges';
 import { advance, initialState, remainingMs, skip, startOrPause, type PomodoroPhase, type PomodoroSettings, type PomodoroState } from '../utils/pomodoroTimer';
+import { blockTitle } from '../blockMeta';
 
 interface PomodoroConfig {
   workMinutes?: number;
@@ -45,7 +46,7 @@ export class PomodoroBlock extends BaseBlock {
   render(el: HTMLElement): void {
     el.addClass('pomodoro-block');
 
-    this.renderHeader(el, 'Pomodoro');
+    this.renderHeader(el, blockTitle('pomodoro'));
 
     const container = el.createDiv({ cls: 'pomodoro-container' });
 

@@ -169,7 +169,7 @@ describe('imported styling values follow the settings ranges (AP-4)', () => {
   // The bounds the block settings sliders offer (BlockSettingsModal), written out by hand.
   it.each([
     ['_titleGap', 0, 48],
-    ['_cardPadding', -48, 48],
+    ['_cardPadding', 0, 48],
     ['_bgOpacity', 0, 100],
     ['_backdropBlur', 0, 20],
     ['_borderWidth', 0, 4],

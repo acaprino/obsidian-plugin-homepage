@@ -62,3 +62,12 @@ describe('BookmarkBlock targets (M23)', () => {
     expect(Notice.messages.some(m => m.includes('Nowhere'))).toBe(true);
   });
 });
+
+describe('BookmarkBlock settings rows (M112)', () => {
+  it('names the delete button of each row', () => {
+    const instance: BlockInstance = { id: 'b', type: 'bookmarks', x: 0, y: 0, w: 1, h: 3, config: {} };
+    const body = document.body.createDiv();
+    new BookmarkBlock({} as App, instance, {} as IHomepagePlugin).renderContentSettings(body, { items: [{ label: 'x', url: 'y' }] });
+    expect(body.querySelector('.bookmark-item-del')?.getAttribute('aria-label')).toBe('Remove bookmark');
+  });
+});

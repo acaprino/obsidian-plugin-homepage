@@ -73,6 +73,19 @@ export abstract class BaseBlock extends Component {
     // hp-header-empty collapses a header-less zone via CSS (replaces a
     // :not(:has(.block-header)) selector — :has is a perf hazard).
     container.toggleClass('hp-header-empty', !show);
+    // The zone is the collapse toggle only while it shows a header (M49).
+    if (container.hasClass('block-header-zone')) {
+      if (show) {
+        const collapsed = !!container.closest('.homepage-block-wrapper')?.hasClass('block-collapsed');
+        container.setAttribute('role', 'button');
+        container.setAttribute('tabindex', '0');
+        container.setAttribute('aria-expanded', String(!collapsed));
+      } else {
+        container.removeAttribute('role');
+        container.removeAttribute('tabindex');
+        container.removeAttribute('aria-expanded');
+      }
+    }
     if (!show) return;
     const sizeClass = typeof cfg._titleSize === 'string' && TITLE_SIZE_RE.test(cfg._titleSize)
       ? `block-header-${cfg._titleSize}` : '';

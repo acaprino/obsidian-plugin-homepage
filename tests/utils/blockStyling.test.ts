@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { HEX_COLOR_RE } from '../../src/utils/blockStyling';
+import { HEX_COLOR_RE, STYLE_RANGES, applyBlockStyling, clampStyle } from '../../src/utils/blockStyling';
 
 describe('HEX_COLOR_RE', () => {
   it('accepts 6-digit hex colors with either case', () => {
@@ -33,5 +33,19 @@ describe('applyBlockStyling — allowlist gate', () => {
     const mod = await import('../../src/utils/blockStyling');
     expect(typeof mod.applyBlockStyling).toBe('function');
     expect(mod.HEX_COLOR_RE).toBeInstanceOf(RegExp);
+  });
+});
+
+describe('applyBlockStyling padding and background (M106, M110)', () => {
+  it('offers no negative padding, which rendered as zero', () => {
+    expect(STYLE_RANGES._cardPadding.min).toBe(0);
+    expect(clampStyle('_cardPadding', -20)).toBe(0);
+  });
+
+  it('keeps the background hidden when its opacity is below 100', () => {
+    const el = document.createElement('div');
+    applyBlockStyling(el, { _showBackground: false, _bgOpacity: 50 });
+    expect(el.classList.contains('block-no-background')).toBe(true);
+    expect(el.classList.contains('block-custom-opacity')).toBe(false);
   });
 });

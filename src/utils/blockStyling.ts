@@ -12,7 +12,7 @@ export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
  */
 export const STYLE_RANGES = {
   _titleGap: { min: 0, max: 48 },
-  _cardPadding: { min: -48, max: 48 },
+  _cardPadding: { min: 0, max: 48 }, // negative values rendered as zero and pushed some content out (M106)
   _bgOpacity: { min: 0, max: 100 },
   _backdropBlur: { min: 0, max: 20 },
   _borderWidth: { min: 0, max: 4 },
@@ -170,8 +170,11 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   // ── Background opacity ─────────────────────────────────────────────
   const bgOpacity = typeof config._bgOpacity === 'number'
     ? clampStyle('_bgOpacity', config._bgOpacity) : 100;
-  el.toggleClass('block-custom-opacity', bgOpacity < 100);
-  if (bgOpacity < 100) el.style.setProperty('--hp-bg-opacity', `${bgOpacity}%`);
+  // With the background off there is no background to make translucent: the
+  // opacity rule brought it back, and hovering toggled it (M110).
+  const translucent = bgOpacity < 100 && config._showBackground !== false;
+  el.toggleClass('block-custom-opacity', translucent);
+  if (translucent) el.style.setProperty('--hp-bg-opacity', `${bgOpacity}%`);
   else el.style.removeProperty('--hp-bg-opacity');
 
   // ── Backdrop blur (only when opacity < 100) ────────────────────────

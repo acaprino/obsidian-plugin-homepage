@@ -55,3 +55,24 @@ describe('BlockSettingsModal colour pickers', () => {
     expect(saved?._gradientEnd).toBe('#764ba2');
   });
 });
+
+describe('BlockSettingsModal Header tab of a block that draws no title (M104)', () => {
+  it('offers no title controls that would do nothing', () => {
+    const instance: BlockInstance = { id: 'c', type: 'clock', x: 0, y: 0, w: 1, h: 3, config: {} };
+    const modal = new BlockSettingsModal({} as App, instance, new SpacerBlock({} as App, instance, {} as IHomepagePlugin), () => {});
+    modal.onOpen();
+    const root = modal.contentEl;
+    ([...root.querySelectorAll('.hp-settings-tab')].find(t => t.textContent === 'Header') as HTMLElement).click();
+    const names = [...root.querySelectorAll('.setting-item-name')].map(n => n.textContent);
+
+    expect(names).not.toContain('Title label');
+    expect(names).not.toContain('Show title');
+  });
+
+  it('previews the title the block draws by default', () => {
+    const instance: BlockInstance = { id: 't', type: 'static-text', x: 0, y: 0, w: 1, h: 3, config: {} };
+    const modal = new BlockSettingsModal({} as App, instance, new SpacerBlock({} as App, instance, {} as IHomepagePlugin), () => {});
+    modal.onOpen();
+    expect(modal.contentEl.querySelector('.settings-preview-card .block-header')?.textContent).toBe('Text');
+  });
+});

@@ -4,6 +4,7 @@ import { BlockRegistry } from '../BlockRegistry';
 import { BaseBlock, TITLE_SIZE_RE } from '../blocks/BaseBlock';
 import { applyBlockStyling, HEX_COLOR_RE, STYLE_RANGES } from '../utils/blockStyling';
 import { createEmojiPicker } from '../utils/emojiPicker';
+import { blockTitle } from '../blockMeta';
 
 /**
  * Tabbed settings modal shared by every block. Holds the generic `_`-prefixed card styling
@@ -32,6 +33,8 @@ export class BlockSettingsModal extends Modal {
   private tabBodyEl: HTMLElement | null = null;
   private tabButtons: Map<BlockSettingsTab, HTMLElement> = new Map();
   private defaultTitle = '';
+  /** The title the block draws by default; '' when it draws no header. */
+  private blockTitle = '';
   private refreshPreview: () => void = () => {};
 
   constructor(
@@ -50,7 +53,9 @@ export class BlockSettingsModal extends Modal {
 
     this.draft = structuredClone(this.instance.config);
     const factory = BlockRegistry.get(this.instance.type);
-    this.defaultTitle = factory?.displayName ?? this.instance.type;
+    // The title the block draws; '' for a block that draws no header (M104).
+    this.blockTitle = BlockRegistry.get(this.instance.type) ? blockTitle(this.instance.type) : '';
+    this.defaultTitle = this.blockTitle || factory?.displayName || this.instance.type;
 
     this.accentDirty = !!(typeof this.draft._accentColor === 'string' && this.draft._accentColor);
     const hasStart = typeof this.draft._gradientStart === 'string' && HEX_COLOR_RE.test(this.draft._gradientStart);
@@ -80,7 +85,7 @@ export class BlockSettingsModal extends Modal {
       previewHeader.className = 'block-header';
       const sz = typeof d._titleSize === 'string' && TITLE_SIZE_RE.test(d._titleSize) ? d._titleSize : '';
       if (sz) previewHeader.addClass(`block-header-${sz}`);
-      previewHeaderZone.toggleClass('hp-hidden', d._showTitle === false);
+      previewHeaderZone.toggleClass('hp-hidden', d._showTitle === false || !this.blockTitle);
       previewDivider.toggleClass('hp-hidden', d._showDivider !== true);
       applyBlockStyling(previewCard, d);
     };
@@ -134,6 +139,11 @@ export class BlockSettingsModal extends Modal {
   }
 
   private renderHeaderTab(body: HTMLElement): void {
+    if (!this.blockTitle) {
+      // Clock, Greeting and Spacer draw no header: these controls did nothing (M104).
+      body.createDiv({ cls: 'setting-item-description', text: 'This block has no title.' });
+      return;
+    }
     new Setting(body)
       .setName('Title label')
       .setDesc('Leave blank for the default.')

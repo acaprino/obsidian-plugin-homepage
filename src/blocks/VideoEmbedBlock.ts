@@ -1,5 +1,6 @@
 import { Setting } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { blockTitle } from '../blockMeta';
 
 const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;
 const YT_VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
@@ -102,7 +103,7 @@ export class VideoEmbedBlock extends BaseBlock {
       shuffleOnLoad?: boolean;
     };
 
-    this.renderHeader(el, 'Video');
+    this.renderHeader(el, blockTitle('video-embed'));
 
     const wrapper = el.createDiv({ cls: 'video-embed-inner' });
     const info = parseUrl(url);

@@ -1,6 +1,7 @@
 import { App, AbstractInputSuggest, Setting, TFile, MarkdownRenderer } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
+import { blockTitle } from '../blockMeta';
 
 const DEBOUNCE_MS = 300;
 
@@ -67,7 +68,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
 
     if (!filePath) {
       // The header lives outside el: re-render it, or the last note's title stays (N17).
-      if (showTitle) this.renderHeader(el, 'Embedded note');
+      if (showTitle) this.renderHeader(el, blockTitle('embedded-note'));
       const hint = el.createDiv({ cls: 'block-empty-hint' });
       hint.createDiv({ cls: 'block-empty-hint-icon', text: '\u{1F4C4}' });
       hint.createDiv({ cls: 'block-empty-hint-text', text: 'No note selected. Choose a file path in settings to embed it here.' });
@@ -76,7 +77,7 @@ export class EmbeddedNoteBlock extends BaseBlock {
 
     const file = this.app.vault.getAbstractFileByPath(filePath);
     if (!(file instanceof TFile)) {
-      if (showTitle) this.renderHeader(el, 'Embedded note');
+      if (showTitle) this.renderHeader(el, blockTitle('embedded-note'));
       el.setText(`File not found: ${filePath}`);
       return;
     }

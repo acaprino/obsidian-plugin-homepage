@@ -1,6 +1,7 @@
 import { MarkdownRenderer, Setting, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
+import { blockTitle } from '../blockMeta';
 
 export class StaticTextBlock extends BaseBlock {
   /** True while the inline pencil-icon editor is mounted; suppresses GridLayout.rerender. */
@@ -55,7 +56,7 @@ export class StaticTextBlock extends BaseBlock {
 
     el.empty();
 
-    this.renderHeader(el, 'Text');
+    this.renderHeader(el, blockTitle('static-text'));
 
     // Edit button — always visible in view mode
     const editBtn = el.createEl('button', {
@@ -103,7 +104,7 @@ export class StaticTextBlock extends BaseBlock {
       editor.setAttribute(AUTO_HEIGHT_ATTR, '');
     }
 
-    const textarea = editor.createEl('textarea');
+    const textarea = editor.createEl('textarea', { attr: { 'aria-label': 'Text content' } });
     textarea.value = currentContent;
     this.draft = { textarea, original: currentContent };
 

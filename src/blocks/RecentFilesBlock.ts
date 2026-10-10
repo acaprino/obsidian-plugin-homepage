@@ -3,6 +3,7 @@ import { BaseBlock } from './BaseBlock';
 import { rangedNumber } from '../utils/configRanges';
 import { isInFolder, normalizeFolderPath } from '../utils/folderPath';
 import { onOpenClick, openFile } from '../utils/openTarget';
+import { blockTitle } from '../blockMeta';
 
 const DEBOUNCE_MS = 500;
 
@@ -59,7 +60,7 @@ export class RecentFilesBlock extends BaseBlock {
       excludeFolders = '',
     } = this.instance.config as RecentFilesConfig;
 
-    this.renderHeader(el, 'Recent files');
+    this.renderHeader(el, blockTitle('recent-files'));
 
     const excluded = excludedFolders(excludeFolders);
 

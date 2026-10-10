@@ -50,7 +50,8 @@ export function attachCollapseToggle(
 
   const toggleCollapse = (e: Event) => {
     e.stopPropagation();
-    if (host.editMode) return;
+    // A block with no header is never collapsed: nothing would show to expand it (M49).
+    if (host.editMode || headerZone.getAttribute('role') !== 'button') return;
     const isNowCollapsed = !wrapper.hasClass('block-collapsed');
     wrapper.toggleClass('block-collapsed', isNowCollapsed);
     chevron?.toggleClass('is-collapsed', isNowCollapsed);

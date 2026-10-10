@@ -263,3 +263,11 @@ describe('StaticTextBlock Markdown styling (M92)', () => {
     expect(el.querySelector('.static-text-content')?.classList.contains('markdown-rendered')).toBe(true);
   });
 });
+
+describe('StaticTextBlock inline editor name (M112)', () => {
+  it('names its text field', () => {
+    const { el } = mount('x');
+    (el.querySelector('.static-text-edit-btn') as HTMLButtonElement).click();
+    expect(el.querySelector('.static-text-inline-editor textarea')?.getAttribute('aria-label')).toBe('Text content');
+  });
+});

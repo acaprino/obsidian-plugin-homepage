@@ -103,10 +103,10 @@ describe('GridLayout — block wrapper DOM (extraction safety net)', () => {
     const wrapper = item!.querySelector('.grid-stack-item-content > .homepage-block-wrapper');
     expect(wrapper).toBeTruthy();
     expect(wrapper!.getAttribute('data-block-id')).toBe('c1');
-    // header zone is a keyboard-operable button
+    // header zone with its chevron; the clock draws no header, so the zone is
+    // no Tab stop (M49: a header-less zone was a 0 px button)
     const headerZone = wrapper!.querySelector('.block-header-zone');
-    expect(headerZone?.getAttribute('role')).toBe('button');
-    expect(headerZone?.getAttribute('tabindex')).toBe('0');
+    expect(headerZone?.hasAttribute('tabindex')).toBe(false);
     expect(headerZone?.querySelector('.block-collapse-chevron')).toBeTruthy();
     // content zone exists and holds the rendered block
     expect(wrapper!.querySelector('.block-content')).toBeTruthy();
@@ -502,5 +502,36 @@ describe('GridLayout — loading skeleton (M77)', () => {
     await new Promise(resolve => setTimeout(resolve, 600));
 
     expect(host.querySelector('.hp-skeleton-overlay')).toBeNull();
+  });
+});
+
+describe('GridLayout — header zone of a block without a title (M49)', () => {
+  it('is no Tab stop and cannot collapse the block', () => {
+    const plugin = makePlugin({ blocks: [clock('a')] }); // the clock renders no header
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 3);
+    const zone = host.querySelector('[gs-id="a"] .block-header-zone') as HTMLElement;
+
+    expect(zone.hasAttribute('tabindex')).toBe(false);
+    expect(zone.hasAttribute('role')).toBe(false);
+    zone.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(host.querySelector('[gs-id="a"] .homepage-block-wrapper')?.classList.contains('block-collapsed')).toBe(false);
+  });
+
+  it('is a named, focusable toggle when the block has a title', () => {
+    BlockRegistry.register({
+      type: 'recent-files', displayName: 'Recent files', defaultConfig: {}, defaultSize: { w: 1, h: 3 },
+      create: (app, instance, plugin) => new (class extends BaseBlock {
+        render(el: HTMLElement): void { this.renderHeader(el, 'Recent files'); }
+      })(app, instance, plugin),
+    });
+    const plugin = makePlugin({ blocks: [{ id: 'r', type: 'recent-files', x: 0, y: 0, w: 1, h: 3, config: {} }] });
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 3);
+    const zone = host.querySelector('[gs-id="r"] .block-header-zone') as HTMLElement;
+
+    expect(zone.getAttribute('role')).toBe('button');
+    expect(zone.getAttribute('tabindex')).toBe('0');
+    expect(zone.getAttribute('aria-expanded')).toBe('true');
   });
 });

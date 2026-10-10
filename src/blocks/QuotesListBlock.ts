@@ -5,6 +5,7 @@ import { dailyIndex } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
 import { rangedNumber } from '../utils/configRanges';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
+import { blockTitle } from '../blockMeta';
 
 // Only assign safe CSS color values; reject potentially malicious strings.
 // Hex, rgb/rgba, hsl/hsla with strict numeric internals. Bare-word colors
@@ -110,7 +111,7 @@ export class QuotesListBlock extends BaseBlock {
     el.style.setProperty('--hp-quote-valign', verticalAlign === 'middle' ? 'center' : verticalAlign === 'bottom' ? 'flex-end' : 'flex-start');
     el.style.setProperty('--hp-quote-align', textAlign === 'center' ? 'center' : textAlign === 'right' ? 'right' : 'start');
 
-    this.renderHeader(el, 'Quotes');
+    this.renderHeader(el, blockTitle('quotes-list'));
 
     // maxItems === 1 triggers single-quote mode (daily rotation);
     // 0 or undefined means show all; otherwise show that many.

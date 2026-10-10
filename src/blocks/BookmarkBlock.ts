@@ -3,6 +3,7 @@ import { BaseBlock } from './BaseBlock';
 import { enableDragReorder } from '../utils/dragReorder';
 import { responsiveGridColumns } from '../utils/responsiveGrid';
 import { onOpenClick, openLinkTarget } from '../utils/openTarget';
+import { blockTitle } from '../blockMeta';
 
 interface BookmarkItem {
   label: string;
@@ -24,7 +25,7 @@ export class BookmarkBlock extends BaseBlock {
     const { items = [], columns = 2, showDescriptions = true } =
       this.instance.config as BookmarkConfig;
 
-    this.renderHeader(el, 'Bookmarks');
+    this.renderHeader(el, blockTitle('bookmarks'));
 
     const grid = el.createDiv({ cls: 'bookmark-grid' });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
@@ -94,7 +95,7 @@ export class BookmarkBlock extends BaseBlock {
         descInput.placeholder = 'Description (optional)';
         descInput.addEventListener('input', () => { item.description = descInput.value || undefined; });
 
-        const delBtn = row.createEl('button', { cls: 'bookmark-item-del', text: '✕' });
+        const delBtn = row.createEl('button', { cls: 'bookmark-item-del', text: '✕', attr: { 'aria-label': 'Remove bookmark' } });
         delBtn.addEventListener('click', () => {
           cfg.items!.splice(i, 1);
           renderList();

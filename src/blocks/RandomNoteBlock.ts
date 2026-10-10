@@ -5,6 +5,7 @@ import { BaseBlock } from './BaseBlock';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 import { onOpenClick, openFile } from '../utils/openTarget';
 import { notePreview } from '../utils/noteContent';
+import { blockTitle } from '../blockMeta';
 
 const DEBOUNCE_MS = 500;
 const DELETE_RENAME_DEBOUNCE_MS = 2000;
@@ -75,7 +76,7 @@ export class RandomNoteBlock extends BaseBlock {
       showPreview?: boolean;
     };
 
-    this.renderHeader(el, 'Random note');
+    this.renderHeader(el, blockTitle('random-note'));
     this.shownPath = null;
 
     if (!tag) {

@@ -5,6 +5,7 @@ import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { enableDragReorder } from '../utils/dragReorder';
 import { normalizeFolderPath } from '../utils/folderPath';
 import { onOpenClick, openFile, openNoteLink } from '../utils/openTarget';
+import { blockTitle } from '../blockMeta';
 
 interface LinkItem {
   label: string;
@@ -110,7 +111,7 @@ export class FolderLinksBlock extends BaseBlock {
     const linkAlign = VALID_ALIGNS.has(cfg.linkAlign ?? '') ? cfg.linkAlign! : 'left';
     const folderEmoji = cfg.folderEmoji ?? '';
 
-    this.renderHeader(el, 'Folder links');
+    this.renderHeader(el, blockTitle('folder-links'));
 
     const list = el.createDiv({ cls: 'folder-links-list' });
     list.addClass(`folder-links-align-${linkAlign}`);

@@ -49,6 +49,7 @@ export function attachEditHandleBar(
   // Drag handle (left)
   const handle = bar.createDiv({ cls: 'block-move-handle' });
   setIcon(handle, 'grip-vertical');
+  handle.setAttribute('role', 'img'); // announced with its label
   handle.setAttribute('aria-label', 'Drag to reorder');
   handle.setAttribute('title', 'Drag to reorder');
 

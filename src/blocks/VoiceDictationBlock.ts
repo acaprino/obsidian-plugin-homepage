@@ -5,6 +5,7 @@ import { isEncrypted } from '../utils/apiKeyCrypto';
 import { buildNoteContent, sanitizeVoiceFolder, uniqueFilePath } from '../utils/voiceNote';
 import { DEFAULT_MODELS, PROVIDER_MAX_BYTES, PROVIDER_MODELS, effectiveModel, geminiEmptyReason, type TranscriptionProvider } from '../utils/voiceProviders';
 import { RequestTimeoutError, withTimeout } from '../utils/timeout';
+import { blockTitle } from '../blockMeta';
 
 const CONSENT_STORAGE_KEY = 'hp-voice-consent';
 
@@ -154,7 +155,7 @@ export class VoiceDictationBlock extends BaseBlock {
       if (this.flashTimer !== null) window.clearTimeout(this.flashTimer);
     });
 
-    this.renderHeader(el, 'Voice notes');
+    this.renderHeader(el, blockTitle('voice-dictation'));
 
     const body = el.createDiv({ cls: 'voice-body' });
 

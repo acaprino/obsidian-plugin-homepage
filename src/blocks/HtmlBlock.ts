@@ -1,5 +1,6 @@
 import { Setting, sanitizeHTMLToDom } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { blockTitle } from '../blockMeta';
 
 export class HtmlBlock extends BaseBlock {
   render(el: HTMLElement): void {
@@ -9,7 +10,7 @@ export class HtmlBlock extends BaseBlock {
       html?: string;
     };
 
-    this.renderHeader(el, 'HTML');
+    this.renderHeader(el, blockTitle('html'));
 
     const contentEl = el.createDiv({ cls: 'html-block-content' });
 
@@ -104,7 +105,7 @@ export class HtmlBlock extends BaseBlock {
     // creation time, before srcdoc triggers any navigation.
     const iframe = contentEl.createEl('iframe', {
       cls: 'hp-html-iframe',
-      attr: { sandbox: 'allow-same-origin', referrerpolicy: 'no-referrer' },
+      attr: { sandbox: 'allow-same-origin', referrerpolicy: 'no-referrer', title: 'HTML content' },
     });
     iframe.srcdoc = safe;
 

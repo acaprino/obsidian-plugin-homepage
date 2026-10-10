@@ -1,6 +1,7 @@
 import { BlockInstance } from '../types';
 import { applyBlockStyling } from '../utils/blockStyling';
 import { Scheduler } from '../utils/Scheduler';
+import { blockTitle } from '../blockMeta';
 
 /**
  * Block-wrapper / placeholder / skeleton / empty-state DOM builders, extracted
@@ -33,10 +34,10 @@ export function buildBlockWrapper(container: HTMLElement, instance: BlockInstanc
   // hp-header-empty marks a zone with no .block-header (chevron only) so CSS
   // can collapse it without :has(). BaseBlock.renderHeader and
   // renderCompactPlaceholder clear it when they render a header.
-  const headerZone = wrapper.createDiv({
-    cls: 'block-header-zone hp-header-empty',
-    attr: { role: 'button', tabindex: '0', 'aria-expanded': String(!effectiveCollapsed) },
-  });
+  // No role or Tab stop yet: BaseBlock.renderHeader makes the zone a toggle when
+  // it draws a header. A header-less zone (Clock, Greeting, a hidden title) was a
+  // 0 px, unnamed Tab stop whose Enter hid the block for good (M49).
+  const headerZone = wrapper.createDiv({ cls: 'block-header-zone hp-header-empty' });
   headerZone.createSpan({
     cls: 'block-collapse-chevron' + (effectiveCollapsed ? ' is-collapsed' : ''),
     attr: { 'aria-hidden': 'true' },
@@ -81,7 +82,7 @@ export function renderCompactPlaceholder(
   // Show block type name in header zone
   const titleLabel = typeof instance.config._titleLabel === 'string' && instance.config._titleLabel
     ? instance.config._titleLabel
-    : factory.displayName;
+    : blockTitle(instance.type) || factory.displayName;
   const emoji = typeof instance.config._titleEmoji === 'string' ? instance.config._titleEmoji : '';
   headerZone.removeClass('hp-header-empty');
   const header = headerZone.createDiv({ cls: 'block-header' });

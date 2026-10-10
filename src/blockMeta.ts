@@ -19,3 +19,33 @@ export const BLOCK_META: Record<BlockType, { icon: string; desc: string }> = {
   'voice-dictation': { icon: '🎙️', desc: 'Record voice notes saved automatically to a folder' },
   'vault-search':  { icon: '\u{1F50D}', desc: 'Search notes by name with live results' },
 };
+
+/**
+ * The title each block draws in its header when no Title label is set; '' for
+ * the blocks that draw no header (Clock, Greeting, Spacer). One source for the
+ * blocks, the settings preview and the edit-mode placeholder, which showed the
+ * type name instead (M104).
+ */
+const BLOCK_TITLES: Record<BlockType, string> = {
+  'greeting': '',
+  'clock': '',
+  'folder-links': 'Folder links',
+  'button-grid': 'Buttons',
+  'quotes-list': 'Quotes',
+  'image-gallery': 'Gallery',
+  'embedded-note': 'Embedded note',
+  'static-text': 'Text',
+  'html': 'HTML',
+  'video-embed': 'Video',
+  'bookmarks': 'Bookmarks',
+  'recent-files': 'Recent files',
+  'pomodoro': 'Pomodoro',
+  'spacer': '',
+  'random-note': 'Random note',
+  'voice-dictation': 'Voice notes',
+  'vault-search': 'Vault search',
+};
+
+export function blockTitle(type: BlockType): string {
+  return BLOCK_TITLES[type];
+}

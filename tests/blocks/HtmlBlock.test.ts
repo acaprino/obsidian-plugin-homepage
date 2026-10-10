@@ -78,3 +78,12 @@ describe('HtmlBlock in single column (M38)', () => {
     } finally { ro.restore(); }
   });
 });
+
+describe('HtmlBlock accessible name (M112)', () => {
+  it('gives the document frame a title', () => {
+    const instance: BlockInstance = { id: 'h', type: 'html', x: 0, y: 0, w: 2, h: 3, config: { html: '<style></style><p>x</p>' } };
+    const el = document.body.createDiv();
+    new HtmlBlock({} as App, instance, {} as IHomepagePlugin).render(el);
+    expect(el.querySelector('iframe')?.getAttribute('title')).toBeTruthy();
+  });
+});

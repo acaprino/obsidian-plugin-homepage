@@ -1,6 +1,7 @@
 import { Setting, TFile, setIcon } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { onOpenClick, openFile } from '../utils/openTarget';
+import { blockTitle } from '../blockMeta';
 
 interface VaultSearchConfig {
   placeholder?: string;
@@ -42,7 +43,7 @@ export class VaultSearchBlock extends BaseBlock {
     const cfg = this.instance.config as VaultSearchConfig;
     el.addClass('vault-search-block');
 
-    this.renderHeader(el, 'Vault search');
+    this.renderHeader(el, blockTitle('vault-search'));
 
     const wrapper = el.createDiv({ cls: 'vault-search-input-wrapper' });
     this.wrapperEl = wrapper;

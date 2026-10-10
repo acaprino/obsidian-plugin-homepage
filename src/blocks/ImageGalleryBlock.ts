@@ -5,6 +5,7 @@ import { responsiveGridColumns } from '../utils/responsiveGrid';
 import { imageCache } from '../utils/imageCache';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 import { normalizeFolderPath } from '../utils/folderPath';
+import { blockTitle } from '../blockMeta';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
 const VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv']);
@@ -301,7 +302,7 @@ export class ImageGalleryBlock extends BaseBlock {
     const layout = cfg.layout ?? 'grid';
     const heightMode = cfg.heightMode ?? 'auto';
 
-    this.renderHeader(el, 'Gallery');
+    this.renderHeader(el, blockTitle('image-gallery'));
 
     const gallery = el.createDiv({ cls: 'image-gallery' });
     if (heightMode === 'fixed') {

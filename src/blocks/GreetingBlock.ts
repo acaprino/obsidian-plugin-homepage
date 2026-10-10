@@ -344,6 +344,7 @@ export class GreetingBlock extends BaseBlock {
             container: control,
             value: (cfg[slot.key] as string) ?? slot.default,
             placeholder: slot.default,
+            ariaLabel: `${slot.label} emoji`,
             onSelect: (emoji) => { (cfg as Record<string, unknown>)[slot.key] = emoji; },
             onClear: () => { (cfg as Record<string, unknown>)[slot.key] = ''; },
             onBeforeOpen: closePickers,

@@ -100,3 +100,12 @@ describe('ButtonGridBlock columns (M98)', () => {
     expect(grid.style.getPropertyValue('--hp-grid-cols')).toBe('');
   });
 });
+
+describe('ButtonGridBlock settings rows (M112)', () => {
+  it('names the delete button of each row', () => {
+    const instance: BlockInstance = { id: 'b', type: 'button-grid', x: 0, y: 0, w: 1, h: 3, config: {} };
+    const body = document.body.createDiv();
+    new ButtonGridBlock({} as App, instance, {} as IHomepagePlugin).renderContentSettings(body, { items: [{ label: 'x' }] });
+    expect(body.querySelector('.btn-grid-item-del')?.getAttribute('aria-label')).toBe('Remove button');
+  });
+});

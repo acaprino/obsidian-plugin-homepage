@@ -4,6 +4,7 @@ import { enableDragReorder } from '../utils/dragReorder';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 import { onOpenClick, openLinkTarget } from '../utils/openTarget';
+import { blockTitle } from '../blockMeta';
 
 interface ButtonItem {
   emoji: string;
@@ -22,7 +23,7 @@ export class ButtonGridBlock extends BaseBlock {
       items?: ButtonItem[];
     };
 
-    this.renderHeader(el, 'Buttons');
+    this.renderHeader(el, blockTitle('button-grid'));
 
     const grid = el.createDiv({ cls: 'button-grid' });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
@@ -123,7 +124,7 @@ export class ButtonGridBlock extends BaseBlock {
         linkInput.placeholder = 'Note path (optional)';
         linkInput.addEventListener('input', () => { item.link = linkInput.value || undefined; });
 
-        const delBtn = row.createEl('button', { cls: 'btn-grid-item-del', text: '✕' });
+        const delBtn = row.createEl('button', { cls: 'btn-grid-item-del', text: '✕', attr: { 'aria-label': 'Remove button' } });
         delBtn.addEventListener('click', () => {
           cfg.items!.splice(i, 1);
           renderList();

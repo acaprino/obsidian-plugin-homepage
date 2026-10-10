@@ -41,7 +41,18 @@ function setConsent(app: App, provider: TranscriptionProvider): void {
   }
 }
 
+/** Withdraw the consent this device gave for `provider` (N18). */
+function forgetConsent(app: App, provider: TranscriptionProvider): void {
+  try {
+    app.saveLocalStorage(CONSENT_STORAGE_KEY, { ...readConsent(app), [provider]: false });
+  } catch {
+    /* storage unavailable: nothing was remembered either */
+  }
+}
+
 type TranscriptionProvider = 'whisper' | 'gemini';
+
+const PROVIDER_NAMES: Record<TranscriptionProvider, string> = { whisper: 'OpenAI Whisper', gemini: 'Google Gemini' };
 
 const WHISPER_MODELS: Record<string, string> = {
   'whisper-1': 'Whisper 1',
@@ -640,6 +651,15 @@ export class VoiceDictationBlock extends BaseBlock {
            });
         });
 
+      // Consent is remembered per provider on this device; this is the way back (N18).
+      const provider = cfg.provider ?? 'whisper';
+      if (hasConsent(this.app, provider)) {
+        new Setting(body)
+          .setName('Upload consent')
+          .setDesc(`You allowed recordings to be uploaded to ${PROVIDER_NAMES[provider]} on this device.`)
+          .addButton(b => b.setButtonText('Forget').onClick(() => { forgetConsent(this.app, provider); renderSettings(); }));
+      }
+
       // API key (label + placeholder change based on provider)
       const isGemini = (cfg.provider ?? 'whisper') === 'gemini';
       // A key still encrypted here was saved on another device: show an empty
@@ -715,7 +735,7 @@ class VoiceConsentModal extends Modal {
     const { contentEl } = this;
     contentEl.empty();
     new Setting(contentEl).setName('Voice dictation consent').setHeading();
-    const providerName = this.provider === 'gemini' ? 'Google Gemini' : 'OpenAI Whisper';
+    const providerName = PROVIDER_NAMES[this.provider];
     const endpoint = this.provider === 'gemini'
       ? 'generativelanguage.googleapis.com'
       : 'api.openai.com';

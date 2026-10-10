@@ -185,6 +185,16 @@ export class DropdownComponent {
   }
 }
 
+/** Mirrors Obsidian's ButtonComponent: a button whose clicks feed onClick. */
+export class ButtonComponent {
+  buttonEl: HTMLButtonElement;
+  constructor(containerEl: HTMLElement) { this.buttonEl = containerEl.createEl('button'); }
+  setButtonText(t: string): this { this.buttonEl.textContent = t; return this; }
+  setWarning(): this { this.buttonEl.addClass('mod-warning'); return this; }
+  setCta(): this { this.buttonEl.addClass('mod-cta'); return this; }
+  onClick(cb: (evt: MouseEvent) => unknown): this { this.buttonEl.addEventListener('click', cb); return this; }
+}
+
 export class Setting {
   settingEl: HTMLElement;
   nameEl: HTMLElement;
@@ -202,7 +212,7 @@ export class Setting {
   addToggle(cb: (t: ToggleComponent) => unknown): this { cb(new ToggleComponent(this.controlEl)); return this; }
   addDropdown(cb: (d: DropdownComponent) => unknown): this { cb(new DropdownComponent(this.controlEl)); return this; }
   addSlider(_cb: unknown): this { return this; }
-  addButton(_cb: unknown): this { return this; }
+  addButton(cb: (b: ButtonComponent) => unknown): this { cb(new ButtonComponent(this.controlEl)); return this; }
   addExtraButton(_cb: unknown): this { return this; }
   addColorPicker(_cb: unknown): this { return this; }
 }

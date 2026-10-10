@@ -211,7 +211,22 @@ describe('Whisper form fields (N20)', () => {
     expect(whisperTextFields({ language: 'en\r\n--x' })).toEqual({ model: 'whisper-1' });
   });
 
-  it('refuses a model name with characters no model name has', () => {
+  it('refuses a model name with characters no model name has (N20)', () => {
     expect(() => whisperTextFields({ model: 'whisper-1"\r\n' })).toThrow('Invalid Whisper model name');
+  });
+});
+
+describe('VoiceDictationBlock upload consent (N18)', () => {
+  it('forgets the consent this device gave when asked', () => {
+    let stored: unknown = { whisper: true };
+    const app = { loadLocalStorage: () => stored, saveLocalStorage: (_k: string, v: unknown) => { stored = v; } } as unknown as App;
+    const instance: BlockInstance = { id: 'v1', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: {} };
+    const body = document.body.createDiv();
+    new VoiceDictationBlock(app, instance, {} as IHomepagePlugin).renderContentSettings(body, { provider: 'whisper' });
+
+    ([...body.querySelectorAll('button')].find(b => b.textContent === 'Forget') as HTMLButtonElement).click();
+
+    expect(stored).toEqual({ whisper: false });
+    expect([...body.querySelectorAll('button')].some(b => b.textContent === 'Forget')).toBe(false);
   });
 });

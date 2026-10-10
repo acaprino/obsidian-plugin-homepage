@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { BaseBlock } from '../../src/blocks/BaseBlock';
 import type { IHomepagePlugin, BlockInstance } from '../../src/types';
@@ -8,6 +8,8 @@ class TestBlock extends BaseBlock {
   render(): void { /* unused */ }
   showError(el: HTMLElement, msg: string): void { this.renderErrorHint(el, msg); }
   header(el: HTMLElement, title: string): void { this.renderHeader(el, title); }
+  mount(el: HTMLElement): void { this.containerEl = el; }
+  refresh(fn: (el: HTMLElement) => void | Promise<void>): void { this.scheduleRender(0, fn); }
 }
 
 function make(config: Record<string, unknown> = {}): TestBlock {
@@ -53,5 +55,31 @@ describe('BaseBlock.renderHeader', () => {
   it('prepends the configured emoji', () => {
     make({ _titleEmoji: '⏰' }).header(el, 'Clock');
     expect(el.querySelector('.block-header-emoji')?.textContent).toBe('⏰');
+  });
+});
+
+describe('BaseBlock.scheduleRender failures (N10)', () => {
+  const wait = () => new Promise(resolve => setTimeout(resolve, 5));
+
+  it('shows an error hint when an async re-render fails after emptying the block', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const block = make();
+    block.mount(el);
+    block.refresh(async (e) => { e.empty(); throw new Error('boom'); });
+    await wait();
+
+    expect(el.querySelector('.block-error-hint')).toBeTruthy();
+    vi.restoreAllMocks();
+  });
+
+  it('shows an error hint when a re-render throws synchronously', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const block = make();
+    block.mount(el);
+    block.refresh((e) => { e.empty(); throw new Error('boom'); });
+    await wait();
+
+    expect(el.querySelector('.block-error-hint')).toBeTruthy();
+    vi.restoreAllMocks();
   });
 });

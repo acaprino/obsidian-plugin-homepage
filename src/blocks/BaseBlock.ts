@@ -122,7 +122,8 @@ export abstract class BaseBlock extends Component {
 
   /**
    * Schedule a debounced re-render. Guards against detached DOM nodes
-   * (checks `isConnected`) and catches async errors.
+   * (checks `isConnected`), and catches async and sync errors, showing an
+   * error hint in place of the content.
    * After a successful re-render, dispatches a `request-auto-height` event
    * so GridLayout can recalculate the block's row height.
    */
@@ -130,14 +131,22 @@ export abstract class BaseBlock extends Component {
     if (this._scheduleTimer !== null) window.clearTimeout(this._scheduleTimer);
     this._scheduleTimer = window.setTimeout(() => {
       this._scheduleTimer = null;
-      if (!this.containerEl?.isConnected) return;
-      const result = fn(this.containerEl);
+      const el = this.containerEl;
+      if (!el?.isConnected) return;
+      const fail = (e: unknown): void => {
+        console.error(`[Homepage Blocks] ${this.constructor.name} re-render failed:`, e);
+        // Re-renders empty the element first: without a hint the card stays blank (N10).
+        this.renderErrorHint(el, 'Couldn’t refresh this block — check the console for details.');
+      };
+      let result: void | Promise<void>;
+      try {
+        result = fn(el);
+      } catch (e) {
+        fail(e);
+        return;
+      }
       if (result instanceof Promise) {
-        result
-          .then(() => this.requestAutoHeight())
-          .catch(e => {
-            console.error(`[Homepage Blocks] ${this.constructor.name} re-render failed:`, e);
-          });
+        result.then(() => this.requestAutoHeight()).catch(fail);
       } else {
         this.requestAutoHeight();
       }
@@ -159,7 +168,7 @@ export abstract class BaseBlock extends Component {
     // Disconnect previous observer to prevent accumulation across re-renders
     if (this._widthObserver) {
       this._widthObserver.disconnect();
-      cancelAnimationFrame(this._widthRafId);
+      window.cancelAnimationFrame(this._widthRafId);
     }
     let prevWidth = 0; // 0 skips the initial observe() callback
     this._widthObserver = new ResizeObserver((entries) => {
@@ -193,7 +202,7 @@ export abstract class BaseBlock extends Component {
     if (this._widthObserver) {
       this._widthObserver.disconnect();
       this._widthObserver = null;
-      cancelAnimationFrame(this._widthRafId);
+      window.cancelAnimationFrame(this._widthRafId);
     }
   }
 }

@@ -592,10 +592,14 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       console.warn(`[Homepage Blocks] updateBlockConfig: block ${id} no longer exists; config patch dropped`);
       return;
     }
-    const next = live.map(b =>
+    const apply = (blocks: BlockInstance[]) => blocks.map(b =>
       b.id === id ? { ...b, config: { ...b.config, ...patch } } : b,
     );
-    await this.saveActiveBlocks(next);
+    // The patch was made in view mode (an inline save, a followed rename). An
+    // edit session that started while it waited took its Discard snapshot
+    // without it; Discard must not revert it (M52).
+    for (const view of this.homepageViews()) view.mapEditSnapshot(apply);
+    await this.saveActiveBlocks(apply(live));
   }
 
   async openHomepage(mode: OpenMode = 'retain'): Promise<void> {

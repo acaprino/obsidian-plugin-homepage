@@ -432,3 +432,33 @@ describe('data from a newer plugin version (M58)', () => {
     expect('preserved' in stored).toBe(false);
   });
 });
+
+describe('a Static Text save still queued when an edit session starts (M52)', () => {
+  beforeEach(() => { document.body.empty(); registerBlocks(); });
+
+  it('survives Discard', async () => {
+    const local = { ...getDefaultLayout(), blocks: [block('s', 'static-text', { config: { content: 'old' } })], mobileBlocks: [] };
+    const views: HomepageView[] = [];
+    const { plugin } = pluginWithDisk(local, views);
+    plugin.layout = structuredClone(local);
+    views.push(openRealView(plugin));
+    await wait(5);
+    // A write still in flight (a drag, say) holds the save chain.
+    const write = plugin.saveData.bind(plugin);
+    let release: () => void = () => {};
+    plugin.saveData = async (data: unknown) => { await new Promise<void>(r => { release = r; }); await write(data); };
+    void plugin.saveLayout({ ...plugin.layout });
+    const view = views[0];
+    (view.contentEl.querySelector('.static-text-edit-btn') as HTMLButtonElement).click();
+    (view.contentEl.querySelector('.static-text-inline-editor textarea') as HTMLTextAreaElement).value = 'new';
+    (view.contentEl.querySelector('.inline-edit-save') as HTMLButtonElement).click(); // queued behind the write
+
+    view.toggleEditMode();
+    plugin.saveData = write;
+    release();
+    await wait(10);
+    (view.contentEl.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
+
+    expect(plugin.layout.blocks[0].config.content).toBe('new');
+  });
+});

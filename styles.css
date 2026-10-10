@@ -2479,8 +2479,8 @@
 }
 
 /* Collapse/expand chevron — hidden by default. When the hover-highlight option
-   is enabled, fades in on card hover and stays visible when the block is
-   collapsed so the state is still readable without hovering. */
+   is enabled, fades in on card hover. A collapsed block always shows it, with
+   or without hover highlight, or nothing tells it is collapsed (M79). */
 .block-collapse-chevron {
   font-size: 0.65rem;
   color: var(--text-muted);
@@ -2500,7 +2500,7 @@
   transform: rotate(90deg);
 }
 
-.homepage-hover-highlight .block-collapse-chevron.is-collapsed {
+.block-collapse-chevron.is-collapsed {
   opacity: 1;
 }
 

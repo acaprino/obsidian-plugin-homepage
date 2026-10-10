@@ -9,6 +9,7 @@ import { installTagCacheListeners } from './utils/tags';
 import { _resetDeviceKeyCache } from './utils/apiKeyCrypto';
 import { decryptApiKeys, persistableLayout, unreadableKeyNotice } from './utils/apiKeyLayout';
 import { mobileStartupActive, resolveStartup } from './utils/startupResolver';
+import { followRenameInBlock } from './utils/pathRename';
 import { GreetingBlock } from './blocks/GreetingBlock';
 import { ClockBlock } from './blocks/ClockBlock';
 import { FolderLinksBlock } from './blocks/FolderLinksBlock';
@@ -242,8 +243,8 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // see fresh data without having to wire up vault listeners themselves.
     installTagCacheListeners(this);
 
-    // Embedded notes follow a renamed note here, not only in a mounted block: in
-    // edit mode, or with no homepage open, no block exists to see the event (R8).
+    // Blocks follow a renamed note or folder here, not only in a mounted block: in
+    // edit mode, or with no homepage open, no block exists to see the event (R8, M55).
     // Registered before any block, so blocks see the new path in liveConfig().
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void this.followRename(oldPath, file.path); }));
 
@@ -469,13 +470,13 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     await this.savePromise;
   }
 
-  /** Point every Embedded note block (desktop and mobile) that shows `oldPath` at `newPath`. */
+  /**
+   * Update every path a block's config names (desktop and mobile) for a renamed
+   * file or folder: embedded notes, folder settings and typed note links
+   * (utils/pathRename.ts).
+   */
   async followRename(oldPath: string, newPath: string): Promise<void> {
-    const follow = (blocks: BlockInstance[]) => blocks.map(b =>
-      b.type === 'embedded-note' && b.config.filePath === oldPath
-        ? { ...b, config: { ...b.config, filePath: newPath } }
-        : b,
-    );
+    const follow = (blocks: BlockInstance[]) => blocks.map(b => followRenameInBlock(b, oldPath, newPath));
     // Discard restores the snapshot an edit session took: it must name the new path too.
     for (const view of this.homepageViews()) view.mapEditSnapshot(follow);
     const blocks = follow(this.layout.blocks);

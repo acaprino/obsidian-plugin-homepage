@@ -218,6 +218,15 @@ describe('embedded notes follow a rename while no block is mounted (R8)', () => 
     expect(plugin.layout.blocks[0].config.filePath).toBe('New.md');
     expect(plugin.layout.mobileBlocks.map(b => b.config.filePath)).toEqual(['New.md', 'Other.md']);
   });
+
+  it('follows a renamed folder in folder settings (M55)', async () => {
+    const { plugin } = pluginWithDisk(getDefaultLayout());
+    plugin.layout = { ...getDefaultLayout(), blocks: [{ id: 'g', type: 'image-gallery', x: 0, y: 0, w: 3, h: 3, config: { folder: 'Pics' } }], mobileBlocks: [] };
+
+    await plugin.followRename('Pics', 'Photos');
+
+    expect(plugin.layout.blocks[0].config.folder).toBe('Photos');
+  });
 });
 
 /** A real homepage view on `plugin`, opened in the document, as Obsidian opens one. */

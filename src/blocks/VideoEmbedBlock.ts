@@ -4,6 +4,7 @@ import { BaseBlock } from './BaseBlock';
 const PLAYLIST_ID_RE = /^[A-Za-z0-9_-]{2,64}$/;
 const YT_VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const YT_ORIGIN = 'https://www.youtube.com';
+const VIMEO_HASH_RE = /^[0-9a-f]{6,20}$/i;
 
 interface EmbedInfo {
   type: 'video' | 'playlist';
@@ -53,9 +54,15 @@ function parseUrl(raw: string): EmbedInfo | null {
   }
 
   // ── Vimeo ────────────────────────────────────────────────
-  if (/^(www\.)?vimeo\.com$/i.test(url.hostname)) {
-    const id = url.pathname.match(/^\/(\d+)/)?.[1];
-    if (id) return { type: 'video', value: `https://player.vimeo.com/video/${id}` };
+  // An unlisted video plays only with its privacy hash (`/<id>/<hash>` or
+  // `?h=`); player, channel and group links name the id elsewhere (M47).
+  if (/^(www\.)?vimeo\.com$|^player\.vimeo\.com$/i.test(url.hostname)) {
+    const m = url.pathname.match(/^\/(?:video\/|channels\/[\w-]+\/|groups\/[\w-]+\/videos\/)?(\d+)(?:\/([0-9a-f]{6,20}))?\/?$/i);
+    if (m) {
+      const hash = m[2] ?? url.searchParams.get('h') ?? '';
+      const h = VIMEO_HASH_RE.test(hash) ? `?h=${hash}` : '';
+      return { type: 'video', value: `https://player.vimeo.com/video/${m[1]}${h}` };
+    }
   }
 
   // ── Dailymotion ──────────────────────────────────────────
@@ -138,7 +145,9 @@ export class VideoEmbedBlock extends BaseBlock {
         allow: 'autoplay; encrypted-media; picture-in-picture',
         allowfullscreen: '',
         loading: 'lazy',
-        referrerpolicy: 'no-referrer',
+        // The origin only: YouTube refuses an embed with no Referer (Error 153,
+        // seen on mobile), and the path of the page is never sent (M48).
+        referrerpolicy: 'strict-origin-when-cross-origin',
         // SECURITY: allow-same-origin + allow-scripts is required by YouTube/Vimeo/
         // Dailymotion embeds. Safe because ALLOWED_EMBED_HOSTS ensures these are always
         // cross-origin to the Obsidian app:// origin. Do NOT add same-origin hosts.

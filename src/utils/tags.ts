@@ -97,14 +97,16 @@ export function installTagCacheListeners(plugin: Plugin): void {
  * `tag` must include the leading `#` (e.g. `#values`).
  * Handles both inline tags and YAML frontmatter tags (with or without `#`),
  * and frontmatter tags that are a plain string instead of an array.
+ * Returns a copy: callers sort it, and sorting the cached array reordered the
+ * list every other caller reads (N13).
  */
 export function getFilesWithTag(app: App, tag: string): TFile[] {
   const cached = tagCache.get(tag);
-  if (cached) return cached;
+  if (cached) return cached.slice();
   const files = app.vault.getMarkdownFiles().filter(file =>
     cacheHasTag(app.metadataCache.getFileCache(file), tag),
   );
   tagCache.set(tag, files);
-  return files;
+  return files.slice();
 }
 

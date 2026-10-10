@@ -39,12 +39,13 @@ function mkFile(path: string): TFile {
 function makeHarness() {
   const fileCaches = new Map<string, CachedMetadata>();
   let mdFiles: TFile[] = [];
+  let scans = 0;
   const vaultL: Record<string, Listener[]> = {};
   const metaL: Record<string, Listener[]> = {};
 
   const app = {
     vault: {
-      getMarkdownFiles: () => mdFiles,
+      getMarkdownFiles: () => { scans++; return mdFiles; },
       on: (evt: string, cb: Listener) => { (vaultL[evt] ??= []).push(cb); return { evt }; },
     },
     metadataCache: {
@@ -59,6 +60,8 @@ function makeHarness() {
     app,
     plugin,
     setFiles: (f: TFile[]) => { mdFiles = f; },
+    /** How many times the vault was scanned (a cache hit scans nothing). */
+    scans: () => scans,
     setTag: (path: string, tag: string | null) => {
       fileCaches.set(path, tag ? ({ tags: [{ tag }] } as unknown as CachedMetadata) : ({} as CachedMetadata));
     },
@@ -83,8 +86,10 @@ describe('tag cache — per-file invalidation (M5)', () => {
     h.setTag('a.md', '#proj');
     const first = getFilesWithTag(h.app, '#proj');
     expect(first.map(f => f.path)).toEqual(['a.md']);
-    // Second call returns the same cached array instance.
-    expect(getFilesWithTag(h.app, '#proj')).toBe(first);
+    const scansAfterFirst = h.scans();
+    // Second call is served from the cache: no new vault scan, same files.
+    expect(getFilesWithTag(h.app, '#proj')).toEqual(first);
+    expect(h.scans()).toBe(scansAfterFirst);
   });
 
   it("a metadata 'changed' that adds the tag updates only that tag's list", () => {
@@ -122,11 +127,13 @@ describe('tag cache — per-file invalidation (M5)', () => {
     h.setTag('other.md', '#unrelated');
     const cached = getFilesWithTag(h.app, '#proj');
     expect(cached.map(f => f.path)).toEqual(['a.md']);
+    const scansBefore = h.scans();
 
     // 'other' changes; it never had #proj. The #proj cache must survive intact
-    // (a global clear would have invalidated it). Same array instance proves it.
+    // (a global clear would have invalidated it): no rescan proves it.
     h.emitMeta('changed', other, '', { tags: [{ tag: '#unrelated' }] });
-    expect(getFilesWithTag(h.app, '#proj')).toBe(cached);
+    expect(getFilesWithTag(h.app, '#proj')).toEqual(cached);
+    expect(h.scans()).toBe(scansBefore);
   });
 
   it("a vault 'delete' drops the file from every cached tag list", () => {
@@ -139,5 +146,20 @@ describe('tag cache — per-file invalidation (M5)', () => {
 
     h.emitVault('delete', a);
     expect(getFilesWithTag(h.app, '#proj').map(f => f.path)).toEqual(['b.md']);
+  });
+});
+
+describe('getFilesWithTag results (N13)', () => {
+  it('returns a copy, so a caller that sorts it leaves the cached order alone', () => {
+    const file = (path: string) => Object.assign(new TFile(), { path, extension: 'md' });
+    const files = [file('b.md'), file('a.md')];
+    const app = {
+      vault: { getMarkdownFiles: () => files },
+      metadataCache: { getFileCache: () => ({ tags: [{ tag: '#n13' }] }) },
+    } as unknown as App;
+
+    getFilesWithTag(app, '#n13').sort((x, y) => x.path.localeCompare(y.path));
+
+    expect(getFilesWithTag(app, '#n13').map(f => f.path)).toEqual(['b.md', 'a.md']);
   });
 });

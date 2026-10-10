@@ -50,3 +50,17 @@ describe('RandomNoteBlock auto-height (M33)', () => {
     expect(body?.querySelector('.random-note-title')?.textContent).toBe('Alpha');
   });
 });
+
+describe('RandomNoteBlock live updates (R9)', () => {
+  it('re-renders when the note it shows loses the tag', async () => {
+    const alpha = note('Alpha.md');
+    const { fire, reads } = mount('#r9', [alpha]);
+    await settle();
+    expect(reads()).toBe(1);
+
+    fire('changed', alpha, '', { tags: [] });
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    expect(reads()).toBe(2);
+  });
+});

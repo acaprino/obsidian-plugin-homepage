@@ -16,6 +16,8 @@ function stripWikiLink(raw: string): string {
 export class RandomNoteBlock extends BaseBlock {
   /** Cached daily-seed file path so the selection is stable across file-count changes. */
   private dailyCache: { dayIndex: number; path: string } | null = null;
+  /** The note shown now: a change that drops its tag must replace it (R9). */
+  private shownPath: string | null = null;
 
   private getTag(): string {
     const { tag = '' } = this.instance.config as { tag?: string };
@@ -29,11 +31,11 @@ export class RandomNoteBlock extends BaseBlock {
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
     const slowTrigger = () => this.scheduleRender(DELETE_RENAME_DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
 
-    this.registerEvent(this.app.metadataCache.on('changed', (_file, _data, cache) => {
+    this.registerEvent(this.app.metadataCache.on('changed', (file, _data, cache) => {
       const tag = this.getTag();
       if (!tag) return;
       const tagSearch = normalizeTag(tag);
-      if (cacheHasTag(cache, tagSearch)) trigger();
+      if (cacheHasTag(cache, tagSearch) || file.path === this.shownPath) trigger();
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
@@ -71,6 +73,7 @@ export class RandomNoteBlock extends BaseBlock {
     };
 
     this.renderHeader(el, 'Random note');
+    this.shownPath = null;
 
     if (!tag) {
       const hint = el.createDiv({ cls: 'block-empty-hint' });
@@ -92,6 +95,7 @@ export class RandomNoteBlock extends BaseBlock {
     }
 
     const file = this.pickFile(files, dailySeed);
+    this.shownPath = file.path;
     const cache = this.app.metadataCache.getFileCache(file);
     const fm = cache?.frontmatter ?? {};
 

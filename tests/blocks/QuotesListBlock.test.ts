@@ -43,3 +43,17 @@ describe('QuotesListBlock Max quotes default (N16)', () => {
     expect(insight.config.maxItems).toBe(1);
   });
 });
+
+describe('QuotesListBlock live updates (R9)', () => {
+  it('re-renders when a note it shows loses the tag', async () => {
+    const shown = { path: 'Q.md', basename: 'Q' };
+    const { rendered, fire, reads } = mountQuotes({ source: 'tag', tag: '#qr9', maxItems: 0, heightMode: 'extend' }, [shown]);
+    await rendered;
+    expect(reads()).toBe(1);
+
+    fire('changed', shown, '', { tags: [] });
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    expect(reads()).toBe(2);
+  });
+});

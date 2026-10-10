@@ -63,6 +63,8 @@ type QuotesConfig = {
 export class QuotesListBlock extends BaseBlock {
   /** Column ResizeObserver — disconnected before each re-render. */
   private colsRo: ResizeObserver | null = null;
+  /** Notes shown now: a change that drops their tag must remove them (R9). */
+  private shownPaths = new Set<string>();
 
   render(el: HTMLElement): Promise<void> {
     this.containerEl = el;
@@ -73,11 +75,11 @@ export class QuotesListBlock extends BaseBlock {
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
 
     // Only watch vault events when using tag source (text source is static config)
-    this.registerEvent(this.app.metadataCache.on('changed', (_file, _data, cache) => {
+    this.registerEvent(this.app.metadataCache.on('changed', (file, _data, cache) => {
       const cfg = this.instance.config as QuotesConfig;
       if (cfg.source === 'text' || !cfg.tag) return;
       const tagSearch = normalizeTag(cfg.tag);
-      if (cacheHasTag(cache, tagSearch)) trigger();
+      if (cacheHasTag(cache, tagSearch) || this.shownPaths.has(file.path)) trigger();
     }));
 
     this.registerEvent(this.app.vault.on('delete', (file) => {
@@ -94,6 +96,7 @@ export class QuotesListBlock extends BaseBlock {
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
+    this.shownPaths = new Set();
     const {
       source = 'tag', tag = '', quotes = '',
       heightMode = 'extend', quoteStyle = 'classic', fontStyle = 'default',
@@ -163,6 +166,7 @@ export class QuotesListBlock extends BaseBlock {
         : Math.floor(Math.random() * files.length);
 
       const file = files[index];
+      this.shownPaths.add(file.path);
       try {
         const content = await this.app.vault.read(file);
         if (this.isStale(gen)) return;
@@ -240,6 +244,7 @@ export class QuotesListBlock extends BaseBlock {
     const allFiles = getFilesWithTag(this.app, tagSearch);
     const files = effectiveMax > 0 ? allFiles.slice(0, effectiveMax) : allFiles;
 
+    for (const file of files) this.shownPaths.add(file.path);
     // Read all files in parallel for better performance
     const results = await Promise.allSettled(
       files.map(async (file) => {

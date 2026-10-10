@@ -329,7 +329,7 @@ export class ImageGalleryBlock extends BaseBlock {
       this.masonryRo = new ResizeObserver(updateCols);
       this.masonryRo.observe(gallery);
     } else {
-      gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(columns, 100));
+      gallery.style.setProperty('--hp-grid-cols', responsiveGridColumns(columns, 100, 8));
     }
 
     if (!folder) {

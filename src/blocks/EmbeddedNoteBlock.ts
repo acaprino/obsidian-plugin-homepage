@@ -85,7 +85,8 @@ export class EmbeddedNoteBlock extends BaseBlock {
       this.renderHeader(el, file.basename);
     }
 
-    const contentEl = el.createDiv({ cls: 'embedded-note-content' });
+    // markdown-rendered: tables, code, quotes and images styled as in reading view (M92).
+    const contentEl = el.createDiv({ cls: 'embedded-note-content markdown-rendered' });
     if (heightMode === 'scroll') {
       contentEl.setAttribute('tabindex', '0');
       contentEl.setAttribute('role', 'region');

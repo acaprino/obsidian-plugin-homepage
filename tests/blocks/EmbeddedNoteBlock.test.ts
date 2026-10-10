@@ -169,3 +169,13 @@ describe('EmbeddedNoteBlock grow mode after the first render (M34)', () => {
     } finally { ro.restore(); }
   });
 });
+
+describe('EmbeddedNoteBlock Markdown styling (M92)', () => {
+  it('renders into a markdown-rendered container', async () => {
+    const v = makeVault({ 'N.md': 'Body' });
+    const instance: BlockInstance = { id: 'e1', type: 'embedded-note', x: 0, y: 0, w: 1, h: 3, config: { filePath: 'N.md' } };
+    const el = document.body.createDiv();
+    await new EmbeddedNoteBlock({ vault: v.vault } as unknown as App, instance, makePlugin([instance])).render(el);
+    expect(el.querySelector('.embedded-note-content')?.classList.contains('markdown-rendered')).toBe(true);
+  });
+});

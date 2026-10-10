@@ -89,3 +89,14 @@ describe('ButtonGridBlock links (M22, M23, M66)', () => {
     win.mockRestore();
   });
 });
+
+describe('ButtonGridBlock columns (M98)', () => {
+  it('sets only a column count inline, so a narrow block can still fall back to one column', () => {
+    const instance: BlockInstance = { id: 'b', type: 'button-grid', x: 0, y: 0, w: 1, h: 3, config: { columns: 3, items: [{ label: 'x' }] } };
+    const el = document.body.createDiv();
+    new ButtonGridBlock({} as App, instance, {} as IHomepagePlugin).render(el);
+    const grid = el.querySelector('.button-grid') as HTMLElement;
+    expect(grid.style.getPropertyValue('--hp-grid-count')).toBe('3');
+    expect(grid.style.getPropertyValue('--hp-grid-cols')).toBe('');
+  });
+});

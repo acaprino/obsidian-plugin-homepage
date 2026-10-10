@@ -74,14 +74,9 @@ export const DEFAULT_LAYOUT_DATA: LayoutConfig = {
       type: 'button-grid',
       x: 2, y: 3, w: 1, h: 5,
       config: {
-        _titleLabel: 'Quick actions', columns: 2, items: [
-          { emoji: '\u{1F4DD}', label: 'New note' },
-          { emoji: '\u{1F4C5}', label: 'Today' },
-          { emoji: '\u{2B50}', label: 'Favorites' },
-          { emoji: '\u{1F50D}', label: 'Search' },
-          { emoji: '\u{1F4DA}', label: 'Library' },
-          { emoji: '\u{2699}️', label: 'Settings' },
-        ],
+        // Empty, showing its "No items yet" hint: six buttons with no link did
+        // nothing when clicked (M95).
+        _titleLabel: 'Quick actions', columns: 2, items: [],
       },
     },
     // Row 2 (y: 6–8)

@@ -256,3 +256,10 @@ describe('StaticTextBlock auto-height after the first render (M34)', () => {
     expect(block.render(document.body.createDiv())).toBeInstanceOf(Promise);
   });
 });
+
+describe('StaticTextBlock Markdown styling (M92)', () => {
+  it('renders into a markdown-rendered container, as reading view does', () => {
+    const { el } = mount('| a |\n|---|\n| 1 |');
+    expect(el.querySelector('.static-text-content')?.classList.contains('markdown-rendered')).toBe(true);
+  });
+});

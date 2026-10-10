@@ -1,4 +1,4 @@
-import { Setting, moment } from 'obsidian';
+import { Setting, getLanguage, moment } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { createEmojiPicker, EmojiPickerInstance } from '../utils/emojiPicker';
 import { dailyIndex } from '../utils/dailySeed';
@@ -91,8 +91,18 @@ const PRESET_KEYS = Object.keys(LANG_PRESETS).sort((a, b) =>
   LANG_PRESETS[a].label.localeCompare(LANG_PRESETS[b].label),
 );
 
-// ── Default Italian salutations ────────────────────────────────────────
-const DEFAULT_SALUT = LANG_PRESETS['it'];
+/**
+ * The preset of a block that has not picked one: the app language, else
+ * English. A new Greeting said "Buongiorno" in any app language (M94).
+ */
+function defaultPresetKey(): string {
+  const lang = getLanguage().toLowerCase().split(/[-_]/)[0];
+  return lang in LANG_PRESETS ? lang : 'en';
+}
+
+function presetOf(cfg: GreetingConfig): LangPreset {
+  return LANG_PRESETS[cfg.salutationPreset ?? ''] ?? LANG_PRESETS[defaultPresetKey()];
+}
 
 const DEFAULT_EMOJIS: Record<string, string> = {
   morning: '☀️',
@@ -128,10 +138,8 @@ function getSalutation(cfg: GreetingConfig, hour: number): string {
     if (custom) return custom;
   }
 
-  // auto — use preset or Italian default
-  const presetKey = cfg.salutationPreset ?? 'it';
-  const preset = LANG_PRESETS[presetKey] ?? DEFAULT_SALUT;
-  return preset[salutSlot(hour)];
+  // auto — the chosen preset, or the app language's
+  return presetOf(cfg)[salutSlot(hour)];
 }
 
 function pickEmoji(cfg: GreetingConfig, hour: number): string {
@@ -200,7 +208,7 @@ export class GreetingBlock extends BaseBlock {
     const now = moment();
     const hour = now.hour();
     const cfg = this.instance.config as GreetingConfig;
-    const { name = 'bentornato', showTime = true, showEmoji = true } = cfg;
+    const { name = '', showTime = true, showEmoji = true } = cfg;
     const key = `${hour}|${showTime ? now.format('HH:mm') : ''}`;
     if (key === this.shown) return;
     this.shown = key;
@@ -210,8 +218,10 @@ export class GreetingBlock extends BaseBlock {
     }
     if (this.nameEl) {
       this.nameEl.empty();
-      this.nameEl.createSpan({ cls: 'greeting-salut', text: `${getSalutation(cfg, hour)}, ` });
-      this.nameEl.createSpan({ cls: 'greeting-user', text: name });
+      // No ", " before an empty name (M94).
+      const who = name.trim();
+      this.nameEl.createSpan({ cls: 'greeting-salut', text: who ? `${getSalutation(cfg, hour)}, ` : getSalutation(cfg, hour) });
+      if (who) this.nameEl.createSpan({ cls: 'greeting-user', text: who });
     }
     if (this.timeEl && showTime) {
       this.timeEl.setText(now.format('HH:mm'));
@@ -223,7 +233,7 @@ export class GreetingBlock extends BaseBlock {
 
     // ── General ────────────────────────────────
     new Setting(body).setName('Name').addText(t =>
-      t.setValue(cfg.name ?? 'bentornato')
+      t.setValue(cfg.name ?? '')
        .onChange(v => { cfg.name = v; }),
     );
     new Setting(body).setName('Show time').addToggle(t =>
@@ -256,28 +266,31 @@ export class GreetingBlock extends BaseBlock {
             for (const key of PRESET_KEYS) {
               d.addOption(key, LANG_PRESETS[key].label);
             }
-            d.setValue(cfg.salutationPreset ?? 'it')
+            d.setValue(cfg.salutationPreset ?? defaultPresetKey())
              .onChange(v => { cfg.salutationPreset = v; });
           });
         // Show preview of current preset
-        const preset = LANG_PRESETS[cfg.salutationPreset ?? 'it'] ?? DEFAULT_SALUT;
+        const preset = presetOf(cfg);
         const preview = salutSection.createDiv({ cls: 'setting-item-description' });
         preview.addClass('hp-preview-hint');
         preview.setText(`${preset.morning} / ${preset.afternoon} / ${preset.evening}`);
       }
 
       if (mode === 'custom') {
+        // An empty field greets with the selected preset, so that is its hint;
+        // the fields showed Italian text as their value whatever the preset (M93).
+        const preset = presetOf(cfg);
         const slots: { key: keyof GreetingConfig; label: string; time: string; fallback: string }[] = [
-          { key: 'salutMorning',   label: 'Morning',   time: '5:00–12:00',  fallback: DEFAULT_SALUT.morning },
-          { key: 'salutAfternoon', label: 'Afternoon',  time: '12:00–18:00', fallback: DEFAULT_SALUT.afternoon },
-          { key: 'salutEvening',   label: 'Evening',    time: '18:00–5:00',  fallback: DEFAULT_SALUT.evening },
+          { key: 'salutMorning',   label: 'Morning',   time: '5:00–12:00',  fallback: preset.morning },
+          { key: 'salutAfternoon', label: 'Afternoon',  time: '12:00–18:00', fallback: preset.afternoon },
+          { key: 'salutEvening',   label: 'Evening',    time: '18:00–5:00',  fallback: preset.evening },
         ];
         for (const slot of slots) {
           new Setting(salutSection)
             .setName(`${slot.label} greeting`)
             .setDesc(slot.time)
             .addText(t =>
-              t.setValue((cfg[slot.key] as string) ?? slot.fallback)
+              t.setValue((cfg[slot.key] as string) ?? '')
                .setPlaceholder(slot.fallback)
                .onChange(v => { (cfg as Record<string, unknown>)[slot.key] = v; }),
             );

@@ -583,3 +583,11 @@ describe('blocks and fields from a newer plugin version (M58)', () => {
     expect(out.themeSync).toBe(1);
   });
 });
+
+describe('default layout Quick actions (M95)', () => {
+  it('ships no button that does nothing when clicked', () => {
+    const grid = getDefaultLayout().blocks.find(b => b.type === 'button-grid');
+    const items = (grid?.config.items ?? []) as { link?: string }[];
+    expect(items.filter(i => !i.link)).toEqual([]);
+  });
+});

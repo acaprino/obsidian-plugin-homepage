@@ -28,7 +28,7 @@ export class BookmarkBlock extends BaseBlock {
 
     const grid = el.createDiv({ cls: 'bookmark-grid' });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
-    grid.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols));
+    grid.style.setProperty('--hp-grid-cols', responsiveGridColumns(safeCols, 120, 6));
 
     if (items.length === 0) {
       const hint = grid.createDiv({ cls: 'block-empty-hint' });

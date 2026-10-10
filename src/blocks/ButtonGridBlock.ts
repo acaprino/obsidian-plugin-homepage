@@ -26,7 +26,8 @@ export class ButtonGridBlock extends BaseBlock {
 
     const grid = el.createDiv({ cls: 'button-grid' });
     const safeCols = Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)));
-    grid.style.setProperty('--hp-grid-cols', `repeat(${safeCols}, 1fr)`);
+    // Only the count inline: an inline track list beat the narrow-block query (M98).
+    grid.style.setProperty('--hp-grid-count', String(safeCols));
     grid.setAttribute(AUTO_HEIGHT_ATTR, '');
     this.observeWidthForAutoHeight(grid);
 

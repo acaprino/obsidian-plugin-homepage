@@ -46,10 +46,10 @@ export function registerBlocks(): void {
     type: 'greeting',
     displayName: 'Greeting',
     defaultConfig: {
-      name: 'World', showTime: true, showEmoji: true, emojiMode: 'auto',
+      name: '', showTime: true, showEmoji: true, emojiMode: 'auto',
       emojiMorning: undefined, emojiAfternoon: undefined, emojiEvening: undefined, emojiNight: undefined,
       emojiPool: '', emojiDailySeed: false,
-      salutationMode: 'auto', salutationPreset: 'it',
+      salutationMode: 'auto', salutationPreset: undefined,
       salutMorning: undefined, salutAfternoon: undefined, salutEvening: undefined,
     },
     defaultSize: { w: 1, h: 3 },
@@ -200,7 +200,7 @@ export function registerBlocks(): void {
   });
   BlockRegistry.register({
     type: 'vault-search',
-    displayName: 'Vault Search',
+    displayName: 'Vault search',
     defaultConfig: { placeholder: 'Search vault...' },
     defaultSize: { w: 2, h: 2 },
     create: (app, instance, plugin) => new VaultSearchBlock(app, instance, plugin),

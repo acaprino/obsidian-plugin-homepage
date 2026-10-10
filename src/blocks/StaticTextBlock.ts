@@ -67,7 +67,8 @@ export class StaticTextBlock extends BaseBlock {
       this.enterInlineEdit(el);
     });
 
-    const contentEl = el.createDiv({ cls: 'static-text-content' });
+    // markdown-rendered: tables, code, quotes and images styled as in reading view (M92).
+    const contentEl = el.createDiv({ cls: 'static-text-content markdown-rendered' });
     if (heightMode !== 'fixed') {
       contentEl.setAttribute(AUTO_HEIGHT_ATTR, '');
       this.observeSizeForAutoHeight(contentEl);

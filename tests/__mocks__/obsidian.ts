@@ -395,3 +395,7 @@ export class SliderComponent {
 }
 
 export class WorkspaceLeaf {}
+
+/** Tests set `value` to the app language; Obsidian's default is 'en'. */
+export const languageMock = { value: 'en' };
+export function getLanguage(): string { return languageMock.value; }

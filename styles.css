@@ -828,6 +828,9 @@
 }
 
 /* ── Clock Block ────────────────────────────────────────── */
+/* (0,3,0): the generic `.homepage-block-wrapper .block-content { display: grid }`
+   outranked `.clock-block`, so the time sat at the top (M99). */
+.homepage-block-wrapper .block-content.clock-block,
 .clock-block {
   display: flex;
   flex-direction: column;
@@ -1575,8 +1578,9 @@
 
 /* ── Button Grid responsive ───────────────────────────── */
 @container (max-width: 250px) {
-  .button-grid {
-    --hp-grid-cols: 1fr;
+  /* (0,2,0): beats the column count rule further down the file (M98). */
+  .button-grid-block .button-grid {
+    grid-template-columns: 1fr;
     gap: 6px;
   }
   .grid-btn {
@@ -3455,6 +3459,7 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+  height: auto; /* Obsidian gives buttons a fixed height: the emoji and description overflowed it (M100) */
   padding: 6px 10px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -3902,7 +3907,7 @@
    "Gallery responsive" container queries. min() clamps the masonry count to
    the user's configured columns (the old `columns: N !important` cap could
    force MORE columns than configured). */
-.button-grid { grid-template-columns: var(--hp-grid-cols); }
+.button-grid { grid-template-columns: repeat(var(--hp-grid-count, 2), 1fr); }
 .bookmark-grid { grid-template-columns: var(--hp-grid-cols); }
 .image-gallery:not(.masonry-layout) { grid-template-columns: var(--hp-grid-cap, var(--hp-grid-cols)); }
 .image-gallery.masonry-layout { column-count: min(var(--hp-masonry-cap, 99), var(--hp-masonry-cols, 3)); }

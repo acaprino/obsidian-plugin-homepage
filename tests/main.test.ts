@@ -491,3 +491,10 @@ describe('a Static Text save still queued when an edit session starts (M52)', ()
     expect(plugin.layout.blocks[0].config.content).toBe('new');
   });
 });
+
+describe('block names (M101)', () => {
+  it('uses sentence case for Vault search', () => {
+    registerBlocks();
+    expect(BlockRegistry.get('vault-search')?.displayName).toBe('Vault search');
+  });
+});

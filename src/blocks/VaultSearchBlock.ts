@@ -42,7 +42,7 @@ export class VaultSearchBlock extends BaseBlock {
     const cfg = this.instance.config as VaultSearchConfig;
     el.addClass('vault-search-block');
 
-    this.renderHeader(el, 'Vault Search');
+    this.renderHeader(el, 'Vault search');
 
     const wrapper = el.createDiv({ cls: 'vault-search-input-wrapper' });
     this.wrapperEl = wrapper;

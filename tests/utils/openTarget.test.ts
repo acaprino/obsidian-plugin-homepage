@@ -116,3 +116,14 @@ describe('openLinkTarget (M23)', () => {
     expect(Notice.messages.some(m => m.includes('Missing.md'))).toBe(true);
   });
 });
+
+describe('openLinkTarget and file names (minor)', () => {
+  it('treats a missing Report.docx or backup.zip as a note link, not a web address', () => {
+    const win = vi.spyOn(window, 'open').mockReturnValue(null);
+    const { app } = makeApp();
+    openLinkTarget(app, 'Report.docx', click());
+    openLinkTarget(app, 'backup.zip', click());
+    expect(win).not.toHaveBeenCalled();
+    expect(Notice.messages.filter(m => /no note named/.test(m))).toHaveLength(2);
+  });
+});

@@ -246,7 +246,7 @@ Inside the card, the following Obsidian variables are redefined from `--_ctrl`: 
 | `block-dark-accent` | light theme: the same test, with `#f5f5f5` as the other text | `.theme-light` (`:307-319`): light text, accent text and links mixed toward white, a light header mix |
 | `hp-plain-header-light` / `-dark` | the 85% accent title mix is below 4.5:1 on what the title sits on: with the header bar on (`_showHeaderAccent !== false`) the header zone, the accent at 22% over the card (`--_accent-header-bg`, `headerBg` in `accentColors`); with it off, the card | the title falls back to `--text-normal` (`:322-325`) |
 | `hp-plain-accent-light` / `-dark` | the accent text colour (mixed toward white on a dark card, toward black on a light one) is below 4.5:1 | `--text-accent`, `--link-color` and their hovers fall back to `--text-normal` (`:326-336`) |
-| `hp-dark-on-accent` | `#1a1a1a` reads better than white on the raw accent | `--text-on-accent: #1a1a1a` (`:339-341`), for controls filled with the raw accent (the voice mic, Pomodoro's Start) |
+| `hp-dark-on-accent` | `#1a1a1a` reads better than white on the raw accent | `--hp-on-raw-accent: #1a1a1a`, read only by the controls filled with the raw accent (the voice mic, Pomodoro's Start: `color: var(--hp-on-raw-accent, var(--text-on-accent, #fff))`); other `--text-on-accent` users (Random note's Open button on `--interactive-accent`, the video play overlay) keep their own colour |
 
 A theme whose backgrounds sit far from Obsidian's defaults gets approximate choices (comment at `accentContrast.ts:1-7`). On mid-tone cards neither text reaches 4.5:1; the code then keeps whichever reads better.
 

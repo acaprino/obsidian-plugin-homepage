@@ -86,7 +86,7 @@ The **Voice Notes** block records audio in your browser and uploads it to a thir
 
 **Size limit:** recording stops by itself, with a notice, just below the provider's upload limit: at 23 MB for OpenAI (limit 25 MB) and 13 MB for Gemini (limit 14.5 MB of audio, its 20 MB request limit less the base64 overhead), so the recording can still be sent.
 
-**Failed transcriptions:** when a transcription fails, times out or returns no text (for Gemini, with the reason it gave), the recording is not lost, even if the homepage was closed or reloaded while it waited: the audio is saved in the destination folder next to a note that names the reason and embeds the audio, so you can listen to it or transcribe it again.
+**Failed transcriptions:** when a transcription fails, times out or returns no text (for Gemini, with the reason it gave), the recording is not lost, even if the homepage was closed or reloaded while it waited: the audio is saved where Obsidian keeps attachments (**Settings → Files and links → Default location for new attachments**), with a note in the destination folder that names the reason and embeds the audio, so you can listen to it or transcribe it again. A destination folder that cannot be used (one with `..`) puts that note in the vault root instead of losing the recording.
 
 **Destination folder:** an existing folder is found whatever its letter case, and a missing one is created.
 

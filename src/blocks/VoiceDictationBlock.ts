@@ -226,6 +226,8 @@ export class VoiceDictationBlock extends BaseBlock {
       };
       mic.addEventListener('pointerup', release);
       mic.addEventListener('pointercancel', release);
+      // Focus moving away while a key holds it: no keyup will come.
+      mic.addEventListener('blur', () => { if (this.pushHeld) release(); });
       // Held from the keyboard too: Space or Enter down starts, up stops (M62).
       const isHoldKey = (e: KeyboardEvent) => e.key === ' ' || e.key === 'Enter';
       mic.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -349,12 +351,22 @@ export class VoiceDictationBlock extends BaseBlock {
    * audio file name.
    */
   private async saveFailedRecording(blob: Blob, mimeType: string, cfg: VoiceDictationConfig, reason: string): Promise<string> {
-    const dir = await this.resolveFolder(cfg.folder ?? '');
+    // A refused folder (`..`) must not cost the recording: the note goes to the vault root.
+    const dir = await this.resolveFolder(cfg.folder ?? '').catch((e: unknown) => {
+      if (e instanceof NoteSaveError) return '';
+      throw e;
+    });
     const stamp = moment().format('YYYY-MM-DD HH-mm-ss');
-    const audioPath = uniqueFilePath(dir, stamp, audioExtension(mimeType), this.fileExists);
+    const notePath = uniqueFilePath(dir, stamp, 'md', this.fileExists);
+    const fileName = `${stamp}.${audioExtension(mimeType)}`;
+    // The audio goes where Obsidian keeps attachments for that note, as a pasted
+    // recording would; beside the note when the host offers no such setting.
+    const audioPath = this.app.fileManager?.getAvailablePathForAttachment
+      ? await this.app.fileManager.getAvailablePathForAttachment(fileName, notePath)
+      : uniqueFilePath(dir, stamp, audioExtension(mimeType), this.fileExists);
     await this.app.vault.createBinary(audioPath, await blob.arrayBuffer());
     const name = audioPath.slice(audioPath.lastIndexOf('/') + 1);
-    await this.app.vault.create(uniqueFilePath(dir, stamp, 'md', this.fileExists), `${reason}\n\n![[${name}]]\n`);
+    await this.app.vault.create(notePath, `${reason}\n\n![[${name}]]\n`);
     return name;
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { loadLayoutWithRecovery, loadProblemMessage, newerVersionMessage } from '../../src/utils/loadRecovery';
+import { loadLayoutWithRecovery, loadProblemMessage, newerVersionMessage, newerVersionNotice } from '../../src/utils/loadRecovery';
 import { getDefaultLayout } from '../../src/validation';
 
 const DATA = '.obsidian/plugins/homepage-blocks/data.json';
@@ -222,5 +222,20 @@ describe('newerVersionMessage (M58)', () => {
   it('says nothing when there are none', () => {
     expect(newerVersionMessage(getDefaultLayout())).toBeNull();
     expect(newerVersionMessage({ ...getDefaultLayout(), preserved: { blocks: [], mobileBlocks: [], fields: { x: 1 } } })).toBeNull();
+  });
+});
+
+describe('newerVersionNotice (minor)', () => {
+  const layout = (ids: string[]) => ({ ...getDefaultLayout(), preserved: { blocks: ids.map(id => ({ id })), mobileBlocks: [], fields: {} } });
+
+  it('tells once per set of kept blocks, not at every launch', () => {
+    const first = newerVersionNotice(layout(['f1']), null);
+    expect(first?.message).toMatch(/1 block/);
+    expect(newerVersionNotice(layout(['f1']), first!.told)).toBeNull();
+    expect(newerVersionNotice(layout(['f1', 'f2']), first!.told)?.message).toMatch(/2 block/);
+  });
+
+  it('says nothing without kept blocks', () => {
+    expect(newerVersionNotice(getDefaultLayout(), null)).toBeNull();
   });
 });

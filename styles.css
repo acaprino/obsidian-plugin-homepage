@@ -338,7 +338,7 @@
 
 /* Dark text on controls filled with a bright accent (the mic, Pomodoro's Start), M108. */
 .block-accented.hp-dark-on-accent {
-  --text-on-accent: #1a1a1a;
+  --hp-on-raw-accent: #1a1a1a;
 }
 
 /* Hide header accent — keep card border/bg tint but neutralize header zone */
@@ -374,6 +374,11 @@
   transition: transform 0.12s ease-out, border-color 0.12s ease-out, box-shadow 0.12s ease-out;
 }
 
+.accent-preset-swatch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .accent-preset-swatch:hover {
   transform: scale(1.2);
   border-color: var(--text-normal);
@@ -384,7 +389,7 @@
 .settings-preview-card {
   margin: 0 0 16px;
   pointer-events: none;
-  transition: background 0.15s, border-color 0.15s, padding 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
 
 .settings-preview-body {
@@ -1288,7 +1293,8 @@
   border-radius: 50%;
   border: none;
   background: var(--block-accent, var(--color-accent));
-  color: var(--text-on-accent, #fff);
+  /* The block's raw accent fills it: dark text when that accent is bright (M108). */
+  color: var(--hp-on-raw-accent, var(--text-on-accent, #fff));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -3756,7 +3762,7 @@
 
 .pomodoro-btn.is-primary {
   background: var(--block-accent, var(--color-accent));
-  color: var(--text-on-accent, #fff);
+  color: var(--hp-on-raw-accent, var(--text-on-accent, #fff));
   border-color: var(--block-accent, var(--color-accent));
 }
 

@@ -78,3 +78,29 @@ describe('accentColors: the title sits on the tinted header zone (M107, after re
     expect(c.headerBg).toBe(c.bg);
   });
 });
+
+describe('accentColors: the same accent-text mix as the stylesheet (minor)', () => {
+  // styles.css: dark theme -> 60% white, dark theme on a flipped (bright) card -> 50% black,
+  // light theme -> 60% black, light theme on a flipped (dark) card -> 60% white.
+  const mixHex = (a: string, pct: number, b: string): string => {
+    const ch = (h: string, i: number) => parseInt(h.slice(i, i + 2), 16);
+    return '#' + [1, 3, 5].map(i => Math.round(ch(a, i) * pct / 100 + ch(b, i) * (1 - pct / 100)).toString(16).padStart(2, '0')).join('');
+  };
+  it('matches it for every sampled accent and intensity', () => {
+    const mismatches: string[] = [];
+    for (let r = 0; r < 256; r += 17) for (let g = 0; g < 256; g += 17) for (let b = 0; b < 256; b += 17) {
+      const accent = '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+      for (let pct = 10; pct <= 100; pct += 10) {
+        for (const theme of ['light', 'dark'] as const) {
+          const c = accentColors(accent, pct, true, theme);
+          if (c.plainAccentText) continue;
+          const css = theme === 'dark'
+            ? (c.flipText ? mixHex(accent, 50, '#000000') : mixHex(accent, 60, '#ffffff'))
+            : (c.flipText ? mixHex(accent, 60, '#ffffff') : mixHex(accent, 60, '#000000'));
+          if (c.accentText !== css) mismatches.push(`${accent} ${pct}% ${theme}`);
+        }
+      }
+    }
+    expect(mismatches.slice(0, 5)).toEqual([]);
+  });
+});

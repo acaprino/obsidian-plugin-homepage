@@ -68,3 +68,13 @@ describe('renameLink: links typed by name (M22, after review)', () => {
     expect((out.config.items as { link: string }[])[0].link).toBe('[[Roadmap]]');
   });
 });
+
+describe('renamePath and how folders are typed (minor)', () => {
+  it('follows a value typed with slashes around it', () => {
+    expect(renamePath('/Photos/', 'Photos', 'Pictures')).toBe('Pictures');
+  });
+
+  it('follows a value typed in another letter case', () => {
+    expect(renamePath('photos/2026', 'Photos', 'Pictures')).toBe('Pictures/2026');
+  });
+});

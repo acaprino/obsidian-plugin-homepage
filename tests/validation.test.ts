@@ -629,3 +629,20 @@ describe('blocks of a newer version are written back unchanged (M58, after docs 
     expect(out.preserved?.blocks[0]).toEqual({ id: 'f', type: 'weather', x: 0, y: 0, w: 1, h: 1, config: { _transparent: true, _hideTitle: true } });
   });
 });
+
+describe('blocks of a newer version and the block limit (minor)', () => {
+  it('counts them toward the limit, reporting the ones past it', () => {
+    const known = Array.from({ length: MAX_BLOCKS - 1 }, (_, i) => block({ id: 'k' + i }));
+    const future = [1, 2, 3].map(i => ({ id: 'f' + i, type: 'weather', x: 0, y: 0, w: 1, h: 1, config: {} }));
+    let dropped = 0;
+    const out = validateLayout({ blocks: [...known, ...future] }, undefined, (n) => { dropped += n; });
+    expect(out.blocks.length + (out.preserved?.blocks.length ?? 0)).toBe(MAX_BLOCKS);
+    expect(dropped).toBe(2);
+  });
+
+  it('drops one that shares its id with a known block', () => {
+    const out = validateLayout({ blocks: [block({ id: 'a' }), { id: 'a', type: 'weather', x: 0, y: 0, w: 1, h: 1, config: {} }] });
+    expect(out.blocks.map(b => b.id)).toEqual(['a']);
+    expect(out.preserved).toBeUndefined();
+  });
+});

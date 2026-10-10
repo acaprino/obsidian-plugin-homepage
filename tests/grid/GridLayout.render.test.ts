@@ -615,3 +615,15 @@ describe('GridLayout — a header-less block stored collapsed (M49, after review
     expect(host.querySelector('[gs-id="a"]')?.getAttribute('gs-h')).toBe('3');
   });
 });
+
+describe('GridLayout — zoom after leaving edit mode (minor)', () => {
+  it('starts the next session unzoomed', () => {
+    const { grid, gridEl } = editingGrid([clock('a')]);
+    grid.setZoom(0.8);
+    grid.setEditMode(false);
+
+    grid.setEditMode(true);
+
+    expect(gridEl.classList.contains('hp-zoomed')).toBe(false);
+  });
+});

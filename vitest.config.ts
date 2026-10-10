@@ -11,6 +11,17 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // No page loads for iframes, scripts or stylesheets: video embeds fetched
+    // YouTube and Vimeo during the run.
+    environmentOptions: {
+      happyDOM: {
+        settings: {
+          disableIframePageLoading: true,
+          disableJavaScriptFileLoading: true,
+          disableCSSFileLoading: true,
+        },
+      },
+    },
     include: ['tests/**/*.test.ts'],
     // IndexedDB (fake-indexeddb) and the Obsidian DOM helpers for every test file.
     setupFiles: ['tests/setup.ts'],

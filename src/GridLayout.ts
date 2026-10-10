@@ -276,18 +276,19 @@ export class GridLayout {
   /** Zoom of the edit-mode grid, re-applied after each edit-mode re-render (M71). */
   private zoom = 1;
   /** Wheel listener that holds the scroll during a zoomed drag (M26). */
-  private wheelHold: ((e: Event) => void) | null = null;
+  private wheelHold: { target: HTMLElement; fn: (e: Event) => void } | null = null;
 
   private holdWheelWhileDragging(on: boolean): void {
-    const view = this.gridEl.closest('.homepage-view');
-    const target = view instanceof HTMLElement ? view : this.gridEl;
     if (this.wheelHold) {
-      target.removeEventListener('wheel', this.wheelHold);
+      this.wheelHold.target.removeEventListener('wheel', this.wheelHold.fn);
       this.wheelHold = null;
     }
     if (!on) return;
-    this.wheelHold = (e: Event) => { e.preventDefault(); };
-    target.addEventListener('wheel', this.wheelHold, { passive: false });
+    const view = this.gridEl.closest('.homepage-view');
+    const target = view instanceof HTMLElement ? view : this.gridEl;
+    const fn = (e: Event) => { e.preventDefault(); };
+    target.addEventListener('wheel', fn, { passive: false });
+    this.wheelHold = { target, fn };
   }
 
   /**

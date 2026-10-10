@@ -51,7 +51,14 @@ export function openNoteLink(app: App, raw: string, evt?: OpenEvent): void {
 const SCHEME_RE = /^[a-z][a-z0-9+.-]+:/i;
 /** A host name without a scheme, like `github.com/owner`; a file name such as `Plan.md` is not one. */
 const DOMAIN_RE = /^(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i;
-const FILE_EXT_RE = /^[^/?#]+\.(?:md|canvas|base|pdf|png|jpe?g|gif|webp|svg|txt|mp3|mp4|webm|csv|json)$/i;
+const FILE_EXT_RE = new RegExp('^[^/?#]+\\.(?:' + [
+  'md', 'canvas', 'base', 'txt', 'pdf', 'csv', 'json', 'xml', 'html?', 'epub',
+  'docx?', 'xlsx?', 'pptx?', 'od[tsp]', 'rtf', 'pages', 'numbers', 'key',
+  'zip', 'rar', '7z', 'tar', 'gz', 'tgz',
+  'png', 'jpe?g', 'gif', 'webp', 'svg', 'bmp', 'tiff?', 'heic', 'avif',
+  'mp3', 'm4a', 'wav', 'ogg', 'flac', 'opus', 'mp4', 'm4v', 'mov', 'avi', 'mkv', 'webm',
+  'js', 'ts', 'py', 'css',
+].join('|') + ')$', 'i');
 
 /**
  * Open a Bookmarks or Button grid target: a URL externally (any scheme but the

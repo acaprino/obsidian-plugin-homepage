@@ -84,9 +84,10 @@ export function accentColors(accent: string, pct: number, opaque: boolean, theme
   const other = theme === 'dark' ? DARK_TEXT : LIGHT_TEXT;
   const flipText = opaque && contrastRatio(t.text, bg) < MIN_CONTRAST && contrastRatio(other, bg) > contrastRatio(t.text, bg);
   const text = flipText ? other : t.text;
-  // Accent-coloured text mixes toward white on a dark card and toward black on a
-  // light one, as the stylesheet does (--_ctrl).
-  const darkCard = contrastRatio(LIGHT_TEXT, bg) >= contrastRatio(DARK_TEXT, bg);
+  // Accent-coloured text as the stylesheet mixes it, keyed on the same flip
+  // classes: toward white on a dark card (dark theme, or a flipped light-theme
+  // card), toward black on a light one (light theme, or a flipped dark-theme card).
+  const darkCard = theme === 'dark' ? !flipText : flipText;
   const ctrl = darkCard ? mix(accent, 60, '#ffffff') : mix(accent, theme === 'dark' ? 50 : 60, '#000000');
   const plainAccentText = contrastRatio(ctrl, bg) < MIN_CONTRAST;
   // The title sits on the header zone: the accent at 22% over the card (--_accent-header-bg).

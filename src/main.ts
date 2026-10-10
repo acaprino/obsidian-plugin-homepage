@@ -2,7 +2,7 @@ import { Notice, Platform, Plugin, WorkspaceLeaf, normalizePath } from 'obsidian
 import { VIEW_TYPE, HomepageView } from './HomepageView';
 import { BlockInstance, LayoutConfig, LayoutPriority, OpenMode, IHomepagePlugin } from './types';
 import { getDefaultLayout, toStoredLayout } from './validation';
-import { DataFileGuard, fileName, loadLayoutWithRecovery, loadProblemMessage, newerVersionMessage } from './utils/loadRecovery';
+import { DataFileGuard, fileName, loadLayoutWithRecovery, loadProblemMessage, newerVersionNotice } from './utils/loadRecovery';
 import { BlockRegistry } from './BlockRegistry';
 import { HomepageSettingTab } from './settings/HomepageSettingTab';
 import { installTagCacheListeners } from './utils/tags';
@@ -241,6 +241,9 @@ export function homepageCommand<V>(target: () => V | null, run: (view: V) => voi
  */
 const UNREADABLE_KEYS_STORAGE_KEY = 'hp-unreadable-api-keys';
 
+/** Vault-scoped localStorage key (per device): the kept newer-version blocks last told about. */
+const NEWER_VERSION_STORAGE_KEY = 'hp-newer-version-told';
+
 export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   layout: LayoutConfig = getDefaultLayout();
 
@@ -271,8 +274,14 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       }
       new Notice(loadProblemMessage(loaded.problem, loaded.backupPath), 12_000);
     }
-    const newer = newerVersionMessage(loaded.layout);
-    if (newer) new Notice(newer, 12_000);
+    // Told once per set of kept blocks, per device (vault-scoped local storage).
+    let told: string | null = null;
+    try { told = (this.app.loadLocalStorage(NEWER_VERSION_STORAGE_KEY) as string | null) ?? null; } catch { /* unavailable: tell */ }
+    const newer = newerVersionNotice(loaded.layout, told);
+    if (newer) {
+      new Notice(newer.message, 12_000);
+      try { this.app.saveLocalStorage(NEWER_VERSION_STORAGE_KEY, newer.told); } catch { /* told again next time */ }
+    }
     // Every write asks this first: while a broken data.json could not be backed
     // up, writing would destroy the only copy.
     this.dataGuard = loaded.guard;

@@ -525,3 +525,77 @@ describe('VoiceDictationBlock after the review (M19)', () => {
     expect(v.binaries).toHaveLength(1);
   });
 });
+
+describe('VoiceDictationBlock minor fixes', () => {
+  let openMic: () => void = () => {};
+  const settle = (ms = 20) => new Promise(resolve => setTimeout(resolve, ms));
+  beforeEach(() => {
+    FakeRecorder.instances = [];
+    FakeRecorder.failStart = false;
+    Notice.messages = [];
+    requestUrlMock.reset();
+    (globalThis as Record<string, unknown>).MediaRecorder = FakeRecorder;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: () => new Promise(resolve => { openMic = () => resolve({ getTracks: () => [{ stop() {} }] }); }) },
+    });
+  });
+  afterEach(() => { requestUrlMock.reset(); });
+
+  function mountVoice(config: Record<string, unknown>, attachments?: (name: string, source: string) => string) {
+    const binaries: string[] = [];
+    const created: Record<string, string> = {};
+    const root = new TFolder();
+    root.path = '';
+    root.children = [];
+    const app = {
+      loadLocalStorage: () => ({ whisper: true }), saveLocalStorage: () => {},
+      vault: {
+        getRoot: () => root,
+        getAbstractFileByPath: () => null,
+        createFolder: async () => {},
+        create: async (p: string, data: string) => { created[p] = data; return {}; },
+        createBinary: async (p: string) => { binaries.push(p); return {}; },
+      },
+      ...(attachments ? { fileManager: { getAvailablePathForAttachment: async (n: string, s: string) => attachments(n, s) } } : {}),
+    } as unknown as App;
+    const instance: BlockInstance = { id: 'v1', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-key', triggerMode: 'tap', ...config } };
+    const block = new VoiceDictationBlock(app, instance, {} as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    block.render(el);
+    return { block, el, mic: el.querySelector('button.voice-mic') as HTMLButtonElement, binaries, created };
+  }
+
+  it('releases a keyboard push-to-talk when the button loses focus', async () => {
+    const v = mountVoice({ triggerMode: 'push' });
+    v.mic.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }));
+    openMic(); await settle();
+    expect(v.el.dataset.voiceState).toBe('recording');
+
+    v.mic.dispatchEvent(new FocusEvent('blur'));
+
+    expect(FakeRecorder.instances[0].state).toBe('inactive');
+    v.block.unload();
+  });
+
+  it('keeps a failed recording in the attachment folder Obsidian is set to use', async () => {
+    requestUrlMock.handler = async () => ({ status: 500, text: '', json: {} });
+    const v = mountVoice({ folder: 'Voice' }, (name) => `Attachments/${name}`);
+    v.mic.click(); openMic(); await settle();
+    v.mic.click();
+    await vi.waitFor(() => { expect(v.binaries).toHaveLength(1); }, { timeout: 3000, interval: 10 });
+
+    expect(v.binaries[0]).toMatch(/^Attachments\/.+\.webm$/);
+    v.block.unload();
+  });
+
+  it('keeps a failed recording although the folder setting is refused', async () => {
+    requestUrlMock.handler = async () => ({ status: 500, text: '', json: {} });
+    const v = mountVoice({ folder: 'notes/..' });
+    v.mic.click(); openMic(); await settle();
+    v.mic.click();
+    await vi.waitFor(() => { expect(v.binaries).toHaveLength(1); }, { timeout: 3000, interval: 10 });
+    v.block.unload();
+  });
+});

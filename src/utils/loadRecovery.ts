@@ -157,6 +157,20 @@ export function newerVersionMessage(layout: LayoutConfig): string | null {
   return n > 0 ? `Homepage blocks: ${n} block(s) need a newer version of the plugin. They are kept and not shown.` : null;
 }
 
+/**
+ * The newer-version notice, once per set of kept blocks: `told` is the
+ * signature of the set last told about (null for none), and the result carries
+ * the signature to store. A notice at every launch about the same blocks was
+ * noise; a new or a changed set is told again.
+ */
+export function newerVersionNotice(layout: LayoutConfig, told: string | null): { message: string; told: string } | null {
+  const message = newerVersionMessage(layout);
+  if (!message) return null;
+  const ids = [...(layout.preserved?.blocks ?? []), ...(layout.preserved?.mobileBlocks ?? [])]
+    .map(b => { const id = (b as { id?: unknown }).id; return typeof id === 'string' ? id : ''; }).sort().join(',');
+  return ids === told ? null : { message, told: ids };
+}
+
 /** The last segment of a vault path. */
 export function fileName(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);

@@ -8,9 +8,14 @@ const stripMd = (p: string): string => (p.endsWith('.md') ? p.slice(0, -3) : p);
  * `.md`, as link text often omits it), or something inside a renamed folder.
  */
 export function renamePath(value: string, oldPath: string, newPath: string): string | null {
-  if (value === oldPath) return newPath;
-  if (oldPath.endsWith('.md') && value === stripMd(oldPath)) return stripMd(newPath);
-  if (value.startsWith(oldPath + '/')) return newPath + value.slice(oldPath.length);
+  // As typed: slashes around it and another letter case still name the path
+  // (folder settings are matched that way, M18, M67).
+  const v = value.trim().replace(/^\/+|\/+$/g, '');
+  const lower = v.toLowerCase();
+  const old = oldPath.toLowerCase();
+  if (lower === old) return newPath;
+  if (old.endsWith('.md') && lower === stripMd(old)) return stripMd(newPath);
+  if (lower.startsWith(old + '/')) return newPath + v.slice(oldPath.length);
   return null;
 }
 

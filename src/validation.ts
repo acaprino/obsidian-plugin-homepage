@@ -271,10 +271,11 @@ export function validateBlocks(
   if (!Array.isArray(raw)) return defaults;
   // A block of an unknown type goes to onUnknownType as stored (M58), when the
   // caller keeps such blocks; otherwise it counts as invalid.
+  const unknown: Record<string, unknown>[] = [];
   const known = onUnknownType
     ? raw.filter((b: unknown) => {
       if (!isUnknownTypeBlock(b)) return true;
-      onUnknownType(b);
+      unknown.push(b);
       return false;
     })
     : raw;
@@ -282,8 +283,22 @@ export function validateBlocks(
   const validAll = migrated.filter(isValidBlockInstance);
   const invalidCount = migrated.length - validAll.length;
   const overLimit = Math.max(0, validAll.length - MAX_BLOCKS);
-  if (invalidCount + overLimit > 0) onInvalidDropped?.(invalidCount + overLimit);
   const valid = validAll.slice(0, MAX_BLOCKS);
+  // Kept blocks of a newer version share the limit and the ids: past the limit
+  // the newer version would cut them anyway, and one sharing a known block's id
+  // would be dropped there by the dedup.
+  const knownIds = new Set(valid.map(b => b.id));
+  const keptIds = new Set<string>();
+  const keep = unknown.filter(b => {
+    const id = b.id as string;
+    if (knownIds.has(id) || keptIds.has(id)) return false;
+    keptIds.add(id);
+    return true;
+  });
+  const room = Math.max(0, MAX_BLOCKS - knownIds.size);
+  const unknownOver = Math.max(0, keep.length - room);
+  for (const b of keep.slice(0, room)) onUnknownType?.(b);
+  if (invalidCount + overLimit + unknownOver > 0) onInvalidDropped?.(invalidCount + overLimit + unknownOver);
   // Dedupe block IDs. A hand-edited or clipboard-imported layout with two blocks
   // sharing the same id breaks every gs-id selector + Array.find lookup downstream
   // (edit handles modify the wrong block, remove deletes one but not the duplicate,

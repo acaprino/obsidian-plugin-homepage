@@ -6,22 +6,27 @@ import { HomepageView } from '../../src/HomepageView';
 import { getDefaultLayout } from '../../src/validation';
 import type { IHomepagePlugin, LayoutConfig } from '../../src/types';
 
-/** An open homepage view as HomepageView.onOpen leaves it: its content element carries .homepage-view. */
-function openHomepage(plugin: IHomepagePlugin): HomepageView {
+/** An open homepage view, opened by HomepageView.onOpen as the workspace does (M125). */
+function openHomepage(plugin: IHomepagePlugin, app: App): HomepageView {
   const view = new HomepageView({} as WorkspaceLeaf, plugin);
-  view.contentEl.addClass('homepage-view');
+  (view as unknown as { app: App }).app = app;
+  document.body.appendChild(view.contentEl);
+  void view.onOpen();
   return view;
 }
 
-function renderTab(): { tab: HomepageSettingTab; view: HomepageView; plugin: IHomepagePlugin } {
+function renderTab(layout: LayoutConfig = getDefaultLayout()): { tab: HomepageSettingTab; view: HomepageView; plugin: IHomepagePlugin } {
   const plugin = {
-    layout: getDefaultLayout(),
+    layout,
     saveLayout: async (l: LayoutConfig) => { plugin.layout = l; },
     register: () => {},
     isMobileActive: () => false,
+    activeBlocks: () => plugin.layout.blocks,
+    activeColumns: () => plugin.layout.columns,
+    activeLayoutPriority: () => 'row',
   } as unknown as IHomepagePlugin;
-  const view = openHomepage(plugin);
   const app = { workspace: { getLeavesOfType: () => [{ view }] } } as unknown as App;
+  const view = openHomepage(plugin, app);
   const tab = new HomepageSettingTab(app, plugin as never);
   tab.display();
   return { tab, view, plugin };
@@ -47,7 +52,7 @@ describe('HomepageSettingTab display toggles', () => {
 
   it('applies hover highlight to an open homepage as soon as the setting is turned off', () => {
     const { tab, view } = renderTab();
-    view.contentEl.addClass('homepage-hover-highlight'); // on by default
+    expect(view.contentEl.hasClass('homepage-hover-highlight')).toBe(true); // on by default
 
     toggleNamed(tab.containerEl, 'Hover highlight').click();
 
@@ -163,5 +168,26 @@ describe('HomepageSettingTab actions that replace a layout (M7)', () => {
 
     expect(names.indexOf('Display')).toBeGreaterThan(names.indexOf('Mobile layout'));
     expect(names.indexOf('Display')).toBeLessThan(names.indexOf('Reset to default layout'));
+  });
+});
+
+describe('HomepageSettingTab export (M123)', () => {
+  it('copies a layout with no API key and no custom CSS, on either platform', async () => {
+    const layout = {
+      ...getDefaultLayout(),
+      blocks: [{ id: 'v', type: 'voice-dictation' as const, x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-secret', folder: 'Voice' } }],
+      mobileBlocks: [{ id: 'b', type: 'button-grid' as const, x: 0, y: 0, w: 1, h: 3, config: { customCss: '--hp-btn-bg: red', apiKey: 'sk-mobile' } }],
+    };
+    const { tab } = renderTab(layout);
+    let copied = '';
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t: string) => { copied = t; } } });
+
+    ([...tab.containerEl.querySelectorAll('button')].find(b => b.textContent === 'Copy to clipboard') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(copied).not.toBe(''));
+
+    expect(copied).not.toContain('sk-secret');
+    expect(copied).not.toContain('sk-mobile');
+    expect(copied).not.toContain('customCss');
+    expect(JSON.parse(copied).blocks[0].config.folder).toBe('Voice');
   });
 });

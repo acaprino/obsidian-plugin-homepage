@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { IDBFactory } from 'fake-indexeddb';
 import { decryptApiKeys, encryptApiKeys, persistableLayout, unreadableKeyNotice } from '../../src/utils/apiKeyLayout';
 import { _resetDeviceKeyCache, decryptStringEx, isEncrypted } from '../../src/utils/apiKeyCrypto';
@@ -50,6 +50,9 @@ describe('API keys in a data.json synced between devices', () => {
   it('still decrypts a key saved on the same device', async () => {
     useNewDevice();
     const onDisk = await encryptApiKeys(layoutWithVoiceKey('sk-same-device'), null);
+    // A new session on the same device: the key comes back from IndexedDB, not
+    // from memory (M126).
+    _resetDeviceKeyCache();
 
     const { layout: loaded, stable, unreadable } = await decryptApiKeys(structuredClone(onDisk));
 
@@ -181,5 +184,40 @@ describe('persistableLayout reuses the ciphertext of an unchanged key (M57)', ()
 
     expect(second.blocks[0].config.apiKey).not.toBe(first.blocks[0].config.apiKey);
     expect((await decryptStringEx(second.blocks[0].config.apiKey as string))).toMatchObject({ ok: true, plaintext: 'sk-two' });
+  });
+});
+
+describe('no plaintext key reaches data.json (M14)', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('keeps the stored ciphertext when encryption fails this save', async () => {
+    useNewDevice();
+    const stored = await encryptApiKeys(layoutWithVoiceKey('sk-old'), null);
+    _resetDeviceKeyCache();
+    vi.spyOn(crypto.subtle, 'encrypt').mockRejectedValue(new Error('OperationError'));
+
+    const written = await persistableLayout(layoutWithVoiceKey('sk-new'), async () => stored);
+
+    expect(written.blocks[0].config.apiKey).toBe(stored.blocks[0].config.apiKey);
+  });
+
+  it('writes no key at all when encryption fails and nothing was stored', async () => {
+    useNewDevice();
+    vi.spyOn(crypto.subtle, 'encrypt').mockRejectedValue(new Error('OperationError'));
+
+    const written = await persistableLayout(layoutWithVoiceKey('sk-new'), async () => null);
+
+    expect(written.blocks[0].config.apiKey).toBe('');
+  });
+
+  it('encrypts a key held only by a mobile block', async () => {
+    useNewDevice();
+    const layout = getDefaultLayout();
+    layout.blocks = [];
+    layout.mobileBlocks = [{ id: 'm', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-mobile' } }];
+
+    const written = await persistableLayout(layout, async () => null);
+
+    expect(isEncrypted(written.mobileBlocks[0].config.apiKey as string)).toBe(true);
   });
 });

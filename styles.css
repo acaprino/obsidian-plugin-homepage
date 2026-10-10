@@ -289,6 +289,51 @@
   border-color: rgba(0, 0, 0, 0.2);
 }
 
+/* Dark theme: accent-coloured text mixes toward white, readable on the dark
+   card; mixed toward black it dropped to 1.1-1.8:1 (M51). Controls keep the
+   darker --_ctrl fill. A bright card (block-bright-accent) overrides both. */
+.theme-dark .block-accented {
+  --text-accent: color-mix(in srgb, var(--block-accent) 60%, white);
+  --text-accent-hover: color-mix(in srgb, var(--block-accent) 50%, white);
+}
+
+/* Light theme, card mostly a dark accent: light text (M50). */
+.theme-light .block-accented.block-dark-accent,
+.theme-light .block-accented.block-dark-accent .block-content,
+.theme-light .block-accented.block-dark-accent .markdown-rendered {
+  --text-normal: #f5f5f5;
+  --text-muted: rgba(255, 255, 255, 0.7);
+  --text-faint: rgba(255, 255, 255, 0.55);
+  --text-accent: color-mix(in srgb, var(--block-accent) 60%, white);
+  --text-accent-hover: color-mix(in srgb, var(--block-accent) 50%, white);
+  --link-color: var(--text-accent);
+  --link-color-hover: var(--text-accent-hover);
+  --_accent-header-text: color-mix(in srgb, var(--block-accent) 85%, #f5f5f5);
+  color: #f5f5f5;
+}
+
+/* Below 4.5:1 an accent-tinted title or link falls back to the card's text (M107). */
+.theme-light .block-accented.hp-plain-header-light,
+.theme-dark .block-accented.hp-plain-header-dark {
+  --_accent-header-text: var(--text-normal);
+}
+.theme-light .block-accented.hp-plain-accent-light,
+.theme-light .block-accented.hp-plain-accent-light .block-content,
+.theme-light .block-accented.hp-plain-accent-light .markdown-rendered,
+.theme-dark .block-accented.hp-plain-accent-dark,
+.theme-dark .block-accented.hp-plain-accent-dark .block-content,
+.theme-dark .block-accented.hp-plain-accent-dark .markdown-rendered {
+  --text-accent: var(--text-normal);
+  --text-accent-hover: var(--text-normal);
+  --link-color: var(--text-normal);
+  --link-color-hover: var(--text-normal);
+}
+
+/* Dark text on controls filled with a bright accent (the mic, Pomodoro's Start), M108. */
+.block-accented.hp-dark-on-accent {
+  --text-on-accent: #1a1a1a;
+}
+
 /* Hide header accent — keep card border/bg tint but neutralize header zone */
 .block-accented.block-no-header-accent .block-header-zone {
   background: transparent;

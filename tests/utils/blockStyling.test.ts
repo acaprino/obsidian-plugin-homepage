@@ -49,3 +49,28 @@ describe('applyBlockStyling padding and background (M106, M110)', () => {
     expect(el.classList.contains('block-custom-opacity')).toBe(false);
   });
 });
+
+describe('applyBlockStyling accent text classes (M50, M51, M107, M108)', () => {
+  const styled = (config: Record<string, unknown>) => {
+    const el = document.createElement('div');
+    applyBlockStyling(el, config);
+    return el.classList;
+  };
+
+  it('keeps light text on a dark card tinted 30% yellow', () => {
+    expect(styled({ _accentColor: '#ffd500', _accentIntensity: 30 }).contains('block-bright-accent')).toBe(false);
+  });
+
+  it('flips text only on an opaque accent background', () => {
+    expect(styled({ _accentColor: '#ffd500', _accentIntensity: 80 }).contains('block-bright-accent')).toBe(true);
+    expect(styled({ _accentColor: '#ffd500', _accentIntensity: 80, _showBackground: false }).contains('block-bright-accent')).toBe(false);
+    expect(styled({ _accentColor: '#ffd500', _accentIntensity: 80, _bgOpacity: 50 }).contains('block-bright-accent')).toBe(false);
+    expect(styled({ _accentColor: '#1e3a8a', _accentIntensity: 100 }).contains('block-dark-accent')).toBe(true);
+  });
+
+  it('marks dark text on yellow controls and plain titles where the accent is unreadable', () => {
+    const yellow = styled({ _accentColor: '#ffd500', _accentIntensity: 15 });
+    expect(yellow.contains('hp-dark-on-accent')).toBe(true);
+    expect(yellow.contains('hp-plain-header-light')).toBe(true);
+  });
+});

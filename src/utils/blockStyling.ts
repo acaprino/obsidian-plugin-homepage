@@ -3,6 +3,8 @@
  * Shared between buildBlockWrapper (live cards) and refreshPreview (settings modal).
  */
 
+import { accentColors } from './accentContrast';
+
 export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 /**
@@ -28,18 +30,6 @@ export type RangedStyleKey = keyof typeof STYLE_RANGES;
 export function clampStyle(key: RangedStyleKey, value: number): number {
   const { min, max } = STYLE_RANGES[key];
   return Math.max(min, Math.min(max, value));
-}
-
-function hexChannelToLinear(c: number): number {
-  const s = c / 255;
-  return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-}
-
-function getRelativeLuminance(hex: string): number {
-  const r = hexChannelToLinear(parseInt(hex.slice(1, 3), 16));
-  const g = hexChannelToLinear(parseInt(hex.slice(3, 5), 16));
-  const b = hexChannelToLinear(parseInt(hex.slice(5, 7), 16));
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 export const VALID_BORDER_STYLES: readonly string[] = ['solid', 'dashed', 'dotted'];
@@ -121,22 +111,9 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
     } else {
       el.style.removeProperty('--block-accent-pct');
     }
-    // Detect bright accent backgrounds that need dark text.
-    // Approximates the color-mix() blended background by interpolating between
-    // the dark-theme base luminance (~0.05) and the accent luminance at the
-    // configured intensity. Threshold 0.18 triggers for yellow at ~25% and
-    // white at ~15%, avoiding false positives on mid-range intensities.
-    const DARK_BASE_LUM = 0.05;
-    const BRIGHT_ACCENT_THRESHOLD = 0.18;
-    const effectiveIntensity = intensity || 15; // match CSS default (15%)
-    const ratio = effectiveIntensity / 100;
-    const blendedLum = DARK_BASE_LUM * (1 - ratio) + getRelativeLuminance(accentColor) * ratio;
-    const needsDarkText = blendedLum >= BRIGHT_ACCENT_THRESHOLD;
-    el.toggleClass('block-bright-accent', needsDarkText);
   } else {
     el.style.removeProperty('--block-accent');
     el.style.removeProperty('--block-accent-pct');
-    el.toggleClass('block-bright-accent', false);
   }
 
   // ── Visibility flags ───────────────────────────────────────────────
@@ -200,6 +177,23 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
     el.style.removeProperty('--hp-bg-gradient');
     el.toggleClass('block-has-gradient', false);
   }
+
+  // ── Text colours on the accent (M50, M51, M107, M108) ───────────────
+  // Chosen by their real contrast in each theme, with the card mixed as the
+  // stylesheet mixes it. Only an opaque accent background changes the card's
+  // text; a hidden, translucent or gradient background keeps the theme's.
+  const accentIntensity = typeof config._accentIntensity === 'number'
+    ? clampStyle('_accentIntensity', config._accentIntensity) : 15;
+  const opaque = config._showBackground !== false && bgOpacity >= 100 && !(gradStart && gradEnd);
+  const light = accentColor ? accentColors(accentColor, accentIntensity, opaque, 'light') : null;
+  const dark = accentColor ? accentColors(accentColor, accentIntensity, opaque, 'dark') : null;
+  el.toggleClass('block-bright-accent', !!dark?.flipText);
+  el.toggleClass('block-dark-accent', !!light?.flipText);
+  el.toggleClass('hp-plain-header-light', !!light?.plainHeader);
+  el.toggleClass('hp-plain-header-dark', !!dark?.plainHeader);
+  el.toggleClass('hp-plain-accent-light', !!light?.plainAccentText);
+  el.toggleClass('hp-plain-accent-dark', !!dark?.plainAccentText);
+  el.toggleClass('hp-dark-on-accent', light?.onAccent === '#1a1a1a');
 
   // ── Border width ───────────────────────────────────────────────────
   const borderWidth = typeof config._borderWidth === 'number'

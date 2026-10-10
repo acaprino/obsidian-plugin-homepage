@@ -87,7 +87,7 @@ export function registerBlocks(): void {
     type: 'quotes-list',
     displayName: 'Quotes',
     defaultConfig: {
-      source: 'tag', tag: '', quotes: '', _titleLabel: 'Quotes', columns: 2, maxItems: 0,
+      source: 'tag', tag: '', quotes: '', _titleLabel: 'Quotes', columns: 2, maxItems: 20,
       quoteStyle: 'classic', fontStyle: 'default', customFont: '', dailySeed: true, showNoteTitle: true,
       heightMode: 'extend', textAlign: 'left', verticalAlign: 'top', showAccentBar: true,
     },

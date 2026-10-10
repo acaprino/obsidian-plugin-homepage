@@ -67,7 +67,7 @@ export const DEFAULT_LAYOUT_DATA: LayoutConfig = {
       id: 'default-insight',
       type: 'quotes-list',
       x: 0, y: 3, w: 2, h: 3,
-      config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true },
+      config: { tag: '', _titleLabel: 'Daily insight', dailySeed: true, maxItems: 1 },
     },
     {
       id: 'default-button-grid',

@@ -67,6 +67,8 @@ export class QuotesListBlock extends BaseBlock {
   render(el: HTMLElement): Promise<void> {
     this.containerEl = el;
     el.addClass('quotes-list-block');
+    // One cleanup per block: loadAndRender runs again on every live update.
+    this.register(() => { this.colsRo?.disconnect(); this.colsRo = null; });
 
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
 
@@ -214,7 +216,6 @@ export class QuotesListBlock extends BaseBlock {
       this.colsRo?.disconnect();
       this.colsRo = new ResizeObserver(updateCols);
       this.colsRo.observe(colsEl);
-      this.register(() => { this.colsRo?.disconnect(); this.colsRo = null; });
     }
 
     // Watch width changes for auto-height recalculation

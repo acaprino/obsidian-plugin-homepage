@@ -14,10 +14,23 @@ export interface LayoutPersisterHost {
   readonly plugin: IHomepagePlugin;
   readonly effectiveColumns: number;
   readonly canonicalColumns: number;
+  /** Edit mode draws a collapsed block at its stored height (see nodeShowsStoredHeight). */
+  readonly editMode: boolean;
   readonly scheduler: Scheduler;
   shouldAutoHeight(instance: BlockInstance): boolean;
   buildLayoutUpdate(blocks: BlockInstance[], extra?: { columns?: number }): LayoutConfig;
   emitLayout(layout: LayoutConfig): void;
+}
+
+/**
+ * Whether the GridStack node of `b` is drawn at the block's stored `h`. A
+ * collapsed block is drawn at viewModeHeight (one row, or `_expandedH` with a
+ * hidden title) except in edit mode with a visible title, so outside that case
+ * its node height must never be written back over `h` (R2).
+ */
+function nodeShowsStoredHeight(b: BlockInstance, editMode: boolean): boolean {
+  if (!b.collapsed) return true;
+  return editMode && b.config._showTitle !== false;
 }
 
 /**
@@ -42,7 +55,7 @@ export class LayoutPersister {
 
   /** Read positions from GridStack, diff against the persisted layout, write if changed. */
   persist(): void {
-    const { gridStack, phase, plugin, effectiveColumns, canonicalColumns } = this.host;
+    const { gridStack, phase, plugin, effectiveColumns, canonicalColumns, editMode } = this.host;
     if (!gridStack || phase !== Phase.Ready) return;
 
     // When responsive columns are active (effectiveColumns < canonicalColumns),
@@ -79,16 +92,17 @@ export class LayoutPersister {
     }
 
     // Skip save if nothing actually changed.
-    // Auto-height blocks only compare x/y/w — h is always derived from content,
-    // so persisting it would corrupt y-positions on next open.
-    // Fixed-height blocks persist all four fields.
+    // Blocks whose node does not show the stored h only compare x/y/w: an
+    // auto-height block's h is derived from content (persisting it would
+    // corrupt y-positions on next open), and a collapsed block's node shows a
+    // display height. Other blocks persist all four fields.
     // In responsive mode, only h changes matter — x/y/w are transient.
     const changed = plugin.activeBlocks().some(b => {
       const pos = posMap.get(b.id);
       if (!pos) return false;
-      const isAuto = this.host.shouldAutoHeight(b);
-      if (isResponsive) return !isAuto && b.h !== pos.h;
-      if (isAuto) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
+      const keepH = this.host.shouldAutoHeight(b) || !nodeShowsStoredHeight(b, editMode);
+      if (isResponsive) return !keepH && b.h !== pos.h;
+      if (keepH) return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w;
       return b.x !== pos.x || b.y !== pos.y || b.w !== pos.w || b.h !== pos.h;
     });
     if (!changed) return;
@@ -96,12 +110,12 @@ export class LayoutPersister {
     const newBlocks = plugin.activeBlocks().map(b => {
       const pos = posMap.get(b.id);
       if (!pos) return b;
-      const isAuto = this.host.shouldAutoHeight(b);
+      const keepH = this.host.shouldAutoHeight(b) || !nodeShowsStoredHeight(b, editMode);
       if (isResponsive) {
-        // Only persist height for non-auto-height blocks; leave x/y/w canonical.
-        return isAuto ? b : { ...b, h: pos.h };
+        // Only persist height for blocks drawn at their stored height; x/y/w stay canonical.
+        return keepH ? b : { ...b, h: pos.h };
       }
-      const update = isAuto ? { x: pos.x, y: pos.y, w: pos.w } : pos;
+      const update = keepH ? { x: pos.x, y: pos.y, w: pos.w } : pos;
       return { ...b, ...update };
     });
 

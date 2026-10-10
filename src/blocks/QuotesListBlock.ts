@@ -3,6 +3,7 @@ import { cacheHasTag, getFilesWithTag, normalizeTag } from '../utils/tags';
 import { parseNoteInsight } from '../utils/noteContent';
 import { dailyIndex } from '../utils/dailySeed';
 import { BaseBlock } from './BaseBlock';
+import { rangedNumber } from '../utils/configRanges';
 import { AUTO_HEIGHT_ATTR } from '../grid/AutoHeight';
 
 // Only assign safe CSS color values; reject potentially malicious strings.
@@ -92,11 +93,13 @@ export class QuotesListBlock extends BaseBlock {
   private async loadAndRender(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
     const {
-      source = 'tag', tag = '', quotes = '', columns = 2, maxItems = 20,
+      source = 'tag', tag = '', quotes = '',
       heightMode = 'extend', quoteStyle = 'classic', fontStyle = 'default',
       customFont = '', dailySeed = true,
       textAlign = 'left', verticalAlign = 'top',
     } = this.instance.config as QuotesConfig;
+    const columns = rangedNumber('quotes-list', this.instance.config, 'columns', 2);
+    const maxItems = rangedNumber('quotes-list', this.instance.config, 'maxItems', 20);
 
     el.style.setProperty('--hp-quote-valign', verticalAlign === 'middle' ? 'center' : verticalAlign === 'bottom' ? 'flex-end' : 'flex-start');
     el.style.setProperty('--hp-quote-align', textAlign === 'center' ? 'center' : textAlign === 'right' ? 'right' : 'start');

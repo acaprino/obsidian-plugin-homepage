@@ -2,6 +2,7 @@ import { BlockInstance, BlockType, LayoutConfig } from '../types';
 import { BlockRegistry } from '../BlockRegistry';
 import { HEX_COLOR_RE, RangedStyleKey, VALID_BORDER_STYLES, clampStyle } from './blockStyling';
 import { TITLE_SIZE_RE } from '../blocks/BaseBlock';
+import { clampConfigNumber } from './configRanges';
 
 /** Own-property check: an imported key such as `__proto__` must not match an inherited member. */
 const hasOwn = (obj: object, key: string): boolean => Object.prototype.hasOwnProperty.call(obj, key);
@@ -68,6 +69,7 @@ const SHARED_VALIDATORS: Record<string, (v: unknown) => unknown> = {
  *     layout never carries credentials or raw CSS)
  *   - non-underscore keys the block factory doesn't declare in defaultConfig
  *   - declared keys whose value doesn't have the declared default's type
+ * and clamps declared numbers to the settings ranges (configRanges.ts, M13).
  *
  * `_`-prefixed keys are kept because they are shared styling and every block supports
  * them — a new shared field added in a future version shouldn't be silently dropped
@@ -109,7 +111,7 @@ export function sanitizeImportedConfig(
       continue;
     }
     if (hasOwn(declared, key) && matchesDeclaredType(value, declared[key])) {
-      clean[key] = value;
+      clean[key] = typeof value === 'number' ? clampConfigNumber(blockType, key, value) : value;
     } else {
       stripped.push(key);
     }

@@ -1,5 +1,6 @@
 import { Setting, moment } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
+import { rangedNumber } from '../utils/configRanges';
 
 const DEBOUNCE_MS = 500;
 
@@ -40,8 +41,8 @@ export class RecentFilesBlock extends BaseBlock {
   }
 
   private renderContent(el: HTMLElement): void {
+    const maxItems = rangedNumber('recent-files', this.instance.config, 'maxItems', 10);
     const {
-      maxItems = 10,
       showTimestamp = true,
       excludeFolders = '',
     } = this.instance.config as RecentFilesConfig;

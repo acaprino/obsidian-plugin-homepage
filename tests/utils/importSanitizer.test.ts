@@ -89,6 +89,12 @@ describe('sanitizeImportedConfig', () => {
 describe('sanitizeImportedConfig with the production block factories', () => {
   beforeEach(() => { registerBlocks(); });
 
+  it('clamps imported numbers to the settings ranges instead of keeping them (M13)', () => {
+    expect(sanitizeImportedConfig('pomodoro', { sessionsBeforeLong: 1e9, workMinutes: 0 }).config)
+      .toMatchObject({ sessionsBeforeLong: 8, workMinutes: 1 });
+    expect(sanitizeImportedConfig('recent-files', { maxItems: -1 }).config).toMatchObject({ maxItems: 5 });
+  });
+
   it('keeps every setting of a manual-text quotes block (AP-5)', () => {
     const exported = {
       source: 'text', quotes: 'Stay hungry\nStay foolish', tag: '', columns: 1, maxItems: 0,

@@ -1,7 +1,8 @@
-import { App, Modal, Notice, Setting, TFolder, moment, normalizePath, setIcon, requestUrl } from 'obsidian';
+import { App, Modal, Notice, Setting, TFolder, moment, setIcon, requestUrl } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { isEncrypted } from '../utils/apiKeyCrypto';
+import { buildNoteContent, voiceNotePath } from '../utils/voiceNote';
 
 const CONSENT_STORAGE_KEY = 'hp-voice-consent';
 
@@ -66,6 +67,9 @@ interface VoiceDictationConfig {
 
 type VoiceState = 'idle' | 'starting' | 'recording' | 'transcribing' | 'saved';
 
+/** A save failure whose message can be shown to the user as it is. */
+class NoteSaveError extends Error {}
+
 export class VoiceDictationBlock extends BaseBlock {
   private statusEl: HTMLElement | null = null;
   private micBtn: HTMLButtonElement | null = null;
@@ -82,6 +86,8 @@ export class VoiceDictationBlock extends BaseBlock {
 
   /** Push-to-talk: the button is pressed now. */
   private pushHeld = false;
+  /** Returns the status to idle after "Saved". */
+  private flashTimer: number | null = null;
 
   // Elapsed timer handle
   private elapsedSeconds = 0;
@@ -92,8 +98,11 @@ export class VoiceDictationBlock extends BaseBlock {
     el.addClass('voice-block');
     this.containerEl = el;
     this.setState(el, 'idle');
-    // Single cleanup registration for the active mic stream on unload
-    this.register(() => this.stopActiveStream());
+    // Single cleanup registration for the active mic stream and the saved flash on unload
+    this.register(() => {
+      this.stopActiveStream();
+      if (this.flashTimer !== null) window.clearTimeout(this.flashTimer);
+    });
 
     this.renderHeader(el, 'Voice notes');
 
@@ -123,7 +132,9 @@ export class VoiceDictationBlock extends BaseBlock {
 
     // Require an API key
     if (!cfg.apiKey) {
-      new Notice('Voice notes require an API key. Configure it in block settings.');
+      // A status line, not a Notice: render runs at every open, settings save and
+      // edit-mode exit, and a Notice each time nags (N9).
+      this.statusEl.setText('Add an API key in block settings');
       this.micBtn.disabled = true;
       this.micBtn.addClass('voice-mic--unavailable');
       return;
@@ -222,14 +233,17 @@ export class VoiceDictationBlock extends BaseBlock {
   }
 
   private startElapsedTimer(): void {
+    // One handle, cleared by stopElapsedTimer and the unload cleanup: a
+    // registerInterval() per recording piled up until unload.
+    if (this.elapsedIntervalRef !== null) window.clearInterval(this.elapsedIntervalRef);
     this.elapsedSeconds = 0;
     if (this.timerEl) this.timerEl.setText('0:00');
-    this.elapsedIntervalRef = this.registerInterval(window.setInterval(() => {
+    this.elapsedIntervalRef = window.setInterval(() => {
       this.elapsedSeconds++;
       const m = Math.floor(this.elapsedSeconds / 60);
       const s = String(this.elapsedSeconds % 60).padStart(2, '0');
       if (this.timerEl) this.timerEl.setText(`${m}:${s}`);
-    }, 1000));
+    }, 1000);
   }
 
   private stopElapsedTimer(): void {
@@ -242,37 +256,31 @@ export class VoiceDictationBlock extends BaseBlock {
 
   private showSavedFlash(el: HTMLElement): void {
     this.setState(el, 'saved');
-    const id = window.setTimeout(() => {
+    // One handle, cleared at unload: a register() per saved note piled up.
+    if (this.flashTimer !== null) window.clearTimeout(this.flashTimer);
+    this.flashTimer = window.setTimeout(() => {
+      this.flashTimer = null;
       if (el.isConnected) this.setState(el, 'idle');
     }, 1500);
-    this.register(() => window.clearTimeout(id));
   }
 
   // ── Note creation ──────────────────────────────────────────────────────────
 
-  private async saveNote(transcript: string, cfg: VoiceDictationConfig): Promise<void> {
-    if (!transcript.trim()) return;
-
-    // Defence in depth — strip anything that could escape the vault:
-    //   leading slashes, tilde, Windows drive prefix (C:), NUL, backslashes.
-    const rawFolder = (cfg.folder ?? '')
-      .replace(/^[/\\~]+/, '')
-      .replace(/^[A-Za-z]:/, '')
-      // NUL byte is a classic path-escape trick on some filesystems; string
-      // replaceAll (not a regex) sidesteps the no-control-regex lint rule.
-      .replaceAll('\u0000', '')
-      .replace(/\\/g, '/')
-      .trim();
-    const segments = rawFolder.split('/').filter(Boolean);
-    if (segments.some(s => s === '..')) return;
-    const safePath = normalizePath(segments.join('/'));
-    const timestamp = moment().format('YYYY-MM-DD HH-mm-ss');
-    const notePath = safePath && safePath !== '/' ? `${safePath}/${timestamp}.md` : `${timestamp}.md`;
+  private async saveNote(transcript: string, cfg: VoiceDictationConfig): Promise<{ templateIgnored: boolean }> {
+    if (!transcript.trim()) return { templateIgnored: false };
+    // Defence in depth: voiceNotePath strips anything that could escape the vault.
+    const target = voiceNotePath(
+      cfg.folder ?? '',
+      moment().format('YYYY-MM-DD HH-mm-ss'),
+      path => this.app.vault.getAbstractFileByPath(path) !== null,
+    );
+    // Said, not skipped: the block used to show "Saved" for a note it never wrote (M17).
+    if (!target) throw new NoteSaveError('The destination folder can’t contain “..”.');
 
     // Recursive folder creation
-    if (safePath && safePath !== '/') {
+    if (target.folder) {
       let accumulated = '';
-      for (const seg of safePath.split('/')) {
+      for (const seg of target.folder.split('/')) {
         accumulated = accumulated ? `${accumulated}/${seg}` : seg;
         if (!this.app.vault.getAbstractFileByPath(accumulated)) {
           await this.app.vault.createFolder(accumulated);
@@ -280,10 +288,9 @@ export class VoiceDictationBlock extends BaseBlock {
       }
     }
 
-    const content = (cfg.noteTemplate ?? '')
-      ? (cfg.noteTemplate ?? '').replaceAll('{{transcript}}', transcript)
-      : transcript;
-    await this.app.vault.create(notePath, content);
+    const { content, templateIgnored } = buildNoteContent(cfg.noteTemplate ?? '', transcript);
+    await this.app.vault.create(target.path, content);
+    return { templateIgnored };
   }
 
   // ── Recording ─────────────────────────────────────────────────────────────
@@ -449,13 +456,14 @@ export class VoiceDictationBlock extends BaseBlock {
     }
 
     try {
-      await this.saveNote(transcript, cfg);
+      const { templateIgnored } = await this.saveNote(transcript, cfg);
+      if (templateIgnored) new Notice('Note template ignored: {{transcript}} sits inside a link or an HTML tag.');
       if (gen === this.recordingGen && el.isConnected) this.showSavedFlash(el);
     } catch (e: unknown) {
       const safe = e instanceof Error ? e.message : 'unknown error';
       console.error('[Homepage Blocks] VoiceDictation save failed:', safe);
       if (gen === this.recordingGen && el.isConnected) {
-        new Notice('Failed to save note');
+        new Notice(e instanceof NoteSaveError ? e.message : 'Failed to save note');
         this.setState(el, 'idle');
       }
     }

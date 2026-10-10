@@ -191,3 +191,13 @@ describe('VoiceDictationBlock recording lifecycle', () => {
     expect(track.stopped).toBe(true);
   });
 });
+
+describe('VoiceDictationBlock without an API key (N9)', () => {
+  it('says so in its status line and disables the mic', () => {
+    const el = document.body.createDiv();
+    makeBlock({}).render(el);
+
+    expect(el.querySelector('.voice-status')?.textContent).toMatch(/API key/);
+    expect((el.querySelector('button.voice-mic') as HTMLButtonElement).disabled).toBe(true);
+  });
+});

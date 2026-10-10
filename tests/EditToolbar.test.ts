@@ -210,3 +210,40 @@ describe('EditToolbar edit sessions across homepage views (N22)', () => {
     expect(ended).toBe(1);
   });
 });
+
+describe('EditToolbar hidden in view mode (M30)', () => {
+  it('is out of the Tab order, and its column picker cannot change the layout', () => {
+    const changes: number[] = [];
+    const grid = { onRequestAddBlock: null, setEditMode: () => {}, computeFitZoom: () => 1, setZoom: () => {} } as unknown as GridLayout;
+    const plugin = { isMobileActive: () => false, activeColumns: () => 3, activeBlocks: () => [] } as unknown as IHomepagePlugin;
+    const toolbar = new EditToolbar(document.body.createDiv(), {} as App, plugin, grid, (n) => changes.push(n));
+    const el = toolbar.getElement();
+    expect(el.hasAttribute('inert')).toBe(true);
+
+    const select = el.querySelector('.toolbar-col-select') as HTMLSelectElement;
+    select.value = '4';
+    select.dispatchEvent(new Event('change'));
+    expect(changes).toEqual([]);
+
+    toolbar.toggleEditMode();
+    expect(el.hasAttribute('inert')).toBe(false);
+    const live = el.querySelector('.toolbar-col-select') as HTMLSelectElement;
+    live.value = '4';
+    live.dispatchEvent(new Event('change'));
+    expect(changes).toEqual([4]);
+  });
+});
+
+describe('EditToolbar focus (M73)', () => {
+  it('keeps the focused control focused when the toolbar redraws', async () => {
+    const grid = { onRequestAddBlock: null, setEditMode: () => {}, computeFitZoom: () => 0.8, setZoom: () => {} } as unknown as GridLayout;
+    const plugin = { isMobileActive: () => false, activeColumns: () => 3, activeBlocks: () => [] } as unknown as IHomepagePlugin;
+    const toolbar = new EditToolbar(document.body.createDiv(), {} as App, plugin, grid, () => {});
+    toolbar.toggleEditMode();
+    (toolbar.getElement().querySelector('.toolbar-add-btn') as HTMLButtonElement).focus();
+
+    await new Promise(resolve => window.requestAnimationFrame(() => resolve(undefined))); // the fit-zoom redraw
+
+    expect((document.activeElement as HTMLElement | null)?.classList.contains('toolbar-add-btn')).toBe(true);
+  });
+});

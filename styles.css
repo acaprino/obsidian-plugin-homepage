@@ -2613,6 +2613,7 @@
 
 .block-handle-bar {
   display: flex;
+  flex-wrap: wrap; /* six 44 px controls do not fit a narrow card: wrap, never clip (M28) */
   align-items: center;
   gap: 4px;
   margin-bottom: 8px;
@@ -3226,9 +3227,6 @@
 
   /* Hide zoom group — auto-columns handles layout */
   .toolbar-zoom-group { display: none; }
-
-  /* Hide column selector — auto-columns handles it */
-  .toolbar-col-group { display: none; }
 
   /* Add button: icon only */
   .toolbar-add-text { display: none; }

@@ -46,6 +46,7 @@ export class EditToolbar {
     this.toolbarEl.setAttribute('role', 'toolbar');
     this.toolbarEl.setAttribute('aria-label', 'Homepage toolbar');
     this.renderToolbar();
+    this.syncVisibility();
   }
 
   /** Toggle edit mode — called from FAB, Done button, and keyboard shortcut command. */
@@ -135,6 +136,9 @@ export class EditToolbar {
   private syncVisibility(): void {
     this.fabEl.toggleClass('is-hidden', this.editMode);
     this.toolbarEl.toggleClass('is-visible', this.editMode);
+    // Hidden only visually: its controls stayed in the Tab order, and arrow keys
+    // on the invisible column picker saved a new column count (M30).
+    this.toolbarEl.toggleAttribute('inert', !this.editMode);
     // Mirror the toolbar state on the view so CSS can flip scroll ownership
     // (sticky toolbar) without a .homepage-view:has(...) selector.
     const view = this.toolbarEl.closest('.homepage-view');
@@ -142,6 +146,15 @@ export class EditToolbar {
   }
 
   private renderToolbar(): void {
+    // Redrawn on each mode change and after the fit zoom: keep the focused
+    // control focused instead of dropping it to <body> (M73).
+    const active = this.toolbarEl.doc.activeElement;
+    const refocus = active instanceof HTMLElement && this.toolbarEl.contains(active) ? active.classList[0] : undefined;
+    this.buildToolbar();
+    if (refocus) this.toolbarEl.querySelector<HTMLElement>(`.${CSS.escape(refocus)}`)?.focus({ preventScroll: true });
+  }
+
+  private buildToolbar(): void {
     this.toolbarEl.empty();
 
     // Edit mode indicator (left-aligned)
@@ -159,6 +172,7 @@ export class EditToolbar {
       if (n === this.plugin.activeColumns()) opt.selected = true;
     });
     colSelect.addEventListener('change', () => {
+      if (!this.editMode) return;
       this.onColumnsChange(Number(colSelect.value));
     });
 

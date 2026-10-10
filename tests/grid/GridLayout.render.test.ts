@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { App } from 'obsidian';
+import { Notice, type App } from 'obsidian';
 import { GridLayout } from '../../src/GridLayout';
 import { BaseBlock } from '../../src/blocks/BaseBlock';
 import { Phase } from '../../src/grid/phase';
@@ -335,5 +335,153 @@ describe('GridLayout block limit (M8)', () => {
     grid.addBlock(clock('one-too-many'));
 
     expect(plugin.layout.blocks).toHaveLength(MAX_BLOCKS);
+  });
+});
+
+/** A grid in edit mode on `host`, with the plugin it reads and writes. */
+function editingGrid(blocks: BlockInstance[], columns = 3) {
+  const plugin = makePlugin({ blocks, columns });
+  const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+  grid.render(plugin.activeBlocks(), columns);
+  grid.setEditMode(true);
+  return { plugin, grid, gridEl: grid.getElement() };
+}
+
+describe('GridLayout — single-column edit mode (M25)', () => {
+  it('positions blocks with GridStack while editing, so a drag lands where it is dropped', () => {
+    const plugin = makePlugin({ blocks: [clock('a'), clock('b', { y: 3 })], columns: 1 } as Partial<LayoutConfig>);
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 1);
+    expect(grid.getElement().classList.contains('hp-single-column')).toBe(true);
+
+    grid.setEditMode(true);
+    expect(grid.getElement().classList.contains('hp-single-column')).toBe(false);
+
+    grid.setEditMode(false);
+    expect(grid.getElement().classList.contains('hp-single-column')).toBe(true);
+  });
+});
+
+describe('GridLayout — edit-mode re-renders keep the scroll position (M27)', () => {
+  it('restores the scroll position of the view after Move down', () => {
+    // A browser clamps scrollTop to 0 when the grid is emptied for the re-render.
+    let scrolled = 0;
+    Object.defineProperty(host, 'scrollTop', { configurable: true, get: () => scrolled, set: (v: number) => { scrolled = v; } });
+    const { gridEl } = editingGrid([clock('a'), clock('b', { y: 3 })]);
+    const empty = gridEl.empty.bind(gridEl);
+    gridEl.empty = () => { empty(); scrolled = 0; };
+    scrolled = 300;
+
+    (gridEl.querySelector('[gs-id="a"] .block-move-down-btn') as HTMLButtonElement).click();
+
+    expect(scrolled).toBe(300);
+  });
+});
+
+describe('GridLayout — focus after an edit-mode action (M73)', () => {
+  it('returns the focus to the same control of the same block', () => {
+    const { gridEl } = editingGrid([clock('a'), clock('b', { y: 3 })]);
+    const btn = gridEl.querySelector('[gs-id="a"] .block-move-down-btn') as HTMLButtonElement;
+    btn.focus();
+
+    btn.click();
+
+    const focused = document.activeElement as HTMLElement | null;
+    expect(focused?.classList.contains('block-move-down-btn')).toBe(true);
+    expect(focused?.closest('[gs-id]')?.getAttribute('gs-id')).toBe('a');
+  });
+});
+
+describe('GridLayout — zoom across edit-mode re-renders (M71)', () => {
+  it('keeps the zoom the toolbar shows', () => {
+    const { grid, gridEl } = editingGrid([clock('a')]);
+    grid.setZoom(0.8);
+
+    grid.setColumns(2);
+
+    expect(gridEl.classList.contains('hp-zoomed')).toBe(true);
+    expect(gridEl.style.getPropertyValue('--hp-grid-transform')).toBe('scale(0.8)');
+  });
+
+  it('drops it when edit mode ends', () => {
+    const { grid, gridEl } = editingGrid([clock('a')]);
+    grid.setZoom(0.8);
+    grid.setEditMode(false);
+    grid.setColumns(2);
+    expect(gridEl.classList.contains('hp-zoomed')).toBe(false);
+  });
+});
+
+describe('GridLayout — fit zoom (M72)', () => {
+  function tall(gridEl: HTMLElement): void {
+    Object.defineProperty(gridEl.parentElement!, 'clientHeight', { configurable: true, get: () => 400 });
+    Object.defineProperty(gridEl, 'scrollHeight', { configurable: true, get: () => 500 });
+  }
+
+  it('zooms out a multi-column editor to fit, but not a single column', () => {
+    const multi = editingGrid([clock('a')], 3);
+    tall(multi.gridEl);
+    expect(multi.grid.computeFitZoom()).toBeLessThan(1);
+
+    document.body.empty();
+    host = document.body.createDiv({ cls: 'homepage-view' });
+    const single = editingGrid([clock('a')], 1);
+    tall(single.gridEl);
+    expect(single.grid.computeFitZoom()).toBe(1);
+  });
+});
+
+describe('GridLayout — dragging while zoomed (M26)', () => {
+  it('holds the wheel scroll during a drag, which would pull the block off the pointer', () => {
+    const { grid, gridEl } = editingGrid([clock('a')]);
+    grid.setZoom(0.8);
+
+    // GridStack calls its drag handlers itself; there is no DOM event to dispatch.
+    const handlers = (grid as unknown as { gridStack: { _gsEventHandler: Record<string, (e: Event) => void> } }).gridStack._gsEventHandler;
+    handlers.dragstart(new Event('dragstart'));
+    const during = new WheelEvent('wheel', { cancelable: true, bubbles: true });
+    gridEl.dispatchEvent(during);
+    handlers.dragstop(new Event('dragstop'));
+    const after = new WheelEvent('wheel', { cancelable: true, bubbles: true });
+    gridEl.dispatchEvent(after);
+
+    expect(during.defaultPrevented).toBe(true);
+    expect(after.defaultPrevented).toBe(false);
+  });
+});
+
+describe('GridLayout — popout windows (M29)', () => {
+  it('keeps the grid static in edit mode there, and says to use the arrow buttons', () => {
+    Notice.messages = [];
+    const plugin = makePlugin({ blocks: [clock('a')] });
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+    Object.defineProperty(grid.getElement(), 'win', { configurable: true, value: {} });
+    grid.render(plugin.activeBlocks(), 3);
+
+    grid.setEditMode(true);
+
+    expect(grid.getElement().classList.contains('grid-stack-static')).toBe(true);
+    expect(Notice.messages.some(m => /arrow buttons/.test(m))).toBe(true);
+  });
+});
+
+describe('GridLayout — animations (M74, M75)', () => {
+  it('ends the entry animation when the grid re-renders within its 500 ms', () => {
+    const plugin = makePlugin({ blocks: [clock('a')] });
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 3, true);
+    grid.render(plugin.activeBlocks(), 3);
+    expect(grid.getElement().classList.contains('homepage-grid--animating')).toBe(false);
+  });
+
+  it('plays the new-block highlight once', () => {
+    const { grid, gridEl } = editingGrid([clock('a')]);
+    grid.addBlock(clock('n'));
+    const wrapper = gridEl.querySelector('[gs-id="n"] .homepage-block-wrapper') as HTMLElement;
+    expect(wrapper.classList.contains('block-just-added')).toBe(true);
+
+    wrapper.dispatchEvent(new Event('animationend'));
+
+    expect(wrapper.classList.contains('block-just-added')).toBe(false);
   });
 });

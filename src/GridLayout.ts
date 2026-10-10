@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, Notice } from 'obsidian';
 import { GridStack, GridStackWidget, GridStackNode } from 'gridstack';
 import { BlockInstance, LayoutConfig, LayoutPriority, IHomepagePlugin } from './types';
 import { BlockRegistry } from './BlockRegistry';
@@ -135,6 +135,9 @@ export class GridLayout {
   }
 
   render(blocks: BlockInstance[], columns: number, isInitial = false): void {
+    // A re-render empties the grid, which scrolls the view to the top and drops
+    // the focus to <body>: Move up/down left the moved block off-screen (M27, M73).
+    const restoreView = isInitial ? null : this.captureViewState();
     this.teardown();
     this.phase = Phase.Ready;
 
@@ -160,6 +163,41 @@ export class GridLayout {
     }
 
     this.initGridStack(blocks, columns, isInitial);
+    // The zoom the toolbar shows survives an edit-mode re-render (M71).
+    if (this.editMode && this.zoom < 1) this.applyZoom(this.zoom);
+    restoreView?.();
+  }
+
+  /**
+   * The scroll positions from the grid up to its view, and the focused control
+   * (its block and class), as a function that puts them back after a re-render.
+   */
+  private captureViewState(): () => void {
+    const scrolled: [HTMLElement, number][] = [];
+    const view = this.gridEl.closest('.homepage-view');
+    for (let el: HTMLElement | null = this.gridEl; el; el = el.parentElement) {
+      if (el.scrollTop > 0) scrolled.push([el, el.scrollTop]);
+      if (el === view) break;
+    }
+    const active = this.gridEl.doc.activeElement;
+    let refocus: string | null = null;
+    if (active instanceof HTMLElement && active !== this.gridEl && this.gridEl.contains(active) && active.classList.length > 0) {
+      const id = active.closest('[gs-id]')?.getAttribute('gs-id');
+      if (id) refocus = `[gs-id="${CSS.escape(id)}"] .${CSS.escape(active.classList[0])}`;
+    }
+    return () => {
+      for (const [el, top] of scrolled) el.scrollTop = top;
+      if (refocus) this.gridEl.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
+    };
+  }
+
+  /**
+   * True when the grid is in a popout window. GridStack binds its pointer
+   * listeners to the main window's document, so drag and resize do not work
+   * there and could leave its drag state stuck for the main window (M29).
+   */
+  private inPopout(): boolean {
+    return this.gridEl.win !== window;
   }
 
   /** Full teardown: unload blocks and remove the grid element from the DOM. */
@@ -171,6 +209,7 @@ export class GridLayout {
 
   setEditMode(enabled: boolean, skipRepack = false, flushInFlight = true): void {
     if (this.phase === Phase.Destroyed) return;
+    const entering = enabled && !this.editMode;
     // A deliberate change: from here on, measured positions are saved as usual.
     this.derivedPersistHeld = false;
     // A view-mode persist still debounced (an auto-height resize) must run against
@@ -211,7 +250,10 @@ export class GridLayout {
       this.effectiveColumns = this.canonicalColumns;
     }
     if (this.gridStack) {
-      this.gridStack.setStatic(!enabled);
+      this.gridStack.setStatic(!enabled || this.inPopout());
+    }
+    if (entering && this.inPopout()) {
+      new Notice('Dragging and resizing blocks don’t work in a pop-out window. Use the arrow buttons on each block to reorder them.');
     }
     // Render directly (not via rerender) so this deliberate mode switch always
     // repaints, even if a block reports unsaved inline state. The
@@ -225,6 +267,23 @@ export class GridLayout {
       // Exiting edit mode — clear any zoom transform
       this.setZoom(1);
     }
+  }
+
+  /** Zoom of the edit-mode grid, re-applied after each edit-mode re-render (M71). */
+  private zoom = 1;
+  /** Wheel listener that holds the scroll during a zoomed drag (M26). */
+  private wheelHold: ((e: Event) => void) | null = null;
+
+  private holdWheelWhileDragging(on: boolean): void {
+    const view = this.gridEl.closest('.homepage-view');
+    const target = view instanceof HTMLElement ? view : this.gridEl;
+    if (this.wheelHold) {
+      target.removeEventListener('wheel', this.wheelHold);
+      this.wheelHold = null;
+    }
+    if (!on) return;
+    this.wheelHold = (e: Event) => { e.preventDefault(); };
+    target.addEventListener('wheel', this.wheelHold, { passive: false });
   }
 
   /**
@@ -258,8 +317,18 @@ export class GridLayout {
 
   /** Apply a zoom scale (0.1–1) via CSS transform. */
   setZoom(scale: number): void {
-    if (!this.gridEl.isConnected) return;
     if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+    this.zoom = Math.min(scale, 1);
+    this.applyZoom(this.zoom);
+  }
+
+  private applyZoom(scale: number): void {
+    if (!this.gridEl.isConnected) return;
+    // The transform makes the grid the containing block of GridStack's fixed drag
+    // helper, so a scroll during a drag moves the block away from the pointer:
+    // no edge auto-scroll while zoomed (M26). GridStack reads the option per move.
+    const draggable = this.gridStack?.opts.draggable;
+    if (draggable) draggable.scroll = scale >= 1;
     if (scale >= 1) {
       this.gridEl.style.removeProperty('--hp-grid-transform');
       this.gridEl.removeClass('hp-zoomed');
@@ -273,7 +342,8 @@ export class GridLayout {
 
   /** Compute zoom scale that fits all grid content in the viewport. */
   computeFitZoom(): number {
-    if (!this.gridEl.isConnected) return 1;
+    // A single column scales into a narrow strip with a blank area below it (M72).
+    if (!this.gridEl.isConnected || this.effectiveColumns === 1) return 1;
     const viewportHeight = this.gridEl.parentElement?.clientHeight ?? 0;
     const contentHeight = this.gridEl.scrollHeight;
     if (viewportHeight <= 0 || contentHeight <= viewportHeight) return 1;
@@ -332,6 +402,9 @@ export class GridLayout {
     }
     // A teardown mid-drag never fires dragstop — drop the stale drag-dim class.
     this.gridEl.removeClass('hp-dragging');
+    this.holdWheelWhileDragging(false);
+    // Its removal timer was just cancelled: left on, every later render replayed it (M74).
+    this.gridEl.removeClass('homepage-grid--animating');
     this.gridEl.empty();
     // Clear inline styles GridStack or setZoom may have set.
     this.gridEl.removeClass('viewport-fit');
@@ -375,7 +448,9 @@ export class GridLayout {
     }
 
     this.effectiveColumns = columns;
-    this.gridEl.classList.toggle('hp-single-column', columns === 1);
+    // Not while editing: its flex layout pins a dragged item to the top, so every
+    // drag was saved as "move to top" (M25).
+    this.gridEl.classList.toggle('hp-single-column', columns === 1 && !this.editMode);
 
     this.gridStack = GridStack.init({
       column: columns,
@@ -383,7 +458,7 @@ export class GridLayout {
       margin: 8,
       float: true,
       animate: true,
-      staticGrid: !this.editMode,
+      staticGrid: !this.editMode || this.inPopout(),
       removable: false,
       handleClass: 'block-move-handle',
       // Horizontal-only resize in edit mode (vertical managed by sizeToContent / GridStack rows).
@@ -423,9 +498,11 @@ export class GridLayout {
     // replaces a .grid-stack:has(.ui-draggable-dragging) selector).
     this.gridStack.on('dragstart', () => {
       this.gridEl.addClass('hp-dragging');
+      this.holdWheelWhileDragging(this.zoom < 1);
     });
     this.gridStack.on('dragstop', () => {
       this.gridEl.removeClass('hp-dragging');
+      this.holdWheelWhileDragging(false);
       if (this.phase !== Phase.Ready || !this.editMode) return;
       this.persistLayout();
     });
@@ -445,7 +522,12 @@ export class GridLayout {
       this.lastAddedBlockId = null;
       const el = this.gridEl.querySelector(`[gs-id="${CSS.escape(targetId)}"]`);
       if (el instanceof HTMLElement) {
-        el.querySelector('.homepage-block-wrapper')?.addClass('block-just-added');
+        const wrapper = el.querySelector('.homepage-block-wrapper');
+        if (wrapper instanceof HTMLElement) {
+          wrapper.addClass('block-just-added');
+          // Once: left on, it replayed each time the tab was shown again (M75).
+          wrapper.addEventListener('animationend', () => wrapper.removeClass('block-just-added'), { once: true });
+        }
         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     }

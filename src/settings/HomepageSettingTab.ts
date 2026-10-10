@@ -2,7 +2,7 @@ import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from '../HomepageView';
 import { IHomepagePlugin, LayoutConfig } from '../types';
 import { getDefaultLayout, isOpenMode, isResponsiveMode, validateLayout } from '../validation';
-import { buildResetLayout } from '../utils/layoutReset';
+import { buildResetLayout, fitBlocksToColumns } from '../utils/layoutReset';
 import { ConfirmPresetModal } from '../modals/ConfirmPresetModal';
 import { sanitizeImportedLayout } from '../utils/importSanitizer';
 import { newId } from '../utils/ids';
@@ -261,25 +261,14 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.')
       .addButton(btn =>
         btn.setButtonText('Copy to mobile').onClick(() => void (async () => {
-          const desktopBlocks = structuredClone(this.plugin.layout.blocks);
-          const mobileCols = this.plugin.layout.mobileColumns;
-          const clamped = desktopBlocks.map(b => {
-            // Drop any apiKey: the desktop device-key ciphertext can't be
-            // decrypted on another device anyway, and carrying the in-memory
-            // plaintext here would leak it into the synced mobile layout (and,
-            // under a transient WebCrypto failure, persist it as plaintext at
-            // rest). The user re-enters the key on mobile.
-            const config = { ...b.config };
-            if ('apiKey' in config) config.apiKey = '';
-            return {
-              ...b,
-              id: newId(),
-              w: Math.min(b.w, mobileCols),
-              x: Math.min(b.x, Math.max(0, mobileCols - Math.min(b.w, mobileCols))),
-              config,
-            };
-          });
-          await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: clamped });
+          // Drop any apiKey: the desktop device-key ciphertext can't be
+          // decrypted on another device anyway, and carrying the in-memory
+          // plaintext here would leak it into the synced mobile layout (and,
+          // under a transient WebCrypto failure, persist it as plaintext at
+          // rest). The user re-enters the key on mobile.
+          const copied = fitBlocksToColumns(this.plugin.layout.blocks, this.plugin.layout.mobileColumns, newId)
+            .map(b => ('apiKey' in b.config ? { ...b, config: { ...b.config, apiKey: '' } } : b));
+          await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: copied });
           await this.reloadOpenHomepages();
           this.flashButton(btn, 'Copied!', 'Copy to mobile');
         })()),
@@ -343,11 +332,9 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setDesc('Restore all blocks to the default layout. This can’t be undone.')
       .addButton(btn =>
         btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
-          // Reset ONLY the active platform's layout slice. buildResetLayout
-          // pivots on isMobileActive() (not just responsiveMode) so a reset
-          // issued from a mobile device can't wipe the synced desktop layout,
-          // and preserves the inactive platform's layout AND the whole startup
-          // config (independent of responsiveMode) in every branch.
+          // Reset ONLY the active platform's layout half (utils/layoutReset.ts):
+          // a phone in Separate mode resets its mobile half, every other device
+          // the desktop half; everything else survives.
           const next = buildResetLayout(
             this.plugin.layout,
             getDefaultLayout(),

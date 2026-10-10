@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { App, PluginManifest } from 'obsidian';
 import HomepagePlugin from '../src/main';
-import { VIEW_TYPE } from '../src/HomepageView';
+import { HomepageView, VIEW_TYPE } from '../src/HomepageView';
+import { getDefaultLayout } from '../src/validation';
 
 type Root = 'root' | 'floating';
 
@@ -106,5 +107,93 @@ describe('openHomepage: other modes', () => {
     await pluginWith(ws.workspace).openHomepage('retain');
 
     expect(ws.tabs()).toEqual(['markdown', VIEW_TYPE, 'markdown']);
+  });
+});
+
+function fakeView(editing = false): HomepageView & { reloads: number } {
+  const view = Object.create(HomepageView.prototype) as HomepageView & { reloads: number };
+  view.reloads = 0;
+  view.isEditing = () => editing;
+  view.reload = async () => { view.reloads++; };
+  return view;
+}
+
+/** A plugin whose data.json lives in `disk`, with the given homepage views open. */
+function pluginWithDisk(initial: unknown, views: HomepageView[] = []) {
+  let disk: unknown = structuredClone(initial);
+  const writes: Record<string, string> = {};
+  const plugin = new HomepagePlugin({} as App, {} as PluginManifest);
+  plugin.app = {
+    workspace: { getLeavesOfType: () => views.map(view => ({ view })) },
+    vault: {
+      configDir: '.obsidian',
+      adapter: {
+        exists: async () => true,
+        read: async () => JSON.stringify(disk),
+        write: async (path: string, data: string) => { writes[path] = data; },
+      },
+    },
+  } as unknown as App;
+  plugin.manifest = { id: 'homepage-blocks', dir: '.obsidian/plugins/homepage-blocks' } as PluginManifest;
+  Object.assign(plugin, {
+    loadData: async () => structuredClone(disk),
+    saveData: async (data: unknown) => { disk = structuredClone(data); },
+  });
+  return { plugin, setDisk: (d: unknown) => { disk = structuredClone(d); }, writes };
+}
+
+describe('data.json changed on disk by another device (R3)', () => {
+  it('loads the new layout and redraws the open homepages', async () => {
+    const view = fakeView();
+    const { plugin, setDisk } = pluginWithDisk(getDefaultLayout(), [view]);
+    setDisk({ ...getDefaultLayout(), columns: 5 });
+
+    await plugin.onExternalSettingsChange();
+
+    expect(plugin.layout.columns).toBe(5);
+    expect(view.reloads).toBe(1);
+  });
+
+  it('ignores the change event of its own last save', async () => {
+    const view = fakeView();
+    const { plugin } = pluginWithDisk(getDefaultLayout(), [view]);
+    await plugin.saveLayout({ ...getDefaultLayout(), columns: 4 });
+    const before = plugin.layout;
+
+    await plugin.onExternalSettingsChange();
+
+    expect(plugin.layout).toBe(before);
+    expect(view.reloads).toBe(0);
+  });
+
+  it('keeps the layout of an open edit session', async () => {
+    const view = fakeView(true);
+    const { plugin, setDisk } = pluginWithDisk(getDefaultLayout(), [view]);
+    setDisk({ ...getDefaultLayout(), columns: 5 });
+
+    await plugin.onExternalSettingsChange();
+
+    expect(plugin.layout.columns).toBe(3);
+    expect(view.reloads).toBe(0);
+  });
+
+  it('keeps the loaded layout when the new file is not a layout, and backs the file up', async () => {
+    const { plugin, setDisk, writes } = pluginWithDisk(getDefaultLayout());
+    setDisk([1, 2, 3]);
+
+    await plugin.onExternalSettingsChange();
+
+    expect(plugin.layout.columns).toBe(3);
+    expect(Object.keys(writes).some(p => p.includes('data.json.invalid'))).toBe(true);
+  });
+
+  it('keeps the loaded layout when data.json was deleted', async () => {
+    const { plugin, setDisk } = pluginWithDisk(getDefaultLayout());
+    plugin.layout = { ...getDefaultLayout(), columns: 4 };
+    setDisk(null);
+
+    await plugin.onExternalSettingsChange();
+
+    expect(plugin.layout.columns).toBe(4);
   });
 });

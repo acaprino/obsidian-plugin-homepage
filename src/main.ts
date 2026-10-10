@@ -231,9 +231,8 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
 
     // An unusable data.json (unparseable, not an object, or with invalid blocks)
     // is copied verbatim to data.json.invalid before anything can resave over it.
-    const dir = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
     const raw = await this.loadData() as unknown;
-    const loaded = await loadLayoutWithRecovery(raw, normalizePath(`${dir}/data.json`), this.app.vault.adapter);
+    const loaded = await loadLayoutWithRecovery(raw, this.dataFilePath(), this.app.vault.adapter);
     if (loaded.problem) {
       if (loaded.problem.kind === 'blocks-dropped') {
         console.warn(`[Homepage Blocks] ${loaded.problem.count} invalid block(s) were dropped from the layout on load`);
@@ -438,6 +437,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       // as it is and the prior-on-disk read is skipped (every drag / auto-height persist).
       const persistable = await persistableLayout(layout, () => this.readPriorLayout());
       await this.saveData(persistable);
+      this.lastWrittenJson = JSON.stringify(persistable);
     }).then(
       () => { this.saveErrorNotified = false; },
       (err) => {
@@ -455,6 +455,54 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       },
     );
     await this.savePromise;
+  }
+
+  /** data.json of this plugin, in the vault's plugin folder. */
+  private dataFilePath(): string {
+    const dir = this.manifest.dir ?? `${this.app.vault.configDir}/plugins/${this.manifest.id}`;
+    return normalizePath(`${dir}/data.json`);
+  }
+
+  /** What the last write put in data.json: a change event for it is this device's own save. */
+  private lastWrittenJson: string | null = null;
+
+  /** The homepage views open in this workspace. */
+  private homepageViews(): HomepageView[] {
+    return this.app.workspace.getLeavesOfType(VIEW_TYPE)
+      .map(leaf => leaf.view)
+      .filter((v): v is HomepageView => v instanceof HomepageView);
+  }
+
+  /**
+   * Obsidian calls this when data.json changes on disk from outside, typically
+   * a sync client bringing another device's layout. Without it, the next save
+   * here wrote the stale in-memory layout over the newer one (R3). Ignored when
+   * the change is this device's own save, when the file is gone (the next save
+   * writes it again) and while a homepage is being edited: that session's Done
+   * or Discard writes this device's layout, and the user is told. A file that
+   * holds no usable layout is backed up as at load, and the loaded layout stays.
+   */
+  async onExternalSettingsChange(): Promise<void> {
+    await this.savePromise;
+    const raw = await this.loadData() as unknown;
+    if (raw === null) return;
+    if (raw !== undefined && this.lastWrittenJson !== null && JSON.stringify(raw) === this.lastWrittenJson) return;
+    const loaded = await loadLayoutWithRecovery(raw, this.dataFilePath(), this.app.vault.adapter);
+    if (loaded.problem) {
+      this.dataGuard = loaded.guard;
+      console.warn('[Homepage Blocks] data.json changed on disk but holds no usable layout; the loaded layout was kept');
+      const backup = loaded.backupPath ? ` The file was saved as ${fileName(loaded.backupPath)}.` : '';
+      new Notice(`Homepage blocks: data.json changed on disk but could not be used, so the current layout was kept.${backup}`, 12_000);
+      return;
+    }
+    const views = this.homepageViews();
+    if (views.some(v => v.isEditing())) {
+      new Notice('Homepage blocks: the layout changed on another device. Leaving edit mode keeps the layout shown here.', 10_000);
+      return;
+    }
+    const { layout } = await decryptApiKeys(loaded.layout);
+    this.layout = layout;
+    for (const view of views) await view.reload();
   }
 
   /**

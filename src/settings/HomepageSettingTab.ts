@@ -4,6 +4,7 @@ import { IHomepagePlugin, LayoutConfig } from '../types';
 import { getDefaultLayout, isOpenMode, isResponsiveMode, validateLayout } from '../validation';
 import { buildResetLayout, fitBlocksToColumns } from '../utils/layoutReset';
 import { ConfirmImportModal } from '../modals/ConfirmImportModal';
+import { ConfirmActionModal } from '../modals/ConfirmActionModal';
 import { findActiveContent, sanitizeImportedLayout, withoutActiveContent } from '../utils/importSanitizer';
 import { newId } from '../utils/ids';
 
@@ -279,7 +280,11 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setName('Copy desktop layout to mobile')
       .setDesc('Overwrite the mobile layout with a copy of the desktop layout, fitted to mobile columns.')
       .addButton(btn =>
-        btn.setButtonText('Copy to mobile').onClick(() => void (async () => {
+        btn.setButtonText('Copy to mobile').onClick(() => new ConfirmActionModal(this.app, {
+          title: 'Replace the mobile layout?',
+          message: 'This replaces the mobile layout, with all its blocks and their content, with a copy of the desktop layout. This can’t be undone.',
+          confirm: 'Copy',
+        }, async () => {
           this.finishEditSessions();
           // Drop any apiKey: the desktop device-key ciphertext can't be
           // decrypted on another device anyway, and carrying the in-memory
@@ -291,7 +296,7 @@ export class HomepageSettingTab extends PluginSettingTab {
           await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: copied });
           await this.reloadOpenHomepages();
           this.flashButton(btn, 'Copied!', 'Copy to mobile');
-        })()),
+        }).open()),
       );
 
     const mobileBlockCount = this.plugin.layout.mobileBlocks.length;
@@ -301,6 +306,9 @@ export class HomepageSettingTab extends PluginSettingTab {
   }
 
   private renderDisplaySection(root: HTMLElement): void {
+    // Its own heading: in Separate mode these rows used to sit under 'Mobile layout' (M7).
+    new Setting(root).setName('Display').setHeading();
+
     new Setting(root)
       .setName('Show scrollbar')
       .setDesc('Show the scrollbar on the homepage. You can still scroll when hidden.')
@@ -350,7 +358,11 @@ export class HomepageSettingTab extends PluginSettingTab {
       .setName('Reset to default layout')
       .setDesc('Restore all blocks to the default layout. This can’t be undone.')
       .addButton(btn =>
-        btn.setButtonText('Reset layout').setWarning().onClick(() => void (async () => {
+        btn.setButtonText('Reset layout').setWarning().onClick(() => new ConfirmActionModal(this.app, {
+          title: 'Reset the layout?',
+          message: `This replaces the ${this.plugin.isMobileActive() ? 'mobile' : 'desktop'} layout, with all its blocks and their content, with the default one. Other settings stay. This can’t be undone.`,
+          confirm: 'Reset',
+        }, async () => {
           this.finishEditSessions();
           // Reset ONLY the active platform's layout half (utils/layoutReset.ts):
           // a phone in Separate mode resets its mobile half, every other device
@@ -362,7 +374,7 @@ export class HomepageSettingTab extends PluginSettingTab {
           );
           await this.plugin.saveLayout(next);
           await this.reloadOpenHomepages();
-        })()),
+        }).open()),
       );
   }
 

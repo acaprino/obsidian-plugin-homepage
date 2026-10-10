@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Modal } from 'obsidian';
 import type { App, WorkspaceLeaf } from 'obsidian';
 import { HomepageSettingTab } from '../../src/settings/HomepageSettingTab';
 import { HomepageView } from '../../src/HomepageView';
@@ -17,6 +18,7 @@ function renderTab(): { tab: HomepageSettingTab; view: HomepageView; plugin: IHo
     layout: getDefaultLayout(),
     saveLayout: async (l: LayoutConfig) => { plugin.layout = l; },
     register: () => {},
+    isMobileActive: () => false,
   } as unknown as IHomepagePlugin;
   const view = openHomepage(plugin);
   const app = { workspace: { getLeavesOfType: () => [{ view }] } } as unknown as App;
@@ -106,5 +108,60 @@ describe('HomepageSettingTab import errors (R6)', () => {
     btn.click();
 
     await vi.waitFor(() => expect(btn.textContent).toBe(label));
+  });
+});
+
+describe('HomepageSettingTab actions that replace a layout (M7)', () => {
+  /** Captures the confirmation a click opens, rendered as the host would. */
+  function captureModal(): () => Modal | null {
+    let opened: Modal | null = null;
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) { opened = this; this.onOpen(); });
+    return () => opened;
+  }
+  function clickButton(root: HTMLElement, text: string): void {
+    ([...root.querySelectorAll('button')].find(b => b.textContent === text) as HTMLButtonElement).click();
+  }
+
+  it('asks before Reset replaces the desktop layout, and resets only on confirm', async () => {
+    const modal = captureModal();
+    const { tab, plugin, view } = renderTab();
+    vi.spyOn(view, 'reload').mockResolvedValue();
+    plugin.layout = { ...plugin.layout, columns: 5, blocks: [] };
+
+    clickButton(tab.containerEl, 'Reset layout');
+    await Promise.resolve();
+    expect(plugin.layout.blocks).toEqual([]);
+    expect(modal()?.contentEl.textContent).toMatch(/desktop layout/);
+
+    clickButton(modal()!.contentEl, 'Reset');
+    await vi.waitFor(() => expect(plugin.layout.blocks.length).toBeGreaterThan(0));
+    vi.restoreAllMocks();
+  });
+
+  it('asks before Copy to mobile replaces the mobile layout', async () => {
+    const modal = captureModal();
+    const { tab, plugin, view } = renderTab();
+    vi.spyOn(view, 'reload').mockResolvedValue();
+    plugin.layout = { ...plugin.layout, responsiveMode: 'separate', mobileBlocks: [] };
+    tab.display();
+
+    clickButton(tab.containerEl, 'Copy to mobile');
+    await Promise.resolve();
+    expect(plugin.layout.mobileBlocks).toEqual([]);
+    expect(modal()?.contentEl.textContent).toMatch(/mobile layout/);
+
+    clickButton(modal()!.contentEl, 'Copy');
+    await vi.waitFor(() => expect(plugin.layout.mobileBlocks.length).toBeGreaterThan(0));
+    vi.restoreAllMocks();
+  });
+
+  it('gives the display settings their own heading, so Reset is not listed under Mobile layout', () => {
+    const { tab, plugin } = renderTab();
+    plugin.layout = { ...plugin.layout, responsiveMode: 'separate' };
+    tab.display();
+    const names = [...tab.containerEl.querySelectorAll('.setting-item-name')].map(n => n.textContent);
+
+    expect(names.indexOf('Display')).toBeGreaterThan(names.indexOf('Mobile layout'));
+    expect(names.indexOf('Display')).toBeLessThan(names.indexOf('Reset to default layout'));
   });
 });

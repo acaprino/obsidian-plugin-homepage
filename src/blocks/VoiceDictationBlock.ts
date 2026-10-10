@@ -3,6 +3,7 @@ import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { isEncrypted } from '../utils/apiKeyCrypto';
 import { buildNoteContent, voiceNotePath } from '../utils/voiceNote';
+import { RequestTimeoutError, withTimeout } from '../utils/timeout';
 
 const CONSENT_STORAGE_KEY = 'hp-voice-consent';
 
@@ -54,6 +55,27 @@ const GEMINI_MODELS: Record<string, string> = {
   'gemini-2.5-pro': 'Gemini 2.5 Pro',
   'gemini-2.0-flash-lite': 'Gemini 2.0 Flash Lite',
 };
+
+/** A transcription that has not answered by then is reported, not awaited forever (R10). */
+const TRANSCRIBE_TIMEOUT_MS = 120_000;
+/** Model names as the providers spell them. */
+const MODEL_NAME_RE = /^[a-zA-Z0-9._-]+$/;
+/** ISO 639 language codes, optionally with a region (en, it, pt-BR). */
+const LANGUAGE_RE = /^[a-z]{2,3}(-[A-Z]{2})?$/;
+
+/**
+ * The text fields of the Whisper upload. Both values come from block config,
+ * which an import can set: a language or model holding CR/LF or quotes would
+ * change the multipart body, so a language that is not a code is left out and
+ * such a model name is refused (N20).
+ */
+export function whisperTextFields(cfg: { model?: string; language?: string }): Record<string, string> {
+  const model = cfg.model || 'whisper-1';
+  if (!MODEL_NAME_RE.test(model)) throw new Error('Invalid Whisper model name');
+  const fields: Record<string, string> = { model };
+  if (cfg.language && LANGUAGE_RE.test(cfg.language)) fields.language = cfg.language;
+  return fields;
+}
 
 interface VoiceDictationConfig {
   folder?: string;
@@ -439,7 +461,7 @@ export class VoiceDictationBlock extends BaseBlock {
       const safe = err instanceof Error ? err.message : 'unknown error';
       console.error('[Homepage Blocks] VoiceDictation transcription failed:', safe);
       if (gen === this.recordingGen && el.isConnected) {
-        new Notice('Transcription failed');
+        new Notice(err instanceof RequestTimeoutError ? 'Transcription timed out' : 'Transcription failed');
         this.setState(el, 'idle');
       }
       return;
@@ -480,8 +502,7 @@ export class VoiceDictationBlock extends BaseBlock {
     const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);
     const encoder = new TextEncoder();
 
-    const textFields: Record<string, string> = { model: cfg.model || 'whisper-1' };
-    if (cfg.language) textFields['language'] = cfg.language;
+    const textFields = whisperTextFields(cfg);
 
     let preamble = '';
     for (const [key, value] of Object.entries(textFields)) {
@@ -497,7 +518,7 @@ export class VoiceDictationBlock extends BaseBlock {
     body.set(fileBytes, prefix.length);
     body.set(suffix, prefix.length + fileBytes.length);
 
-    const res = await requestUrl({
+    const res = await withTimeout(requestUrl({
       url: 'https://api.openai.com/v1/audio/transcriptions',
       method: 'POST',
       headers: {
@@ -506,7 +527,7 @@ export class VoiceDictationBlock extends BaseBlock {
       },
       body: body.buffer,
       throw: false,
-    });
+    }), TRANSCRIBE_TIMEOUT_MS);
 
     if (res.status !== 200) {
       // Don't include the raw body — it may echo user-supplied content or bits of the audio filename.
@@ -531,17 +552,17 @@ export class VoiceDictationBlock extends BaseBlock {
     });
 
     const rawModel = cfg.model || 'gemini-2.0-flash';
-    if (!/^[a-zA-Z0-9._-]+$/.test(rawModel)) {
+    if (!MODEL_NAME_RE.test(rawModel)) {
       throw new Error('Invalid Gemini model name');
     }
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${rawModel}:generateContent`;
 
     const lang = cfg.language ?? '';
-    const langHint = /^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang)
+    const langHint = LANGUAGE_RE.test(lang)
       ? ` The audio is in language code "${lang}".`
       : '';
 
-    const res = await requestUrl({
+    const res = await withTimeout(requestUrl({
       url,
       method: 'POST',
       headers: {
@@ -557,7 +578,7 @@ export class VoiceDictationBlock extends BaseBlock {
         }],
       }),
       throw: false,
-    });
+    }), TRANSCRIBE_TIMEOUT_MS);
 
     if (res.status !== 200) {
       throw new Error(`Gemini API error ${res.status}`);

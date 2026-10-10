@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Modal } from 'obsidian';
 import type { App } from 'obsidian';
-import { VoiceDictationBlock } from '../../src/blocks/VoiceDictationBlock';
+import { VoiceDictationBlock, whisperTextFields } from '../../src/blocks/VoiceDictationBlock';
 import type { IHomepagePlugin, BlockInstance } from '../../src/types';
 
 /** A key this device cannot decrypt stays in the layout in its at-rest form. */
@@ -199,5 +199,19 @@ describe('VoiceDictationBlock without an API key (N9)', () => {
 
     expect(el.querySelector('.voice-status')?.textContent).toMatch(/API key/);
     expect((el.querySelector('button.voice-mic') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('Whisper form fields (N20)', () => {
+  it('sends the model and a language code', () => {
+    expect(whisperTextFields({ language: 'it' })).toEqual({ model: 'whisper-1', language: 'it' });
+  });
+
+  it('leaves out a language that is not a language code, so it cannot change the request body', () => {
+    expect(whisperTextFields({ language: 'en\r\n--x' })).toEqual({ model: 'whisper-1' });
+  });
+
+  it('refuses a model name with characters no model name has', () => {
+    expect(() => whisperTextFields({ model: 'whisper-1"\r\n' })).toThrow('Invalid Whisper model name');
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Modal, Notice, TFolder, requestUrlMock } from 'obsidian';
+import { PROVIDER_STOP_BYTES } from '../../src/utils/voiceProviders';
 import type { App } from 'obsidian';
 import { VoiceDictationBlock, whisperTextFields } from '../../src/blocks/VoiceDictationBlock';
 import type { IHomepagePlugin, BlockInstance } from '../../src/types';
@@ -350,7 +351,7 @@ describe('VoiceDictationBlock transcription and saving', () => {
       await vi.waitFor(() => { expect(el.dataset.voiceState).not.toBe('transcribing'); }, { timeout: 3000, interval: 5 });
       await settle();
     };
-    return { ...v, el, mic, record, stop };
+    return { ...v, el, mic, record, stop, block };
   }
 
   it('sends the current default model, gpt-transcribe (M15)', async () => {
@@ -454,5 +455,73 @@ describe('VoiceDictationBlock push-to-talk (M62)', () => {
     new VoiceDictationBlock(app, instance, {} as IHomepagePlugin).render(el);
 
     expect(el.querySelector('button.voice-mic')?.classList.contains('voice-mic--push')).toBe(true);
+  });
+});
+
+describe('VoiceDictationBlock after the review (M19)', () => {
+  let openMic: () => void = () => {};
+  beforeEach(() => {
+    FakeRecorder.instances = [];
+    FakeRecorder.failStart = false;
+    Notice.messages = [];
+    requestUrlMock.reset();
+    (globalThis as Record<string, unknown>).MediaRecorder = FakeRecorder;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: () => new Promise(resolve => { openMic = () => resolve({ getTracks: () => [{ stop() {} }] }); }) },
+    });
+  });
+  afterEach(() => { requestUrlMock.reset(); });
+
+  function mountVoice() {
+    const created: Record<string, string> = {};
+    const binaries: string[] = [];
+    const root = new TFolder();
+    root.path = '';
+    root.children = [];
+    const vault = {
+      getRoot: () => root,
+      getAbstractFileByPath: () => null,
+      createFolder: async () => {},
+      create: async (p: string, data: string) => { created[p] = data; return {}; },
+      createBinary: async (p: string) => { binaries.push(p); return {}; },
+    };
+    const app = { loadLocalStorage: () => ({ whisper: true }), saveLocalStorage: () => {}, vault } as unknown as App;
+    const instance: BlockInstance = { id: 'v1', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-key', triggerMode: 'tap' } };
+    const block = new VoiceDictationBlock(app, instance, {} as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    block.render(el);
+    const mic = el.querySelector('button.voice-mic') as HTMLButtonElement;
+    return { block, el, mic, created, binaries };
+  }
+  const settle = (ms = 20) => new Promise(resolve => setTimeout(resolve, ms));
+
+  it('transcribes a recording that stopped at the size limit', async () => {
+    requestUrlMock.handler = async () => ({ status: 200, text: '', json: { text: 'hello' } });
+    const v = mountVoice();
+    v.mic.click(); openMic(); await settle();
+    const rec = FakeRecorder.instances[0];
+
+    rec.ondataavailable?.({ data: new Blob([new Uint8Array(PROVIDER_STOP_BYTES.whisper)]) });
+    await vi.waitFor(() => { expect(v.el.dataset.voiceState).not.toBe('transcribing'); }, { timeout: 5000, interval: 10 });
+
+    expect(rec.state).toBe('inactive');
+    expect(requestUrlMock.calls).toHaveLength(1);
+    expect(v.binaries).toEqual([]);
+  }, 15000);
+
+  it('keeps the audio of a failed transcription although the block was closed meanwhile', async () => {
+    let answer: (r: { status: number; text: string; json: unknown }) => void = () => {};
+    requestUrlMock.handler = () => new Promise(resolve => { answer = resolve; });
+    const v = mountVoice();
+    v.mic.click(); openMic(); await settle();
+    v.mic.click(); await settle(); // stop: the request is in flight
+
+    v.block.unload(); // a sync reload, a settings change or a closed tab
+    answer({ status: 500, text: '', json: {} });
+    await settle(50);
+
+    expect(v.binaries).toHaveLength(1);
   });
 });

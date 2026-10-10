@@ -117,3 +117,21 @@ describe('field-partition constants', () => {
     expect(DESKTOP_LAYOUT_FIELDS.filter(f => (MOBILE_LAYOUT_FIELDS as readonly string[]).includes(f))).toStrictEqual([]);
   });
 });
+
+describe('buildResetLayout and data from a newer version (M58, after review)', () => {
+  const future = { id: 'f', type: 'weather', x: 0, y: 0, w: 1, h: 1, config: {} };
+  const withPreserved = (): LayoutConfig => ({ ...getDefaultLayout(), preserved: { blocks: [future], mobileBlocks: [future], fields: { x: 1 } } });
+
+  it('replaces the desktop blocks of a newer version with the rest of the desktop layout', () => {
+    const next = buildResetLayout(withPreserved(), getDefaultLayout(), false);
+    expect(next.preserved?.blocks).toEqual([]);
+    expect(next.preserved?.mobileBlocks).toEqual([future]);
+    expect(next.preserved?.fields).toEqual({ x: 1 });
+  });
+
+  it('replaces the mobile ones on a mobile reset', () => {
+    const next = buildResetLayout(withPreserved(), getDefaultLayout(), true);
+    expect(next.preserved?.mobileBlocks).toEqual([]);
+    expect(next.preserved?.blocks).toEqual([future]);
+  });
+});

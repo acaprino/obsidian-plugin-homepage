@@ -1,5 +1,6 @@
 import { GridStack, GridStackNode } from 'gridstack';
 import { BlockInstance, IHomepagePlugin, LayoutConfig } from '../types';
+import { blockTitle } from '../blockMeta';
 
 /**
  * Subset of GridLayout state used by the collapse toggle. Read at every event
@@ -14,6 +15,15 @@ export interface CollapseToggleHost {
 }
 
 /**
+ * True when `instance` is drawn collapsed: it is stored collapsed and has a
+ * header to expand it again. Clock, Greeting and Spacer draw none, so one stored
+ * collapsed (by the zero-height toggle of M49) could never be expanded.
+ */
+export function isCollapsible(instance: BlockInstance): boolean {
+  return !!instance.collapsed && blockTitle(instance.type) !== '';
+}
+
+/**
  * Rows a block is drawn at in view mode. Collapsing saves `collapsed` and
  * `_expandedH` but leaves `h` at the expanded height (and auto-height never
  * rewrites it), so a collapsed block is one row whatever `h` holds. A collapsed
@@ -22,7 +32,7 @@ export interface CollapseToggleHost {
  */
 export function viewModeHeight(instance: BlockInstance): number {
   if (!instance.collapsed) return instance.h;
-  if (instance.config._showTitle !== false) return 1;
+  if (isCollapsible(instance) && instance.config._showTitle !== false) return 1;
   const expandedH = instance._expandedH;
   return typeof expandedH === 'number' && expandedH > 0 ? expandedH : instance.h;
 }

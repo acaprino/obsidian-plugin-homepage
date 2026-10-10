@@ -492,7 +492,9 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
    * (utils/pathRename.ts).
    */
   async followRename(oldPath: string, newPath: string): Promise<void> {
-    const follow = (blocks: BlockInstance[]) => blocks.map(b => followRenameInBlock(b, oldPath, newPath));
+    // A link typed by name follows only when the name no longer resolves elsewhere.
+    const resolves = (name: string) => !!this.app.metadataCache?.getFirstLinkpathDest(name, '');
+    const follow = (blocks: BlockInstance[]) => blocks.map(b => followRenameInBlock(b, oldPath, newPath, resolves));
     // Discard restores the snapshot an edit session took: it must name the new path too.
     for (const view of this.homepageViews()) view.mapEditSnapshot(follow);
     const blocks = follow(this.layout.blocks);

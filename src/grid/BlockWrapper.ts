@@ -2,6 +2,7 @@ import { BlockInstance } from '../types';
 import { applyBlockStyling } from '../utils/blockStyling';
 import { Scheduler } from '../utils/Scheduler';
 import { blockTitle } from '../blockMeta';
+import { isCollapsible } from './CollapseToggle';
 
 /**
  * Block-wrapper / placeholder / skeleton / empty-state DOM builders, extracted
@@ -21,7 +22,7 @@ export function buildBlockWrapper(container: HTMLElement, instance: BlockInstanc
   const classes = ['homepage-block-wrapper', `hp-block-${instance.type}`];
   // Don't collapse blocks with hidden titles — there's no visible header
   // to click for re-expansion, making them appear completely invisible.
-  const effectiveCollapsed = instance.collapsed && instance.config._showTitle !== false;
+  const effectiveCollapsed = isCollapsible(instance) && instance.config._showTitle !== false;
   if (effectiveCollapsed) classes.push('block-collapsed');
   const wrapper = container.createDiv({
     cls: classes.join(' '),

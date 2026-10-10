@@ -14,6 +14,30 @@ export function renamePath(value: string, oldPath: string, newPath: string): str
   return null;
 }
 
+const baseName = (p: string): string => stripMd(p.slice(p.lastIndexOf('/') + 1));
+
+/**
+ * A typed note link (`Plan`, `[[Plan#Goals|alias]]`, `Projects/Plan`) rewritten
+ * for a rename, keeping its brackets, heading and alias; null when it does not
+ * name the renamed note. A bare name follows only when it no longer resolves
+ * to another note (`resolves`), as Obsidian's own link update would see it.
+ */
+export function renameLink(value: string, oldPath: string, newPath: string, resolves: (name: string) => boolean): string | null {
+  const wiki = /^(\s*\[\[)([\s\S]*)(\]\]\s*)$/.exec(value);
+  const [open, inner, close] = wiki ? [wiki[1], wiki[2], wiki[3]] : ['', value, ''];
+  const bar = inner.indexOf('|');
+  const target = bar === -1 ? inner : inner.slice(0, bar);
+  const alias = bar === -1 ? '' : inner.slice(bar);
+  const hash = target.indexOf('#');
+  const path = (hash === -1 ? target : target.slice(0, hash)).trim();
+  const sub = hash === -1 ? '' : target.slice(hash);
+  let renamed = path ? renamePath(path, oldPath, newPath) : null;
+  if (renamed === null && path && !path.includes('/') && path === baseName(oldPath) && !resolves(path)) {
+    renamed = baseName(newPath);
+  }
+  return renamed === null ? null : `${open}${renamed}${sub}${alias}${close}`;
+}
+
 /** `value` when it is not a URL with a scheme (a bookmark can hold either). */
 const isVaultPath = (value: string): boolean => !/^[a-z][a-z0-9+.-]*:/i.test(value);
 
@@ -22,14 +46,14 @@ function renameIn(value: unknown, oldPath: string, newPath: string): string | nu
 }
 
 /** Rewrite `key` of each object in the array `list`; null when none changed. */
-function renameInList(list: unknown, key: string, oldPath: string, newPath: string, guard: (v: string) => boolean = () => true): unknown[] | null {
+function renameInList(list: unknown, key: string, rename: (v: string) => string | null, guard: (v: string) => boolean = () => true): unknown[] | null {
   if (!Array.isArray(list)) return null;
   let changed = false;
   const next = list.map((item: unknown) => {
     if (!item || typeof item !== 'object') return item;
     const v = (item as Record<string, unknown>)[key];
     if (typeof v !== 'string' || !guard(v)) return item;
-    const renamed = renameIn(v, oldPath, newPath);
+    const renamed = v ? rename(v) : null;
     if (renamed === null) return item;
     changed = true;
     return { ...item, [key]: renamed };
@@ -45,8 +69,9 @@ function renameInList(list: unknown, key: string, oldPath: string, newPath: stri
  * note. Without it a rename left "not found" blocks, and a click on a typed
  * link created an empty note at the old path.
  */
-export function followRenameInBlock(b: BlockInstance, oldPath: string, newPath: string): BlockInstance {
+export function followRenameInBlock(b: BlockInstance, oldPath: string, newPath: string, resolves: (name: string) => boolean = () => false): BlockInstance {
   const c = b.config;
+  const link = (v: string) => renameLink(v, oldPath, newPath, resolves);
   const patch: Record<string, unknown> = {};
   const set = (key: string, value: unknown): void => { if (value !== null) patch[key] = value; };
   switch (b.type) {
@@ -55,10 +80,10 @@ export function followRenameInBlock(b: BlockInstance, oldPath: string, newPath: 
     case 'voice-dictation': set('folder', renameIn(c.folder, oldPath, newPath)); break;
     case 'folder-links':
       set('folder', renameIn(c.folder, oldPath, newPath));
-      set('links', renameInList(c.links, 'path', oldPath, newPath));
+      set('links', renameInList(c.links, 'path', link));
       break;
-    case 'button-grid': set('items', renameInList(c.items, 'link', oldPath, newPath)); break;
-    case 'bookmarks': set('items', renameInList(c.items, 'url', oldPath, newPath, isVaultPath)); break;
+    case 'button-grid': set('items', renameInList(c.items, 'link', link, isVaultPath)); break;
+    case 'bookmarks': set('items', renameInList(c.items, 'url', link, isVaultPath)); break;
     case 'recent-files': {
       if (typeof c.excludeFolders !== 'string') break;
       let changed = false;

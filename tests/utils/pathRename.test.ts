@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { followRenameInBlock, renamePath } from '../../src/utils/pathRename';
+import { followRenameInBlock, renameLink, renamePath } from '../../src/utils/pathRename';
 import type { BlockInstance } from '../../src/types';
 
 const block = (type: BlockInstance['type'], config: Record<string, unknown>): BlockInstance =>
@@ -46,5 +46,25 @@ describe('followRenameInBlock (M55, M22)', () => {
   it('returns the same block when nothing changed', () => {
     const b = block('clock', { format: 'Old.md' });
     expect(followRenameInBlock(b, 'Old.md', 'New.md')).toBe(b);
+  });
+});
+
+describe('renameLink: links typed by name (M22, after review)', () => {
+  const none = () => false;
+
+  it('follows a note renamed in place, keeping brackets, heading and alias', () => {
+    expect(renameLink('Plan', 'Projects/Plan.md', 'Projects/Roadmap.md', none)).toBe('Roadmap');
+    expect(renameLink('[[Plan#Goals|the plan]]', 'Projects/Plan.md', 'Projects/Roadmap.md', none)).toBe('[[Roadmap#Goals|the plan]]');
+    expect(renameLink('Projects/Plan#Goals', 'Projects/Plan.md', 'Archive/Plan.md', none)).toBe('Archive/Plan#Goals');
+  });
+
+  it('leaves a name that still resolves to another note', () => {
+    expect(renameLink('Plan', 'Projects/Plan.md', 'Projects/Roadmap.md', name => name === 'Plan')).toBeNull();
+  });
+
+  it('is followed in Button grid and Quick links', () => {
+    const grid = { id: 'g', type: 'button-grid' as const, x: 0, y: 0, w: 1, h: 3, config: { items: [{ label: 'P', link: '[[Plan]]' }] } };
+    const out = followRenameInBlock(grid, 'Projects/Plan.md', 'Projects/Roadmap.md', none);
+    expect((out.config.items as { link: string }[])[0].link).toBe('[[Roadmap]]');
   });
 });

@@ -64,8 +64,10 @@ export interface AccentColors {
   /** Accent-coloured text (links, titles, hashtags); `plainAccentText` when it falls back to `text`. */
   accentText: string;
   plainAccentText: boolean;
-  /** Header title; `plainHeader` when it falls back to `text`. */
+  /** Header title, on `headerBg`; `plainHeader` when it falls back to `text`. */
   header: string;
+  /** What the title sits on: the header zone, tinted with the accent, or the card. */
+  headerBg: string;
   plainHeader: boolean;
   /** Text on controls filled with the raw accent (the mic, Pomodoro's Start). */
   onAccent: string;
@@ -76,7 +78,7 @@ export interface AccentColors {
  * background is off, translucent or a gradient, where the card shows the theme
  * background (approximately) and the theme's text is kept.
  */
-export function accentColors(accent: string, pct: number, opaque: boolean, theme: ThemeName): AccentColors {
+export function accentColors(accent: string, pct: number, opaque: boolean, theme: ThemeName, headerAccent = true): AccentColors {
   const t = THEMES[theme];
   const bg = opaque ? mix(accent, pct, t.bg) : t.bg;
   const other = theme === 'dark' ? DARK_TEXT : LIGHT_TEXT;
@@ -87,8 +89,10 @@ export function accentColors(accent: string, pct: number, opaque: boolean, theme
   const darkCard = contrastRatio(LIGHT_TEXT, bg) >= contrastRatio(DARK_TEXT, bg);
   const ctrl = darkCard ? mix(accent, 60, '#ffffff') : mix(accent, theme === 'dark' ? 50 : 60, '#000000');
   const plainAccentText = contrastRatio(ctrl, bg) < MIN_CONTRAST;
+  // The title sits on the header zone: the accent at 22% over the card (--_accent-header-bg).
+  const headerBg = headerAccent ? mix(accent, 22, bg) : bg;
   const headerMix = mix(accent, 85, text);
-  const plainHeader = contrastRatio(headerMix, bg) < MIN_CONTRAST;
+  const plainHeader = contrastRatio(headerMix, headerBg) < MIN_CONTRAST;
   return {
     bg,
     text,
@@ -96,6 +100,7 @@ export function accentColors(accent: string, pct: number, opaque: boolean, theme
     accentText: plainAccentText ? text : ctrl,
     plainAccentText,
     header: plainHeader ? text : headerMix,
+    headerBg,
     plainHeader,
     onAccent: better(accent, '#ffffff', DARK_TEXT),
   };

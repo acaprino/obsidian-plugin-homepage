@@ -3,7 +3,7 @@ import { BaseBlock } from './BaseBlock';
 import { FolderSuggestModal } from '../utils/FolderSuggestModal';
 import { isEncrypted } from '../utils/apiKeyCrypto';
 import { buildNoteContent, sanitizeVoiceFolder, uniqueFilePath } from '../utils/voiceNote';
-import { DEFAULT_MODELS, PROVIDER_MAX_BYTES, PROVIDER_MODELS, effectiveModel, geminiEmptyReason, type TranscriptionProvider } from '../utils/voiceProviders';
+import { DEFAULT_MODELS, PROVIDER_MAX_BYTES, PROVIDER_MODELS, PROVIDER_STOP_BYTES, effectiveModel, geminiEmptyReason, type TranscriptionProvider } from '../utils/voiceProviders';
 import { RequestTimeoutError, withTimeout } from '../utils/timeout';
 import { blockTitle } from '../blockMeta';
 
@@ -480,13 +480,13 @@ export class VoiceDictationBlock extends BaseBlock {
 
     // Data arrives every second, so the recording stops before the provider's
     // size limit instead of failing after it (M19).
-    const cap = PROVIDER_MAX_BYTES[provider];
+    const cap = PROVIDER_STOP_BYTES[provider];
     let recorded = 0;
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.push(e.data);
       recorded += e.data.size;
       if (recorded >= cap && recorder.state !== 'inactive' && gen === this.recordingGen) {
-        new Notice(`Recording stopped at the ${Math.round(cap / (1024 * 1024))} MB limit of the transcription service.`);
+        new Notice(`Recording stopped near the ${Math.round(PROVIDER_MAX_BYTES[provider] / 1_000_000)} MB limit of the transcription service.`);
         this.stopRecording(el);
       }
     };
@@ -570,14 +570,15 @@ export class VoiceDictationBlock extends BaseBlock {
       // Log only the status / message — the raw body may contain user-supplied text.
       const safe = err instanceof Error ? err.message : 'unknown error';
       console.error('[Homepage Blocks] VoiceDictation transcription failed:', safe);
-      if (gen !== this.recordingGen || !el.isConnected) return;
+      // Kept whatever happened to the block meanwhile: a sync reload, a settings
+      // change or a closed tab during the request must not lose the recording.
       const reason = failureMessage(err);
       const saved = await this.saveFailedRecording(blob, mimeType, cfg, reason).catch((e: unknown) => {
         console.error('[Homepage Blocks] VoiceDictation could not keep the recording:', e instanceof Error ? e.message : 'unknown error');
         return null;
       });
       new Notice(saved ? `${reason} The recording was saved as ${saved}.` : reason, 10_000);
-      if (el.isConnected) this.setState(el, 'idle');
+      if (gen === this.recordingGen && el.isConnected) this.setState(el, 'idle');
       return;
     }
 

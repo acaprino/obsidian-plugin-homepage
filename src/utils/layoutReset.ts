@@ -57,11 +57,21 @@ export function buildResetLayout(
 ): LayoutConfig {
   if (isMobileActive) {
     return {
-      ...current,
+      ...dropPreserved(current, 'mobileBlocks'),
       mobileBlocks: fitBlocksToColumns(fresh.blocks, fresh.mobileColumns),
       mobileColumns: fresh.mobileColumns,
       mobileLayoutPriority: fresh.mobileLayoutPriority,
     };
   }
-  return { ...current, ...pickFields(structuredClone(fresh), DESKTOP_LAYOUT_FIELDS) };
+  return { ...dropPreserved(current, 'blocks'), ...pickFields(structuredClone(fresh), DESKTOP_LAYOUT_FIELDS) };
+}
+
+/**
+ * `layout` without the blocks of a newer version kept for one half (M58): a
+ * reset or Copy to mobile replaces that half "with all its blocks", and kept
+ * blocks would come back at their old cells on the newer device.
+ */
+export function dropPreserved(layout: LayoutConfig, half: 'blocks' | 'mobileBlocks'): LayoutConfig {
+  if (!layout.preserved || layout.preserved[half].length === 0) return layout;
+  return { ...layout, preserved: { ...layout.preserved, [half]: [] } };
 }

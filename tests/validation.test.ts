@@ -606,3 +606,18 @@ describe('validateBlocks id dedup (M127)', () => {
     expect(layout.mobileBlocks.map(b => b.id)).toEqual(['x']);
   });
 });
+
+describe('blocks of unknown types after the review (M58)', () => {
+  it('migrates a legacy type before deciding it is unknown', () => {
+    const out = validateLayout({ blocks: [{ id: 't', type: 'tag-grid', x: 0, y: 0, w: 1, h: 3, config: {} }] });
+    expect(out.blocks.map(b => b.type)).toEqual(['button-grid']);
+    expect(out.preserved).toBeUndefined();
+  });
+
+  it('drops a retired type instead of keeping it for a version that will never come', () => {
+    let dropped = 0;
+    const out = validateLayout({ blocks: [{ id: 'i', type: 'insight', x: 0, y: 0, w: 1, h: 3, config: {} }] }, undefined, (n) => { dropped += n; });
+    expect(out.preserved).toBeUndefined();
+    expect(dropped).toBe(1);
+  });
+});

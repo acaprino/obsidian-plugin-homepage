@@ -191,3 +191,32 @@ describe('HomepageSettingTab export (M123)', () => {
     expect(JSON.parse(copied).blocks[0].config.folder).toBe('Voice');
   });
 });
+
+describe('HomepageSettingTab Copy to mobile and a newer version (M58, after review)', () => {
+  function captureModal(): () => Modal | null {
+    let opened: Modal | null = null;
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) { opened = this; this.onOpen(); });
+    return () => opened;
+  }
+  function clickButton(root: HTMLElement, text: string): void {
+    ([...root.querySelectorAll('button')].find(b => b.textContent === text) as HTMLButtonElement).click();
+  }
+
+  it('replaces the mobile blocks a newer version kept, as it says', async () => {
+    const modal = captureModal();
+    const future = { id: 'f', type: 'weather', x: 0, y: 0, w: 1, h: 1, config: {} };
+    const { tab, plugin, view } = renderTab();
+    vi.spyOn(view, 'reload').mockResolvedValue();
+    plugin.layout = { ...plugin.layout, responsiveMode: 'separate', preserved: { blocks: [future], mobileBlocks: [future], fields: {} } };
+    tab.display();
+
+    clickButton(tab.containerEl, 'Copy to mobile');
+    await Promise.resolve();
+    clickButton(modal()!.contentEl, 'Copy');
+    await vi.waitFor(() => expect(plugin.layout.mobileBlocks.length).toBeGreaterThan(0));
+
+    expect(plugin.layout.preserved?.mobileBlocks).toEqual([]);
+    expect(plugin.layout.preserved?.blocks).toEqual([future]);
+    vi.restoreAllMocks();
+  });
+});

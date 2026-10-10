@@ -185,8 +185,9 @@ export function applyBlockStyling(el: HTMLElement, config: Record<string, unknow
   const accentIntensity = typeof config._accentIntensity === 'number'
     ? clampStyle('_accentIntensity', config._accentIntensity) : 15;
   const opaque = config._showBackground !== false && bgOpacity >= 100 && !(gradStart && gradEnd);
-  const light = accentColor ? accentColors(accentColor, accentIntensity, opaque, 'light') : null;
-  const dark = accentColor ? accentColors(accentColor, accentIntensity, opaque, 'dark') : null;
+  const headerAccent = config._showHeaderAccent !== false;
+  const light = accentColor ? accentColors(accentColor, accentIntensity, opaque, 'light', headerAccent) : null;
+  const dark = accentColor ? accentColors(accentColor, accentIntensity, opaque, 'dark', headerAccent) : null;
   el.toggleClass('block-bright-accent', !!dark?.flipText);
   el.toggleClass('block-dark-accent', !!light?.flipText);
   el.toggleClass('hp-plain-header-light', !!light?.plainHeader);

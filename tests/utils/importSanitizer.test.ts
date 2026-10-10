@@ -253,3 +253,31 @@ describe('keys declared with no default of their own (M61)', () => {
     expect(config.salutEvening).toBe('Ciao');
   });
 });
+
+describe('links with other schemes in an imported layout (after review)', () => {
+  beforeEach(() => { registerBlocks(); });
+  const layout = (): LayoutConfig => ({
+    ...getDefaultLayout(),
+    blocks: [
+      { id: 'b', type: 'bookmarks', x: 0, y: 0, w: 1, h: 3, config: { items: [{ label: 'Docs', url: 'https://ok.example' }, { label: 'Fix', url: 'ms-msdt:/id x' }] } },
+      { id: 'g', type: 'button-grid', x: 1, y: 0, w: 1, h: 3, config: { items: [{ label: 'Note', link: 'obsidian://new?file=x&content=y&overwrite=true' }, { label: 'Plan', link: 'Plan' }] } },
+    ],
+    mobileBlocks: [],
+  });
+
+  it('are listed in the confirmation', () => {
+    const found = findActiveContent(layout()).map(f => f.excerpt);
+    expect(found.some(e => e.includes('ms-msdt:'))).toBe(true);
+    expect(found.some(e => e.includes('obsidian://'))).toBe(true);
+    expect(found.some(e => e.includes('https://ok.example'))).toBe(false);
+    expect(found.some(e => e === 'Plan')).toBe(false);
+  });
+
+  it('are removed by Import without content, other links kept', () => {
+    const out = withoutActiveContent(layout());
+    const bookmarks = out.blocks[0].config.items as { url: string }[];
+    const buttons = out.blocks[1].config.items as { link?: string }[];
+    expect(bookmarks.map(i => i.url)).toEqual(['https://ok.example', '']);
+    expect(buttons.map(i => i.link)).toEqual([undefined, 'Plan']);
+  });
+});

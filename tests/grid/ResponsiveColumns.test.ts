@@ -103,7 +103,8 @@ describe('Responsive columns while the homepage tab is hidden', () => {
 describe('Responsive columns and collapsed blocks', () => {
   it('keeps a collapsed block one row high after the pane narrows and widens again (M5)', () => {
     // What collapsing saves: collapsed + _expandedH, while h keeps the expanded value.
-    const collapsed = clock('a', 0, { collapsed: true, _expandedH: 4, h: 4, config: { _titleLabel: 'Clock' } });
+    // A type that draws a header (a header-less one never draws collapsed, M49).
+    const collapsed = clock('a', 0, { type: 'static-text', collapsed: true, _expandedH: 4, h: 4, config: { _titleLabel: 'Notes' } });
     const { grid, resize } = renderView(1200, [collapsed, clock('b', 1), clock('c', 2)]);
 
     resize(300);

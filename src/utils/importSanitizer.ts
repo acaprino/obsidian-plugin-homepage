@@ -147,6 +147,24 @@ const ACTIVE_CONTENT_KEYS: Partial<Record<BlockType, readonly string[]>> = {
   'voice-dictation': ['noteTemplate', 'folder'],
 };
 
+/**
+ * Link lists whose entries open on a click: an imported entry with a scheme
+ * other than http(s) (`obsidian://` can overwrite a note, an OS handler can run
+ * a program) is listed in the confirmation like other active content.
+ */
+const LINK_LISTS: Partial<Record<BlockType, { list: string; key: string }>> = {
+  'bookmarks': { list: 'items', key: 'url' },
+  'button-grid': { list: 'items', key: 'link' },
+  'folder-links': { list: 'links', key: 'path' },
+};
+
+/** A link value with a URL scheme other than http or https (a vault path has none). */
+function isOtherSchemeLink(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const m = /^\s*([a-z][a-z0-9+.-]+):/i.exec(value);
+  return !!m && !['http', 'https'].includes(m[1].toLowerCase());
+}
+
 /** One active-content value of an imported layout, as the confirmation shows it. */
 export interface ActiveContent { blockType: BlockType; title: string; key: string; excerpt: string; }
 
@@ -164,6 +182,17 @@ export function findActiveContent(layout: LayoutConfig): ActiveContent[] {
       const flat = value.replace(/\s+/g, ' ').trim();
       found.push({ blockType: b.type, title, key, excerpt: flat.length > EXCERPT_LENGTH ? `${flat.slice(0, EXCERPT_LENGTH)}…` : flat });
     }
+    const links = LINK_LISTS[b.type];
+    const entries = links ? b.config[links.list] : null;
+    if (links && Array.isArray(entries)) {
+      for (const entry of entries as Record<string, unknown>[]) {
+        const value = entry?.[links.key];
+        if (!isOtherSchemeLink(value)) continue;
+        const label = b.config._titleLabel;
+        const title = typeof label === 'string' && label.trim() ? label.trim() : BlockRegistry.get(b.type)?.displayName ?? b.type;
+        found.push({ blockType: b.type, title, key: links.key, excerpt: value.length > EXCERPT_LENGTH ? `${value.slice(0, EXCERPT_LENGTH)}…` : value });
+      }
+    }
   }
   return found;
 }
@@ -172,10 +201,19 @@ export function findActiveContent(layout: LayoutConfig): ActiveContent[] {
 export function withoutActiveContent(layout: LayoutConfig): LayoutConfig {
   const strip = (b: BlockInstance): BlockInstance => {
     const keys = ACTIVE_CONTENT_KEYS[b.type];
-    if (!keys) return b;
+    const links = LINK_LISTS[b.type];
+    if (!keys && !links) return b;
     const defaults = BlockRegistry.get(b.type)?.defaultConfig ?? {};
     const config = { ...b.config };
-    for (const key of keys) config[key] = typeof defaults[key] === 'string' ? defaults[key] : '';
+    for (const key of keys ?? []) config[key] = typeof defaults[key] === 'string' ? defaults[key] : '';
+    const entries = links ? config[links.list] : null;
+    if (links && Array.isArray(entries)) {
+      // The entry stays, without its link: a Button grid button is valid with none.
+      config[links.list] = (entries as Record<string, unknown>[]).map(entry => {
+        if (!isOtherSchemeLink(entry?.[links.key])) return entry;
+        return { ...entry, [links.key]: links.key === 'link' ? undefined : '' };
+      });
+    }
     return { ...b, config };
   };
   return { ...layout, blocks: layout.blocks.map(strip), mobileBlocks: layout.mobileBlocks.map(strip) };

@@ -2,7 +2,7 @@ import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { VIEW_TYPE, HomepageView } from '../HomepageView';
 import { IHomepagePlugin, LayoutConfig } from '../types';
 import { getDefaultLayout, isOpenMode, isResponsiveMode, validateLayout } from '../validation';
-import { buildResetLayout, fitBlocksToColumns } from '../utils/layoutReset';
+import { buildResetLayout, dropPreserved, fitBlocksToColumns } from '../utils/layoutReset';
 import { ConfirmImportModal } from '../modals/ConfirmImportModal';
 import { ConfirmActionModal } from '../modals/ConfirmActionModal';
 import { findActiveContent, sanitizeImportedLayout, withoutActiveContent } from '../utils/importSanitizer';
@@ -293,7 +293,7 @@ export class HomepageSettingTab extends PluginSettingTab {
           // rest). The user re-enters the key on mobile.
           const copied = fitBlocksToColumns(this.plugin.layout.blocks, this.plugin.layout.mobileColumns, newId)
             .map(b => ('apiKey' in b.config ? { ...b, config: { ...b.config, apiKey: '' } } : b));
-          await this.plugin.saveLayout({ ...this.plugin.layout, mobileBlocks: copied });
+          await this.plugin.saveLayout({ ...dropPreserved(this.plugin.layout, 'mobileBlocks'), mobileBlocks: copied });
           await this.reloadOpenHomepages();
           this.flashButton(btn, 'Copied!', 'Copy to mobile');
         }).open()),

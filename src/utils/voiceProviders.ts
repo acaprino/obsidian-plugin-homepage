@@ -32,13 +32,23 @@ export function effectiveModel(provider: TranscriptionProvider, model: string | 
 }
 
 /**
- * Largest recording sent to each provider, kept below its limit: OpenAI takes
- * uploads up to 25 MB; Gemini takes a 20 MB inline request, and base64 grows
- * the audio by 4/3. Recording stops when it reaches this size (M19).
+ * Largest recording sent to each provider: OpenAI takes uploads up to 25 MB
+ * (decimal); Gemini takes a 20 MB inline request, and base64 grows the audio by
+ * 4/3, so 14.5 MB of audio leaves room for the rest of the request (M19).
  */
 export const PROVIDER_MAX_BYTES: Record<TranscriptionProvider, number> = {
-  whisper: 24 * 1024 * 1024,
-  gemini: 14 * 1024 * 1024,
+  whisper: 25_000_000,
+  gemini: 14_500_000,
+};
+
+/**
+ * Size at which recording stops, below the send limit: the recorder still
+ * delivers its last chunk after the stop, and a stop at the limit itself made
+ * every auto-stopped recording too large to send.
+ */
+export const PROVIDER_STOP_BYTES: Record<TranscriptionProvider, number> = {
+  whisper: 23_000_000,
+  gemini: 13_000_000,
 };
 
 interface GeminiResponseLike {

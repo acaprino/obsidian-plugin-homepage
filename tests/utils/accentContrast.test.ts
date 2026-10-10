@@ -65,3 +65,16 @@ describe('accentColors: text on accent-filled controls (M108)', () => {
     expect(accentColors(NAVY, 15, true, 'dark').onAccent).toBe('#ffffff');
   });
 });
+
+describe('accentColors: the title sits on the tinted header zone (M107, after review)', () => {
+  it('measures the title against the header zone when the header accent is on', () => {
+    const c = accentColors('#000044', 50, true, 'light', true);
+    expect(c.plainHeader).toBe(true);
+    expect(contrastRatio(c.header, c.headerBg)).toBeGreaterThanOrEqual(Math.min(4.5, contrastRatio(c.text, c.headerBg)));
+  });
+
+  it('measures it against the card without the header accent', () => {
+    const c = accentColors('#000044', 50, true, 'light', false);
+    expect(c.headerBg).toBe(c.bg);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_MODELS, PROVIDER_MAX_BYTES, effectiveModel, geminiEmptyReason } from '../../src/utils/voiceProviders';
+import { DEFAULT_MODELS, PROVIDER_MAX_BYTES, PROVIDER_STOP_BYTES, effectiveModel, geminiEmptyReason } from '../../src/utils/voiceProviders';
 
 describe('effectiveModel (M15)', () => {
   it('uses the current default for an empty or retired model', () => {
@@ -32,5 +32,15 @@ describe('geminiEmptyReason (M63)', () => {
     expect(geminiEmptyReason({ promptFeedback: { blockReason: 'SAFETY' } })).toBe('blocked: SAFETY');
     expect(geminiEmptyReason({ candidates: [{ finishReason: 'RECITATION' }] })).toBe('stopped: RECITATION');
     expect(geminiEmptyReason({ candidates: [] })).toBe('no speech recognised');
+  });
+});
+
+describe('recording stop threshold (M19, after review)', () => {
+  it('stops below the send limit, with room for the last second of audio', () => {
+    for (const p of ['whisper', 'gemini'] as const) {
+      // A 1 s chunk at 256 kbit/s is 32 KB; the margin is far larger.
+      expect(PROVIDER_MAX_BYTES[p] - PROVIDER_STOP_BYTES[p]).toBeGreaterThan(1_000_000);
+    }
+    expect(PROVIDER_MAX_BYTES.whisper).toBeLessThanOrEqual(25_000_000); // OpenAI's 25 MB, decimal
   });
 });

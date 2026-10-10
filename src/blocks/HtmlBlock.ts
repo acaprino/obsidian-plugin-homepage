@@ -92,7 +92,8 @@ export class HtmlBlock extends BaseBlock {
     const bridgeParts = [
       'html{height:100%;margin:0;padding:0}',
       'html.hp-clipped{overflow:hidden}',
-      'body{margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}',
+      // flow-root: a first child's top margin stays inside body instead of collapsing through it.
+      'body{display:flow-root;margin:0;padding:0;min-height:100%;width:var(--hp-body-width,auto);transform-origin:top left;transform:scale(var(--hp-body-scale,1))}',
     ];
     if (varRefs.size > 0) {
       // Resolve variables against the document the block actually lives in
@@ -135,7 +136,14 @@ export class HtmlBlock extends BaseBlock {
     // hidden tab has no size then, and stayed at 100%, clipped (M37).
     iframe.addEventListener('load', () => this.fitDocument(iframe));
     let raf = 0;
-    const ro = new ResizeObserver(() => {
+    let lastWidth = -1;
+    const ro = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? -1;
+      // In single column the frame's height is its own doing (it takes its
+      // document's): fitting again on that would grow it by a collapsing margin
+      // or a 100vh element on every round. Only a width change refits it there.
+      if (iframe.closest('.hp-single-column') && width === lastWidth) return;
+      lastWidth = width;
       window.cancelAnimationFrame(raf);
       raf = window.requestAnimationFrame(() => this.fitDocument(iframe));
     });

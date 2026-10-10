@@ -126,7 +126,8 @@ describe('GridLayout — block wrapper DOM (extraction safety net)', () => {
   });
 
   it('adds .block-collapsed when a block is collapsed (and has a visible title)', () => {
-    const block = clock('c1', { collapsed: true, _expandedH: 3, h: 1, config: { _titleLabel: 'Clock' } });
+    // A type that draws a header (a header-less one never draws collapsed, M49).
+    const block = clock('c1', { type: 'static-text', collapsed: true, _expandedH: 3, h: 1, config: { _titleLabel: 'Notes' } });
     const plugin = makePlugin({ blocks: [block] });
     const grid = new GridLayout(host, plugin.app, plugin, () => {});
     grid.render([block], 3);
@@ -142,7 +143,7 @@ describe('GridLayout — collapsed blocks after a reload (M5)', () => {
 
   it('draws a collapsed block one row high, although the stored h is the expanded height', () => {
     // What collapsing saves: collapsed + _expandedH, while h keeps the expanded value.
-    const block = clock('c1', { collapsed: true, _expandedH: 4, h: 4, config: { _titleLabel: 'Clock' } });
+    const block = clock('c1', { type: 'static-text', collapsed: true, _expandedH: 4, h: 4, config: { _titleLabel: 'Notes' } });
     const plugin = makePlugin({ blocks: [block] });
     const grid = new GridLayout(host, plugin.app, plugin, () => {});
 
@@ -152,7 +153,7 @@ describe('GridLayout — collapsed blocks after a reload (M5)', () => {
   });
 
   it('draws a collapsed block whose title is hidden at its expanded height (no header to reopen it)', () => {
-    const block = clock('c1', { collapsed: true, _expandedH: 4, h: 1, config: { _showTitle: false } });
+    const block = clock('c1', { type: 'static-text', collapsed: true, _expandedH: 4, h: 1, config: { _showTitle: false } });
     const plugin = makePlugin({ blocks: [block] });
     const grid = new GridLayout(host, plugin.app, plugin, () => {});
 
@@ -602,5 +603,15 @@ describe('GridLayout flush and anti-corruption guards (M120)', () => {
     const handlers = (grid as unknown as { gridStack: { _gsEventHandler: Record<string, (e: Event) => void> } }).gridStack._gsEventHandler;
     handlers.dragstop(new Event('dragstop'));
     expect(emits).toEqual([]);
+  });
+});
+
+describe('GridLayout — a header-less block stored collapsed (M49, after review)', () => {
+  it('is drawn expanded, since nothing could expand it', () => {
+    const plugin = makePlugin({ blocks: [clock('a', { collapsed: true, _expandedH: 3 })] });
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 3);
+    expect(host.querySelector('[gs-id="a"] .homepage-block-wrapper')?.classList.contains('block-collapsed')).toBe(false);
+    expect(host.querySelector('[gs-id="a"]')?.getAttribute('gs-h')).toBe('3');
   });
 });

@@ -237,10 +237,15 @@ export function isValidBlockInstance(b: unknown): b is BlockInstance {
  */
 function isUnknownTypeBlock(b: unknown): b is Record<string, unknown> {
   if (!b || typeof b !== 'object' || Array.isArray(b)) return false;
-  const block = b as Record<string, unknown>;
+  // Judged after migration: a legacy type (tag-grid) is a known block.
+  const block = migrateBlockInstance(b as Record<string, unknown>) as unknown as Record<string, unknown>;
   return typeof block.type === 'string' && block.type !== '' && !VALID_BLOCK_TYPES.has(block.type)
+    && !RETIRED_BLOCK_TYPES.has(block.type)
     && isValidBlockInstance({ ...block, type: BLOCK_TYPES[0] });
 }
+
+/** Types an older version had and this one removed: no newer version will draw them. */
+const RETIRED_BLOCK_TYPES = new Set(['insight']);
 
 /**
  * Migrate + validate + clamp a raw blocks array loaded from disk.

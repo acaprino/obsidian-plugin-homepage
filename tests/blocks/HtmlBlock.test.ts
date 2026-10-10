@@ -126,3 +126,25 @@ describe('HtmlBlock document CSP (M60)', () => {
     expect(srcdoc.toLowerCase().indexOf('<!doctype', 1)).toBe(-1);
   });
 });
+
+describe('HtmlBlock in single column, after the review (M38)', () => {
+  it('does not grow again when only its own height changed', async () => {
+    const ro = stubResizeObserver();
+    try {
+      const grid = document.body.createDiv({ cls: 'homepage-grid grid-stack hp-single-column' });
+      const m = mountDocument(grid);
+      m.iframe.dispatchEvent(new Event('load'));
+      ro.resize(m.iframe, 400, 150); // the report a ResizeObserver makes once observing starts
+      await frame();
+      expect(m.iframe.style.getPropertyValue('--hp-iframe-height')).toBe('600px');
+
+      // The frame grew to 600 px; a margin collapsing through body now reads 620.
+      Object.defineProperty(m.doc.documentElement, 'scrollHeight', { configurable: true, get: () => 620 });
+      ro.resize(m.iframe, 400, 600);
+      await frame();
+
+      expect(m.iframe.style.getPropertyValue('--hp-iframe-height')).toBe('600px');
+      m.block.unload();
+    } finally { ro.restore(); }
+  });
+});

@@ -566,3 +566,41 @@ describe('GridLayout rerender guard (M124)', () => {
     expect(host.querySelector('.drawn')).not.toBe(before);
   });
 });
+
+describe('GridLayout flush and anti-corruption guards (M120)', () => {
+  /** An edit-mode grid with block `a` mid-drag at x = 1 (GridStack's node moved, nothing saved). */
+  function dragging(editMode = true) {
+    const plugin = makePlugin({ blocks: [clock('a')] });
+    const emits: LayoutConfig[] = [];
+    const grid = new GridLayout(host, plugin.app, plugin, (l) => { plugin.layout = l; emits.push(l); });
+    grid.render(plugin.activeBlocks(), 3);
+    if (editMode) grid.setEditMode(true);
+    grid.phase = Phase.Ready;
+    const el = grid.gridStack!.getGridItems()[0] as HTMLElement & { gridstackNode?: { x: number } };
+    el.gridstackNode!.x = 1;
+    emits.length = 0;
+    return { grid, plugin, emits };
+  }
+
+  it('a column change keeps the drag in flight', () => {
+    const { grid, plugin } = dragging();
+    grid.setColumns(2);
+    expect(plugin.layout.blocks[0].x).toBe(1);
+  });
+
+  it('a teardown runs the persist still debounced', () => {
+    const { grid, emits } = dragging();
+    grid.persistLayoutDebounced();
+    grid.destroy();
+    expect(emits.some(l => l.blocks[0].x === 1)).toBe(true);
+  });
+
+  it('a drag that ends in view mode saves nothing', () => {
+    // AutoHeightManager lifts staticGrid for its batch: a pointer twitch then can
+    // become a drag in view mode, which must not be saved.
+    const { grid, emits } = dragging(false);
+    const handlers = (grid as unknown as { gridStack: { _gsEventHandler: Record<string, (e: Event) => void> } }).gridStack._gsEventHandler;
+    handlers.dragstop(new Event('dragstop'));
+    expect(emits).toEqual([]);
+  });
+});

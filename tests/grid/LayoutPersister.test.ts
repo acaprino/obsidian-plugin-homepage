@@ -59,3 +59,34 @@ describe('LayoutPersister and collapsed blocks (R2)', () => {
     expect(saved?.[0].h).toBe(2);
   });
 });
+
+describe('LayoutPersister on a narrow pane (M120)', () => {
+  function persistNarrow(blocks: BlockInstance[], nodes: Record<string, Pos>): BlockInstance[] | null {
+    const emitted: LayoutConfig[] = [];
+    const items = Object.entries(nodes).map(([id, n]) => gsItem(id, n));
+    const host: LayoutPersisterHost = {
+      gridStack: { getGridItems: () => items } as unknown as GridStack,
+      phase: Phase.Ready,
+      plugin: { activeBlocks: () => blocks, activeLayoutPriority: () => 'row' } as unknown as IHomepagePlugin,
+      effectiveColumns: 1, // a narrow pane shows one column of a 3-column layout
+      canonicalColumns: 3,
+      editMode: false,
+      scheduler: new Scheduler(),
+      shouldAutoHeight: () => false,
+      buildLayoutUpdate: (b) => ({ ...getDefaultLayout(), blocks: b }),
+      emitLayout: (l) => { emitted.push(l); },
+    };
+    new LayoutPersister(host).persist();
+    return emitted[0]?.blocks ?? null;
+  }
+
+  it('does not save the packed narrow positions over the layout', () => {
+    const saved = persistNarrow([block('a', { x: 2, y: 0 })], { a: { x: 0, y: 5, w: 1, h: 4 } });
+    expect(saved).toBeNull();
+  });
+
+  it('saves a height change, keeping the canonical position', () => {
+    const saved = persistNarrow([block('a', { x: 2, y: 0 })], { a: { x: 0, y: 5, w: 1, h: 6 } });
+    expect(saved?.[0]).toMatchObject({ x: 2, y: 0, h: 6 });
+  });
+});

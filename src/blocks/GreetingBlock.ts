@@ -187,15 +187,23 @@ export class GreetingBlock extends BaseBlock {
       this.timeEl = el.createDiv({ cls: 'greeting-time' });
     }
 
+    // Every second, redrawing only when something shown changed: a 60 s interval
+    // from mount showed the new minute up to 59 s late (M46).
     this.tick();
-    this.registerInterval(window.setInterval(() => this.tick(), 60_000));
+    this.registerInterval(window.setInterval(() => this.tick(), 1000));
   }
+
+  /** What the last tick drew; a tick that would draw the same is skipped. */
+  private shown = '';
 
   private tick(): void {
     const now = moment();
     const hour = now.hour();
     const cfg = this.instance.config as GreetingConfig;
     const { name = 'bentornato', showTime = true, showEmoji = true } = cfg;
+    const key = `${hour}|${showTime ? now.format('HH:mm') : ''}`;
+    if (key === this.shown) return;
+    this.shown = key;
 
     if (this.emojiEl && showEmoji) {
       this.emojiEl.setText(pickEmoji(cfg, hour));

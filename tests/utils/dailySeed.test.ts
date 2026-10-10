@@ -61,3 +61,20 @@ describe('dailyIndex', () => {
     expect(dailyIndex(5)).toBe((today + 1) % 5);
   });
 });
+
+describe('dailyEpochDay across DST in a UTC+0 zone (M85)', () => {
+  const original = process.env.TZ;
+  beforeEach(() => { process.env.TZ = 'Europe/London'; vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); process.env.TZ = original; });
+
+  it('advances by one every day around the clock changes', () => {
+    for (const start of ['2026-03-27T12:00:00Z', '2026-10-23T12:00:00Z']) {
+      const days: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        vi.setSystemTime(new Date(Date.parse(start) + i * 86_400_000));
+        days.push(dailyEpochDay());
+      }
+      expect(days.slice(1).map((d, i) => d - days[i])).toEqual([1, 1, 1, 1, 1]);
+    }
+  });
+});

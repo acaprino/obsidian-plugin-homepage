@@ -69,3 +69,19 @@ describe('RecentFilesBlock exclude folders (M68)', () => {
     }
   });
 });
+
+describe('RecentFilesBlock relative times (M84)', () => {
+  it('are refreshed while the homepage stays open', async () => {
+    const { vi } = await import('vitest');
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 9, 10, 12, 0, 0));
+      const b = mount([tfile('a.md', Date.now() - 10_000)], { showTimestamp: true });
+      const before = b.el.querySelector('.recent-file-time')?.textContent;
+
+      vi.advanceTimersByTime(10 * 60_000);
+
+      expect(b.el.querySelector('.recent-file-time')?.textContent).not.toBe(before);
+    } finally { vi.useRealTimers(); }
+  });
+});

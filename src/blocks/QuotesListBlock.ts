@@ -73,6 +73,7 @@ export class QuotesListBlock extends BaseBlock {
     this.register(() => { this.colsRo?.disconnect(); this.colsRo = null; });
 
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
+    this.onDayChange(() => { if ((this.instance.config as QuotesConfig).dailySeed !== false) trigger(); });
 
     // Only watch vault events when using tag source (text source is static config)
     this.registerEvent(this.app.metadataCache.on('changed', (file, _data, cache) => {

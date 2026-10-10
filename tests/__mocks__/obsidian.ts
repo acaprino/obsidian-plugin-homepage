@@ -8,8 +8,8 @@
  */
 
 /** Subset of `moment` that our codebase actually uses. Wraps native Date. */
-export function moment(): MomentLike {
-  return new MomentLike(new Date());
+export function moment(input?: number | Date): MomentLike {
+  return new MomentLike(input === undefined ? new Date() : new Date(input));
 }
 
 class MomentLike {
@@ -22,13 +22,30 @@ class MomentLike {
     return new MomentLike(copy);
   }
   valueOf(): number { return this.d.getTime(); }
+  year(): number { return this.d.getFullYear(); }
+  month(): number { return this.d.getMonth(); }
+  date(): number { return this.d.getDate(); }
+  hour(): number { return this.d.getHours(); }
+  minute(): number { return this.d.getMinutes(); }
   dayOfYear(): number {
     const start = new Date(this.d.getFullYear(), 0, 0);
     const diff = this.d.getTime() - start.getTime();
     return Math.floor(diff / 86_400_000);
   }
+  /** moment's relative-time thresholds, in English. */
+  fromNow(): string {
+    const s = Math.round((Date.now() - this.d.getTime()) / 1000);
+    const m = Math.round(s / 60);
+    const h = Math.round(m / 60);
+    if (s < 45) return 'a few seconds ago';
+    if (s < 90) return 'a minute ago';
+    if (m < 45) return `${m} minutes ago`;
+    if (m < 90) return 'an hour ago';
+    if (h < 22) return `${h} hours ago`;
+    return `${Math.round(h / 24)} days ago`;
+  }
   format(fmt: string): string {
-    // Minimal formatter — only supports 'YYYY-MM-DD HH-mm-ss'.
+    // Minimal formatter: YYYY MM DD HH mm ss only.
     const pad = (n: number) => String(n).padStart(2, '0');
     return fmt
       .replace('YYYY', String(this.d.getFullYear()))

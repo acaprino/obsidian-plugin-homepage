@@ -32,6 +32,7 @@ export class RandomNoteBlock extends BaseBlock {
 
     const trigger = () => this.scheduleRender(DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
     const slowTrigger = () => this.scheduleRender(DELETE_RENAME_DEBOUNCE_MS, (e) => { e.empty(); return this.loadAndRender(e); });
+    this.onDayChange(() => { if ((this.instance.config as { dailySeed?: boolean }).dailySeed !== false) trigger(); });
 
     this.registerEvent(this.app.metadataCache.on('changed', (file, _data, cache) => {
       const tag = this.getTag();

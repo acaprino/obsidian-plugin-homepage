@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { App } from 'obsidian';
 import { AUTO_HEIGHT_ATTR } from '../../src/grid/AutoHeight';
 import { QuotesListBlock } from '../../src/blocks/QuotesListBlock';
@@ -121,5 +121,20 @@ describe('QuotesListBlock list mode from a tag (M87, M88)', () => {
 
     expect(el.querySelector('.quote-content')?.textContent).toContain('One Two Three Four');
     expect(el.querySelector('.quote-author')?.textContent).toBe('— Seneca');
+  });
+});
+
+describe('QuotesListBlock daily quote at midnight (M83)', () => {
+  it('rolls over to the next day while the homepage stays open', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 9, 10, 23, 59, 30));
+      const { el } = mountQuotes({ source: 'text', maxItems: 1, dailySeed: true, quotes: 'Alpha\n---\nBeta' });
+      const before = el.querySelector('.insight-body')?.textContent;
+
+      await vi.advanceTimersByTimeAsync(61_000 + 1_000); // past midnight, the check, the debounce
+
+      expect(el.querySelector('.insight-body')?.textContent).not.toBe(before);
+    } finally { vi.useRealTimers(); }
   });
 });

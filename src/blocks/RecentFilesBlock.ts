@@ -18,6 +18,8 @@ function excludedFolders(setting: string | undefined): string[] {
 }
 
 export class RecentFilesBlock extends BaseBlock {
+  /** The relative-time labels drawn, with the mtime each one shows. */
+  private timeLabels: [HTMLElement, number][] = [];
   /** Path of the currently-displayed most-recent file (set each renderContent). */
   private topPath: string | null = null;
 
@@ -39,6 +41,10 @@ export class RecentFilesBlock extends BaseBlock {
       if (file.path === this.topPath) return;
       trigger();
     }));
+    // Relative times age while the homepage stays open: rewrite them each minute (M84).
+    this.registerInterval(window.setInterval(() => {
+      for (const [label, mtime] of this.timeLabels) label.setText(moment(mtime).fromNow());
+    }, 60_000));
     this.registerEvent(this.app.vault.on('create', () => trigger()));
     this.registerEvent(this.app.vault.on('delete', () => trigger()));
     this.registerEvent(this.app.vault.on('rename', () => trigger()));
@@ -67,6 +73,7 @@ export class RecentFilesBlock extends BaseBlock {
     this.topPath = files[0]?.path ?? null;
 
     const list = el.createDiv({ cls: 'recent-files-list' });
+    this.timeLabels = [];
 
     if (files.length === 0) {
       const hint = list.createDiv({ cls: 'block-empty-hint' });
@@ -80,7 +87,8 @@ export class RecentFilesBlock extends BaseBlock {
       const btn = item.createEl('button', { cls: 'recent-file-btn' });
       btn.createSpan({ cls: 'recent-file-name', text: file.basename });
       if (showTimestamp) {
-        btn.createSpan({ cls: 'recent-file-time', text: moment(file.stat.mtime).fromNow() });
+        const label = btn.createSpan({ cls: 'recent-file-time', text: moment(file.stat.mtime).fromNow() });
+        this.timeLabels.push([label, file.stat.mtime]);
       }
       onOpenClick(btn, evt => openFile(this.app, file, evt));
     }

@@ -1,5 +1,6 @@
 import { App, Component, Keymap } from 'obsidian';
 import { BlockInstance, IHomepagePlugin } from '../types';
+import { dailyEpochDay } from '../utils/dailySeed';
 
 /** Regex for the shared `_titleSize` config key — h1 through h6. */
 export const TITLE_SIZE_RE = /^h[1-6]$/;
@@ -211,6 +212,21 @@ export abstract class BaseBlock extends Component {
     this._sizeObserver?.disconnect();
     this._sizeObserver = null;
     window.cancelAnimationFrame(this._sizeRafId);
+  }
+
+  /**
+   * Run `fn` when the local calendar day changes while the block stays mounted,
+   * checked every minute. A daily-seeded quote or note otherwise kept
+   * yesterday's pick until the homepage re-rendered (M83).
+   */
+  protected onDayChange(fn: () => void): void {
+    let day = dailyEpochDay();
+    this.registerInterval(window.setInterval(() => {
+      const today = dailyEpochDay();
+      if (today === day) return;
+      day = today;
+      fn();
+    }, 60_000));
   }
 
   /** Increment and return a new render generation. Call at the start of async renders. */

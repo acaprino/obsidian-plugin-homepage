@@ -10,14 +10,18 @@ const CLOCK_STYLES: Record<ClockStyle, string> = {
   accent:   'Accent',
 };
 
+/** Write `text` only when it differs, so a 1 s tick does not touch the DOM every second. */
+function setIfChanged(el: HTMLElement, text: string): void {
+  if (el.textContent !== text) el.setText(text);
+}
+
 export class ClockBlock extends BaseBlock {
   private timeEl: HTMLElement | null = null;
   private dateEl: HTMLElement | null = null;
 
   render(el: HTMLElement): void {
-    const { showDate = true, showSeconds = false, clockStyle = 'minimal' } = this.instance.config as {
+    const { showDate = true, clockStyle = 'minimal' } = this.instance.config as {
       showDate?: boolean;
-      showSeconds?: boolean;
       clockStyle?: ClockStyle;
     };
 
@@ -30,9 +34,11 @@ export class ClockBlock extends BaseBlock {
       this.dateEl = el.createDiv({ cls: 'clock-date' });
     }
 
+    // Every second, writing only what changed: a 60 s interval counted from mount
+    // showed the new minute up to 59 s late, and a custom format with seconds
+    // changed once a minute (M46).
     this.tick();
-    const interval = showSeconds ? 1000 : 60_000;
-    this.registerInterval(window.setInterval(() => this.tick(), interval));
+    this.registerInterval(window.setInterval(() => this.tick(), 1000));
   }
 
   private tick(): void {
@@ -43,16 +49,8 @@ export class ClockBlock extends BaseBlock {
       format?: string;
     };
 
-    if (this.timeEl) {
-      if (format) {
-        this.timeEl.setText(now.format(format));
-      } else {
-        this.timeEl.setText(now.format(showSeconds ? 'HH:mm:ss' : 'HH:mm'));
-      }
-    }
-    if (this.dateEl && showDate) {
-      this.dateEl.setText(now.format('dddd, D MMMM YYYY'));
-    }
+    if (this.timeEl) setIfChanged(this.timeEl, now.format(format || (showSeconds ? 'HH:mm:ss' : 'HH:mm')));
+    if (this.dateEl && showDate) setIfChanged(this.dateEl, now.format('dddd, D MMMM YYYY'));
   }
 
   renderContentSettings(body: HTMLElement, draft: Record<string, unknown>): void {

@@ -13,6 +13,7 @@ A composable, drag-and-drop homepage for [Obsidian](https://obsidian.md).
 - **Responsive layout** -- the grid drops columns in narrow panes (below 1024, 768 and 480 px), and blocks adapt their contents with CSS container queries
 - **Full-screen lightbox** for gallery images with keyboard and swipe navigation
 - **Collapsible blocks** -- click any header to collapse or expand it
+- **Sync-aware** -- a layout changed on another device (Obsidian Sync, iCloud, git, ...) is loaded as soon as it arrives, never over an edit session in progress
 - **51 language presets** for greeting salutations
 - **Zero runtime dependencies** beyond [GridStack](https://gridstackjs.com/)
 
@@ -51,12 +52,12 @@ Requires Obsidian 1.8.7 or later.
 | **Button Grid** | Emoji-labeled buttons that open notes |
 | **Image Gallery** | Grid or masonry layout from a vault folder, with lightbox |
 | **Video Embed** | YouTube, Vimeo, Dailymotion -- supports playlists with shuffle |
-| **Embedded Note** | Renders a vault note inline |
+| **Embedded Note** | Renders a vault note inline, scrolling inside its card or growing to fit; follows the note when it is renamed |
 | **Static Text** | Freeform markdown with a quick-edit button |
 | **HTML** | Custom HTML (sanitized for security) |
 | **Bookmarks** | Web links and vault bookmarks in a grid |
 | **Recent Files** | Your most recently modified notes |
-| **Pomodoro** | Configurable work/break timer |
+| **Pomodoro** | Configurable work/break timer; keeps running (or paused) while the homepage is closed or in edit mode |
 | **Spacer** | Empty space for layout gaps |
 | **Random Note** | Surfaces a random note from a tag filter, with excerpt preview |
 | **Voice Notes** | Tap-to-record voice transcription via OpenAI Whisper or Google Gemini -- see [Voice Notes & privacy](#voice-notes--privacy) below |
@@ -77,7 +78,11 @@ The **Voice Notes** block records audio in your browser and uploads it to a thir
 
 **API key storage:** the key is **encrypted at rest** (AES-GCM-256) in `<vault>/.obsidian/plugins/homepage-blocks/data.json` using a non-extractable key that stays on the device where you entered it (in the browser's IndexedDB). A synced `data.json` (Obsidian Sync, iCloud, Dropbox, git, ...) therefore carries only ciphertext that **other devices cannot decrypt**: there the block shows *API key unavailable on this device*, and the stored key is left untouched for the device that saved it. Entering a key on another device replaces the stored one for every device that shares that block; in **Separate** responsive mode, desktop and mobile blocks keep their own keys. Update the plugin on every device that syncs the vault: older versions clear a key they cannot read, which erases it for the other devices too. On the rare platform without WebCrypto, the plugin falls back to plaintext (with a refuse-to-downgrade guard that never overwrites existing ciphertext). Treat the key like any secret regardless, since the ciphertext still travels with your synced vault. When you **Export layout** the key is stripped from the exported JSON.
 
-**Revoking access:** delete the key from the provider's dashboard ([OpenAI](https://platform.openai.com/api-keys), [Google AI Studio](https://aistudio.google.com/app/apikey)) and clear the API key field in block settings on the device where you entered it.
+**Note template:** `{{transcript}}` is filled in only where it sits in plain text: its paragraph (the text since the last blank line before it) must hold no HTML, no link or image target, no reference definition and no CSS `url(`, and it must not be inside a `<style>` or `<svg>` element. Otherwise the template is ignored for that note, which then holds the transcript alone, so an imported template cannot send your dictation to a remote address. A template without `{{transcript}}` gets the transcript below it.
+
+**Timeouts:** a transcription that has not answered after 120 seconds is reported as timed out.
+
+**Revoking access:** to withdraw the upload confirmation on a device, use **Forget** next to *Upload consent* in the block settings. Delete the key from the provider's dashboard ([OpenAI](https://platform.openai.com/api-keys), [Google AI Studio](https://aistudio.google.com/app/apikey)) and clear the API key field in block settings on the device where you entered it.
 
 **Mobile:** voice recording requires the platform's `MediaRecorder` + `navigator.mediaDevices` APIs. On platforms that don't expose them, the microphone is disabled and, once an API key is set, the block shows *Not available on this platform*.
 
@@ -107,21 +112,21 @@ Open **Settings > Homepage Blocks**:
 | Pin homepage tab | Prevents the homepage tab from being closed |
 | Separate startup for mobile | Use independent startup settings on mobile (open-on-startup, open mode, pin, ...) instead of mirroring desktop |
 | Default columns | Grid column count (2, 3, 4, or 5) |
-| Responsive mode | **Unified** (one adaptive layout) or **Separate** (independent desktop + mobile layouts, with copy-to-mobile) |
+| Responsive mode | **Unified** (one adaptive layout) or **Separate** (independent desktop + mobile layouts, with copy-to-mobile, which fits the desktop blocks to the mobile columns without overlaps) |
 | Compact layout | Removes vertical gaps between blocks in view mode. Turned off, gaps are kept only until a block that sizes itself to its content (gallery, quotes, text, button grid, random note, a note set to grow) changes height, which packs the grid again |
 | Hover highlight | Subtly lifts blocks on hover and reveals the collapse toggle |
-| Show scroll bar | Shows or hides the homepage scroll bar |
-| Reset to default layout | Restores demo blocks (**cannot be undone**) |
+| Show scroll bar | Shows or hides the homepage scroll bar (scrolling regions inside blocks keep theirs) |
+| Reset to default layout | Restores the demo blocks of the layout this device shows -- the desktop layout, or in Separate mode on a phone the mobile layout -- and keeps every other setting (**cannot be undone**) |
 | Export layout | Copies your layout to the clipboard as JSON, without API keys and button custom CSS |
-| Import layout | Replaces the whole layout, mobile layout and settings included, with a layout from the clipboard, after a confirmation. API keys, custom CSS, unknown settings and values of the wrong type are dropped |
+| Import layout | Replaces the whole layout, mobile layout and settings included, with a layout from the clipboard, after a confirmation. API keys, custom CSS, unknown settings and values of the wrong type are dropped, and numbers are clamped to the ranges the settings offer. The confirmation lists blocks that bring text which is rendered or written into notes (Static Text content, HTML, the Voice Notes template and folder) and lets you **Import without content** |
 
 ### Commands
 
 | Command | Action |
 |---------|--------|
 | `Open homepage` | Opens or focuses the homepage tab |
-| `Toggle edit mode` | Switches open homepages between edit and view mode |
-| `Add block` | Opens the add-block picker on an open homepage |
+| `Toggle edit mode` | Switches the active homepage between edit and view mode (one homepage is edited at a time) |
+| `Add block` | Opens the add-block picker on the active homepage |
 
 ## CSS customization
 

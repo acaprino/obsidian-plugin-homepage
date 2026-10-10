@@ -498,3 +498,39 @@ describe('block names (M101)', () => {
     expect(BlockRegistry.get('vault-search')?.displayName).toBe('Vault search');
   });
 });
+
+describe('the save path (M121)', () => {
+  it('writes nothing while a broken data.json could not be backed up, and resumes once it is', async () => {
+    Notice.messages = [];
+    const { plugin, disk } = pluginWithDisk({ ...getDefaultLayout(), columns: 3 });
+    let allowed = false;
+    (plugin as unknown as { dataGuard: unknown }).dataGuard = {
+      allowWrite: async () => (allowed ? { allowed: true, backupPath: '.obsidian/plugins/homepage-blocks/data.json.invalid' } : { allowed: false, backupPath: null }),
+    };
+
+    await plugin.saveLayout({ ...getDefaultLayout(), columns: 5 });
+    expect(disk().columns).toBe(3);
+
+    allowed = true;
+    await plugin.saveLayout({ ...getDefaultLayout(), columns: 4 });
+    expect(disk().columns).toBe(4);
+    expect(Notice.messages.some(m => /data\.json\.invalid/.test(m))).toBe(true);
+  });
+
+  it('writes saves in the order they were made, a slow write included', async () => {
+    const { plugin, disk } = pluginWithDisk(getDefaultLayout());
+    const write = plugin.saveData.bind(plugin);
+    let calls = 0;
+    plugin.saveData = async (data: unknown) => {
+      const delay = calls++ === 0 ? 30 : 0; // the first write is slow
+      await new Promise(resolve => setTimeout(resolve, delay));
+      await write(data);
+    };
+
+    void plugin.saveLayout({ ...getDefaultLayout(), columns: 4 });
+    await plugin.saveLayout({ ...getDefaultLayout(), columns: 5 });
+    await new Promise(resolve => setTimeout(resolve, 60)); // and the slow one, wherever it lands
+
+    expect(disk().columns).toBe(5);
+  });
+});

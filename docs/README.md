@@ -1,6 +1,6 @@
 # Homepage Blocks developer docs
 
-These pages document the Obsidian plugin **Homepage Blocks** as the code stands on branch `xray-remediation` after the X-ray fixes of 2026-10-10; line citations in sections that were not edited may be a few lines off. Every claim cites its source as `path:line`, relative to the repo root. When a comment, `CLAUDE.md` or the README says something else, the docs follow the code and list the difference.
+These pages document the Obsidian plugin **Homepage Blocks** as the code stands on branch `xray-remediation` after the X-ray fixes and the review-backlog fixes of 2026-10-10; line citations in sections that were not edited may be a few lines off. Every claim cites its source as `path:line`, relative to the repo root. When a comment, `CLAUDE.md` or the README says something else, the docs follow the code and list the difference.
 
 ## What each doc covers
 
@@ -11,7 +11,7 @@ These pages document the Obsidian plugin **Homepage Blocks** as the code stands 
 | [flows.md](flows.md) | Runtime sequences: startup and load, opening the homepage, rendering, edit mode (Done, Discard, one session at a time), Add Block, block settings, auto-height, responsive columns, collapse, the inline Static Text edit, export and import, and a `data.json` changed by another device |
 | [blocks.md](blocks.md) | The 17 block types: config keys, rendering, live updates, auto-height, settings UI, network access, limits, test coverage |
 | [styling.md](styling.md) | `styles.css`, tokens and CSS hooks, how the shared `_` keys become classes and custom properties, breakpoints and container queries, state classes, worked snippet examples |
-| [api/plugin.md](api/plugin.md) | `IHomepagePlugin`, `HomepagePlugin`, the view, commands and ribbon, the settings tab, renames and external `data.json` changes, and the helper modules for validation, load recovery, encryption, import, config ranges, reset, startup, voice notes, timeouts and the Pomodoro timer |
+| [api/plugin.md](api/plugin.md) | `IHomepagePlugin`, `HomepagePlugin`, the view, commands and ribbon, the settings tab, renames and external `data.json` changes, and the helper modules for validation, load recovery, encryption, import, config ranges, reset, startup, voice notes and transcription providers, timeouts, the Pomodoro timer, opening links, folder paths, renames, tags, note text and accent contrast |
 | [api/blocks.md](api/blocks.md) | `BaseBlock`, `BlockFactory` and the `defaultConfig` contract, `BlockRegistry`, `BLOCK_META`, and a step-by-step guide to adding a block type |
 | [api/grid.md](api/grid.md) | `HomepageView`, `GridLayout`, `Phase`, the `src/grid/*` managers, Scheduler keys, events, `EditToolbar` and the modals |
 
@@ -36,6 +36,6 @@ Each doc lists where comments, `CLAUDE.md` or the README disagree with the code,
 - [api/blocks.md, Pitfalls](api/blocks.md#pitfalls-in-the-current-code) and [disagreements](api/blocks.md#where-comments-and-claudemd-disagree-with-the-code)
 - [api/grid.md §18](api/grid.md#18-where-docs-and-comments-disagree-with-the-code) and [§19](api/grid.md#19-risks-observed-in-the-code)
 
-The full list of defects found by the multi-agent code review of 2026-09-27 (127 defects, M1-M127, with a "Fix first" list) is in [reviews/2026-09-27-code-review.md](reviews/2026-09-27-code-review.md).
+The full list of defects found by the multi-agent code review of 2026-09-27 (127 defects, M1-M127, with a "Fix first" list; its status line records which are fixed) is in [reviews/2026-09-27-code-review.md](reviews/2026-09-27-code-review.md).
 
 Statements marked *inferred* or *derived* follow from the code or the CSS cascade and were not observed in a running Obsidian.

@@ -535,3 +535,34 @@ describe('GridLayout — header zone of a block without a title (M49)', () => {
     expect(zone.getAttribute('aria-expanded')).toBe('true');
   });
 });
+
+describe('GridLayout rerender guard (M124)', () => {
+  function gridWith(busy: boolean) {
+    class Block extends BaseBlock {
+      render(el: HTMLElement): void { el.createDiv({ cls: 'drawn' }); }
+      hasUnsavedInlineState(): boolean { return busy; }
+    }
+    BlockRegistry.register({
+      type: 'spacer', displayName: 'Spacer', defaultConfig: {}, defaultSize: { w: 1, h: 2 },
+      create: (app, instance, plugin) => new Block(app, instance, plugin),
+    });
+    const plugin = makePlugin({ blocks: [{ id: 's', type: 'spacer', x: 0, y: 0, w: 1, h: 2, config: {} }] });
+    const grid = new GridLayout(host, {} as App, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 3);
+    return grid;
+  }
+
+  it('leaves the grid alone while a block holds unsaved input', () => {
+    const grid = gridWith(true);
+    const before = host.querySelector('.drawn');
+    grid.triggerRerender();
+    expect(host.querySelector('.drawn')).toBe(before);
+  });
+
+  it('redraws otherwise', () => {
+    const grid = gridWith(false);
+    const before = host.querySelector('.drawn');
+    grid.triggerRerender();
+    expect(host.querySelector('.drawn')).not.toBe(before);
+  });
+});

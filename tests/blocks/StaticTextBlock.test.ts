@@ -271,3 +271,16 @@ describe('StaticTextBlock inline editor name (M112)', () => {
     expect(el.querySelector('.static-text-inline-editor textarea')?.getAttribute('aria-label')).toBe('Text content');
   });
 });
+
+describe('StaticTextBlock unsaved state while a save is pending (M124)', () => {
+  it('holds off rerenders until the save has landed', async () => {
+    const { el, block } = mount('old text');
+    await settle();
+
+    editAndSave(el, 'new text');
+    expect(block.hasUnsavedInlineState()).toBe(true);
+
+    await settle();
+    expect(block.hasUnsavedInlineState()).toBe(false);
+  });
+});

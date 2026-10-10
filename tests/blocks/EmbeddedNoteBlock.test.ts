@@ -105,3 +105,22 @@ describe('EmbeddedNoteBlock links', () => {
     expect(opened).toEqual([]);
   });
 });
+
+describe('EmbeddedNoteBlock header (N17)', () => {
+  it('drops the title of a note that was deleted', async () => {
+    const v = makeVault({ 'Old.md': 'text' });
+    const instance: BlockInstance = { id: 'e1', type: 'embedded-note', x: 0, y: 0, w: 1, h: 3, config: { filePath: 'Old.md' } };
+    const header = document.body.createDiv();
+    const el = document.body.createDiv();
+    const block = new EmbeddedNoteBlock({ vault: v.vault } as unknown as App, instance, makePlugin([instance]));
+    block.setHeaderContainer(header);
+    await block.render(el);
+    expect(header.textContent).toContain('Old');
+
+    delete v.texts['Old.md'];
+    v.fire('delete', note('Old.md'));
+    await wait(400);
+
+    expect(header.textContent).not.toContain('Old');
+  });
+});

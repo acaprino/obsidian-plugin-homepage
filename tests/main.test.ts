@@ -197,3 +197,17 @@ describe('data.json changed on disk by another device (R3)', () => {
     expect(plugin.layout.columns).toBe(4);
   });
 });
+
+describe('embedded notes follow a rename while no block is mounted (R8)', () => {
+  const embed = (id: string, filePath: string) => ({ id, type: 'embedded-note' as const, x: 0, y: 0, w: 1, h: 3, config: { filePath } });
+
+  it('rewrites the path in desktop and mobile blocks and saves', async () => {
+    const { plugin } = pluginWithDisk(getDefaultLayout());
+    plugin.layout = { ...getDefaultLayout(), blocks: [embed('a', 'Old.md')], mobileBlocks: [embed('m', 'Old.md'), embed('n', 'Other.md')] };
+
+    await plugin.followRename('Old.md', 'New.md');
+
+    expect(plugin.layout.blocks[0].config.filePath).toBe('New.md');
+    expect(plugin.layout.mobileBlocks.map(b => b.config.filePath)).toEqual(['New.md', 'Other.md']);
+  });
+});

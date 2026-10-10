@@ -229,6 +229,11 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // see fresh data without having to wire up vault listeners themselves.
     installTagCacheListeners(this);
 
+    // Embedded notes follow a renamed note here, not only in a mounted block: in
+    // edit mode, or with no homepage open, no block exists to see the event (R8).
+    // Registered before any block, so blocks see the new path in liveConfig().
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => { void this.followRename(oldPath, file.path); }));
+
     // An unusable data.json (unparseable, not an object, or with invalid blocks)
     // is copied verbatim to data.json.invalid before anything can resave over it.
     const raw = await this.loadData() as unknown;
@@ -455,6 +460,19 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       },
     );
     await this.savePromise;
+  }
+
+  /** Point every Embedded note block (desktop and mobile) that shows `oldPath` at `newPath`. */
+  async followRename(oldPath: string, newPath: string): Promise<void> {
+    let changed = false;
+    const follow = (blocks: BlockInstance[]) => blocks.map(b => {
+      if (b.type !== 'embedded-note' || b.config.filePath !== oldPath) return b;
+      changed = true;
+      return { ...b, config: { ...b.config, filePath: newPath } };
+    });
+    const blocks = follow(this.layout.blocks);
+    const mobileBlocks = follow(this.layout.mobileBlocks);
+    if (changed) await this.saveLayout({ ...this.layout, blocks, mobileBlocks });
   }
 
   /** data.json of this plugin, in the vault's plugin folder. */

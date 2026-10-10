@@ -103,11 +103,12 @@ export function renderEmptyState(
   const empty = gridEl.createDiv({ cls: 'homepage-empty-state' });
   empty.createDiv({ cls: 'homepage-empty-icon', text: '\u{1F3E0}' });
   empty.createEl('p', { cls: 'homepage-empty-title', text: 'Your homepage is empty' });
+  // The toolbar is hidden in view mode; the pencil (FAB) is what can be clicked (N1).
   empty.createEl('p', {
     cls: 'homepage-empty-desc',
     text: opts.editMode
       ? 'Click the button below to add your first block.'
-      : 'Toggle Edit mode in the toolbar to start adding blocks.',
+      : 'Click the pencil button in the top-right corner to start adding blocks.',
   });
   if (opts.editMode && opts.onRequestAddBlock) {
     const cta = empty.createEl('button', { cls: 'homepage-empty-cta', text: 'Add your first block' });

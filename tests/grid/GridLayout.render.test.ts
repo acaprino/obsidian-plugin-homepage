@@ -73,6 +73,8 @@ describe('GridLayout — empty state', () => {
     expect(empty).toBeTruthy();
     expect(host.querySelector('.homepage-empty-title')?.textContent).toBe('Your homepage is empty');
     expect(host.querySelector('.homepage-empty-cta')).toBeNull();
+    // The toolbar is hidden in view mode: the hint names the pencil button (N1).
+    expect(host.querySelector('.homepage-empty-desc')?.textContent).toMatch(/pencil button/i);
   });
 
   it('shows an "Add your first block" CTA in edit mode that calls onRequestAddBlock', () => {

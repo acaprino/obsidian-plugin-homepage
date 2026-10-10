@@ -343,7 +343,13 @@ describe('VoiceDictationBlock transcription and saving', () => {
     block.render(el);
     const mic = el.querySelector('button.voice-mic') as HTMLButtonElement;
     const record = async () => { mic.click(); openMic(); await settle(); };
-    const stop = async () => { mic.click(); await settle(); };
+    // Until the transcription has finished (saved, kept or failed), not a fixed time:
+    // the Gemini path reads the audio with a FileReader, slower under load.
+    const stop = async () => {
+      mic.click();
+      await vi.waitFor(() => { expect(el.dataset.voiceState).not.toBe('transcribing'); }, { timeout: 3000, interval: 5 });
+      await settle();
+    };
     return { ...v, el, mic, record, stop };
   }
 

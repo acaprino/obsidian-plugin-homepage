@@ -534,3 +534,20 @@ describe('the save path (M121)', () => {
     expect(disk().columns).toBe(5);
   });
 });
+
+describe('a rename while a homepage is open (after docs pass)', () => {
+  it('redraws the views not being edited, so mounted blocks read the new paths', async () => {
+    const shown = fakeView();
+    const editing = fakeView(true);
+    const local = { ...getDefaultLayout(), blocks: [block('g', 'image-gallery', { config: { folder: 'Photos' } })], mobileBlocks: [] };
+    const { plugin } = pluginWithDisk(local, [shown, editing]);
+    plugin.layout = structuredClone(local);
+    editing.mapEditSnapshot = () => {};
+
+    await plugin.followRename('Photos', 'Pictures');
+
+    expect(plugin.layout.blocks[0].config.folder).toBe('Pictures');
+    expect(shown.reloads).toBe(1);
+    expect(editing.reloads).toBe(0);
+  });
+});

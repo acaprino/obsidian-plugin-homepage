@@ -237,8 +237,12 @@ export function isValidBlockInstance(b: unknown): b is BlockInstance {
  */
 function isUnknownTypeBlock(b: unknown): b is Record<string, unknown> {
   if (!b || typeof b !== 'object' || Array.isArray(b)) return false;
-  // Judged after migration: a legacy type (tag-grid) is a known block.
-  const block = migrateBlockInstance(b as Record<string, unknown>) as unknown as Record<string, unknown>;
+  // Judged after migration: a legacy type (tag-grid) is a known block. On a
+  // copy of the config too: migration rewrites it in place, and a newer
+  // version's block must be written back as it was stored.
+  const raw = b as Record<string, unknown>;
+  const config = raw.config && typeof raw.config === 'object' && !Array.isArray(raw.config) ? { ...raw.config } : raw.config;
+  const block = migrateBlockInstance({ ...raw, config });
   return typeof block.type === 'string' && block.type !== '' && !VALID_BLOCK_TYPES.has(block.type)
     && !RETIRED_BLOCK_TYPES.has(block.type)
     && isValidBlockInstance({ ...block, type: BLOCK_TYPES[0] });

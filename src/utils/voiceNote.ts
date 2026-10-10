@@ -3,22 +3,10 @@ import { normalizePath } from 'obsidian';
 const PLACEHOLDER = '{{transcript}}';
 
 /**
- * Where a voice note goes. The folder loses anything that could leave the vault
- * (leading slashes or tilde, a drive prefix, NUL, backslashes); a folder with a
- * `..` segment is refused (null). The name is the timestamp, numbered when a
- * note with that name exists (two notes in one second lost the second, R10).
+ * The voice-note destination folder without anything that could leave the vault
+ * (leading slashes or tilde, a drive prefix, NUL, backslashes); null for a
+ * folder with a `..` segment, which is refused.
  */
-export function voiceNotePath(
-  folder: string,
-  timestamp: string,
-  exists: (path: string) => boolean,
-): { folder: string; path: string } | null {
-  const dir = sanitizeVoiceFolder(folder);
-  if (dir === null) return null;
-  return { folder: dir, path: uniqueFilePath(dir, timestamp, 'md', exists) };
-}
-
-/** The destination folder with anything that could leave the vault removed; null for a `..` segment. */
 export function sanitizeVoiceFolder(folder: string): string | null {
   const raw = folder
     .replace(/^[/\\~]+/, '')
@@ -34,7 +22,10 @@ export function sanitizeVoiceFolder(folder: string): string | null {
   return safe && safe !== '/' ? safe : '';
 }
 
-/** `dir/base.ext`, numbered (`base 2.ext`, ...) while a file of that name exists. */
+/**
+ * `dir/base.ext`, numbered (`base 2.ext`, ...) while a file of that name exists:
+ * two notes in one second lost the second (R10).
+ */
 export function uniqueFilePath(dir: string, base: string, ext: string, exists: (path: string) => boolean): string {
   const stem = dir ? `${dir}/${base}` : base;
   let path = `${stem}.${ext}`;

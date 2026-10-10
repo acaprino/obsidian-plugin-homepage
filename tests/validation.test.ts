@@ -621,3 +621,11 @@ describe('blocks of unknown types after the review (M58)', () => {
     expect(dropped).toBe(1);
   });
 });
+
+describe('blocks of a newer version are written back unchanged (M58, after docs pass)', () => {
+  it('leaves their config alone while checking their type', () => {
+    const future = { id: 'f', type: 'weather', x: 0, y: 0, w: 1, h: 1, config: { _transparent: true, _hideTitle: true } };
+    const out = validateLayout({ blocks: [future] });
+    expect(out.preserved?.blocks[0]).toEqual({ id: 'f', type: 'weather', x: 0, y: 0, w: 1, h: 1, config: { _transparent: true, _hideTitle: true } });
+  });
+});

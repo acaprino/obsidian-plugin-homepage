@@ -8,7 +8,8 @@
 .homepage-view,
 .hp-block-settings-modal {
   --hp-padding: clamp(8px, 1.5cqi, 16px);
-  --hp-card-padding: clamp(6px, 1.5cqi, 12px);
+  /* The default; a snippet sets --hp-card-padding, which wins in every pane. */
+  --hp-card-padding-default: clamp(6px, 1.5cqi, 12px);
   --hp-content-max-width: 1400px;
 
   /* ── Design tokens ──────────────────────────────────────
@@ -128,7 +129,7 @@
 .homepage-block-wrapper {
   background: var(--background-secondary);
   border-radius: var(--hp-border-radius, var(--radius-m, 8px));
-  padding: var(--hp-card-padding);
+  padding: var(--hp-card-padding, var(--hp-card-padding-default));
   border-width: var(--hp-border-width, 1px);
   border-style: var(--hp-border-style, solid);
   border-color: var(--background-modifier-border);
@@ -654,7 +655,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: calc(var(--hp-card-padding) + var(--hp-title-gap, 8px) + 1.2em) var(--hp-card-padding) var(--hp-card-padding);
+  padding: calc(var(--hp-card-padding, var(--hp-card-padding-default)) + var(--hp-title-gap, 8px) + 1.2em) var(--hp-card-padding, var(--hp-card-padding-default)) var(--hp-card-padding, var(--hp-card-padding-default));
   pointer-events: none;
   border-radius: inherit;
   /* The card's own background: an opaque, untinted card covered accented,
@@ -3258,7 +3259,7 @@
   /* Slightly smaller card padding: the default token, so a block's own Padding
      still wins (M80). */
   .homepage-grid {
-    --hp-card-padding: 10px;
+    --hp-card-padding-default: 10px;
   }
 
   /* Disable staggered block entry animation */
@@ -3325,7 +3326,7 @@
   /* Reduce block card padding: the default token, so a block's own Padding
      still wins (M80). */
   .homepage-grid {
-    --hp-card-padding: 8px;
+    --hp-card-padding-default: 8px;
   }
 
   /* Hide zoom group — auto-columns handles layout */
@@ -3650,7 +3651,7 @@
 .homepage-grid:not(.edit-mode) .homepage-block-wrapper.hp-block-pomodoro .block-content,
 .homepage-grid:not(.edit-mode) .homepage-block-wrapper.hp-block-voice-dictation .block-content {
   position: absolute;
-  inset: var(--hp-card-padding);
+  inset: var(--hp-card-padding, var(--hp-card-padding-default));
   z-index: 0;
 }
 .homepage-grid:not(.edit-mode) .homepage-block-wrapper.hp-block-pomodoro .block-header-zone,
@@ -3849,7 +3850,7 @@
    CSS snippet that sets these tokens on .homepage-view wins on mobile too (M118). */
 :where(.is-mobile) .homepage-view {
   --hp-padding: 6px;
-  --hp-card-padding: 10px;
+  --hp-card-padding-default: 10px;
 }
 .is-mobile .homepage-view {
   padding-bottom: calc(48px + env(safe-area-inset-bottom, 0px));

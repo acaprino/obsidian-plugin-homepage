@@ -267,7 +267,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     const loaded = await loadLayoutWithRecovery(raw, this.dataFilePath(), this.app.vault.adapter);
     if (loaded.problem) {
       if (loaded.problem.kind === 'blocks-dropped') {
-        console.warn(`[Homepage Blocks] ${loaded.problem.count} invalid block(s) were dropped from the layout on load`);
+        console.warn(`[Homepage Blocks] ${loaded.problem.count} block(s) were dropped from the layout on load (invalid, or past the block limit)`);
       }
       new Notice(loadProblemMessage(loaded.problem, loaded.backupPath), 12_000);
     }
@@ -501,7 +501,12 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     const mobileBlocks = follow(this.layout.mobileBlocks);
     const changed = blocks.some((b, i) => b !== this.layout.blocks[i])
       || mobileBlocks.some((b, i) => b !== this.layout.mobileBlocks[i]);
-    if (changed) await this.saveLayout({ ...this.layout, blocks, mobileBlocks });
+    if (!changed) return;
+    await this.saveLayout({ ...this.layout, blocks, mobileBlocks });
+    // Mounted blocks read their render-time config: redraw the views so a
+    // Gallery, Quick links or Voice block uses the new path at once. A view in
+    // edit mode draws placeholders, and its snapshot is already rewritten.
+    for (const view of this.homepageViews()) if (!view.isEditing()) void view.reload();
   }
 
   /** data.json of this plugin, in the vault's plugin folder. */

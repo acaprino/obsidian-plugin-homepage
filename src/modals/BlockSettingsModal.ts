@@ -209,7 +209,7 @@ export class BlockSettingsModal extends Modal {
   private renderBodyTab(body: HTMLElement): void {
     new Setting(body)
       .setName('Padding')
-      .setDesc('Inner padding in pixels (0 = default). Negative values allowed.')
+      .setDesc('Inner padding in pixels (0 = default).')
       .addSlider(s =>
         s.setLimits(STYLE_RANGES._cardPadding.min, STYLE_RANGES._cardPadding.max, 4)
          .setValue(typeof this.draft._cardPadding === 'number' ? this.draft._cardPadding : 0)

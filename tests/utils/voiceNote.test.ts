@@ -1,28 +1,29 @@
 import { describe, it, expect } from 'vitest';
-import { buildNoteContent, voiceNotePath } from '../../src/utils/voiceNote';
+import { buildNoteContent, sanitizeVoiceFolder, uniqueFilePath } from '../../src/utils/voiceNote';
 
 const none = () => false;
 
-describe('voiceNotePath', () => {
+describe('sanitizeVoiceFolder and uniqueFilePath', () => {
   it('names the note after the timestamp, inside the folder', () => {
-    expect(voiceNotePath('Voice', '2026-10-10 10-00-00', none)).toEqual({ folder: 'Voice', path: 'Voice/2026-10-10 10-00-00.md' });
+    expect(uniqueFilePath('Voice', '2026-10-10 10-00-00', 'md', none)).toBe('Voice/2026-10-10 10-00-00.md');
   });
 
   it('uses the vault root for an empty folder', () => {
-    expect(voiceNotePath('', 't', none)).toEqual({ folder: '', path: 't.md' });
+    expect(sanitizeVoiceFolder('')).toBe('');
+    expect(uniqueFilePath('', 't', 'md', none)).toBe('t.md');
   });
 
   it('adds a number when a note saved in the same second exists (R10)', () => {
     const taken = new Set(['Voice/t.md', 'Voice/t 2.md']);
-    expect(voiceNotePath('Voice', 't', p => taken.has(p))?.path).toBe('Voice/t 3.md');
+    expect(uniqueFilePath('Voice', 't', 'md', p => taken.has(p))).toBe('Voice/t 3.md');
   });
 
   it('refuses a folder that climbs out of the vault (M17)', () => {
-    expect(voiceNotePath('notes/../..', 't', none)).toBeNull();
+    expect(sanitizeVoiceFolder('notes/../..')).toBeNull();
   });
 
   it('strips leading slashes, a drive prefix and backslashes', () => {
-    expect(voiceNotePath(String.raw`\C:\x\y`, 't', none)?.folder).toBe('x/y');
+    expect(sanitizeVoiceFolder(String.raw`\C:\x\y`)).toBe('x/y');
   });
 });
 

@@ -272,7 +272,10 @@ export async function decryptString(value: string): Promise<string | null> {
   return r.ok ? r.plaintext : null;
 }
 
-/** Test hook — drops the cached key so loadDeviceKey re-reads from IndexedDB. */
+/**
+ * Drop the cached device key (loadDeviceKey then re-reads it from IndexedDB) and
+ * the ciphertext memo. Called at plugin unload, and by tests as a new session.
+ */
 export function _resetDeviceKeyCache(): void {
   cachedKey = null;
   inflightKey = null;

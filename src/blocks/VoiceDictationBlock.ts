@@ -64,7 +64,7 @@ interface VoiceDictationConfig {
   noteTemplate?: string;
 }
 
-type VoiceState = 'idle' | 'recording' | 'transcribing' | 'saved';
+type VoiceState = 'idle' | 'starting' | 'recording' | 'transcribing' | 'saved';
 
 export class VoiceDictationBlock extends BaseBlock {
   private statusEl: HTMLElement | null = null;
@@ -79,6 +79,9 @@ export class VoiceDictationBlock extends BaseBlock {
   // a re-render, plugin unload, or a rapid stop→start sequence. Every recording captures the
   // generation it started with and checks it before touching DOM / calling saveNote.
   private recordingGen = 0;
+
+  /** Push-to-talk: the button is pressed now. */
+  private pushHeld = false;
 
   // Elapsed timer handle
   private elapsedSeconds = 0;
@@ -144,17 +147,27 @@ export class VoiceDictationBlock extends BaseBlock {
     // Wire trigger mode
     if (cfg.triggerMode === 'push') {
       this.micBtn.setAttribute('aria-label', 'Hold to record voice note');
-      this.micBtn.addEventListener('pointerdown', () => { void this.startRecording(); });
-      const stop = () => { if (this.getState(el) === 'recording') this.stopRecording(el); };
-      this.micBtn.addEventListener('pointerup', stop);
-      this.micBtn.addEventListener('pointercancel', stop);
+      const mic = this.micBtn;
+      mic.addEventListener('pointerdown', (e: PointerEvent) => {
+        this.pushHeld = true;
+        // Keep the release on the button even when the pointer leaves it.
+        try { mic.setPointerCapture(e.pointerId); } catch { /* not an active pointer (synthetic event) */ }
+        void this.startRecording();
+      });
+      const release = () => {
+        this.pushHeld = false;
+        const state = this.getState(el);
+        if (state === 'recording') this.stopRecording(el);
+        else if (state === 'starting') this.cancelStart(el);
+      };
+      mic.addEventListener('pointerup', release);
+      mic.addEventListener('pointercancel', release);
     } else {
       this.micBtn.addEventListener('click', () => {
-        if (this.getState(el) === 'idle') {
-          void this.startRecording();
-        } else if (this.getState(el) === 'recording') {
-          this.stopRecording(el);
-        }
+        const state = this.getState(el);
+        if (state === 'idle') void this.startRecording();
+        else if (state === 'recording') this.stopRecording(el);
+        // 'starting': a second tap while the microphone opens is ignored (M16).
       });
     }
 
@@ -186,6 +199,7 @@ export class VoiceDictationBlock extends BaseBlock {
 
     const labels: Record<VoiceState, string> = {
       idle: 'Tap to record',
+      starting: 'Starting…',
       recording: 'Recording\u2026',
       transcribing: 'Transcribing\u2026',
       saved: '',
@@ -276,7 +290,7 @@ export class VoiceDictationBlock extends BaseBlock {
 
   private async startRecording(): Promise<void> {
     const el = this.containerEl;
-    if (!el) return;
+    if (!el || this.getState(el) !== 'idle') return;
     const cfg = this.instance.config as VoiceDictationConfig;
 
     if (!cfg.apiKey || isEncrypted(cfg.apiKey)) {
@@ -284,11 +298,24 @@ export class VoiceDictationBlock extends BaseBlock {
       return;
     }
 
+    // Claim the start now: while the consent modal or getUserMedia is pending the
+    // state is 'starting', so a second tap is ignored (M16); a release, an unload
+    // or a re-render bumps recordingGen, which cancels this start (S1, N21).
+    const gen = ++this.recordingGen;
+    this.setState(el, 'starting');
+    const live = () => gen === this.recordingGen && el.isConnected;
+    const push = cfg.triggerMode === 'push';
+
     const provider = cfg.provider ?? 'whisper';
     if (!hasConsent(this.app, provider)) {
       const confirmed = await confirmVoiceConsent(this.app, provider);
-      if (!confirmed) return;
-      setConsent(this.app, provider);
+      if (confirmed) setConsent(this.app, provider);
+      // The press that opened the modal no longer holds the button: push-to-talk
+      // records from the next press, never unattended (S1).
+      if (!confirmed || push || !live()) {
+        if (live()) this.setState(el, 'idle');
+        return;
+      }
     }
 
     // Stop any previous stream before acquiring a new one
@@ -306,6 +333,15 @@ export class VoiceDictationBlock extends BaseBlock {
       } else {
         new Notice('Microphone unavailable');
       }
+      if (live()) this.setState(el, 'idle');
+      return;
+    }
+
+    // Released, unloaded or superseded while the microphone opened: close the
+    // stream now, or it stays open with nothing left to stop it (S1, M16, N21).
+    if (!live() || (push && !this.pushHeld)) {
+      stream.getTracks().forEach(t => t.stop());
+      if (live()) this.setState(el, 'idle');
       return;
     }
 
@@ -322,7 +358,6 @@ export class VoiceDictationBlock extends BaseBlock {
     // Per-recording state — bound into the onstop closure so a rapid stop→start
     // can't make the previous recorder's onstop clobber the new recording's chunks.
     const chunks: Blob[] = [];
-    const gen = ++this.recordingGen;
     const recorder = new MediaRecorder(stream, {
       mimeType: MediaRecorder.isTypeSupported(recordedMimeType) ? recordedMimeType : undefined,
     });
@@ -346,6 +381,12 @@ export class VoiceDictationBlock extends BaseBlock {
 
     recorder.start();
     this.setState(el, 'recording');
+  }
+
+  /** Push-to-talk released while the start was pending: cancel it. */
+  private cancelStart(el: HTMLElement): void {
+    this.recordingGen++;
+    this.setState(el, 'idle');
   }
 
   private stopRecording(el: HTMLElement): void {

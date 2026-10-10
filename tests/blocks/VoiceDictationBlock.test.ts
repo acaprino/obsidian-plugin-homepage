@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Modal } from 'obsidian';
 import type { App } from 'obsidian';
 import { VoiceDictationBlock } from '../../src/blocks/VoiceDictationBlock';
 import type { IHomepagePlugin, BlockInstance } from '../../src/types';
@@ -86,5 +87,107 @@ describe('VoiceDictationBlock with a key it cannot use', () => {
 
     const mic = el.querySelector('button.voice-mic') as HTMLButtonElement;
     expect(mic.disabled).toBe(false);
+  });
+});
+
+class FakeRecorder {
+  static instances: FakeRecorder[] = [];
+  static isTypeSupported(): boolean { return true; }
+  state: 'inactive' | 'recording' = 'inactive';
+  ondataavailable: ((e: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
+  constructor(public stream: unknown) { FakeRecorder.instances.push(this); }
+  start(): void { this.state = 'recording'; }
+  stop(): void { this.state = 'inactive'; this.onstop?.(); }
+}
+
+describe('VoiceDictationBlock recording lifecycle', () => {
+  let micRequests = 0;
+  let openMic: (() => void) = () => {};
+  let track = { stopped: false, stop() { this.stopped = true; } };
+
+  beforeEach(() => {
+    FakeRecorder.instances = [];
+    micRequests = 0;
+    track = { stopped: false, stop() { this.stopped = true; } };
+    (globalThis as Record<string, unknown>).MediaRecorder = FakeRecorder;
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: () => new Promise(resolve => {
+          micRequests++;
+          openMic = () => resolve({ getTracks: () => [track] });
+        }),
+      },
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  function mountRecorder(config: Record<string, unknown>, consent: Record<string, boolean> | null = { whisper: true }) {
+    let stored: unknown = consent;
+    const app = { loadLocalStorage: () => stored, saveLocalStorage: (_k: string, v: unknown) => { stored = v; } } as unknown as App;
+    const instance: BlockInstance = { id: 'v1', type: 'voice-dictation', x: 0, y: 0, w: 2, h: 3, config: { apiKey: 'sk-key', ...config } };
+    const block = new VoiceDictationBlock(app, instance, {} as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    block.render(el);
+    const mic = el.querySelector('button.voice-mic') as HTMLButtonElement;
+    return { block, el, mic, consent: () => stored };
+  }
+  const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+  it('starts one recorder for a double tap while the microphone opens (M16)', async () => {
+    const { mic } = mountRecorder({ triggerMode: 'tap' });
+
+    mic.click();
+    mic.click();
+    openMic();
+    await settle();
+
+    expect(micRequests).toBe(1);
+    expect(FakeRecorder.instances).toHaveLength(1);
+  });
+
+  it('records nothing and closes the stream when push-to-talk is released before the microphone opens (S1)', async () => {
+    const { el, mic } = mountRecorder({ triggerMode: 'push' });
+
+    mic.dispatchEvent(new Event('pointerdown'));
+    mic.dispatchEvent(new Event('pointerup'));
+    openMic();
+    await settle();
+
+    expect(FakeRecorder.instances).toHaveLength(0);
+    expect(track.stopped).toBe(true);
+    expect(el.dataset.voiceState).toBe('idle');
+  });
+
+  it('only asks for consent on the first push-to-talk press; the next press records (S1)', async () => {
+    vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
+      this.onOpen();
+      (this.contentEl.querySelector('button.mod-cta') as HTMLButtonElement).click();
+    });
+    const { mic, consent } = mountRecorder({ triggerMode: 'push' }, null);
+
+    mic.dispatchEvent(new Event('pointerdown'));
+    await settle();
+    expect(consent()).toEqual({ whisper: true });
+    expect(micRequests).toBe(0);
+
+    mic.dispatchEvent(new Event('pointerdown'));
+    openMic();
+    await settle();
+    expect(FakeRecorder.instances).toHaveLength(1);
+  });
+
+  it('closes the stream of a start that was still pending when the block unloaded (N21)', async () => {
+    const { block, mic } = mountRecorder({ triggerMode: 'tap' });
+
+    mic.click();
+    block.unload();
+    openMic();
+    await settle();
+
+    expect(FakeRecorder.instances).toHaveLength(0);
+    expect(track.stopped).toBe(true);
   });
 });

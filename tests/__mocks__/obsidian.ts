@@ -248,8 +248,10 @@ export class TAbstractFile { path = ''; }
 export class TFile extends TAbstractFile { stat = { mtime: 0, ctime: 0, size: 0 }; basename = ''; extension = ''; }
 export class TFolder extends TAbstractFile { children: TAbstractFile[] = []; }
 
+/** Records every message, so a test can tell which Notice the user saw. */
 export class Notice {
-  constructor(_msg: string, _timeout?: number) {}
+  static messages: string[] = [];
+  constructor(msg: string, _timeout?: number) { Notice.messages.push(msg); }
 }
 
 export const MarkdownRenderer = {

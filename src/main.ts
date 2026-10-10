@@ -426,10 +426,13 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
   // ── Persistence ───────────────────────────────────────────────────
 
   private savePromise = Promise.resolve();
+  /** Counts saveLayout calls, so a synced reload can tell that a local save happened meanwhile. */
+  private saveSeq = 0;
   private saveErrorNotified = false;
   private dataGuard: DataFileGuard | null = null;
 
   async saveLayout(layout: LayoutConfig): Promise<void> {
+    this.saveSeq++;
     this.layout = layout;
     // Serialize save ordering AND await the pre-save encryption inside the
     // chain so a later-queued save sees the updated ciphertext format.
@@ -509,6 +512,7 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
    */
   async onExternalSettingsChange(): Promise<void> {
     await this.savePromise;
+    const seq = this.saveSeq;
     const raw = await this.loadData() as unknown;
     if (raw === null) return;
     if (raw !== undefined && this.lastWrittenJson !== null && JSON.stringify(raw) === this.lastWrittenJson) return;
@@ -525,8 +529,18 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       new Notice('Homepage blocks: the layout changed on another device. Leaving edit mode keeps the layout shown here.', 10_000);
       return;
     }
-    const { layout } = await decryptApiKeys(loaded.layout);
+    const { layout, stable, unreadable } = await decryptApiKeys(loaded.layout);
+    // A save made here while the file was read is written after it, so it wins,
+    // as it did before synced files were loaded; adopting the file now would
+    // leave memory and disk disagreeing.
+    if (this.saveSeq !== seq) return;
+    // A queued position save was computed against the layout being replaced.
+    for (const view of views) view.cancelPendingPersist();
     this.layout = layout;
+    if (!stable) {
+      new Notice('Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.', 10_000);
+    }
+    this.announceUnreadableKeys(unreadable, layout);
     for (const view of views) await view.reload(true);
   }
 

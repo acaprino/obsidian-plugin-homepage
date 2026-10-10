@@ -108,6 +108,11 @@ export class HomepageView extends ItemView {
     await this.onOpen();
   }
 
+  /** Drop a queued position save: the layout it was computed against is being replaced. */
+  cancelPendingPersist(): void {
+    this.grid?.cancelPendingPersist();
+  }
+
   /** Rewrite the Discard snapshot of an open edit session (a note renamed meanwhile). */
   mapEditSnapshot(fn: (blocks: BlockInstance[]) => BlockInstance[]): void {
     this.toolbar?.mapSnapshot(fn);

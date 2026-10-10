@@ -227,6 +227,8 @@ export class ImageGalleryBlock extends BaseBlock {
 
   onunload(): void {
     super.onunload();
+    // A thumbnail still generating finds its render stale and is not shown (or held).
+    this.nextGeneration();
     this.releaseThumbs();
     // Only clean up the lightbox if THIS block instance owns it.
     if (this.myLightboxAc && activeLightbox?.ac === this.myLightboxAc) {

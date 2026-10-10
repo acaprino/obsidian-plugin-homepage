@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Notice } from 'obsidian';
 import type { App, PluginManifest, WorkspaceLeaf } from 'obsidian';
+import { _resetDeviceKeyCache } from '../src/utils/apiKeyCrypto';
 import HomepagePlugin, { commandTarget, registerBlocks } from '../src/main';
 import { HomepageView, VIEW_TYPE } from '../src/HomepageView';
 import { BlockRegistry } from '../src/BlockRegistry';
@@ -336,5 +338,73 @@ describe('commandTarget (N22)', () => {
     expect(commandTarget([a, b], null, false)).toBe(b);
     expect(commandTarget([a], null, false)).toBe(a);
     expect(commandTarget([], null, false)).toBeNull();
+  });
+});
+
+describe('data.json changed on disk: races and key-store failures', () => {
+  beforeEach(() => { document.body.empty(); registerBlocks(); Notice.messages = []; });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('keeps a layout saved here while the synced file was being read, so memory and disk agree', async () => {
+    const local = { ...getDefaultLayout(), blocks: [block('c', 'clock')], mobileBlocks: [] };
+    const { plugin, setDisk, disk } = pluginWithDisk(local);
+    plugin.layout = structuredClone(local);
+    setDisk({ ...local, columns: 5 });
+    const read = plugin.loadData.bind(plugin);
+    let first = true;
+    plugin.loadData = async () => {
+      const remote: unknown = await read();
+      if (first) {
+        first = false;
+        void plugin.saveLayout({ ...local, columns: 4 }); // a drag or a setting lands meanwhile
+      }
+      return remote;
+    };
+
+    await plugin.onExternalSettingsChange();
+    await wait(5);
+
+    expect(plugin.layout.columns).toBe(4);
+    expect(disk().columns).toBe(4);
+  });
+
+  it('does not write the old grid positions over the synced layout as the view reloads', async () => {
+    BlockRegistry.register({
+      type: 'static-text', displayName: 'Text', defaultConfig: {}, defaultSize: { w: 1, h: 3 }, autoHeight: true,
+      create: (app, instance, plugin) => new TallBlock(app, instance, plugin),
+    });
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({ paddingTop: '12px', paddingBottom: '12px', gap: '0px' } as CSSStyleDeclaration);
+    // This device's grid measures the text block and queues a save of the moved clock.
+    const local = { ...getDefaultLayout(), blocks: [block('t', 'static-text'), block('below', 'clock', { y: 3 })], mobileBlocks: [] };
+    const views: HomepageView[] = [];
+    const { plugin, setDisk, disk } = pluginWithDisk(local, views);
+    plugin.layout = structuredClone(local);
+    views.push(openRealView(plugin));
+    await wait(30); // measured, the 50 ms save still pending
+    const remote = { ...local, columns: 4 };
+    setDisk(remote);
+
+    await plugin.onExternalSettingsChange();
+    await wait(150);
+
+    expect(disk().columns).toBe(4);
+    expect(disk().blocks.map(b => b.y)).toEqual([0, 3]);
+  });
+
+  it('says so when a synced voice API key cannot be read right now', async () => {
+    const previous = globalThis.indexedDB;
+    globalThis.indexedDB = { open: () => { throw new Error('locked'); } } as unknown as IDBFactory;
+    _resetDeviceKeyCache();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const local = { ...getDefaultLayout(), blocks: [block('c', 'clock')], mobileBlocks: [] };
+    const { plugin, setDisk } = pluginWithDisk(local);
+    plugin.layout = structuredClone(local);
+    setDisk({ ...local, blocks: [block('v', 'voice-dictation', { config: { apiKey: 'enc:v1:AAAA:BBBB' } })] });
+
+    await plugin.onExternalSettingsChange();
+
+    globalThis.indexedDB = previous;
+    _resetDeviceKeyCache();
+    expect(Notice.messages.some(m => /API key could not be loaded/.test(m))).toBe(true);
   });
 });

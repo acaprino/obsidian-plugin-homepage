@@ -247,11 +247,11 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
     // At-rest apiKey values are encrypted (AES-GCM, non-extractable device key in
     // IndexedDB). Decrypt on load so blocks see plaintext; encrypt again on save.
     const decryptResult = await decryptApiKeys(validated);
-    this.layout = validated;
+    this.layout = decryptResult.layout;
     if (!decryptResult.stable) {
       new Notice('Homepage blocks: voice API key could not be loaded right now. It will be retried on next restart.', 10_000);
     }
-    this.announceUnreadableKeys(decryptResult.unreadable, validated);
+    this.announceUnreadableKeys(decryptResult.unreadable, decryptResult.layout);
     // Persist cleaned layout to remove old-format properties and fix corruption,
     // BUT only when the apiKey decrypt was stable. A transient WebCrypto/IndexedDB
     // failure is retried at the next launch; nothing is gained by writing now.

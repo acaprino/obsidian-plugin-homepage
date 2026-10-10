@@ -38,8 +38,7 @@ describe('API keys in a data.json synced between devices', () => {
     useNewDevice(); // device B opens the synced data.json
     expect((await decryptStringEx(ciphertext)).ok).toBe(false); // harness check: B really cannot read A's key
 
-    const loadedOnB = structuredClone(onDiskFromA);
-    const { unreadable } = await decryptApiKeys(loadedOnB);
+    const { layout: loadedOnB, unreadable } = await decryptApiKeys(structuredClone(onDiskFromA));
     expect(loadedOnB.blocks[0].config.apiKey).toBe(ciphertext);
     expect(unreadable).toEqual({ blocks: ['voice'], mobileBlocks: [] });
 
@@ -52,8 +51,7 @@ describe('API keys in a data.json synced between devices', () => {
     useNewDevice();
     const onDisk = await encryptApiKeys(layoutWithVoiceKey('sk-same-device'), null);
 
-    const loaded = structuredClone(onDisk);
-    const { stable, unreadable } = await decryptApiKeys(loaded);
+    const { layout: loaded, stable, unreadable } = await decryptApiKeys(structuredClone(onDisk));
 
     expect(stable).toBe(true);
     expect(unreadable).toEqual({ blocks: [], mobileBlocks: [] });
@@ -133,5 +131,18 @@ describe('unreadableKeyNotice', () => {
   it('treats a malformed record as nothing told yet', () => {
     const r = unreadableKeyNotice(unreadable(['voice']), 'blocks', { not: 'an array' });
     expect(r.notify).toBe(true);
+  });
+});
+
+describe('decryptApiKeys leaves its input alone', () => {
+  it('returns the decrypted blocks in a new layout object', async () => {
+    useNewDevice();
+    const atRest = await encryptApiKeys(layoutWithVoiceKey('sk-test'), null);
+    const before = structuredClone(atRest);
+
+    const { layout } = await decryptApiKeys(atRest);
+
+    expect(atRest).toStrictEqual(before);
+    expect(layout.blocks[0].config.apiKey).toBe('sk-test');
   });
 });

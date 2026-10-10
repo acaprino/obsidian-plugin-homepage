@@ -99,7 +99,7 @@ export interface UnreadableKeys {
 }
 
 /**
- * Decrypt apiKey fields, replacing `layout.blocks` / `layout.mobileBlocks`.
+ * Decrypt apiKey fields into a new layout; the input is not modified.
  * A key this device cannot decrypt is left as ciphertext, never cleared: it
  * usually belongs to another device, and a save of a cleared value would
  * erase it for every device through sync. Those blocks are returned in
@@ -108,11 +108,10 @@ export interface UnreadableKeys {
  * skip the post-load resave then and say so. A permanently unreadable key stays
  * stable, because a resave writes the same ciphertext back.
  *
- * The function still produces new BlockInstance / config objects rather than
- * mutating the input — old code mutated in place to keep object identity, but
- * that pattern leaked into shared input fixtures during tests.
+ * The layout, its blocks and their configs are new objects: mutating the input
+ * leaked into shared fixtures, and into callers that kept the loaded value.
  */
-export async function decryptApiKeys(layout: LayoutConfig): Promise<{ stable: boolean; unreadable: UnreadableKeys }> {
+export async function decryptApiKeys(layout: LayoutConfig): Promise<{ layout: LayoutConfig; stable: boolean; unreadable: UnreadableKeys }> {
   let stable = true;
   const unreadable: UnreadableKeys = { blocks: [], mobileBlocks: [] };
 
@@ -149,9 +148,7 @@ export async function decryptApiKeys(layout: LayoutConfig): Promise<{ stable: bo
 
   const desktop = await decryptBlocks(layout.blocks, unreadable.blocks);
   const mobile = await decryptBlocks(layout.mobileBlocks, unreadable.mobileBlocks);
-  layout.blocks = desktop;
-  layout.mobileBlocks = mobile;
-  return { stable, unreadable };
+  return { layout: { ...layout, blocks: desktop, mobileBlocks: mobile }, stable, unreadable };
 }
 
 /**

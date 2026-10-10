@@ -34,6 +34,8 @@ const DB_RECORD = 'apiKeyDeviceKey';
 const PREFIX = 'enc:v1:';
 
 let cachedKey: CryptoKey | null = null;
+/** The device-key load in progress, shared by every caller that asks meanwhile. */
+let inflightKey: Promise<DeviceKeyResult> | null = null;
 
 function hasWebCrypto(): boolean {
   return typeof window.crypto?.subtle?.generateKey === 'function'
@@ -89,7 +91,14 @@ async function loadDeviceKey(): Promise<DeviceKeyResult> {
   // Permanent: WebCrypto is missing entirely. Callers rely on transient=false
   // here to know the plaintext fallback is the only option on this platform.
   if (!hasWebCrypto()) return { key: null, transient: false };
+  // One load at a time: parallel first-use encryptions (one per block) each
+  // generated a key, and only the last one stored decrypts after a restart (N6).
+  inflightKey ??= readOrCreateDeviceKey().finally(() => { inflightKey = null; });
+  return inflightKey;
+}
 
+/** Read the stored device key, or generate and store one. */
+async function readOrCreateDeviceKey(): Promise<DeviceKeyResult> {
   try {
     const db = await openDb();
     try {
@@ -249,4 +258,5 @@ export async function decryptString(value: string): Promise<string | null> {
 /** Test hook — drops the cached key so loadDeviceKey re-reads from IndexedDB. */
 export function _resetDeviceKeyCache(): void {
   cachedKey = null;
+  inflightKey = null;
 }

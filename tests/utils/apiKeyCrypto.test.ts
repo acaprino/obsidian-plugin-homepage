@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { IDBFactory } from 'fake-indexeddb';
 import { decryptString, encryptString, encryptStringEx, isEncrypted, _resetDeviceKeyCache } from '../../src/utils/apiKeyCrypto';
 
 /**
@@ -87,5 +88,20 @@ describe('encryptString / decryptString', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('device key under parallel first use (N6)', () => {
+  it('encrypts every value with the same stored key, so all decrypt after a restart', async () => {
+    const previous = globalThis.indexedDB;
+    globalThis.indexedDB = new IDBFactory(); // a device that has no key yet
+    _resetDeviceKeyCache();
+
+    const [a, b, c] = await Promise.all([encryptString('one'), encryptString('two'), encryptString('three')]);
+    _resetDeviceKeyCache(); // a restart: the cached CryptoKey is gone, the IndexedDB record stays
+
+    expect(await Promise.all([decryptString(a), decryptString(b), decryptString(c)])).toEqual(['one', 'two', 'three']);
+    globalThis.indexedDB = previous;
+    _resetDeviceKeyCache();
   });
 });

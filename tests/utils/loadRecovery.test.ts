@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { loadLayoutWithRecovery, loadProblemMessage } from '../../src/utils/loadRecovery';
+import { loadLayoutWithRecovery, loadProblemMessage, newerVersionMessage } from '../../src/utils/loadRecovery';
 import { getDefaultLayout } from '../../src/validation';
 
 const DATA = '.obsidian/plugins/homepage-blocks/data.json';
@@ -210,5 +210,17 @@ describe('loadProblemMessage', () => {
     expect(msg).toContain('could not be backed up');
     expect(msg).toContain('nothing will be saved');
     expect(msg).not.toContain('saved as');
+  });
+});
+
+describe('newerVersionMessage (M58)', () => {
+  it('says how many blocks need a newer version and that they are kept', () => {
+    const layout = { ...getDefaultLayout(), preserved: { blocks: [{}], mobileBlocks: [{}, {}], fields: {} } };
+    expect(newerVersionMessage(layout)).toBe('Homepage blocks: 3 block(s) need a newer version of the plugin. They are kept and not shown.');
+  });
+
+  it('says nothing when there are none', () => {
+    expect(newerVersionMessage(getDefaultLayout())).toBeNull();
+    expect(newerVersionMessage({ ...getDefaultLayout(), preserved: { blocks: [], mobileBlocks: [], fields: { x: 1 } } })).toBeNull();
   });
 });

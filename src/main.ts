@@ -2,7 +2,7 @@ import { Notice, Platform, Plugin, WorkspaceLeaf, normalizePath } from 'obsidian
 import { VIEW_TYPE, HomepageView } from './HomepageView';
 import { BlockInstance, LayoutConfig, LayoutPriority, OpenMode, IHomepagePlugin } from './types';
 import { getDefaultLayout, toStoredLayout } from './validation';
-import { DataFileGuard, fileName, loadLayoutWithRecovery, loadProblemMessage } from './utils/loadRecovery';
+import { DataFileGuard, fileName, loadLayoutWithRecovery, loadProblemMessage, newerVersionMessage } from './utils/loadRecovery';
 import { BlockRegistry } from './BlockRegistry';
 import { HomepageSettingTab } from './settings/HomepageSettingTab';
 import { installTagCacheListeners } from './utils/tags';
@@ -258,6 +258,8 @@ export default class HomepagePlugin extends Plugin implements IHomepagePlugin {
       }
       new Notice(loadProblemMessage(loaded.problem, loaded.backupPath), 12_000);
     }
+    const newer = newerVersionMessage(loaded.layout);
+    if (newer) new Notice(newer, 12_000);
     // Every write asks this first: while a broken data.json could not be backed
     // up, writing would destroy the only copy.
     this.dataGuard = loaded.guard;

@@ -148,6 +148,15 @@ export function loadProblemMessage(problem: LoadProblem, backupPath: string | nu
   return `Homepage blocks: ${what}${backup}`;
 }
 
+/**
+ * The notice for blocks a newer plugin version wrote: kept and written back, but
+ * not drawn (M58). Null when there are none.
+ */
+export function newerVersionMessage(layout: LayoutConfig): string | null {
+  const n = (layout.preserved?.blocks.length ?? 0) + (layout.preserved?.mobileBlocks.length ?? 0);
+  return n > 0 ? `Homepage blocks: ${n} block(s) need a newer version of the plugin. They are kept and not shown.` : null;
+}
+
 /** The last segment of a vault path. */
 export function fileName(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);

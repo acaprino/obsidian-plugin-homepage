@@ -211,9 +211,23 @@ export class ImageGalleryBlock extends BaseBlock {
   private myLightboxAc: AbortController | null = null;
   /** Masonry column ResizeObserver — disconnected before each re-render. */
   private masonryRo: ResizeObserver | null = null;
+  /** Thumbnail URLs this gallery shows, held in imageCache until the next render or unload (M96). */
+  private shownThumbs: string[] = [];
+
+  private showThumb(img: HTMLImageElement, url: string): void {
+    img.src = url;
+    imageCache.retain(url);
+    this.shownThumbs.push(url);
+  }
+
+  private releaseThumbs(): void {
+    for (const url of this.shownThumbs) imageCache.release(url);
+    this.shownThumbs = [];
+  }
 
   onunload(): void {
     super.onunload();
+    this.releaseThumbs();
     // Only clean up the lightbox if THIS block instance owns it.
     if (this.myLightboxAc && activeLightbox?.ac === this.myLightboxAc) {
       abortActiveLightbox();
@@ -264,6 +278,7 @@ export class ImageGalleryBlock extends BaseBlock {
 
   private async loadAndRender(el: HTMLElement): Promise<void> {
     const gen = this.nextGeneration();
+    this.releaseThumbs();
     const cfg = this.instance.config as {
       folder?: string;
       columns?: number;
@@ -368,7 +383,7 @@ export class ImageGalleryBlock extends BaseBlock {
         // Synchronous cache hit → display immediately (second render onward)
         const cached = imageCache.getCached(file.path, file.stat.mtime);
         if (cached) {
-          img.src = cached.thumbUrl;
+          this.showThumb(img, cached.thumbUrl);
           loadPromises.push(waitForImage(img));
         } else {
           // Show shimmer placeholder while thumbnail is generated. Deferred into
@@ -377,7 +392,7 @@ export class ImageGalleryBlock extends BaseBlock {
           genThunks.push(() =>
             imageCache.get(this.app, file).then(entry => {
               if (this.isStale(gen)) return;
-              img.src = entry.thumbUrl;
+              this.showThumb(img, entry.thumbUrl);
               wrapper.removeClass('gallery-item--loading');
               return waitForImage(img);
             }),

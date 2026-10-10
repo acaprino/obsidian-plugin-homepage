@@ -4,8 +4,11 @@ import { App, TFile } from 'obsidian';
 const THUMB_MAX_DIM = 400;
 /** WebP quality for thumbnail encoding (0–1). */
 const THUMB_QUALITY = 0.75;
-/** Maximum cached entries before oldest are evicted. */
-const MAX_ENTRIES = 300;
+/**
+ * Maximum cached entries, above the gallery cap of 500 items so one gallery
+ * never evicts its own thumbnails and re-decodes them on every render (M96).
+ */
+const MAX_ENTRIES = 600;
 /** Timeout for canvas.toBlob — safety valve against silent browser failures. */
 const THUMB_TIMEOUT_MS = 5000;
 /** Maximum decoded pixel count to prevent decompression bombs. */
@@ -29,11 +32,17 @@ class ImageCacheStore {
   private entries = new Map<string, ImageCacheEntry>();
   private pending = new Map<string, Promise<ImageCacheEntry>>();
   private disposed = false;
+  /** How many galleries show each thumbnail URL now. */
+  private refs = new Map<string, number>();
+  /** Blob URLs that left the cache while a gallery still showed them; revoked on release. */
+  private orphans = new Set<string>();
 
   /** Synchronous lookup — returns the entry only if already cached and fresh. */
   getCached(path: string, mtime: number): ImageCacheEntry | null {
     const e = this.entries.get(path);
-    return e && e.mtime === mtime ? e : null;
+    if (!e || e.mtime !== mtime) return null;
+    this.touch(path, e);
+    return e;
   }
 
   /** Async lookup — generates a thumbnail if not cached. */
@@ -42,7 +51,10 @@ class ImageCacheStore {
     const mtime = file.stat.mtime;
 
     const hit = this.entries.get(path);
-    if (hit && hit.mtime === mtime) return hit;
+    if (hit && hit.mtime === mtime) {
+      this.touch(path, hit);
+      return hit;
+    }
 
     const inflight = this.pending.get(path);
     if (inflight) return inflight;
@@ -52,14 +64,15 @@ class ImageCacheStore {
     try {
       const entry = await work;
       // Guard: if invalidate() or destroy() ran while we were generating,
-      // the pending entry was removed — don't store a stale result.
+      // the pending entry was removed — don't store a stale result. The caller
+      // may still show it: it is revoked on release, or by destroy().
       if (this.disposed || this.pending.get(path) !== work) {
-        if (entry.isBlob) URL.revokeObjectURL(entry.thumbUrl);
+        if (entry.isBlob) this.orphans.add(entry.thumbUrl);
         return entry;
       }
       // Re-read entries (not the pre-await `hit`) to avoid double-revoke races.
       const current = this.entries.get(path);
-      if (current?.isBlob) URL.revokeObjectURL(current.thumbUrl);
+      if (current) this.drop(current);
       this.entries.set(path, entry);
       this.evict();
       return entry;
@@ -77,10 +90,26 @@ class ImageCacheStore {
     return e && e.mtime === file.stat.mtime ? e.fullUrl : app.vault.getResourcePath(file);
   }
 
-  /** Remove a path from cache, revoking its blob URL if any. */
+  /** A gallery shows `url`: a blob URL stays valid until released, even when its entry is evicted. */
+  retain(url: string): void {
+    this.refs.set(url, (this.refs.get(url) ?? 0) + 1);
+  }
+
+  /** A gallery stopped showing `url` (re-render or unload). Revokes it once nothing shows it and it left the cache. */
+  release(url: string): void {
+    const n = (this.refs.get(url) ?? 0) - 1;
+    if (n > 0) {
+      this.refs.set(url, n);
+      return;
+    }
+    this.refs.delete(url);
+    if (this.orphans.delete(url)) URL.revokeObjectURL(url);
+  }
+
+  /** Remove a path from cache, revoking its blob URL unless a gallery still shows it. */
   invalidate(path: string): void {
     const e = this.entries.get(path);
-    if (e?.isBlob) URL.revokeObjectURL(e.thumbUrl);
+    if (e) this.drop(e);
     this.entries.delete(path);
     this.pending.delete(path);
   }
@@ -91,21 +120,37 @@ class ImageCacheStore {
     for (const e of this.entries.values()) {
       if (e.isBlob) URL.revokeObjectURL(e.thumbUrl);
     }
+    for (const url of this.orphans) URL.revokeObjectURL(url);
     this.entries.clear();
     this.pending.clear();
+    this.refs.clear();
+    this.orphans.clear();
   }
 
   /**
    * Re-arm the cache after a previous destroy(). Required because the singleton
    * survives plugin disable+enable in the same renderer process; without this the
    * `disposed` flag would stay true forever and every gallery render would rebuild
-   * its thumbnails (and leak blob URLs) on the path at line 56.
+   * its thumbnails (and leak blob URLs) on the stale-result path in get().
    */
   reset(): void {
     this.disposed = false;
   }
 
   // ── internals ──
+
+  /** A blob URL leaves the cache: revoke it now, or once the last gallery showing it releases it. */
+  private drop(entry: ImageCacheEntry): void {
+    if (!entry.isBlob) return;
+    if (this.refs.has(entry.thumbUrl)) this.orphans.add(entry.thumbUrl);
+    else URL.revokeObjectURL(entry.thumbUrl);
+  }
+
+  /** Move an entry to the most-recent end, so eviction removes the least recently shown (LRU). */
+  private touch(path: string, entry: ImageCacheEntry): void {
+    this.entries.delete(path);
+    this.entries.set(path, entry);
+  }
 
   private async generate(app: App, file: TFile, mtime: number): Promise<ImageCacheEntry> {
     const fullUrl = app.vault.getResourcePath(file);
@@ -124,15 +169,14 @@ class ImageCacheStore {
     }
   }
 
-  /** Evict oldest entries (Map insertion order) when over capacity. */
+  /** Evict the least recently shown entries when over capacity. */
   private evict(): void {
     if (this.entries.size <= MAX_ENTRIES) return;
     const excess = this.entries.size - MAX_ENTRIES;
     let n = 0;
-    for (const [key] of this.entries) {
+    for (const [key, entry] of this.entries) {
       if (n >= excess) break;
-      // Do NOT revoke — the blob URL may still be displayed in an <img>.
-      // The Blob data will be GC'd when the element is removed from DOM.
+      this.drop(entry);
       this.entries.delete(key);
       n++;
     }
@@ -146,14 +190,23 @@ class ImageCacheStore {
  */
 function resizeToBlob(src: string, maxDim: number, quality: number): Promise<string> {
   return new Promise<string>(resolve => {
-    const timeout = window.setTimeout(() => resolve(src), THUMB_TIMEOUT_MS);
+    // Settles once: a toBlob that completes after the timeout must not create a
+    // blob URL that nothing stores (it could never be revoked).
+    let settled = false;
+    const finish = (url: string): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(url);
+    };
+    const timeout = window.setTimeout(() => finish(src), THUMB_TIMEOUT_MS);
     const img = new Image();
     img.onload = () => {
       const { naturalWidth: w, naturalHeight: h } = img;
       // Already small enough — use original URL
-      if (w <= maxDim && h <= maxDim) { window.clearTimeout(timeout); resolve(src); return; }
+      if (w <= maxDim && h <= maxDim) { finish(src); return; }
       // Guard against decompression bombs
-      if (w * h > MAX_PIXELS) { window.clearTimeout(timeout); resolve(src); return; }
+      if (w * h > MAX_PIXELS) { finish(src); return; }
 
       const scale = Math.min(maxDim / w, maxDim / h);
       const tw = Math.round(w * scale);
@@ -165,20 +218,22 @@ function resizeToBlob(src: string, maxDim: number, quality: number): Promise<str
       canvas.width = tw;
       canvas.height = th;
       const ctx = canvas.getContext('2d');
-      if (!ctx) { window.clearTimeout(timeout); resolve(src); return; }
+      if (!ctx) { finish(src); return; }
       ctx.drawImage(img, 0, 0, tw, th);
       try {
         canvas.toBlob(
-          blob => { window.clearTimeout(timeout); resolve(blob ? URL.createObjectURL(blob) : src); },
+          blob => {
+            if (settled || !blob) { finish(src); return; }
+            finish(URL.createObjectURL(blob));
+          },
           'image/webp',
           quality,
         );
       } catch {
-        window.clearTimeout(timeout);
-        resolve(src);
+        finish(src);
       }
     };
-    img.onerror = () => { window.clearTimeout(timeout); resolve(src); };
+    img.onerror = () => { finish(src); };
     img.src = src;
   });
 }

@@ -85,6 +85,13 @@ function install(): void {
     this.appendChild(document.createTextNode(text));
   };
 
+  // Obsidian's global createEl: a detached element (off-screen canvases, popout-safe builders).
+  (globalThis as unknown as Record<string, unknown>).createEl = (tag: string, info?: DomElInfo | string): HTMLElement => {
+    const el = document.createElement(tag);
+    applyInfo(el, info);
+    return el;
+  };
+
   // Obsidian exposes `doc`/`win` on every Node — the node's owner document and
   // window, falling back to the globals. Used for popout-window-safe DOM access.
   Object.defineProperty(Node.prototype, 'doc', {

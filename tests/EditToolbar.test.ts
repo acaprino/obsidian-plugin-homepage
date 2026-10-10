@@ -4,6 +4,7 @@ import type { App } from 'obsidian';
 import { EditToolbar, type EditSessionHooks } from '../src/EditToolbar';
 import { BlockRegistry } from '../src/BlockRegistry';
 import { GridLayout } from '../src/GridLayout';
+import { Phase } from '../src/grid/phase';
 import { StaticTextBlock } from '../src/blocks/StaticTextBlock';
 import { SpacerBlock } from '../src/blocks/SpacerBlock';
 import { getDefaultLayout } from '../src/validation';
@@ -245,5 +246,62 @@ describe('EditToolbar focus (M73)', () => {
     await new Promise(resolve => window.requestAnimationFrame(() => resolve(undefined))); // the fit-zoom redraw
 
     expect((document.activeElement as HTMLElement | null)?.classList.contains('toolbar-add-btn')).toBe(true);
+  });
+});
+
+describe('EditToolbar Discard and Done with a real grid (M119)', () => {
+  function editingSession(blocks: BlockInstance[]) {
+    BlockRegistry.register({
+      type: 'spacer', displayName: 'Spacer', defaultConfig: {}, defaultSize: { w: 1, h: 2 },
+      create: (app, instance, plugin) => new SpacerBlock(app, instance, plugin),
+    });
+    const plugin: IHomepagePlugin = {
+      app: {} as App,
+      layout: { ...getDefaultLayout(), blocks, columns: 3 },
+      saveLayout: async (l) => { plugin.layout = l; writes.push(structuredClone(l.blocks)); },
+      saveActiveBlocks: async (b) => { plugin.layout = { ...plugin.layout, blocks: b }; },
+      updateBlockConfig: async () => {},
+      isMobileActive: () => false,
+      activeBlocks: () => plugin.layout.blocks,
+      activeColumns: () => plugin.layout.columns,
+      activeLayoutPriority: () => 'row',
+    } as IHomepagePlugin;
+    const writes: BlockInstance[][] = [];
+    const view = document.body.createDiv({ cls: 'homepage-view' });
+    const grid = new GridLayout(view, {} as App, plugin, (l) => { plugin.layout = l; writes.push(structuredClone(l.blocks)); });
+    const toolbar = new EditToolbar(view, {} as App, plugin, grid, (n) => grid.setColumns(n));
+    grid.render(plugin.activeBlocks(), 3, true);
+    toolbar.toggleEditMode();
+    grid.phase = Phase.Ready; // settled
+    // A drag in flight: GridStack's node moved, not yet saved.
+    const el = grid.gridStack!.getGridItems().find(i => i.getAttribute('gs-id') === 'a') as HTMLElement & { gridstackNode?: { x: number } };
+    el.gridstackNode!.x = 2;
+    writes.length = 0;
+    return { plugin, view, writes };
+  }
+
+  it('Discard writes the snapshot, and nothing after it', async () => {
+    const before = [{ id: 'a', type: 'spacer' as const, x: 0, y: 0, w: 1, h: 2, config: {} }];
+    const s = editingSession(structuredClone(before));
+
+    (s.view.querySelector('.toolbar-discard-btn') as HTMLButtonElement).click();
+    await new Promise(resolve => setTimeout(resolve, 120)); // any debounced persist
+
+    expect(s.writes.length).toBeGreaterThan(0);
+    for (const w of s.writes) expect(w.find(b => b.id === 'a')?.x).toBe(0);
+    expect(s.plugin.layout.blocks.find(b => b.id === 'a')?.x).toBe(0);
+  });
+
+  it('Done keeps the edit and repacks the rows', async () => {
+    const s = editingSession([
+      { id: 'a', type: 'spacer', x: 0, y: 0, w: 1, h: 2, config: {} },
+      { id: 'b', type: 'spacer', x: 0, y: 9, w: 1, h: 2, config: {} }, // a gap above it
+    ]);
+
+    (s.view.querySelector('.toolbar-edit-btn') as HTMLButtonElement).click();
+
+    const saved = s.plugin.layout.blocks;
+    expect(saved.find(b => b.id === 'a')?.x).toBe(2);
+    expect(saved.find(b => b.id === 'b')?.y).toBe(0); // packed up into the free row
   });
 });

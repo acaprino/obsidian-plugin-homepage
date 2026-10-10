@@ -2,6 +2,31 @@ import { Setting, sanitizeHTMLToDom } from 'obsidian';
 import { BaseBlock } from './BaseBlock';
 import { blockTitle } from '../blockMeta';
 
+/** Elements an inline fragment may not keep: each loads a remote resource on every open (M59). */
+const INLINE_MEDIA = 'img, video, audio, source, track, picture, iframe, object, embed, link, style, svg, canvas';
+/** Attributes that fetch a resource or position the element over the page. */
+const INLINE_ATTRS = ['style', 'src', 'srcset', 'poster', 'background', 'data', 'action', 'formaction'];
+
+/**
+ * An inline fragment without what a hostile imported layout could abuse: no
+ * style attributes (a fixed, page-covering overlay), no media that load from a
+ * remote host, and only http(s) links (an `obsidian://` link can overwrite a
+ * note on one click). The document mode keeps its sandboxed, CSP-guarded frame.
+ */
+function disarmInline(fragment: DocumentFragment): DocumentFragment {
+  fragment.querySelectorAll(INLINE_MEDIA).forEach(el => el.remove());
+  fragment.querySelectorAll('*').forEach(el => {
+    for (const attr of INLINE_ATTRS) el.removeAttribute(attr);
+    if (el.hasAttribute('href')) {
+      const href = el.getAttribute('href') ?? '';
+      let keep = false;
+      try { keep = ['http:', 'https:'].includes(new URL(href).protocol); } catch { keep = false; }
+      if (!keep) el.removeAttribute('href');
+    }
+  });
+  return fragment;
+}
+
 export class HtmlBlock extends BaseBlock {
   render(el: HTMLElement): void {
     el.addClass('html-block');
@@ -36,7 +61,7 @@ export class HtmlBlock extends BaseBlock {
       prev = sanitized;
       sanitized = sanitized.replace(DANGEROUS_TAGS_RE, '');
     } while (sanitized !== prev);
-    contentEl.appendChild(sanitizeHTMLToDom(sanitized));
+    contentEl.appendChild(disarmInline(sanitizeHTMLToDom(sanitized)));
   }
 
   /** Render full HTML documents inside a sandboxed iframe with Obsidian CSS variable bridging. */
@@ -90,14 +115,11 @@ export class HtmlBlock extends BaseBlock {
     const csp = '<meta http-equiv="Content-Security-Policy" content="'
       + "default-src 'none'; style-src 'unsafe-inline'; img-src data: https:; "
       + 'media-src data: https:; font-src data: https:;">';
-    const bridge = `${csp}<style>${bridgeParts.join('')}</style>`;
-    const headMatch = safe.match(/<head\b[^>]*>/i);
-    if (headMatch && headMatch.index !== undefined) {
-      const pos = headMatch.index + headMatch[0].length;
-      safe = safe.slice(0, pos) + bridge + safe.slice(pos);
-    } else {
-      safe = bridge + safe;
-    }
+    // The CSP is the first thing in the document, after a doctype of our own:
+    // inserted after a literal <head>, any markup before it voided the policy
+    // (M60). The page's own doctypes go; its <html>/<head> tags then merge into
+    // the head the parser has already opened.
+    safe = `<!DOCTYPE html>${csp}<style>${bridgeParts.join('')}</style>${safe.replace(/<!doctype[^>]*>/gi, '')}`;
 
     // allow-same-origin is required for the auto-scale load handler to read
     // contentDocument; the injected CSP (not the sandbox) is what blocks script

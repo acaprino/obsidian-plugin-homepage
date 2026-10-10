@@ -14,13 +14,11 @@ const ALWAYS_STRIPPED = new Set(['apiKey', 'customCss']);
  * True when an imported `value` has the JSON type of the factory's declared
  * default: a malformed value (say `items: null` where the block iterates an
  * array) would otherwise reach render. A key declared with no default of its
- * own (`undefined`) accepts a string, number or boolean.
+ * own (`undefined`) accepts only text: every such key holds a string, and a
+ * number reached Greeting's `.trim()` as a TypeError every second (M61).
  */
 function matchesDeclaredType(value: unknown, declared: unknown): boolean {
-  if (declared === undefined || declared === null) {
-    const t = typeof value;
-    return t === 'string' || t === 'number' || t === 'boolean';
-  }
+  if (declared === undefined || declared === null) return typeof value === 'string';
   if (Array.isArray(declared)) return Array.isArray(value);
   if (typeof declared === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value);
   if (typeof declared === 'number') return typeof value === 'number' && Number.isFinite(value);

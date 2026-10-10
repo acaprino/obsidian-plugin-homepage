@@ -243,3 +243,13 @@ describe('sanitizeImportedLayout and unknown block types (M58)', () => {
     expect(sanitizeImportedLayout(layout).layout.preserved).toBeUndefined();
   });
 });
+
+describe('keys declared with no default of their own (M61)', () => {
+  it('accept only text: the Greeting reads them as strings', () => {
+    registerBlocks();
+    const { config } = sanitizeImportedConfig('greeting', { salutMorning: 5, emojiNight: true, salutEvening: 'Ciao' });
+    expect(config).not.toHaveProperty('salutMorning');
+    expect(config).not.toHaveProperty('emojiNight');
+    expect(config.salutEvening).toBe('Ciao');
+  });
+});

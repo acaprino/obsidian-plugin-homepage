@@ -134,7 +134,9 @@ function getSalutation(cfg: GreetingConfig, hour: number): string {
       afternoon: cfg.salutAfternoon,
       evening:   cfg.salutEvening,
     };
-    const custom = map[slot]?.trim();
+    // A stored non-string (an older import) falls back to the preset (M61).
+    const raw = map[slot];
+    const custom = typeof raw === 'string' ? raw.trim() : '';
     if (custom) return custom;
   }
 
@@ -153,7 +155,8 @@ function pickEmoji(cfg: GreetingConfig, hour: number): string {
       evening:   cfg.emojiEvening,
       night:     cfg.emojiNight,
     };
-    return map[slot]?.trim() || DEFAULT_EMOJIS[slot];
+    const raw = map[slot];
+    return (typeof raw === 'string' ? raw.trim() : '') || DEFAULT_EMOJIS[slot];
   }
 
   if (mode === 'random') {

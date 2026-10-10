@@ -77,3 +77,27 @@ describe('GreetingBlock custom salutations (M93)', () => {
     expect(morning?.value).toBe('');
   });
 });
+
+describe('GreetingBlock with a non-text salutation already stored (M61)', () => {
+  it('renders the preset instead of throwing', () => {
+    vi.setSystemTime(new Date(2026, 9, 10, 9, 0, 0));
+    const instance: BlockInstance = { id: 'g', type: 'greeting', x: 0, y: 0, w: 1, h: 3, config: { salutationMode: 'custom', salutMorning: 5, salutationPreset: 'en', name: '' } };
+    const block = new GreetingBlock({} as App, instance, {} as IHomepagePlugin);
+    const el = document.body.createDiv();
+    block.load();
+    expect(() => block.render(el)).not.toThrow();
+    expect(el.querySelector('.greeting-name')?.textContent).toBe('Good morning');
+    block.unload();
+  });
+});
+
+describe('GreetingBlock with a non-text custom emoji already stored (M61)', () => {
+  it('renders the default emoji instead of throwing', () => {
+    vi.setSystemTime(new Date(2026, 9, 10, 9, 0, 0));
+    const instance: BlockInstance = { id: 'g', type: 'greeting', x: 0, y: 0, w: 1, h: 3, config: { emojiMode: 'custom', emojiMorning: 5 } };
+    const block = new GreetingBlock({} as App, instance, {} as IHomepagePlugin);
+    block.load();
+    expect(() => block.render(document.body.createDiv())).not.toThrow();
+    block.unload();
+  });
+});

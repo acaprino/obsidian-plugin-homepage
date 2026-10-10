@@ -87,3 +87,42 @@ describe('HtmlBlock accessible name (M112)', () => {
     expect(el.querySelector('iframe')?.getAttribute('title')).toBeTruthy();
   });
 });
+
+describe('HtmlBlock inline fragments (M59)', () => {
+  function inline(html: string): HTMLElement {
+    const instance: BlockInstance = { id: 'h', type: 'html', x: 0, y: 0, w: 2, h: 3, config: { html } };
+    const el = document.body.createDiv();
+    new HtmlBlock({} as App, instance, {} as IHomepagePlugin).render(el);
+    return el.querySelector('.html-block-content') as HTMLElement;
+  }
+
+  it('keeps no style attribute that could lay it over the homepage', () => {
+    const out = inline('<p style="position:fixed;inset:0">cover</p>');
+    expect(out.querySelector('[style]')).toBeNull();
+    expect(out.textContent).toContain('cover');
+  });
+
+  it('loads no remote media', () => {
+    const out = inline('<img src="https://t.example/p.png"><video src="https://t.example/v.mp4"></video><audio src="a"></audio><picture><source srcset="s"></picture><p>text</p>');
+    expect(out.querySelector('img, video, audio, source, picture, iframe, object, embed')).toBeNull();
+    expect(out.textContent).toContain('text');
+  });
+
+  it('keeps http(s) links and disarms every other scheme', () => {
+    const out = inline('<a href="obsidian://new?file=Note&content=x&overwrite=true">o</a><a href="https://ok.example">k</a>');
+    const [o, k] = [...out.querySelectorAll('a')];
+    expect(o.hasAttribute('href')).toBe(false);
+    expect(k.getAttribute('href')).toBe('https://ok.example');
+  });
+});
+
+describe('HtmlBlock document CSP (M60)', () => {
+  it('puts the CSP before any markup, so markup before <head> cannot void it', () => {
+    const instance: BlockInstance = { id: 'h', type: 'html', x: 0, y: 0, w: 2, h: 3, config: { html: '<p>first</p><!DOCTYPE html><html><head><style>p{}</style></head><body>x</body></html>' } };
+    const el = document.body.createDiv();
+    new HtmlBlock({} as App, instance, {} as IHomepagePlugin).render(el);
+    const srcdoc = (el.querySelector('iframe') as HTMLIFrameElement).srcdoc;
+    expect(srcdoc.startsWith('<!DOCTYPE html><meta http-equiv="Content-Security-Policy"')).toBe(true);
+    expect(srcdoc.toLowerCase().indexOf('<!doctype', 1)).toBe(-1);
+  });
+});

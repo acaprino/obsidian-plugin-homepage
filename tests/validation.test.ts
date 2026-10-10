@@ -286,16 +286,18 @@ describe('validateBlocks', () => {
     expect(dropped).toBe(2);
   });
 
-  it('does NOT report a drop when only the MAX_BLOCKS clamp or dedup trims (M3)', () => {
+  it('does NOT report a drop when only the id dedup trims (M3)', () => {
     let called = false;
-    const onDrop = () => { called = true; };
     // dedup: two valid blocks sharing an id is intentional trimming, not corruption.
-    validateBlocks([block({ id: 'dup' }), block({ id: 'dup' })], 3, [], onDrop);
+    validateBlocks([block({ id: 'dup' }), block({ id: 'dup' })], 3, [], () => { called = true; });
     expect(called).toBe(false);
-    // clamp: 100+ valid blocks is intentional trimming, not corruption.
+  });
+
+  it('reports the blocks past MAX_BLOCKS, so their loss gets a backup and a Notice (M8)', () => {
+    let dropped = 0;
     const many = Array.from({ length: MAX_BLOCKS + 5 }, (_, i) => block({ id: 'b' + i }));
-    validateBlocks(many, 3, [], onDrop);
-    expect(called).toBe(false);
+    validateBlocks(many, 3, [], (n) => { dropped += n; });
+    expect(dropped).toBe(5);
   });
 });
 

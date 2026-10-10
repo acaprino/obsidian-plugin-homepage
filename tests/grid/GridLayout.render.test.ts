@@ -3,7 +3,7 @@ import type { App } from 'obsidian';
 import { GridLayout } from '../../src/GridLayout';
 import { BaseBlock } from '../../src/blocks/BaseBlock';
 import { Phase } from '../../src/grid/phase';
-import { getDefaultLayout } from '../../src/validation';
+import { MAX_BLOCKS, getDefaultLayout } from '../../src/validation';
 import { BlockRegistry } from '../../src/BlockRegistry';
 import { ClockBlock } from '../../src/blocks/ClockBlock';
 import { SpacerBlock } from '../../src/blocks/SpacerBlock';
@@ -322,5 +322,18 @@ describe('GridLayout.addBlock while a block holds unsaved input (N3)', () => {
     grid.addBlock(clock('new'));
 
     expect(host.querySelector('[gs-id="new"]')).toBeTruthy();
+  });
+});
+
+describe('GridLayout block limit (M8)', () => {
+  it('adds no block past MAX_BLOCKS, which the next load would delete', () => {
+    const blocks = Array.from({ length: MAX_BLOCKS }, (_, i) => clock('c' + i, { y: i * 3 }));
+    const plugin = makePlugin({ blocks });
+    const grid = new GridLayout(host, {} as App, plugin, (l) => { plugin.layout = l; });
+    grid.render(plugin.activeBlocks(), 3);
+
+    grid.addBlock(clock('one-too-many'));
+
+    expect(plugin.layout.blocks).toHaveLength(MAX_BLOCKS);
   });
 });

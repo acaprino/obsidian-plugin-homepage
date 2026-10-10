@@ -1,4 +1,5 @@
 import { App, setIcon } from 'obsidian';
+import { canAddBlock } from './blockLimit';
 import { GridStack, GridStackNode } from 'gridstack';
 import { BlockInstance, IHomepagePlugin, LayoutConfig } from '../types';
 import { BaseBlock } from '../blocks/BaseBlock';
@@ -76,7 +77,7 @@ export function attachEditHandleBar(
     e.stopPropagation();
     // Read current state from layout (not stale render-time closure)
     const current = host.plugin.activeBlocks().find(b => b.id === instance.id);
-    if (!current) return;
+    if (!current || !canAddBlock(host.plugin.activeBlocks())) return;
     const clone: BlockInstance = {
       ...structuredClone(current),
       id: newId(),

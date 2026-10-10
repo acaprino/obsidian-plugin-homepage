@@ -11,6 +11,7 @@ import { LayoutPersister } from './grid/LayoutPersister';
 import { attachCollapseToggle, viewModeHeight } from './grid/CollapseToggle';
 import { attachEditHandleBar } from './grid/EditHandleBar';
 import { packRows, repackEditLayout } from './grid/packing';
+import { canAddBlock } from './grid/blockLimit';
 import { buildBlockWrapper, createSkeleton, removeSkeleton, renderCompactPlaceholder, renderEmptyState } from './grid/BlockWrapper';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
@@ -283,6 +284,7 @@ export class GridLayout {
 
   addBlock(instance: BlockInstance): void {
     if (this.phase === Phase.Destroyed) return;
+    if (!canAddBlock(this.plugin.activeBlocks())) return;
     const maxY = this.plugin.activeBlocks().reduce((m, b) => Math.max(m, b.y + b.h), 0);
     const positioned = { ...instance, y: maxY };
     const newBlocks = [...this.plugin.activeBlocks(), positioned];

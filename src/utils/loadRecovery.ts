@@ -1,4 +1,4 @@
-import { validateLayout } from '../validation';
+import { MAX_BLOCKS, validateLayout } from '../validation';
 import type { LayoutConfig } from '../types';
 
 /** The slice of Obsidian's DataAdapter the load path needs. */
@@ -141,7 +141,7 @@ export function loadProblemMessage(problem: LoadProblem, backupPath: string | nu
     ? 'data.json could not be read, so the default layout was loaded.'
     : problem.kind === 'unusable'
       ? 'data.json does not hold a usable layout, so the default blocks were loaded.'
-      : `${problem.count} invalid block(s) couldn't be loaded and were removed.`;
+      : `${problem.count} block(s) couldn't be loaded (invalid, or past the limit of ${MAX_BLOCKS}) and were removed.`;
   const backup = backupPath
     ? ` The original file was saved as ${fileName(backupPath)}.`
     : ' The original file could not be backed up, so nothing will be saved until it can be; data.json is kept as it is.';

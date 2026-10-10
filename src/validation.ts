@@ -243,8 +243,8 @@ export function isValidBlockInstance(b: unknown): b is BlockInstance {
  * survive as a real array but fail `isValidBlockInstance` -- i.e. per-block
  * corruption distinct from the top-level "data.json is unusable" case. Callers
  * can surface this so a partially-corrupt blocks array doesn't lose blocks
- * silently. The MAX_BLOCKS clamp and id-dedup are NOT reported (they are
- * intentional, not corruption).
+ * silently. Blocks past MAX_BLOCKS are reported the same way, since they are
+ * lost too (M8); the id dedup is not (a duplicate id carries no content of its own).
  */
 export function validateBlocks(
   raw: unknown,
@@ -256,7 +256,8 @@ export function validateBlocks(
   const migrated: unknown[] = raw.map(b => migrateBlockInstance(b as Record<string, unknown>));
   const validAll = migrated.filter(isValidBlockInstance);
   const invalidCount = migrated.length - validAll.length;
-  if (invalidCount > 0) onInvalidDropped?.(invalidCount);
+  const overLimit = Math.max(0, validAll.length - MAX_BLOCKS);
+  if (invalidCount + overLimit > 0) onInvalidDropped?.(invalidCount + overLimit);
   const valid = validAll.slice(0, MAX_BLOCKS);
   // Dedupe block IDs. A hand-edited or clipboard-imported layout with two blocks
   // sharing the same id breaks every gs-id selector + Array.find lookup downstream

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { MarkdownRenderer } from 'obsidian';
 import type { App } from 'obsidian';
 import { StaticTextBlock } from '../../src/blocks/StaticTextBlock';
 import type { BlockInstance, IHomepagePlugin, LayoutConfig } from '../../src/types';
@@ -190,5 +191,20 @@ describe('StaticTextBlock links', () => {
     clickLink(el);
 
     expect(opened).toEqual([['Reading list', '', false]]);
+  });
+});
+
+describe('StaticTextBlock render failures (R5)', () => {
+  it('shows an error hint when the saved text cannot be rendered', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { el } = mount('old text');
+    await settle();
+    vi.spyOn(MarkdownRenderer, 'render').mockRejectedValueOnce(new Error('render failed'));
+
+    editAndSave(el, 'new text');
+    await settle();
+
+    expect(el.querySelector('.block-error-hint')).toBeTruthy();
+    vi.restoreAllMocks();
   });
 });

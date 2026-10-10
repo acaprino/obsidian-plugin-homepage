@@ -37,10 +37,12 @@ export class StaticTextBlock extends BaseBlock {
     el.addClass('static-text-block');
     // requestAutoHeight() dispatches from here once an inline save re-renders.
     this.containerEl = el;
-    this.renderContent(el).catch(e => {
-      console.error('[Homepage Blocks] StaticTextBlock failed to render:', e);
-      this.renderErrorHint(el, 'Couldn’t render this content.');
-    });
+    this.renderContent(el).catch(e => this.showRenderFailure(el, e));
+  }
+
+  private showRenderFailure(el: HTMLElement, e: unknown): void {
+    console.error('[Homepage Blocks] StaticTextBlock failed to render:', e);
+    this.renderErrorHint(el, 'Couldn’t render this content.');
   }
 
   private async renderContent(el: HTMLElement): Promise<void> {
@@ -131,13 +133,13 @@ export class StaticTextBlock extends BaseBlock {
         .finally(() => { this.inlineEditActive = false; })
         .then(() => this.renderContent(el))
         .then(() => this.requestAutoHeight())
-        .catch(() => { /* handled in render */ });
+        .catch(e => this.showRenderFailure(el, e));
     };
 
     const cancel = (): void => {
       this.inlineEditActive = false;
       this.draft = null;
-      this.renderContent(el).catch(() => { /* handled in render */ });
+      this.renderContent(el).catch(e => this.showRenderFailure(el, e));
     };
 
     saveBtn.addEventListener('click', save);

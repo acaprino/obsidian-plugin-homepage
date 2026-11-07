@@ -1,6 +1,6 @@
 # Block API
 
-This is the interface reference for block authors. It covers `BaseBlock`, `BlockFactory` and its `defaultConfig` contract, `BlockRegistry` and `BLOCK_META`, and ends with a step-by-step guide to adding a block type. It describes the code on branch `xray-remediation` after the X-ray fixes and the review-backlog fixes of 2026-10-10. Where a comment or `CLAUDE.md` says something else, the code is what is documented here, and the differences are listed at the end.
+This is the interface reference for block authors. It covers `BaseBlock`, `BlockFactory` and its `defaultConfig` contract, `BlockRegistry` and `BLOCK_META`, and ends with a step-by-step guide to adding a block type. It describes the code after the X-ray fixes and the review-backlog fixes of 2026-10-10. Where a comment or `CLAUDE.md` says something else, the code is what is documented here, and the differences are listed at the end.
 
 Related docs:
 
@@ -19,7 +19,7 @@ Related docs:
 | Piece | Where | Role |
 |---|---|---|
 | `BaseBlock` | `src/blocks/BaseBlock.ts:8` | Abstract base class for every block. Extends Obsidian `Component` |
-| `BlockFactory` | `src/types.ts:90-103` | Describes one block type: name, default config, default size, auto-height flag, constructor |
+| `BlockFactory` | `src/types.ts:103-116` | Describes one block type: name, default config, default size, auto-height flag, constructor |
 | `registerBlocks()` | `src/main.ts:42-208` | Registers the 17 factories. Exported so tests can register the real ones |
 | `BlockRegistry` | `src/BlockRegistry.ts:3-23` | Singleton `Map<BlockType, BlockFactory>` |
 | `BLOCK_META` | `src/blockMeta.ts:3-21` | Icon and description per type, for the Add Block picker |
@@ -27,7 +27,7 @@ Related docs:
 | `openFile`, `openNoteLink`, `openLinkTarget`, `onOpenClick` | `src/utils/openTarget.ts` | How blocks open a vault file, a typed note link or a bookmark/button target, with modifier and middle clicks |
 | `BLOCK_TYPES` | `src/types.ts:4-10` | The closed list of type ids. `BlockType` is derived from it (`:12`) |
 | `AUTO_HEIGHT_ATTR` | `src/grid/AutoHeight.ts:13` | `'data-auto-height-content'`, the marker on the element whose height is measured |
-| `sanitizeImportedConfig` | `src/utils/importSanitizer.ts:78-121` | Clipboard-import filter driven by `defaultConfig` |
+| `sanitizeImportedConfig` | `src/utils/importSanitizer.ts:76-119` | Clipboard-import filter driven by `defaultConfig` |
 | `CONFIG_RANGES`, `rangedNumber` | `src/utils/configRanges.ts:10-36` | Bounds of numeric block settings, clamped at import and where blocks read them |
 
 ```mermaid
@@ -53,7 +53,7 @@ flowchart LR
 
 ### Mounting
 
-`GridLayout.mountBlock` (`src/GridLayout.ts:470-558`) builds the wrapper DOM and then, in view mode only, runs the steps below. In edit mode no block object is created. The grid draws a placeholder instead (`renderCompactPlaceholder`, `src/grid/BlockWrapper.ts:76-96`) and stores `block: null` (`src/GridLayout.ts:496-499`).
+`GridLayout.mountBlock` (`src/GridLayout.ts:563-655`) builds the wrapper DOM and then, in view mode only, runs the steps below. In edit mode no block object is created. The grid draws a placeholder instead (`renderCompactPlaceholder`, `src/grid/BlockWrapper.ts:76-96`) and stores `block: null` (`src/GridLayout.ts:589-592`).
 
 ```mermaid
 sequenceDiagram
@@ -83,39 +83,39 @@ sequenceDiagram
   end
 ```
 
-Cites: create `:501`, `setHeaderContainer` `:502`, `load()` `:503`, listener `:510-517`, skeleton `:519`, render `:524-529`, async branch `:530-542`, sync branch `:543-547`.
+Cites: create `:594`, `setHeaderContainer` `:595`, `load()` `:596`, listener `:603-610`, skeleton `:612`, render `:621-626`, async branch `:627-639`, sync branch `:640-644`.
 
-`el`, the element passed to `render`, is the wrapper's `.block-content` (`src/grid/BlockWrapper.ts:48`). The wrapper also carries:
+`el`, the element passed to `render`, is the wrapper's `.block-content` (`src/grid/BlockWrapper.ts:49`). The wrapper also carries:
 
-- the classes `homepage-block-wrapper hp-block-<type>` (`:20`)
-- the shared styling from `applyBlockStyling(wrapper, instance.config)` (`:29`)
+- the classes `homepage-block-wrapper hp-block-<type>` (`:22`)
+- the shared styling from `applyBlockStyling(wrapper, instance.config)` (`:31`)
 - a header zone `.block-header-zone.hp-header-empty` holding the collapse chevron (`:40-44`). It has no `role` or `tabindex` until `renderHeader` draws a header into it
 - an optional `.block-header-divider` when `_showDivider === true` (`:45-47`)
 
 ### When a block object is created and destroyed
 
-A block object lives for one mount. `render(el)` is called once per object. Every grid render first calls `teardown()`, which calls `unload()` on every block (`src/GridLayout.ts:321-323`), and then mounts new objects. These paths re-mount:
+A block object lives for one mount. `render(el)` is called once per object. Every grid render first calls `teardown()`, which calls `unload()` on every block (`src/GridLayout.ts:398-400`), and then mounts new objects. These paths re-mount:
 
 | Trigger | Path |
 |---|---|
-| View opened, or reloaded: by the settings tab (responsive mode, columns, compact layout, copy-to-mobile, reset, import: `src/settings/HomepageSettingTab.ts:69,292,364,452`), by another homepage view whose edit session ended (`EditSessionHooks.ended`), or by a `data.json` written by another device (`onExternalSettingsChange` → `reload(true)`) | `HomepageView.onOpen` / `reload` (`src/HomepageView.ts:25-65`, `:100-109`). `reload` ends an open edit session as Done first |
-| Edit mode entered or left | `GridLayout.setEditMode` → `render` (`src/GridLayout.ts:222`) |
-| Add block (toolbar, empty-state button, or the `add-block` command, which also works in view mode) | `GridLayout.addBlock` → `render`, directly (`:284-295`) |
-| Column change, settings Save, duplicate, move up/down, removing the last block | `rerender` via `setColumns` (`:255`) or `EditHandleBar` → `triggerRerender` (`src/grid/EditHandleBar.ts:88,104,173,251`) |
-| A file or folder rename that changed a block's config | `plugin.followRename` saves, then calls `reload()` on every homepage view that is not being edited (`src/main.ts:504-509`) |
+| View opened, or reloaded: by the settings tab (responsive mode, columns, compact layout, copy-to-mobile, reset, import: `src/settings/HomepageSettingTab.ts:70,297,376,466`), by another homepage view whose edit session ended (`EditSessionHooks.ended`), or by a `data.json` written by another device (`onExternalSettingsChange` → `reload(true)`) | `HomepageView.onOpen` / `reload` (`src/HomepageView.ts:25-65`, `:100-109`). `reload` ends an open edit session as Done first |
+| Edit mode entered or left | `GridLayout.setEditMode` → `render` (`src/GridLayout.ts:269`) |
+| Add block (toolbar, empty-state button, or the `add-block` command, which also works in view mode) | `GridLayout.addBlock` → `render`, directly (`:360-372`) |
+| Column change, settings Save, duplicate, move up/down, removing the last block | `rerender` via `setColumns` (`:320`) or `EditHandleBar` → `triggerRerender` (`src/grid/EditHandleBar.ts:90,106,175,253`) |
+| A file or folder rename that changed a block's config | `plugin.followRename` saves, then calls `reload()` on every homepage view that is not being edited (`src/main.ts:513-518`) |
 
 These do **not** re-mount: `plugin.updateBlockConfig`, `plugin.saveLayout`, `followRename` in a view that is being edited (it keeps its placeholders; its Discard snapshot is rewritten), and responsive column changes. `ResponsiveColumnsManager` updates GridStack nodes in place (`src/grid/ResponsiveColumns.ts:106-211`).
 
 Consequences:
 
-- State kept on `this` (caches, the selected tab, timers) is lost on every re-mount. State that must survive, such as the Pomodoro timer, lives at module level and is keyed by block id (`src/blocks/PomodoroBlock.ts:17-22`).
-- Register vault events, intervals and cleanups in `render()`, not in a function that runs again on every re-render, where they pile up until unload. QuotesList registers its column-observer cleanup in `render` for this reason (`src/blocks/QuotesListBlock.ts:72-73`).
+- State kept on `this` (caches, the selected tab, timers) is lost on every re-mount. State that must survive, such as the Pomodoro timer, lives at module level and is keyed by block id (`src/blocks/PomodoroBlock.ts:18-23`).
+- Register vault events, intervals and cleanups in `render()`, not in a function that runs again on every re-render, where they pile up until unload. QuotesList registers its column-observer cleanup in `render` for this reason (`src/blocks/QuotesListBlock.ts:73-74`).
 
 ### Render errors and the skeleton
 
-- **Throw handling.** A synchronous throw from `render` is caught and turned into a rejected promise, so it takes the same path as a failed async render (`src/GridLayout.ts:520-529`). A rejection logs `[Homepage Blocks] Error rendering block <type>:` and replaces the content with the text `Error rendering block. Check console for details.` (`:538-542`).
-- **Own error UI.** Blocks should catch their own errors and call `renderErrorHint` for a styled message (as `src/blocks/EmbeddedNoteBlock.ts:50-53` does). GridLayout's text is the fallback.
-- **Skeleton.** It is created only on the initial render (`src/GridLayout.ts:605`). For an async render it goes when the promise settles (`:625`, `:629`), and at the latest after `SKELETON_MAX_MS`, 300 ms (`:24`, `:609`): an Embedded Note waited for every remote image in the note, forever when a host never answered. The auto-height measurement still waits for the whole promise, so resolve it when the first useful paint is done, not after background work.
+- **Throw handling.** A synchronous throw from `render` is caught and turned into a rejected promise, so it takes the same path as a failed async render (`src/GridLayout.ts:617-626`). A rejection logs `[Homepage Blocks] Error rendering block <type>:` and replaces the content with the text `Error rendering block. Check console for details.` (`:635-639`).
+- **Own error UI.** Blocks should catch their own errors and call `renderErrorHint` for a styled message (as `src/blocks/EmbeddedNoteBlock.ts:51-54` does). GridLayout's text is the fallback.
+- **Skeleton.** It is created only on the initial render (`src/GridLayout.ts:702`). For an async render it goes when the promise settles (`:632`, `:636`), and at the latest after `SKELETON_MAX_MS`, 300 ms (`:24`, `:616`): an Embedded Note waited for every remote image in the note, forever when a host never answered. The auto-height measurement still waits for the whole promise, so resolve it when the first useful paint is done, not after background work.
 
 ---
 
@@ -131,7 +131,7 @@ Consequences:
 |---|---|---|
 | `app` | protected | Obsidian `App` |
 | `instance` | protected | The `BlockInstance` this object was mounted from. It is a **snapshot**: it is never updated after mount. See [Reading config](#reading-config-instance-versus-liveconfig) |
-| `plugin` | protected | `IHomepagePlugin` (`src/types.ts:105-141`). Blocks today use only `activeBlocks()` and `updateBlockConfig()`, plus `saveActiveBlocks()` in StaticText's `onunload` (`src/blocks/StaticTextBlock.ts:29`). See [plugin.md](plugin.md) |
+| `plugin` | protected | `IHomepagePlugin` (`src/types.ts:105-141`). Blocks today use only `activeBlocks()` and `updateBlockConfig()`, plus `saveActiveBlocks()` in StaticText's `onunload` (`src/blocks/StaticTextBlock.ts:30`). See [plugin.md](plugin.md) |
 | `containerEl` | protected, `HTMLElement \| null` | Set it to `el` in `render()`. Until it is set, a scheduled `fn` never runs and `requestAutoHeight` dispatches nothing, so the requests `observeWidthForAutoHeight` and `observeSizeForAutoHeight` make are dropped too (`:18`, `:150-151`, `:174`) |
 | `_headerContainer`, `_scheduleTimer`, `_renderGen`, `_widthObserver`, `_widthRafId`, `_sizeObserver`, `_sizeRafId` | private | Internal state for the helpers below (`:9-15`) |
 
@@ -162,10 +162,10 @@ Inherited from `Component` and used by blocks: `registerEvent`, `registerInterva
 
 ### `render(el)`
 
-- `el` is `.block-content`. CSS makes it a grid, `display: grid; grid-template-rows: 1fr`, and by default every direct child gets `overflow: hidden; min-height: 0` (`styles.css:2499-2509`). Some blocks override this for their children, for example greeting (`styles.css:2533-2536`), and the scrolling height modes of embedded-note, quotes-list and image-gallery restore `overflow-y: auto` on their scroll element (`styles.css:2511-2519`).
+- `el` is `.block-content`. CSS makes it a grid, `display: grid; grid-template-rows: 1fr`, and by default every direct child gets `overflow: hidden; min-height: 0` (`styles.css:2597-2607`). Some blocks override this for their children, for example greeting (`styles.css:2631-2634`), and the scrolling height modes of embedded-note, quotes-list and image-gallery restore `overflow-y: auto` on their scroll element (`styles.css:2614-2622`).
 - **Sync or async.**
   - Return a promise when there is async work. GridLayout then waits for it before removing the skeleton and measuring auto-height.
-  - A sync render is queued for measurement as soon as it returns; the measurement runs in the next animation frame (`src/GridLayout.ts:543-547`, `src/grid/AutoHeight.ts:54-57`). Content written later is not re-measured unless the block asks for it, or observes its content with `observeSizeForAutoHeight`. StaticText returns the promise of its Markdown render, so the grid measures the rendered Markdown rather than an empty box (`src/blocks/StaticTextBlock.ts:37-43`).
+  - A sync render is queued for measurement as soon as it returns; the measurement runs in the next animation frame (`src/GridLayout.ts:550-554`, `src/grid/AutoHeight.ts:54-57`). Content written later is not re-measured unless the block asks for it, or observes its content with `observeSizeForAutoHeight`. StaticText returns the promise of its Markdown render, so the grid measures the rendered Markdown rather than an empty box (`src/blocks/StaticTextBlock.ts:37-43`).
 - **Error handling.** Catch your own errors: `.catch(e => { console.error('[Homepage Blocks] …', e); this.renderErrorHint(el, '…'); })`.
 - **Re-renders.** GridLayout never empties `el` for you on a re-render. The function passed to `scheduleRender` must call `el.empty()` itself. Classes added to `el` stay across re-renders, so toggle config-dependent classes rather than adding them (`src/blocks/EmbeddedNoteBlock.ts:66`).
 
@@ -176,25 +176,25 @@ The header renders into the header zone, outside `.block-content`, whenever Grid
 1. Reads `this.instance.config`, the snapshot, not `liveConfig()` (`:64`).
 2. Label = `_titleLabel.trim()` when that is a non-blank string, otherwise `title` (`:66-68`).
 3. Removes any `.block-header` left from an earlier render (`:72`). `el.empty()` does not reach the header zone.
-4. Toggles `hp-header-empty` on the zone to `!show`, where `show = _showTitle !== false && !!label` (`:69`, `:75`). CSS collapses an empty zone to zero height (`styles.css:2533-2539`).
+4. Toggles `hp-header-empty` on the zone to `!show`, where `show = _showTitle !== false && !!label` (`:69`, `:75`). CSS collapses an empty zone to zero height (`styles.css:2539-2545`).
 5. On the header zone (not on a fallback `el`), it sets `role="button"`, `tabindex="0"` and `aria-expanded` (from the wrapper's `block-collapsed`) while shown, and removes all three otherwise (`:76-88`). A zone without a header is therefore no Tab stop, and `CollapseToggle` ignores clicks and keys on it, so a header-less block can never be collapsed with nothing left to expand it.
 6. When shown, it adds the class `block-header-<hN>` if `_titleSize` matches `TITLE_SIZE_RE` (`:90-91`), prepends `span.block-header-emoji` when `_titleEmoji` is set (`:93-95`), then the label span (`:96`).
 
 Rules:
 
-- **Pass `blockTitle(type)` as `title`.** `src/blockMeta.ts` is the one source of the default titles: the blocks, the settings modal (heading and preview) and the edit-mode placeholder all read it (`src/grid/BlockWrapper.ts:83-85`, `src/modals/BlockSettingsModal.ts:57-58`). Every block except EmbeddedNote's note-name header calls `this.renderHeader(el, blockTitle('<type>'))`. A new block adds its entry to `BLOCK_TITLES`; the `Record<BlockType, string>` type makes it mandatory.
+- **Pass `blockTitle(type)` as `title`.** `src/blockMeta.ts` is the one source of the default titles: the blocks, the settings modal (heading and preview) and the edit-mode placeholder all read it (`src/grid/BlockWrapper.ts:84-86`, `src/modals/BlockSettingsModal.ts:57-58`). Every block except EmbeddedNote's note-name header calls `this.renderHeader(el, blockTitle('<type>'))`. A new block adds its entry to `BLOCK_TITLES`; the `Record<BlockType, string>` type makes it mandatory.
 - **Call it on every render path, before any early return.** A path that skips it leaves the previous header in place. EmbeddedNote therefore calls it in its no-path and missing-file branches too, with `blockTitle('embedded-note')`, so a deleted note's name does not stay in the header (`src/blocks/EmbeddedNoteBlock.ts:69-82`).
-- **Blocks that never call it get no header.** Today that is `greeting`, `clock` and `spacer`, whose `blockTitle` is `''`. Their Header tab shows only "This block has no title." and the settings preview hides its header (`src/modals/BlockSettingsModal.ts:88`, `:141-146`). They are never drawn collapsed, even when stored `collapsed: true`: `isCollapsible(instance)` (`src/grid/CollapseToggle.ts:22-24`) requires a non-empty `blockTitle`, and both the wrapper's `block-collapsed` class and `viewModeHeight` use it (`src/grid/BlockWrapper.ts:25`, `src/grid/CollapseToggle.ts:33-38`). For the other types, `_showTitle: false` also keeps a collapsed block drawn expanded. The edit-mode placeholder shows `_titleLabel`, else `blockTitle`, else `displayName` (`src/grid/BlockWrapper.ts:84-86`).
+- **Blocks that never call it get no header.** Today that is `greeting`, `clock` and `spacer`, whose `blockTitle` is `''`. Their Header tab shows only "This block has no title." and the settings preview hides its header (`src/modals/BlockSettingsModal.ts:88`, `:141-146`). They are never drawn collapsed, even when stored `collapsed: true`: `isCollapsible(instance)` (`src/grid/CollapseToggle.ts:22-24`) requires a non-empty `blockTitle`, and both the wrapper's `block-collapsed` class and `viewModeHeight` use it (`src/grid/BlockWrapper.ts:26`, `src/grid/CollapseToggle.ts:33-38`). For the other types, `_showTitle: false` also keeps a collapsed block drawn expanded. The edit-mode placeholder shows `_titleLabel`, else `blockTitle`, else `displayName` (`src/grid/BlockWrapper.ts:84-86`).
 - **`displayName` and the seeded `_titleLabel` can still differ from the default title.** FolderLinks has displayName and seeded label `Quick links` but the default title `Folder links`; Button grid seeds `Button grid` against `Buttons` (`src/main.ts:69-70`, `:78-81`, `src/blockMeta.ts:29-47`). A block created with its seeded label shows the label.
 
 ### Empty and error states
 
 - **`renderErrorHint(el, message)`** empties `el` and renders `div.block-empty-hint.block-error-hint > div.block-empty-hint-icon (⚠) + div.block-empty-hint-text` (`src/blocks/BaseBlock.ts:105-110`). The header zone is untouched.
-- **Empty states.** Blocks build the same structure by hand, without `block-error-hint`: a `block-empty-hint` div holding an emoji icon div and a text div (`src/blocks/StaticTextBlock.ts:74-78`). The styles are at `styles.css:530-559`.
+- **Empty states.** Blocks build the same structure by hand, without `block-error-hint`: a `block-empty-hint` div holding an emoji icon div and a text div (`src/blocks/StaticTextBlock.ts:78-82`). The styles are at `styles.css:597-626`.
 
 ### Reading config: `instance` versus `liveConfig()`
 
-`this.instance` is the object the block was mounted from. Layout writes replace block objects and never mutate them (`src/main.ts:592-594`), so after `plugin.updateBlockConfig` the layout holds a new object and `this.instance.config` still holds the old values.
+`this.instance` is the object the block was mounted from. Layout writes replace block objects and never mutate them (`src/main.ts:601-603`), so after `plugin.updateBlockConfig` the layout holds a new object and `this.instance.config` still holds the old values.
 
 `liveConfig()` returns `plugin.activeBlocks().find(b => b.id === instance.id)?.config ?? instance.config` (`src/blocks/BaseBlock.ts:51-53`).
 
@@ -203,24 +203,24 @@ Rules:
 | Values that only change through the settings modal. Save re-mounts the grid, so the snapshot is current | `this.instance.config` is fine |
 | Values the block patches itself with `updateBlockConfig` (StaticText's `content`) | `liveConfig()`, after the patch promise resolves |
 | Paths `followRename` rewrites (`src/utils/pathRename.ts`: EmbeddedNote's `filePath`, the Gallery, Quick links and Voice notes folders, Recent files' exclusions, typed note links of Button grid, Quick links and Bookmarks) | `this.instance.config` is fine: after a changed rename the plugin reloads every view not being edited, so the block is mounted again with the new paths. EmbeddedNote also re-renders from `liveConfig()` on its own rename event |
-| Values read inside long-lived handlers (vault events, intervals) that a patch may have changed | `liveConfig()` inside the handler (`src/blocks/EmbeddedNoteBlock.ts:17-19`) |
+| Values read inside long-lived handlers (vault events, intervals) that a patch may have changed | `liveConfig()` inside the handler (`src/blocks/EmbeddedNoteBlock.ts:18-20`) |
 
 Both return a config object the layout holds, or held at mount, not a copy. Treat it as read-only: never mutate `config` or anything inside it in place.
 
-`liveConfig()` searches only the active platform array (`mobileBlocks` when `Platform.isMobile` is true, phones and tablets alike, and the layout is in Separate mode; otherwise `blocks`; `src/main.ts:379-385`). When the id is not there, for example because the block was just removed, it falls back to the snapshot.
+`liveConfig()` searches only the active platform array (`mobileBlocks` when `Platform.isMobile` is true, phones and tablets alike, and the layout is in Separate mode; otherwise `blocks`; `src/main.ts:404-410`). When the id is not there, for example because the block was just removed, it falls back to the snapshot.
 
 ### Saving your own config: the inline-edit contract
 
-To persist a change from view mode, call `plugin.updateBlockConfig(id, patch)`. The contract, from `src/types.ts:111-133` and `src/main.ts:594-618`:
+To persist a change from view mode, call `plugin.updateBlockConfig(id, patch)`. The contract, from `src/types.ts:111-133` and `src/main.ts:610-634`:
 
-1. It waits for the saves already queued (`:597`).
-2. It reads the in-memory layout. If the id is gone from the active array, it logs `[Homepage Blocks] updateBlockConfig: block <id> no longer exists; config patch dropped` and resolves without writing (`:603-609`).
+1. It waits for the saves already queued (`:611`).
+2. It reads the in-memory layout. If the id is gone from the active array, it logs `[Homepage Blocks] updateBlockConfig: block <id> no longer exists; config patch dropped` and resolves without writing (`:617-623`).
 3. Otherwise it shallow-merges `{ ...b.config, ...patch }` into a new block object, applies the same patch to the Discard snapshot of any edit session that started while it waited (`mapEditSnapshot`, `:616`), so Discard does not revert it, then calls `saveActiveBlocks` → `saveLayout` (`:617`).
-4. `saveLayout` sets `plugin.layout` synchronously and resolves once its queued write has run, or has been held back by the data-file guard. It never rejects: a failed write is logged and shows a Notice, once until a later save succeeds (`:432-467`).
+4. `saveLayout` sets `plugin.layout` synchronously and resolves once its queued write has run, or has been held back by the data-file guard. It never rejects: a failed write is logged and shows a Notice, once until a later save succeeds (`:441-476`).
 5. **The grid is not re-rendered, and `this.instance` is not updated.** The block re-renders itself from `liveConfig()` once the promise resolves.
-6. Only the active platform array is patched. In Separate mode the other array holds its own blocks under different ids (copy-to-mobile mints new ids, `src/settings/HomepageSettingTab.ts:289`), and a copy of this block there keeps its old value. A change that must reach both arrays belongs in the plugin, as `followRename` does for renamed files and folders (`src/main.ts:494-510`).
+6. Only the active platform array is patched. In Separate mode the other array holds its own blocks under different ids (copy-to-mobile mints new ids, `src/settings/HomepageSettingTab.ts:289`), and a copy of this block there keeps its old value. A change that must reach both arrays belongs in the plugin, as `followRename` does for renamed files and folders (`src/main.ts:503-519`).
 
-Do not build a blocks array yourself and call `saveLayout`. A blocks array read earlier can overwrite a drag that landed in between (`src/main.ts:570-576`).
+Do not build a blocks array yourself and call `saveLayout`. A blocks array read earlier can overwrite a drag that landed in between (`src/main.ts:603-609`).
 
 The reference implementation is StaticText's pencil editor (`src/blocks/StaticTextBlock.ts:90-160`):
 
@@ -254,7 +254,7 @@ Rules taken from it:
 
 `scheduleRender(delayMs, fn)` (`src/blocks/BaseBlock.ts:146-170`):
 
-- **Debounce.** There is one timer per block object. A new call clears the pending one, so the last `fn` wins. RandomNote's two triggers with different delays share this timer (`src/blocks/RandomNoteBlock.ts:31-32`).
+- **Debounce.** There is one timer per block object. A new call clears the pending one, so the last `fn` wins. RandomNote's two triggers with different delays share this timer (`src/blocks/RandomNoteBlock.ts:34-35`).
 - **Connection check.** When the timer fires it does nothing unless `containerEl?.isConnected`. It then calls `fn(containerEl)`.
 - **After `fn`.** A sync `fn` is followed by `requestAutoHeight()` straight away. An async `fn` gets it after it resolves.
 - **Failures.** A synchronous throw from `fn` and a rejection of its promise take the same path (`:152-166`): the error is logged as `` [Homepage Blocks] <ClassName> re-render failed: `` and `renderErrorHint(el, 'Couldn’t refresh this block — check the console for details.')` replaces the content. No auto-height request follows.
@@ -313,15 +313,15 @@ flowchart TD
 
 Details:
 
-- **Listener lifetime.** The listener is attached at mount only when `shouldAutoHeight(instance)` is true, and it re-checks the live instance on every event (`src/GridLayout.ts:504-517`). A block mounted as not-auto-height ignores requests until it is re-mounted.
-- **What is measured.** `measureAndResize` takes the **first** `[data-auto-height-content]` in the grid item (`src/grid/AutoHeight.ts:115`). Mark exactly one element, and one whose height is its content's. Do not mark `el` when CSS makes it fill the cell: its height is then the cell's, and each measurement adds the padding again and grows the block by a row. RandomNote marks its inner card `.random-note-body` for this reason (`src/blocks/RandomNoteBlock.ts:125-130`).
+- **Listener lifetime.** The listener is attached at mount only when `shouldAutoHeight(instance)` is true, and it re-checks the live instance on every event (`src/GridLayout.ts:597-610`). A block mounted as not-auto-height ignores requests until it is re-mounted.
+- **What is measured.** `measureAndResize` takes the **first** `[data-auto-height-content]` in the grid item (`src/grid/AutoHeight.ts:115`). Mark exactly one element, and one whose height is its content's. Do not mark `el` when CSS makes it fill the cell: its height is then the cell's, and each measurement adds the padding again and grows the block by a row. RandomNote marks its inner card `.random-note-body` for this reason (`src/blocks/RandomNoteBlock.ts:129-134`).
 - **Formula.** Header-zone height + wrapper padding + content height + gaps + 2 × margin + 4 px, divided by the cell height and rounded up, with a minimum of 1 row (`src/grid/AutoHeight.ts:131-158`). The block can grow or shrink.
 - **No-ops.**
   - Single-column mode, where CSS sizes the blocks (`:66-69`).
   - Collapsed blocks (`:112-113`).
   - A missing marker or header zone, or a marker whose `offsetHeight` is 0 (`:117`, `:140`).
-- **Persistence.** For auto-height blocks `LayoutPersister` writes only `x/y/w`, never `h`, and in a narrowed (responsive) layout it writes nothing for them (`src/grid/LayoutPersister.ts:94-120`). The same rule covers a collapsed block, whose node is drawn at a display height, except in edit mode with a visible title (`nodeShowsStoredHeight`, `:31-34`). The stored `h` is whatever another path last wrote: `defaultSize.h` at creation, the last persisted height from a period when the block was not auto-height, or, when the block is expanded after a collapse, its `_expandedH`, the GridStack height read when it was collapsed (`src/grid/CollapseToggle.ts:63-78`). Expanding uses `_expandedH` only when it is a number ≥ 1, and the block's `h` otherwise.
-- **Edit mode.** Auto-height blocks are drawn at 2 rows (`src/GridLayout.ts:19`, `:360`), and their vertical resize handles are hidden (`styles.css:2573-2577`).
+- **Persistence.** For auto-height blocks `LayoutPersister` writes only `x/y/w`, never `h`, and in a narrowed (responsive) layout it writes nothing for them (`src/grid/LayoutPersister.ts:94-120`). The same rule covers a collapsed block, whose node is drawn at a display height, except in edit mode with a visible title (`nodeShowsStoredHeight`, `:31-34`). The stored `h` is whatever another path last wrote: `defaultSize.h` at creation, the last persisted height from a period when the block was not auto-height, or, when the block is expanded after a collapse, its `_expandedH`, the GridStack height read when it was collapsed (`src/grid/CollapseToggle.ts:74-89`). Expanding uses `_expandedH` only when it is a number ≥ 1, and the block's `h` otherwise.
+- **Edit mode.** Auto-height blocks are drawn at 2 rows (`src/GridLayout.ts:19`, `:361`), and their vertical resize handles are hidden (`styles.css:2579-2583`).
 
 `requestAutoHeight()` (`src/blocks/BaseBlock.ts:173-175`) dispatches the event from `containerEl`. Call it after content changes outside `scheduleRender`, as StaticText does after an inline save. It does nothing while `containerEl` is null.
 
@@ -347,7 +347,7 @@ The shared `BlockSettingsModal` has four tabs: Header, Body, Card and Content. T
 - **Save.** Save replaces the block's whole `config` with the draft (`src/grid/EditHandleBar.ts:99-104`), then re-mounts the grid. Before that, `commit()` resets `_accentColor` to `''` unless it held a colour when the modal opened or one was picked since, and resets `_gradientStart` and `_gradientEnd` to `''` unless both held valid hex colours when the modal opened or a gradient colour was set since (`src/modals/BlockSettingsModal.ts:60-63`, `:431-434`). Clear accent color and Clear gradient count as unset again.
 - **Cancel.** Cancel, Esc or X discard the draft.
 - **Runs repeatedly.** It runs **each time the Content tab is shown**: `switchTab` empties the tab body and calls it again (`:126-139`). Build every control from `draft`, and keep no settings state on `this`.
-- **Temporary block.** It runs on a **temporary block**. The settings button exists only on the edit-mode handle bar (`src/GridLayout.ts:555-557`), and edit mode stores `block: null` (`:499`). The handle bar therefore creates one with `factory.create(...)` (`src/grid/EditHandleBar.ts:106-113`) and calls `unload()` on it when the modal closes (`:117-131`). This object:
+- **Temporary block.** It runs on a **temporary block**. The settings button exists only on the edit-mode handle bar (`src/GridLayout.ts:652-654`), and edit mode stores `block: null` (`:592`). The handle bar therefore creates one with `factory.create(...)` (`src/grid/EditHandleBar.ts:108-115`) and calls `unload()` on it when the modal closes (`:119-133`). This object:
   - was never `load()`ed and never rendered, so `containerEl` is null and there is no header container;
   - must not register events or intervals;
   - must not depend on state that `render()` sets up.
@@ -358,10 +358,10 @@ The shared `BlockSettingsModal` has four tabs: Header, Body, Card and Content. T
 
 ### Unsaved inline state: `hasUnsavedInlineState()`
 
-- **What it guards.** `GridLayout.rerender()` returns early while any live block returns `true` (`src/GridLayout.ts:299-308`). Its callers (`setColumns`, the `EditHandleBar` actions) run in edit mode, where there are no live blocks, unless keyboard focus reaches the hidden toolbar's controls in view mode ([grid.md](grid.md) §19).
+- **What it guards.** `GridLayout.rerender()` returns early while any live block returns `true` (`src/GridLayout.ts:376-385`). Its callers (`setColumns`, the `EditHandleBar` actions) run in edit mode, where there are no live blocks, unless keyboard focus reaches the hidden toolbar's controls in view mode ([grid.md](grid.md) §19).
 - **What it does not guard.** It does **not** stop:
-  - `setEditMode`, which renders directly (`:222`);
-  - `addBlock`, which also renders directly, so the `add-block` command always draws the new block (`:291-294`);
+  - `setEditMode`, which renders directly (`:269`);
+  - `addBlock`, which also renders directly, so the `add-block` command always draws the new block (`:368-371`);
   - `HomepageView.reload` / `onOpen`;
   - the view closing.
   
@@ -370,10 +370,10 @@ The shared `BlockSettingsModal` has four tabs: Header, Body, Card and Content. T
 
 ### Cleanup
 
-- `BaseBlock.onunload` clears the `scheduleRender` timer and the width and size observers (`src/blocks/BaseBlock.ts:255-266`). A subclass that overrides `onunload` must call `super.onunload()`, as ImageGallery does (`src/blocks/ImageGalleryBlock.ts:228-229`).
+- `BaseBlock.onunload` clears the `scheduleRender` timer and the width and size observers (`src/blocks/BaseBlock.ts:255-266`). A subclass that overrides `onunload` must call `super.onunload()`, as ImageGallery does (`src/blocks/ImageGalleryBlock.ts:246-247`).
 - Everything registered through `registerEvent`, `registerInterval`, `registerDomEvent` or `register` is released by `unload()`.
 - DOM appended outside `el` (overlays or dropdowns on `el.doc.body`) must be removed through `register(() => node.remove())`, as VaultSearch does (`src/blocks/VaultSearchBlock.ts:80-87`).
-- A timer the block starts and restarts itself (VoiceDictation's elapsed timer and "Saved" flash) keeps one handle, cleared before each restart and in a single `register` cleanup, rather than one `registerInterval` or `register` call per use, which piles up until unload (`src/blocks/VoiceDictationBlock.ts:134-138`, `:268-298`).
+- A timer the block starts and restarts itself (VoiceDictation's elapsed timer and "Saved" flash) keeps one handle, cleared before each restart and in a single `register` cleanup, rather than one `registerInterval` or `register` call per use, which piles up until unload (`src/blocks/VoiceDictationBlock.ts:152-156`, `:304-334`).
 - For popout-window safety, `CLAUDE.md` requires `el.doc` / `el.win` / `activeDocument` instead of the bare `document`, and `window.setTimeout` / `window.requestAnimationFrame` / `window.cancelAnimationFrame` for timers. Window-level listeners go on the block's own window: VaultSearch adds its scroll and resize listeners to `inputEl.win` and removes them from that window (`src/blocks/VaultSearchBlock.ts:273-290`).
 
 ---
@@ -396,13 +396,13 @@ export interface BlockFactory {                                   // src/types.t
 | `type` | registry key; the `hp-block-<type>` wrapper class; the placeholder label | Must be a member of `BLOCK_TYPES` (compile-time) |
 | `displayName` | Add Block picker (`src/EditToolbar.ts:325`); settings modal heading `Block settings — <title>` and preview default, only for the header-less types, whose `blockTitle` is `''` (`src/modals/BlockSettingsModal.ts:57-58`); edit-mode placeholder header, likewise (`src/grid/BlockWrapper.ts:83-85`) | Not the view-mode header; that is `blockTitle(type)`, passed to `renderHeader` |
 | `defaultConfig` | New blocks; clipboard-import allowlist and type check | See the next section |
-| `defaultSize` | New blocks: `w = min(defaultSize.w, activeColumns())`, `h = defaultSize.h` (`src/EditToolbar.ts:232-233`) | In grid rows of 80 px and columns |
+| `defaultSize` | New blocks: `w = min(defaultSize.w, activeColumns())`, `h = defaultSize.h` (`src/EditToolbar.ts:246-247`) | In grid rows of 80 px and columns |
 | `autoHeight` | `GridLayout.shouldAutoHeight` (`src/GridLayout.ts:125`), and through it measurement, persistence and edit-mode sizing | Needs a marked element too |
 | `create` | `GridLayout.mountBlock` (view mode), `EditHandleBar` (temporary settings block) | Construct only; no DOM work, since the object may never be rendered |
 
 ### The `defaultConfig` contract
 
-`defaultConfig` declares **every config key the block reads**, each with its default. A key with no default of its own is declared as `undefined` (`src/main.ts:36-40`, `src/types.ts:93-97`). It serves three purposes:
+`defaultConfig` declares **every config key the block reads**, each with its default. A key with no default of its own is declared as `undefined` (`src/main.ts:37-41`, `src/types.ts:106-110`). It serves three purposes:
 
 1. **Seed for new blocks.** The Add Block picker creates `config: structuredClone(factory.defaultConfig)`, a **deep** copy (`src/EditToolbar.ts:249`).
    - Array and object defaults (`links: []`, `items: []`) are the new block's own, not shared with the factory.
@@ -423,26 +423,26 @@ export interface BlockFactory {                                   // src/types.t
 What the contract does **not** cover:
 
 - **Other checks.** No enum membership, no string length, no array element shapes for block keys, and no range for a number that has no `CONFIG_RANGES` entry.
-- **Load path.** The load path does not type-check config. `isValidBlockInstance` only requires `config` to be a non-array object (`src/validation.ts:225-237`), and `migrateBlockInstance` rewrites a few legacy keys, caps a numeric `button-grid` `columns` at 3 and drops `customCss` from other types (`:131-222`).
+- **Load path.** The load path does not type-check config. `isValidBlockInstance` only requires `config` to be a non-array object (`src/validation.ts:220-232`), and `migrateBlockInstance` rewrites a few legacy keys, caps a numeric `button-grid` `columns` at 3 and drops `customCss` from other types (`:126-217`).
 
 So `render` and `renderContentSettings` must treat every config value as `unknown` and coerce it. Existing blocks do this in three ways:
 
-- **Read a ranged number.** `rangedNumber(type, config, key, fallback)` (`src/utils/configRanges.ts:31-36`) returns the value clamped to its `CONFIG_RANGES` entry when it is a finite number, and `fallback` otherwise. QuotesList, RecentFiles and Pomodoro read their numeric settings this way (`src/blocks/QuotesListBlock.ts:106-107`, `src/blocks/RecentFilesBlock.ts:44`, `src/blocks/PomodoroBlock.ts:142-151`). A new numeric setting with a settings range gets an entry in `CONFIG_RANGES` and is read with `rangedNumber`, so import and render agree on the bounds.
-- **Clamp numbers.** `Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)))` (`src/blocks/ButtonGridBlock.ts:28`).
-- **Check enums against a table.** `clockStyle in CLOCK_STYLES` (`src/blocks/ClockBlock.ts:25`). The `in` operator also accepts inherited names such as `toString`; an own-property check (`Object.prototype.hasOwnProperty.call`, as `importSanitizer` does at `src/utils/importSanitizer.ts:8`) or a `Set` of values (`src/blocks/FolderLinksBlock.ts:21`, `:109`) is stricter.
+- **Read a ranged number.** `rangedNumber(type, config, key, fallback)` (`src/utils/configRanges.ts:31-36`) returns the value clamped to its `CONFIG_RANGES` entry when it is a finite number, and `fallback` otherwise. QuotesList, RecentFiles and Pomodoro read their numeric settings this way (`src/blocks/QuotesListBlock.ts:108-109`, `src/blocks/RecentFilesBlock.ts:57`, `src/blocks/PomodoroBlock.ts:143-152`). A new numeric setting with a settings range gets an entry in `CONFIG_RANGES` and is read with `rangedNumber`, so import and render agree on the bounds.
+- **Clamp numbers.** `Math.max(1, Math.min(3, Math.floor(Number(columns) || 2)))` (`src/blocks/ButtonGridBlock.ts:29`).
+- **Check enums against a table.** `clockStyle in CLOCK_STYLES` (`src/blocks/ClockBlock.ts:29`). The `in` operator also accepts inherited names such as `toString`; an own-property check (`Object.prototype.hasOwnProperty.call`, as `importSanitizer` does at `src/utils/importSanitizer.ts:8`) or a `Set` of values (`src/blocks/FolderLinksBlock.ts:23`, `:111`) is stricter.
 
 Special keys:
 
-- **Always stripped.** `apiKey` and `customCss` are stripped on import whether declared or not (`src/utils/importSanitizer.ts:11`, `:87-90`), and export deletes both (`src/settings/HomepageSettingTab.ts:382-390`). `voice-dictation` declares `apiKey: ''` so new blocks carry the slot. `button-grid` leaves `customCss` undeclared on purpose (`src/main.ts:78-80`).
+- **Always stripped.** `apiKey` and `customCss` are stripped on import whether declared or not (`src/utils/importSanitizer.ts:11`, `:85-88`), and export deletes both (`src/settings/HomepageSettingTab.ts:395-404`). `voice-dictation` declares `apiKey: ''` so new blocks carry the slot. `button-grid` leaves `customCss` undeclared on purpose (`src/main.ts:78-80`).
 - **Active content.** `static-text` `content`, `html` `html`, and `voice-dictation` `noteTemplate` and `folder` are rendered as Markdown or HTML, or written into new notes. The import confirmation lists their non-empty values, and "Import without content" resets them to their factory defaults (`ACTIVE_CONTENT_KEYS`, `findActiveContent`, `withoutActiveContent`, `src/utils/importSanitizer.ts:144-220`). Link lists count too (`LINK_LISTS`, `:155-159`): a `bookmarks` `url`, `button-grid` `link` or `folder-links` `path` whose URL scheme is not http(s) (`obsidian://`, an OS handler) is listed, and "Import without content" keeps the entry but empties that link (a button's `link` becomes unset). A new key of that kind belongs in `ACTIVE_CONTENT_KEYS`, a new clickable link list in `LINK_LISTS`.
 - **`_` keys are not governed by `defaultConfig`.** On import they go through `SHARED_VALIDATORS` (`src/utils/importSanitizer.ts:42-64`). An unknown `_` key is kept if its value is a primitive and stripped otherwise (`:100-110`).
   - Block-specific keys must therefore **not** start with `_` (`src/types.ts:43-48`). Such a key would skip the declared-type check and be treated as shared styling.
-  - A factory may still list `_` keys in `defaultConfig` to seed shared styling. Several seed `_titleLabel`. `spacer` seeds `_showTitle`, `_showBorder`, `_showBackground` and `_showHeaderAccent`, all `false` (`src/main.ts:172`).
-- **Secrets.** Name a secret field `apiKey`. Encryption at rest is keyed on that field name for any block type (`src/utils/apiKeyLayout.ts:6-22`, `:48-93`), and the key is decrypted into memory on load (`decryptApiKeys`, `:114-152`, which returns a new layout and leaves its input untouched).
-  - A key this device cannot decrypt stays ciphertext in memory. Test it with `isEncrypted(apiKey)` and treat a match as "no usable key", never sending it (`src/blocks/VoiceDictationBlock.ts:175-183`, `:336-339`).
+  - A factory may still list `_` keys in `defaultConfig` to seed shared styling. Several seed `_titleLabel`. `spacer` seeds `_showTitle`, `_showBorder`, `_showBackground` and `_showHeaderAccent`, all `false` (`src/main.ts:173`).
+- **Secrets.** Name a secret field `apiKey`. Encryption at rest is keyed on that field name for any block type (`src/utils/apiKeyLayout.ts:6-22`, `:69-115`), and the key is decrypted into memory on load (`decryptApiKeys`, `:136-175`, which returns a new layout and leaves its input untouched).
+  - A key this device cannot decrypt stays ciphertext in memory. Test it with `isEncrypted(apiKey)` and treat a match as "no usable key", never sending it (`src/blocks/VoiceDictationBlock.ts:193-201`, `:415-418`).
   - There is one `apiKey` per block.
-  - Duplicate copies it (`src/grid/EditHandleBar.ts:80-84`). Copy-to-mobile blanks it (`src/settings/HomepageSettingTab.ts:290`).
-  - The unreadable-key Notice names "the voice notes API key" (`src/main.ts:368`), and the transient-failure Notice names the "voice API key" (`src/main.ts:269`), so a second block type with `apiKey` would get misleading messages.
+  - Duplicate copies it (`src/grid/EditHandleBar.ts:82-86`). Copy-to-mobile blanks it (`src/settings/HomepageSettingTab.ts:295`).
+  - The unreadable-key Notice names "the voice notes API key" (`src/main.ts:377`), and the transient-failure Notice names the "voice API key" (`src/main.ts:272`), so a second block type with `apiKey` would get misleading messages.
 
 Keep the factory default and the block's own fallback identical. A block created from the default layout, or edited by hand, lacks keys and gets the fallback instead. Current drift:
 
@@ -492,22 +492,22 @@ These are registered in this order, which is also the order of the Add Block pic
 | `getAll()` | All factories in insertion order | `:14-16` |
 | `clear()` | Empties the map | `:18-20` |
 
-- **Population.** `registerBlocks()` calls `clear()` first (`src/main.ts:42`) and runs at the start of `onload` (`src/main.ts:234`).
+- **Population.** `registerBlocks()` calls `clear()` first (`src/main.ts:43`) and runs at the start of `onload` (`src/main.ts:250`).
 - **Consumers.**
-  - `GridLayout.shouldAutoHeight` and `mountBlock` (`src/GridLayout.ts:119`, `:493`)
-  - `EditHandleBar`'s settings button (`src/grid/EditHandleBar.ts:109`)
-  - `BlockSettingsModal` (`src/modals/BlockSettingsModal.ts:52`)
-  - `AddBlockModal` (`src/EditToolbar.ts:221`, `:298`)
-  - `sanitizeImportedConfig` and `withoutActiveContent` (`src/utils/importSanitizer.ts:82`, `:177`); `findActiveContent` reads `displayName` for the confirmation list (`:164`)
-- **Missing factory.** A block whose type has no factory is silently skipped at mount: the wrapper is already built, but it gets no content, no collapse toggle and, in edit mode, no placeholder or handle bar (`src/GridLayout.ts:493-494`).
-- **Tests.** Tests that need real factories call `registerBlocks()` (`tests/utils/importSanitizer.test.ts:90`). Tests with stubs call `BlockRegistry.clear()` and then `register(stub)` (`tests/EditToolbar.test.ts:12-18`, `:48-55`).
+  - `GridLayout.shouldAutoHeight` and `mountBlock` (`src/GridLayout.ts:123`, `:502`)
+  - `EditHandleBar`'s settings button (`src/grid/EditHandleBar.ts:111`)
+  - `BlockSettingsModal` (`src/modals/BlockSettingsModal.ts:55`)
+  - `AddBlockModal` (`src/EditToolbar.ts:235`, `:312`)
+  - `sanitizeImportedConfig` and `withoutActiveContent` (`src/utils/importSanitizer.ts:80`, `:206`); `findActiveContent` reads `displayName` for the confirmation list (`:181`)
+- **Missing factory.** A block whose type has no factory is silently skipped at mount: the wrapper is already built, but it gets no content, no collapse toggle and, in edit mode, no placeholder or handle bar (`src/GridLayout.ts:502-503`).
+- **Tests.** Tests that need real factories call `registerBlocks()` (`tests/utils/importSanitizer.test.ts:90`). Tests with stubs call `BlockRegistry.clear()` and then `register(stub)` (`tests/EditToolbar.test.ts:13-19`, `:49-56`).
 
 ## BLOCK_META
 
 `export const BLOCK_META: Record<BlockType, { icon: string; desc: string }>` (`src/blockMeta.ts:3-21`).
 
 - **Compile-time completeness.** The `Record<BlockType, …>` type makes an entry mandatory for every member of `BLOCK_TYPES`: a missing one is a `tsc` error.
-- **Only consumer.** `AddBlockModal` (`src/EditToolbar.ts:286-320`). Search matches the query against `` `${displayName} ${type} ${desc}` ``, lower-cased (`:296-304`). Each row shows `icon`, `displayName` and `desc`, with `'▪'` as the icon fallback (`:306-315`).
+- **Only consumer.** `AddBlockModal` (`src/EditToolbar.ts:300-334`). Search matches the query against `` `${displayName} ${type} ${desc}` ``, lower-cased (`:296-304`). Each row shows `icon`, `displayName` and `desc`, with `'▪'` as the icon fallback (`:306-315`).
 - **Not used elsewhere.** It appears in no other UI: not the settings modal, not the placeholder.
 
 ---
@@ -516,14 +516,14 @@ These are registered in this order, which is also the order of the Add Block pic
 
 | Path | Code | Result |
 |---|---|---|
-| Add block | `src/EditToolbar.ts:214-238` | `structuredClone(defaultConfig)`, a deep copy |
-| Settings Save | `src/grid/EditHandleBar.ts:99-105` | The whole draft replaces `config`; grid re-mounts |
-| Block self-patch | `src/main.ts:594-618` | `{ ...config, ...patch }` on the active platform array, and on an open session's Discard snapshot; no re-mount |
-| File or folder renamed | `src/main.ts:494-510`, `src/utils/pathRename.ts` (`followRenameInBlock`) | Every path a config names that the rename concerns: Embedded note `filePath`, the Gallery, Quick links and Voice notes folders, Recent files' `excludeFolders`, the typed note links of Button grid, Quick links and Bookmarks (a value with a URL scheme is left alone), with or without `.md`, and paths inside a renamed folder; a link typed as `[[...]]`, with a heading or an alias, keeps them (`renameLink`, `src/utils/pathRename.ts:25-39`), and a link typed by bare name follows only when that name no longer resolves to another note (`getFirstLinkpathDest`); in both arrays and in an open session's Discard snapshot; when a path changed, every view not being edited is reloaded |
-| Duplicate | `src/grid/EditHandleBar.ts:77-88` | `structuredClone` of the current block (including `apiKey`), new id |
-| Import | `src/utils/importSanitizer.ts:123-138` | Each block's `config` filtered by `defaultConfig` and the shared validators, numbers clamped to `CONFIG_RANGES`; with "Import without content", the active-content keys reset to their defaults (`:173-183`) |
-| Copy desktop to mobile | `src/settings/HomepageSettingTab.ts:282-295` | `fitBlocksToColumns`: clones with new ids, widths and `x` fitted to the mobile columns and packed so no blocks overlap; `apiKey` set to `''` where present |
-| Load | `src/validation.ts:131-237` | Legacy keys migrated, `button-grid` `columns` above 3 capped at 3, `customCss` dropped from other types (`:198-208`); `config` must be an object; other values unchecked |
+| Add block | `src/EditToolbar.ts:228-252` | `structuredClone(defaultConfig)`, a deep copy |
+| Settings Save | `src/grid/EditHandleBar.ts:101-107` | The whole draft replaces `config`; grid re-mounts |
+| Block self-patch | `src/main.ts:603-627` | `{ ...config, ...patch }` on the active platform array, and on an open session's Discard snapshot; no re-mount |
+| File or folder renamed | `src/main.ts:503-519`, `src/utils/pathRename.ts` (`followRenameInBlock`) | Every path a config names that the rename concerns: Embedded note `filePath`, the Gallery, Quick links and Voice notes folders, Recent files' `excludeFolders`, the typed note links of Button grid, Quick links and Bookmarks (a value with a URL scheme is left alone), with or without `.md`, and paths inside a renamed folder; a link typed as `[[...]]`, with a heading or an alias, keeps them (`renameLink`, `src/utils/pathRename.ts:30-44`), and a link typed by bare name follows only when that name no longer resolves to another note (`getFirstLinkpathDest`); in both arrays and in an open session's Discard snapshot; when a path changed, every view not being edited is reloaded |
+| Duplicate | `src/grid/EditHandleBar.ts:79-90` | `structuredClone` of the current block (including `apiKey`), new id |
+| Import | `src/utils/importSanitizer.ts:121-137` | Each block's `config` filtered by `defaultConfig` and the shared validators, numbers clamped to `CONFIG_RANGES`; with "Import without content", the active-content keys reset to their defaults (`:201-220`) |
+| Copy desktop to mobile | `src/settings/HomepageSettingTab.ts:283-300` | `fitBlocksToColumns`: clones with new ids, widths and `x` fitted to the mobile columns and packed so no blocks overlap; `apiKey` set to `''` where present |
+| Load | `src/validation.ts:126-232` | Legacy keys migrated, `button-grid` `columns` above 3 capped at 3, `customCss` dropped from other types (`:193-203`); `config` must be an object; other values unchecked |
 
 Full flows: [../flows.md](../flows.md).
 
@@ -544,7 +544,7 @@ export const BLOCK_TYPES = [
 ] as const;
 ```
 
-A type id is permanent. `data.json` stores it. An older plugin version, say on another synced device, that loads a block of a type it does not know keeps it aside in `layout.preserved` instead of dropping it, as long as the block is otherwise well-formed: it is not drawn, a Notice says how many blocks need a newer version, and `toStoredLayout` writes it back at the end of its array on every save (`isUnknownTypeBlock`, `readPreserved`, `toStoredLayout`, `src/validation.ts:238`, `:442`, `:462`; `newerVersionMessage`, `src/utils/loadRecovery.ts:155`; see [../data-model.md](../data-model.md)). The check runs on a migrated copy (block and `config`), so a legacy id such as `tag-grid` counts as known while a preserved block is written back exactly as stored, and a type this version retired (`RETIRED_BLOCK_TYPES`, today `insight`) is dropped as invalid rather than kept. Import and export leave preserved blocks out, and Reset and Copy to mobile drop those of the half they replace (`dropPreserved`, `src/utils/layoutReset.ts`). To rename a type, keep accepting the old id through `migrateBlockInstance`, as `tag-grid` → `button-grid` does (`src/validation.ts:143`).
+A type id is permanent. `data.json` stores it. An older plugin version, say on another synced device, that loads a block of a type it does not know keeps it aside in `layout.preserved` instead of dropping it, as long as the block is otherwise well-formed: it is not drawn, a Notice says how many blocks need a newer version, and `toStoredLayout` writes it back at the end of its array on every save (`isUnknownTypeBlock`, `readPreserved`, `toStoredLayout`, `src/validation.ts:238`, `:457`, `:477`; `newerVersionMessage`, `src/utils/loadRecovery.ts:155`; see [../data-model.md](../data-model.md)). The check runs on a migrated copy (block and `config`), so a legacy id such as `tag-grid` counts as known while a preserved block is written back exactly as stored, and a type this version retired (`RETIRED_BLOCK_TYPES`, today `insight`) is dropped as invalid rather than kept. Import and export leave preserved blocks out, and Reset and Copy to mobile drop those of the half they replace (`dropPreserved`, `src/utils/layoutReset.ts`). To rename a type, keep accepting the old id through `migrateBlockInstance`, as `tag-grid` → `button-grid` does (`src/validation.ts:143`).
 
 ### 2. Write the block class
 
@@ -645,7 +645,7 @@ Conventions this follows (`CLAUDE.md`, "What NOT to Do"):
 
 ### 3. Register the factory
 
-In `registerBlocks()` (`src/main.ts:41-207`):
+In `registerBlocks()` (`src/main.ts:42-208`):
 
 ```ts
 import { NoteStatsBlock } from './blocks/NoteStatsBlock';
@@ -702,7 +702,7 @@ If the block edits its own config outside the settings modal, follow [the inline
 
 Add the styles to `styles.css` at the repo root, using Obsidian variables (`--text-muted`, `--background-secondary`, `--color-accent` …).
 
-- **Wrapper hook.** The wrapper class `hp-block-<type>` lets you target the card without `:has()` (`src/grid/BlockWrapper.ts:18-20`).
+- **Wrapper hook.** The wrapper class `hp-block-<type>` lets you target the card without `:has()` (`src/grid/BlockWrapper.ts:20-22`).
 - **Accent colour.** `--block-accent` is set on the wrapper when `_accentColor` holds a valid hex colour (`src/utils/blockStyling.ts:103-104`).
 
 Conventions: [../styling.md](../styling.md).
@@ -715,8 +715,8 @@ Conventions: [../styling.md](../styling.md).
 
 ### 8. Optional: default layout and migrations
 
-- **Default layout.** To ship the block in the default layout, add an entry to `DEFAULT_LAYOUT_DATA` (`src/validation.ts:24-109`). Use a fixed id that matches `/^[a-zA-Z0-9_-]+$/`.
-- **Renamed keys.** Migrate a renamed config key in `migrateBlockInstance` (`src/validation.ts:131-222`). The migration must be idempotent: delete the legacy key after reading it, and write the new key only while it is unset.
+- **Default layout.** To ship the block in the default layout, add an entry to `DEFAULT_LAYOUT_DATA` (`src/validation.ts:24-104`). Use a fixed id that matches `/^[a-zA-Z0-9_-]+$/`.
+- **Renamed keys.** Migrate a renamed config key in `migrateBlockInstance` (`src/validation.ts:126-217`). The migration must be idempotent: delete the legacy key after reading it, and write the new key only while it is unset.
 
 ### 9. Test
 
@@ -724,7 +724,7 @@ Tests use vitest with happy-dom. `obsidian` is aliased to `tests/__mocks__/obsid
 
 - **Mock `Component`.**
   - It mirrors Obsidian's lifecycle: `load()` runs `onload()` once; `unload()` does nothing unless the component was loaded, then unloads the children, runs the `register()` callbacks in reverse order and calls `onunload()` last. Call `block.load()` before `render()`, as `GridLayout.mountBlock` does, or `unload()` skips `onunload()`.
-  - `registerEvent` is a no-op; `registerInterval` returns the id and clears the interval on unload; `registerDomEvent` adds the listener (`tests/__mocks__/obsidian.ts:64-95`).
+  - `registerEvent` is a no-op; `registerInterval` returns the id and clears the interval on unload; `registerDomEvent` adds the listener (`tests/__mocks__/obsidian.ts:81-112`).
 - **Plugin double.** Pass a plugin double that implements what the block calls. `tests/blocks/StaticTextBlock.test.ts:8-30` has one with the real `updateBlockConfig` contract.
 - **Auto-height in tests.** happy-dom never lays out, so its `ResizeObserver` never reports a width. Capture the callback and call it by hand (`tests/blocks/ButtonGridBlock.test.ts:6-22`).
 - **Import round trip.** Add the type to the round-trip table in `tests/utils/importSanitizer.test.ts:123-134`.
@@ -770,10 +770,10 @@ npx eslint src       # obsidianmd rules; there is no npm lint script
 
 Verified in code. Avoid repeating them in new blocks.
 
-- **Only the first marker is measured.** While StaticText's inline editor is open, the hidden `.static-text-content` (`display: none` through `hp-hidden`, `styles.css:3816`) is the first `[data-auto-height-content]` in document order. It measures 0, so the editor is not measured (`src/blocks/StaticTextBlock.ts:73-76`, `:96-105`; derived from the code, not tested).
+- **Only the first marker is measured.** While StaticText's inline editor is open, the hidden `.static-text-content` (`display: none` through `hp-hidden`, `styles.css:3931`) is the first `[data-auto-height-content]` in document order. It measures 0, so the editor is not measured (`src/blocks/StaticTextBlock.ts:73-76`, `:96-105`; derived from the code, not tested).
 - **`renderHeader` reads the snapshot.** A block that changes its own `_` keys through `updateBlockConfig` would not see the new header until a re-mount (`src/blocks/BaseBlock.ts:64`).
-- **Self-patches reach only the active platform array** (`src/main.ts:610-617`). A block-owned value that must follow a vault change in both arrays needs a plugin-level handler, as `followRename` is for the paths in block settings (`src/main.ts:494-510`).
-- **Content settings run on an unloaded object.** Anything registered from `renderContentSettings` is tied to a component that never ran `load()` (`src/grid/EditHandleBar.ts:106-131`).
+- **Self-patches reach only the active platform array** (`src/main.ts:619-626`). A block-owned value that must follow a vault change in both arrays needs a plugin-level handler, as `followRename` is for the paths in block settings (`src/main.ts:503-519`).
+- **Content settings run on an unloaded object.** Anything registered from `renderContentSettings` is tied to a component that never ran `load()` (`src/grid/EditHandleBar.ts:108-133`).
 
 ## Where comments and `CLAUDE.md` disagree with the code
 
@@ -782,5 +782,5 @@ Verified in code. Avoid repeating them in new blocks.
 | `BaseBlock.ts:181` docstring: `observeWidthForAutoHeight` cleanup "is registered automatically via `this.register()`" | Cleanup is in `BaseBlock.onunload` (`:260-264`), as `CLAUDE.md` says; overriding `onunload` without `super.onunload()` leaks the observer, and the size observer too (`:265`) |
 | `BaseBlock.ts:189`: "0 skips the initial observe() callback" | The first callback with a non-zero width dispatches a request (`:190-198`). `observeSizeForAutoHeight` does skip its first report (`:211`) |
 | `BaseBlock.ts:61`: `renderHeader` respects `_showTitle`, `_titleLabel`, `_titleEmoji` | It also applies `_titleSize` (`:90-91`) and sets or removes the header zone's `role`, `tabindex` and `aria-expanded` (`:76-88`) |
-| `src/types.ts:100`: "GridLayout persists height specially" for auto-height blocks | `LayoutPersister` never writes their `h`, only `x/y/w` (`src/grid/LayoutPersister.ts:94-120`); while a block is auto-height, the only grid path that sets its `h` is expanding it after a collapse (`src/grid/CollapseToggle.ts:71-78`) |
-| `CLAUDE.md` Lightbox: "ownership is scoped per block instance (`myLightboxAc`) to prevent cross-instance interference" | Per-instance ownership (`myLightboxAc`, `src/blocks/ImageGalleryBlock.ts:211`, `:228-237`) only decides which block closes it on unload; the lightbox itself is a module-level singleton, `activeLightbox` (`:17`), so opening one closes any other (`:39`) |
+| `src/types.ts:113`: "GridLayout persists height specially" for auto-height blocks | `LayoutPersister` never writes their `h`, only `x/y/w` (`src/grid/LayoutPersister.ts:94-120`); while a block is auto-height, the only grid path that sets its `h` is expanding it after a collapse (`src/grid/CollapseToggle.ts:82-89`) |
+| `CLAUDE.md` Lightbox: "ownership is scoped per block instance (`myLightboxAc`) to prevent cross-instance interference" | Per-instance ownership (`myLightboxAc`, `src/blocks/ImageGalleryBlock.ts:229`, `:246-255`) only decides which block closes it on unload; the lightbox itself is a module-level singleton, `activeLightbox` (`:19`), so opening one closes any other (`:41`) |

@@ -1,6 +1,6 @@
 # Block catalogue
 
-This page covers each of the 17 block types: what it shows, its config keys, what makes it re-render, how it sizes itself, its settings UI, what it sends over the network, and its known limits. It describes branch `xray-remediation` after the X-ray fixes and the review-backlog fixes of 2026-10-10 (the `M` ids of [reviews/2026-09-27-code-review.md](reviews/2026-09-27-code-review.md)). Paths are relative to the repo root.
+This page covers each of the 17 block types: what it shows, its config keys, what makes it re-render, how it sizes itself, its settings UI, what it sends over the network, and its known limits. It describes the code after the X-ray fixes and the review-backlog fixes of 2026-10-10 (the `M` ids of [reviews/2026-09-27-code-review.md](reviews/2026-09-27-code-review.md)). Paths are relative to the repo root.
 
 Related pages:
 
@@ -62,8 +62,8 @@ The display name `Vault search` was `Vault Search` before M101 (`src/main.ts:203
 
 ### Config defaults, fallbacks and import
 
-- **Factory shape.** A factory is `{ type, displayName, defaultConfig, defaultSize, autoHeight?, create }` (`src/types.ts:90-103`).
-- **New blocks.** A new block gets `config: structuredClone(factory.defaultConfig)` (`src/EditToolbar.ts:235`), so array defaults such as `links: []` and `items: []` are its own and not shared with the factory. The settings modal also edits a `structuredClone` draft (`src/modals/BlockSettingsModal.ts:51`).
+- **Factory shape.** A factory is `{ type, displayName, defaultConfig, defaultSize, autoHeight?, create }` (`src/types.ts:103-116`).
+- **New blocks.** A new block gets `config: structuredClone(factory.defaultConfig)` (`src/EditToolbar.ts:249`), so array defaults such as `links: []` and `items: []` are its own and not shared with the factory. The settings modal also edits a `structuredClone` draft (`src/modals/BlockSettingsModal.ts:54`).
 - **Fallbacks.** Blocks read config through destructuring defaults. That fallback applies whenever a key is missing, which happens in:
   - default-layout blocks (`DEFAULT_LAYOUT_DATA`, `src/validation.ts:24-104`);
   - older `data.json` files;
@@ -81,7 +81,7 @@ The display name `Vault search` was `Vault Search` before M101 (`src/main.ts:203
 - **Not checked.** Array elements are not checked: the shapes inside `links[]` and `items[]` pass import unchanged, and load-time validation does not check config values.
 - **Links listed on import.** A Bookmarks `url`, a Button grid `link` or a Quick links `path` with a URL scheme other than `http(s)` (`obsidian://` can overwrite a note, an OS handler can run a program) is listed in the import confirmation as active content, next to Static Text, HTML and the Voice notes template and folder (`LINK_LISTS`, `isOtherSchemeLink`, `src/utils/importSanitizer.ts:155-166`). "Import without content" clears those values and keeps the entries; a button keeps its entry with `link` undefined (`withoutActiveContent`, `:201`).
 
-See [data-model.md](data-model.md) for the migrations `migrateBlockInstance` applies at load time (`src/validation.ts:131-222`).
+See [data-model.md](data-model.md) for the migrations `migrateBlockInstance` applies at load time (`src/validation.ts:126-217`).
 
 ### Mount and render
 
@@ -96,13 +96,13 @@ flowchart TD
   E -- "returns void" --> H["remove skeleton; request auto-height if enabled"]
 ```
 
-- **Rendering target.** The `el` passed to `render` is `.block-content`. The header goes into `.block-header-zone`, which sits outside it (`src/grid/BlockWrapper.ts:36-47`).
-- **Wrapper.** The wrapper carries the classes `homepage-block-wrapper hp-block-<type>` and the shared styling from `applyBlockStyling` (`:20-29`).
-- **Skeleton.** The skeleton overlay is created only on the initial render (`src/GridLayout.ts:605`). It goes when an async render settles, and at the latest after 300 ms (`SKELETON_MAX_MS`, `:24`, `:609`): an Embedded Note used to keep it up while it waited for every remote image in the note (M77). The auto-height measurement still waits for the whole render.
+- **Rendering target.** The `el` passed to `render` is `.block-content`. The header goes into `.block-header-zone`, which sits outside it (`src/grid/BlockWrapper.ts:38-49`).
+- **Wrapper.** The wrapper carries the classes `homepage-block-wrapper hp-block-<type>` and the shared styling from `applyBlockStyling` (`:22-31`).
+- **Skeleton.** The skeleton overlay is created only on the initial render (`src/GridLayout.ts:612`). It goes when an async render settles, and at the latest after 300 ms (`SKELETON_MAX_MS`, `:24`, `:616`): an Embedded Note used to keep it up while it waited for every remote image in the note (M77). The auto-height measurement still waits for the whole render.
 - **Error handling inside blocks.** Several blocks catch their own render failure and call `renderErrorHint`, which draws a `.block-empty-hint.block-error-hint` (`src/blocks/BaseBlock.ts:105-110`). These are `quotes-list`, `image-gallery`, `embedded-note`, `static-text` and `random-note`. For them, GridLayout's fallback text shows only when something escapes that handler. A live re-render that fails shows an error hint for every block (see [Live updates](#live-updates)).
-- **Teardown.** Every render (a settings save, a column change, an added, duplicated or moved block, an edit-mode toggle, a view reload) unloads all block instances (`src/GridLayout.ts:396-399`). Anything not in config or in a module-level store is lost.
-  - `GridLayout.rerender()` does nothing while any block's `hasUnsavedInlineState()` returns true (`:375-384`).
-  - Entering or leaving edit mode (`:269`) and adding a block (`:370`) render directly and skip that guard.
+- **Teardown.** Every render (a settings save, a column change, an added, duplicated or moved block, an edit-mode toggle, a view reload) unloads all block instances (`src/GridLayout.ts:397-400`). Anything not in config or in a module-level store is lost.
+  - `GridLayout.rerender()` does nothing while any block's `hasUnsavedInlineState()` returns true (`:376-385`).
+  - Entering or leaving edit mode (`:269`) and adding a block (`:371`) render directly and skip that guard.
 - **Edit mode.** Edit mode never mounts or renders blocks; the only instance it creates is the temporary one behind the settings modal, which is never loaded or rendered (see [Settings](#settings)). Timers, vault listeners, recordings and lightboxes belong to the view-mode instances, which are unloaded.
 
 ### Header
@@ -115,14 +115,14 @@ flowchart TD
 - **The header zone is the collapse toggle only while it shows a header** (M49). `buildBlockWrapper` creates the zone with no role (`src/grid/BlockWrapper.ts:38-42`); `renderHeader` gives it `role=button`, `tabindex=0` and `aria-expanded` when it draws a header, and removes them when the header is hidden (`src/blocks/BaseBlock.ts:76-88`). `attachCollapseToggle` ignores a zone without `role=button` (`src/grid/CollapseToggle.ts:64`), so a header-less block can no longer be collapsed, by click or by a 0 px Tab stop, with nothing left to expand it.
 
 Blocks that never call `renderHeader`:
-- `greeting`, `clock` and `spacer` never call it. For these, the label keys `_titleLabel`, `_titleEmoji` and `_titleSize` have no effect in view mode, and a stored `collapsed: true` is never drawn collapsed: `isCollapsible` (`src/grid/CollapseToggle.ts:22-24`) needs a `blockTitle`, and both `buildBlockWrapper` (`src/grid/BlockWrapper.ts:25`) and `viewModeHeight` use it, so a block collapsed by the old zero-height toggle is not stuck at one row. Their Header tab shows only "This block has no title." (`src/modals/BlockSettingsModal.ts:141-146`, M104), and the settings preview draws no header. Stored values of the other Header-tab keys act on the wrapper and still apply: `_showDivider` adds the divider (`src/grid/BlockWrapper.ts:46-48`) and `_titleGap` sets the card gap. The edit-mode placeholder shows `_titleLabel` (or `blockTitle`, falling back to the display name) and `_titleEmoji`, but it ignores `_showTitle` and `_titleSize` (`src/grid/BlockWrapper.ts:84-92`).
-- `embedded-note` calls it only when `showTitle` is on: with the file's basename, or with `'Embedded note'` when no path is set or the file is missing (`src/blocks/EmbeddedNoteBlock.ts:70-87`).
+- `greeting`, `clock` and `spacer` never call it. For these, the label keys `_titleLabel`, `_titleEmoji` and `_titleSize` have no effect in view mode, and a stored `collapsed: true` is never drawn collapsed: `isCollapsible` (`src/grid/CollapseToggle.ts:22-24`) needs a `blockTitle`, and both `buildBlockWrapper` (`src/grid/BlockWrapper.ts:25`) and `viewModeHeight` use it, so a block collapsed by the old zero-height toggle is not stuck at one row. Their Header tab shows only "This block has no title." (`src/modals/BlockSettingsModal.ts:151-156`, M104), and the settings preview draws no header. Stored values of the other Header-tab keys act on the wrapper and still apply: `_showDivider` adds the divider (`src/grid/BlockWrapper.ts:46-48`) and `_titleGap` sets the card gap. The edit-mode placeholder shows `_titleLabel` (or `blockTitle`, falling back to the display name) and `_titleEmoji`, but it ignores `_showTitle` and `_titleSize` (`src/grid/BlockWrapper.ts:84-92`).
+- `embedded-note` calls it only when `showTitle` is on: with the file's basename, or with `'Embedded note'` when no path is set or the file is missing (`src/blocks/EmbeddedNoteBlock.ts:71-88`).
 
 ### Settings
 
-- **Content tab.** The Content tab of `BlockSettingsModal` calls `block.renderContentSettings(body, draft)` (`src/modals/BlockSettingsModal.ts:401-411`). The draft is a `structuredClone` of the config, and Save replaces the whole config.
+- **Content tab.** The Content tab of `BlockSettingsModal` calls `block.renderContentSettings(body, draft)` (`src/modals/BlockSettingsModal.ts:418-428`). The draft is a `structuredClone` of the config, and Save replaces the whole config.
 - **No content settings.** A block that renders nothing into the Content tab gets the text "This block has no content settings." (`spacer`).
-- **Where settings open from.** The modal opens only from the edit-mode handle bar. Edit mode has no block instances, so a temporary instance is created for the modal and unloaded when it closes (`src/grid/EditHandleBar.ts:106-131`).
+- **Where settings open from.** The modal opens only from the edit-mode handle bar. Edit mode has no block instances, so a temporary instance is created for the modal and unloaded when it closes (`src/grid/EditHandleBar.ts:108-133`).
 - The shared Header, Body and Card tabs are described in [styling.md](styling.md).
 - **List rows.** The reorder grip of each settings row (Quick links, Button grid, Bookmarks) is a `button`: besides a mouse drag, Alt+ArrowUp or Alt+ArrowDown moves the row and keeps the focus on its grip (`enableDragReorder`, `src/utils/dragReorder.ts:30-44`, M115). The row delete buttons are named ("Remove button", "Remove bookmark", M112).
 - **Emoji picker.** Escape closes only the picker panel and returns the focus to its trigger; it used to reach the settings dialog, which closed and dropped every unsaved change (`src/utils/emojiPicker.ts:139-147`, M116). The trigger has an accessible name (`label`, `ariaLabel`, else "Choose emoji").
@@ -136,13 +136,13 @@ All blocks open through `src/utils/openTarget.ts` (M21-M23, M65, M66), not throu
 | `openFile(app, file, evt)` (`:13-15`) | files a block holds: Quick links (auto-listed), Recent files, Random note, Vault search | `workspace.getLeaf(Keymap.isModEvent(evt)).openFile(file)`. The `TFile` itself is opened, so a `#` in a file or folder name no longer opens a different note or creates an empty one. Ctrl/Cmd or a middle click opens a new tab, with Alt a split, as in the file explorer |
 | `onOpenClick(el, fn)` (`:18-21`) | the same, and Bookmarks, Button grid, typed Quick links | Runs `fn` on `click` and on a middle-button `auxclick`; a right click does nothing |
 | `openNoteLink(app, raw, evt)` (`:38-48`) | typed Quick links | Cleans the text (`cleanLinkText`: trimmed, `[[ ]]` and an `|alias` removed), resolves it with `metadataCache.getFirstLinkpathDest(path, '')` and opens the file with its `#subpath`. A link that resolves to no note shows the Notice `Homepage blocks: no note named “<path>”.` and creates nothing; before, a stale link created an empty note at the old path |
-| `openLinkTarget(app, raw, evt)` (`:62-83`) | Bookmarks, Button grid | A dangerous URL (`isDangerousUrl`) shows "Homepage blocks: blocked an unsafe link.". A value with a URL scheme of two or more letters (`obsidian:`, `mailto:`, `https:`, ...; a drive letter is not one) opens with `window.open(value, '_blank', 'noopener,noreferrer')`. A value that resolves as a note opens it. A schemeless domain such as `github.com/owner` that is not a file name (`Plan.md`) opens as `https://<value>`. Anything else goes to `openNoteLink`, so a miss is the Notice above |
+| `openLinkTarget(app, raw, evt)` (`:69-90`) | Bookmarks, Button grid | A dangerous URL (`isDangerousUrl`) shows "Homepage blocks: blocked an unsafe link.". A value with a URL scheme of two or more letters (`obsidian:`, `mailto:`, `https:`, ...; a drive letter is not one) opens with `window.open(value, '_blank', 'noopener,noreferrer')`. A value that resolves as a note opens it. A schemeless domain such as `github.com/owner` that is not a file name (`Plan.md`) opens as `https://<value>`. Anything else goes to `openNoteLink`, so a miss is the Notice above |
 
 ### Folder settings and renames
 
 - **Typed folders** are normalised by `normalizeFolderPath` (`src/utils/folderPath.ts:7-10`, M67): trimmed, slashes around the path removed, `''` for the root. `Photos/` and `/Photos` now find `Photos`. Quick links, the gallery and the Recent files exclusions use it.
 - **The folder picker** (`FolderSuggestModal`) leaves the vault root out for the gallery and Quick links, which need a subfolder (`{ includeRoot: false }`); Voice notes keeps it.
-- **Renames are followed in block settings** (M55, M22). The plugin's vault `rename` listener (`src/main.ts:262`) runs `followRenameInBlock` (`src/utils/pathRename.ts:72-102`) on every block of both arrays and on the Discard snapshot of an open edit session (`HomepagePlugin.followRename`, `src/main.ts:494-510`), with no block mounted too. When a path changed it saves and reloads every open homepage view that is not being edited (`:504-509`), so mounted blocks, which read their render-time config, use the new paths at once; a view in edit mode keeps its placeholders. A value that names the renamed file (with or without `.md`) or lies inside a renamed folder is rewritten. Typed note links go through `renameLink` (`:25-39`): `Projects/Plan`, `Plan` and `[[Plan#Goals|alias]]` keep their brackets, heading and alias, and a link by name alone follows only when that name no longer resolves to another note (`getFirstLinkpathDest`), as Obsidian's own link update would see it:
+- **Renames are followed in block settings** (M55, M22). The plugin's vault `rename` listener (`src/main.ts:265`) runs `followRenameInBlock` (`src/utils/pathRename.ts:77-107`) on every block of both arrays and on the Discard snapshot of an open edit session (`HomepagePlugin.followRename`, `src/main.ts:503-519`), with no block mounted too. When a path changed it saves and reloads every open homepage view that is not being edited (`:513-518`), so mounted blocks, which read their render-time config, use the new paths at once; a view in edit mode keeps its placeholders. A value that names the renamed file (with or without `.md`) or lies inside a renamed folder is rewritten. Typed note links go through `renameLink` (`:30-44`): `Projects/Plan`, `Plan` and `[[Plan#Goals|alias]]` keep their brackets, heading and alias, and a link by name alone follows only when that name no longer resolves to another note (`getFirstLinkpathDest`), as Obsidian's own link update would see it:
 
 | Type | Keys rewritten |
 |---|---|
@@ -174,7 +174,7 @@ A glob in Quick links' `folder` is rewritten only where its text starts with the
   - an explicit `requestAutoHeight()`;
   - `observeWidthForAutoHeight`, which fires on width changes and once on the first observation, because `prevWidth` starts at 0 (`src/blocks/BaseBlock.ts:183-201`);
   - `observeSizeForAutoHeight` (`src/blocks/BaseBlock.ts:209-222`, M34), which fires when the observed content-sized element changes width or height after its first report: an image in the Markdown that loads late, a folded callout opened, a Dataview refresh. Static Text and grow-mode Embedded Note use it;
-  - a responsive column change: a narrowing to two or more columns re-requests every auto-height block (`src/grid/ResponsiveColumns.ts:193-200`), and so does a return to the canonical column count (`:171`).
+  - a responsive column change: a narrowing to two or more columns re-requests every auto-height block (`src/grid/ResponsiveColumns.ts:194-201`), and so does a return to the canonical column count (`:172`).
 
 The mechanism is detailed in [api/grid.md](api/grid.md).
 
@@ -215,7 +215,7 @@ Source: `src/blocks/GreetingBlock.ts`. It shows a time-of-day salutation, the us
 - Time slots:
   - Emoji (`timeSlot`, `:114-119`): morning 5–12, afternoon 12–17, evening 17–21, night 21–5.
   - Salutation (`salutSlot`, `:121-125`): morning 5–12, afternoon 12–18, evening 18–5.
-- `.block-content.greeting-block` is `container-type: size` (`styles.css:635-643`).
+- `.block-content.greeting-block` is `container-type: size` (`styles.css:707-715`).
 
 **Live updates:** the timer only. **Auto-height:** none. **Network:** none.
 
@@ -251,7 +251,7 @@ Source: `src/blocks/ClockBlock.ts`. It shows a live time line and an optional da
 
 **Rendering:** `.clock-block.clock-style-<style>` containing `.clock-time` and `.clock-date` (`:22-42`). A rule of specificity (0,3,0), `.homepage-block-wrapper .block-content.clock-block`, now wins over the generic `display: grid` of `.block-content`, so the time and date are centred as the style intends (M99).
 
-**Live updates:** `registerInterval` fires every second whatever `showSeconds` and `format` say (`:40-41`, M46). Each tick writes a line only when its text changed (`setIfChanged`, `:13-16`), so the new minute shows when it starts and a custom format with seconds ticks every second. **Auto-height:** none. **Network:** none.
+**Live updates:** `registerInterval` fires every second whatever `showSeconds` and `format` say (`:46-47`, M46). Each tick writes a line only when its text changed (`setIfChanged`, `:13-16`), so the new minute shows when it starts and a custom format with seconds ticks every second. **Auto-height:** none. **Network:** none.
 
 **Settings** (`:56-80`): Style, Show seconds, Show date, Custom format ("Moment.js format string. Leave blank for default.").
 
@@ -319,28 +319,28 @@ Source: `src/blocks/ButtonGridBlock.ts`. It shows a grid of emoji and label butt
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `_titleLabel` | string | `'Button grid'` | Header label. With no label set, the header reads **`'Buttons'`** (`blockTitle`, `:26`) |
-| `columns` | number | `2` | Clamped to 1–3 at render (`:29`). The load migration also clamps values above 3 to 3 (`src/validation.ts:198-201`) |
+| `columns` | number | `2` | Clamped to 1–3 at render (`:29`). The load migration also clamps values above 3 to 3 (`src/validation.ts:193-196`) |
 | `items` | `{ emoji, label, link? }[]` | `[]` | Buttons. With no `link`, a button is inert (class `hp-cursor-default`). A `link` is rewritten when its note is renamed |
-| `customCss` | string | not declared (`src/main.ts:78-80`) | `--hp-btn-*` declarations, applied to the **wrapper** by `applyBlockStyling`, not by the block |
+| `customCss` | string | not declared (`src/main.ts:79-81`) | `--hp-btn-*` declarations, applied to the **wrapper** by `applyBlockStyling`, not by the block |
 
 **Rendering** (`:16-55`)
-- `.button-grid` gets only an inline column count, `--hp-grid-count: N` (`:31`), which `styles.css` turns into `repeat(var(--hp-grid-count, 2), 1fr)` (`styles.css:3994`). It also gets the auto-height marker and `observeWidthForAutoHeight`.
+- `.button-grid` gets only an inline column count, `--hp-grid-count: N` (`:31`), which `styles.css` turns into `repeat(var(--hp-grid-count, 2), 1fr)` (`styles.css:4005`). It also gets the auto-height marker and `observeWidthForAutoHeight`.
 - A button with a link opens it through `openLinkTarget` on a click or a middle click (`:50`): a URL with a scheme or a schemeless domain opens externally, a note opens when the link resolves, and a dangerous URL or a stale link shows a Notice (see [Opening files and links](#opening-files-and-links), M22, M23).
 - With no items, the block shows an empty hint.
-- **Narrow blocks.** Below 250 px of container width the grid falls back to one column (`.button-grid-block .button-grid`, `styles.css:1643-1648`); with only the count inline, the container query now wins (M98).
+- **Narrow blocks.** Below 250 px of container width the grid falls back to one column (`.button-grid-block .button-grid`, `styles.css:1649-1654`); with only the count inline, the container query now wins (M98).
 
-**The `customCss` pipeline** (`src/utils/blockStyling.ts:52-106`)
+**The `customCss` pipeline** (`src/utils/blockStyling.ts:42-96`)
 1. Comments are stripped and the text is split on `;`.
 2. Only keys matching `^--hp-btn-[a-z0-9-]+$` are kept.
 3. A value is rejected if it contains `url(`, `image(`, `image-set(`, `cross-fade(`, `element(`, `paint(`, or a control character.
 4. Kept values are applied with `setProperty`. Their keys are tracked in `data-hp-custom-css-keys`, so the next render can remove stale ones.
 
-The variables the stylesheet reads are `--hp-btn-bg`, `-border`, `-radius`, `-padding`, `-color`, `-shadow`, `-gap`, `-hover-bg`, `-hover-border-color`, `-hover-transform`, `-hover-shadow`, `-active-transform`, `-active-shadow` and `-emoji-size` (`styles.css:1519-1562`).
+The variables the stylesheet reads are `--hp-btn-bg`, `-border`, `-radius`, `-padding`, `-color`, `-shadow`, `-gap`, `-hover-bg`, `-hover-border-color`, `-hover-transform`, `-hover-shadow`, `-active-transform`, `-active-shadow` and `-emoji-size` (`styles.css:1525-1568`).
 
 `customCss` never travels outside the block:
-- It is deleted on export (`src/settings/HomepageSettingTab.ts:385,389`).
+- It is deleted on export (`src/settings/HomepageSettingTab.ts:399,403`).
 - It is stripped on import (`src/utils/importSanitizer.ts:11`).
-- It is removed from any other block type at load (`src/validation.ts:206-208`).
+- It is removed from any other block type at load (`src/validation.ts:201-203`).
 
 **Live updates:** none. **Auto-height:** always. **Network:** none, and `url()` values are rejected.
 
@@ -357,21 +357,21 @@ Source: `src/blocks/QuotesListBlock.ts`. It shows quotes taken from notes with a
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `_titleLabel` | string | `'Quotes'` | Header label (the default title is also `'Quotes'`, `:114`) |
+| `_titleLabel` | string | `'Quotes'` | Header label (the default title is also `'Quotes'`, `:115`) |
 | `source` | `'tag'` \| `'text'` | `'tag'` | Tagged notes or manual text |
 | `tag` | string | `''` | Tag, with or without `#` (`normalizeTag`). Matched as Obsidian's tag search matches it (see [Helpers](#helpers-used-by-blocks)) |
 | `quotes` | string | `''` | Manual quotes, separated by a line containing only `---`. A last line starting with `—`, `–` or `--` becomes the source |
-| `maxItems` | number | `20` (fallback `20`, `:109`) | `1` selects single mode, `0` shows all, `n` shows the first `n`. Read through `rangedNumber`, clamped to 0–500 |
+| `maxItems` | number | `20` (fallback `21`, `:109`) | `1` selects single mode, `0` shows all, `n` shows the first `n`. Read through `rangedNumber`, clamped to 0–500 |
 | `dailySeed` | boolean | `true` | Single mode: the same pick all day (`dailyIndex`) instead of `Math.random` |
 | `columns` | number | `2` | Maximum number of columns. Read through `rangedNumber`, clamped to 1–3 (`:108`) |
 | `heightMode` | `'wrap'` \| `'extend'` | `'extend'` | `wrap`: scroll inside a 500 px maximum. `extend`: auto-height |
 | `quoteStyle` | `'classic'` \| `'centered'` \| `'card'` | `'classic'` | List-mode style classes |
 | `showAccentBar` | boolean | `true` | `false` adds `quote-no-accent` |
 | `showNoteTitle` | boolean | `true` | Tag source: show the note name (list) or the title (single) |
-| `textAlign` | `'left'` \| `'center'` \| `'right'` | `'left'` | Sets `--hp-quote-align` (`:110`), which `.quote-item` and `.insight-card` use as `text-align` (`styles.css:1706-1711`). The centered quote style keeps its own, more specific `text-align` |
+| `textAlign` | `'left'` \| `'center'` \| `'right'` | `'left'` | Sets `--hp-quote-align` (`:112`), which `.quote-item` and `.insight-card` use as `text-align` (`styles.css:1793-1798`). The centered quote style keeps its own, more specific `text-align` |
 | `verticalAlign` | `'top'` \| `'middle'` \| `'bottom'` | `'top'` | Sets `--hp-quote-valign` |
 | `fontStyle` | `'default'` \| `'serif'` \| `'handwriting'` | `'default'` | Adds `quote-font-serif` or `quote-font-handwriting` |
-| `customFont` | string | `''` | Trimmed and cut to 64 characters. It must match `^[a-zA-Z0-9\s,'\-_]+$` and then becomes `--hp-quote-font` (`:130-133`) |
+| `customFont` | string | `''` | Trimmed and cut to 64 characters. It must match `^[a-zA-Z0-9\s,'\-_]+$` and then becomes `--hp-quote-font` (`:132-135`) |
 
 The default layout's "Daily insight" block sets `maxItems: 1`, so it shows one note per day (`src/validation.ts:66-71`).
 
@@ -388,7 +388,7 @@ The default layout's "Daily insight" block sets `maxItems: 1`, so it shows one n
 - **Formatting.** Inline formatting covers only `**bold**` and `#hashtag`, via `renderFormatted` (`:30-45`). Other Markdown is shown as raw text.
 - **List body.** The body of each tagged note in list mode is `noteQuote(content, cache)` (`:284`; `src/utils/noteContent.ts:113-119`, M88): the note's first paragraph in full, joined by spaces and cut to 280 characters with an ellipsis (`…`) when longer. When the paragraph has more than one line and its last one starts with `—`, `–` or `--`, that line is shown apart as `div.quote-author` ("— Author", `:290`; `styles.css` `.quote-author`).
 - **Colour.** A frontmatter `color` value is capped at 64 characters. If it matches `COLOR_RE` (`:13`), it becomes `--hp-quote-color` and the class `quote-colored` is added.
-- **Columns.** A `ResizeObserver` sets `--hp-column-count = max(1, min(columns, floor(width / 200)))`. It is skipped for the centered style (`:219-231`). Its one cleanup is registered in `render`, not in `loadAndRender`, which runs again on every live update.
+- **Columns.** A `ResizeObserver` sets `--hp-column-count = max(1, min(columns, floor(width / 200)))`. It is skipped for the centered style (`:220-232`). Its one cleanup is registered in `render`, not in `loadAndRender`, which runs again on every live update.
 - **Shown notes.** Each render records the paths of the notes it shows in `shownPaths` (`:101`, `:176`, `:261`).
 - **No tagged notes.** List mode shows the hint `No notes tagged #x.` instead of an empty card (`:251-258`, M87).
 - **Errors.** A render failure shows `renderErrorHint` with "Couldn’t load quotes — check the console for details." (`:93-96`).
@@ -404,7 +404,7 @@ The default layout's "Daily insight" block sets `maxItems: 1`, so it shows one n
 - On unless `heightMode === 'wrap'`.
 - List mode marks `.quotes-columns` and observes its width.
 - Single mode marks `.insight-card` in extend mode, for a tag source (`:192-196`) and for a text source (`:146-151`, M36), which was clipped at its stored rows before.
-- In wrap mode, `.quotes-columns` has `max-height: 500px; overflow-y: auto` (`styles.css:1588-1594`) and gets `tabindex=0`, `role=region`. A later rule keeps `overflow-y: auto` against the wrapper's default clip of `.block-content` children, so the list scrolls (`styles.css:2507-2515`).
+- In wrap mode, `.quotes-columns` has `max-height: 500px; overflow-y: auto` (`styles.css:1667-1673`) and gets `tabindex=0`, `role=region`. A later rule keeps `overflow-y: auto` against the wrapper's default clip of `.block-content` children, so the list scrolls (`styles.css:2610-2618`).
 
 **Network:** none.
 
@@ -421,7 +421,7 @@ The default layout's "Daily insight" block sets `maxItems: 1`, so it shows one n
 **Limits**
 - **Missing `maxItems`.** An older default layout's "Daily insight" block has no `maxItems`, so it renders as a list of up to 20 until `maxItems` is set to 1; the settings field now shows that 20.
 - **Single mode, empty branches.** The tag source's "no tag" and "no files" branches return before the auto-height marker is set (`:156-169`), and so does a text source with no quotes.
-- **Vertical alignment.** `--hp-quote-valign` is read only by `.insight-card` (`styles.css:1020`), so vertical alignment affects single mode only.
+- **Vertical alignment.** `--hp-quote-valign` is read only by `.insight-card` (`styles.css:1092`), so vertical alignment affects single mode only.
 - **Quote separator.** Quotes split only on the exact sequence `\n---\n` (`:312`, `:353`). CRLF text, or `---` followed by spaces, does not split.
 - **Missed updates.**
   - Renames are not handled.
@@ -439,9 +439,9 @@ Source: `src/blocks/ImageGalleryBlock.ts`. It shows images and videos found recu
 | `columns` | number | `3` | Clamped to 1–7 at render (`:310`). The settings offer 2–7, and an import clamps to 2–7 (`CONFIG_RANGES`) |
 | `maxItems` | number | `0` | A positive value is floored and capped at 500; `0`, a negative value or a non-number shows all (`:311-312`) |
 | `layout` | `'grid'` \| `'masonry'` | `'grid'` | Anything other than `'masonry'` renders as a grid |
-| `heightMode` | `'auto'` \| `'fixed'` | `'auto'` | `fixed`: the gallery scrolls inside its cell (`image-gallery--fixed-height`, `styles.css:1788-1791`). A rule keeps `overflow-y: auto` against the wrapper's default clip of `.block-content` children (`styles.css:2507-2515`) |
+| `heightMode` | `'auto'` \| `'fixed'` | `'auto'` | `fixed`: the gallery scrolls inside its cell (`image-gallery--fixed-height`, `styles.css:1875-1878`). A rule keeps `overflow-y: auto` against the wrapper's default clip of `.block-content` children (`styles.css:2610-2618`) |
 
-**Media types:** images `.png .jpg .jpeg .gif .webp .svg`, videos `.mp4 .webm .mov .mkv` (`:8-9`).
+**Media types:** images `.png .jpg .jpeg .gif .webp .svg`, videos `.mp4 .webm .mov .mkv` (`:10-11`).
 
 **Rendering** (`loadAndRender`, `:299-464`)
 - **Grid.** `--hp-grid-cols` is set from `responsiveGridColumns(columns, 100, 8)` (`:344`), whose track minimum leaves room for the 8 px gaps, so N columns fit (M97). CSS reads it as `var(--hp-grid-cap, var(--hp-grid-cols))`, and the container queries at ≤500, ≤400 and ≤280 px set the cap.
@@ -487,7 +487,7 @@ Source: `src/blocks/ImageGalleryBlock.ts`. It shows images and videos found recu
 
 **Auto-height:** on unless `heightMode === 'fixed'`. **Network:** none; images come from `vault.getResourcePath` or blob URLs.
 
-**Settings** (`:460-507`)
+**Settings** (`:483-530`)
 - Folder: text field plus a browse button. The vault root is stored as `''`, which shows the no-folder hint.
 - Height: "Auto (fit all images)" or "Fixed (scroll)".
 - Layout: Grid or Masonry.
@@ -509,19 +509,19 @@ Source: `src/blocks/EmbeddedNoteBlock.ts`. It renders one vault file as Markdown
 |---|---|---|---|
 | `filePath` | string | `''` | Path of the file to embed. It is rewritten when that file is renamed |
 | `showTitle` | boolean | `true` | Calls `renderHeader(el, file.basename)`, or `renderHeader(el, 'Embedded note')` when no path is set or the file is missing. `_titleLabel` still overrides the title, and `_showTitle: false` still hides the header |
-| `heightMode` | `'scroll'` \| `'grow'` | `'scroll'` | `scroll`: `.embedded-note-content` is capped at `max-height: 400px` and scrolls (`styles.css:2012-2016`; a rule keeps `overflow-y: auto` against the wrapper's default clip, `styles.css:2507-2515`). `grow`: auto-height |
+| `heightMode` | `'scroll'` \| `'grow'` | `'scroll'` | `scroll`: `.embedded-note-content` is capped at `max-height: 400px` and scrolls (`styles.css:2099-2103`; a rule keeps `overflow-y: auto` against the wrapper's default clip, `styles.css:2610-2618`). `grow`: auto-height |
 
 **Rendering** (`renderContent`, `:57-108`)
 - It reads `liveConfig()` rather than `this.instance`, because a rename rewrites `filePath`.
-- **Missing path or file.** Both branches render the header with the title `'Embedded note'` (`blockTitle`) first, so the previous note's name does not stay in the header zone (`:70-83`).
+- **Missing path or file.** Both branches render the header with the title `'Embedded note'` (`blockTitle`) first, so the previous note's name does not stay in the header zone (`:71-84`).
   - No path: hint "No note selected. Choose a file path in settings to embed it here."
   - Path is not a `TFile`: plain text `File not found: <path>`.
-- **Content element.** `.embedded-note-content.markdown-rendered` (`:89`): the `markdown-rendered` class styles tables, code, blockquotes and images as reading view does (M92). It gets `role=region`, `tabindex=0` and an aria-label in scroll mode, and the auto-height marker plus `observeSizeForAutoHeight` in grow mode (`:90-97`).
+- **Content element.** `.embedded-note-content.markdown-rendered` (`:90`): the `markdown-rendered` class styles tables, code, blockquotes and images as reading view does (M92). It gets `role=region`, `tabindex=0` and an aria-label in scroll mode, and the auto-height marker plus `observeSizeForAutoHeight` in grow mode (`:90-97`).
 - **Markdown.** `vault.read`, then a staleness check, then `MarkdownRenderer.render(app, content, contentEl, file.path, this)`. On failure it shows "Error rendering file." (`:99-107`). `BaseBlock.openLinksOnClick(contentEl, file.path)` makes the note's `[[links]]` open on click, resolved from the note's path as reading view resolves them.
 - `render` returns the promise, so GridLayout measures height after the Markdown has rendered.
 
-**Rename tracking** (`HomepagePlugin.followRename`, `src/main.ts:494-510`)
-- The plugin registers a vault `rename` listener in `onload`, before any block mounts (`src/main.ts:262`). It rewrites `filePath` in every `embedded-note` block of **both** arrays, `blocks` and `mobileBlocks`, that names the old path, and saves. The same pass rewrites the paths other blocks name (see [Folder settings and renames](#folder-settings-and-renames)).
+**Rename tracking** (`HomepagePlugin.followRename`, `src/main.ts:503-519`)
+- The plugin registers a vault `rename` listener in `onload`, before any block mounts (`src/main.ts:265`). It rewrites `filePath` in every `embedded-note` block of **both** arrays, `blocks` and `mobileBlocks`, that names the old path, and saves. The same pass rewrites the paths other blocks name (see [Folder settings and renames](#folder-settings-and-renames)).
 - It works with no block mounted: in edit mode and with the homepage closed.
 - It also rewrites the Discard snapshot of an open edit session (`mapEditSnapshot`), so Discard restores the new path.
 - After saving a changed path it reloads the open homepage views that are not being edited, which re-mounts the block.
@@ -553,7 +553,7 @@ Source: `src/blocks/StaticTextBlock.ts`. It shows Markdown text stored in the bl
 
 **Rendering** (`renderContent`, `:50-88`)
 - The default header title is `'Text'`.
-- It adds a pencil button `.static-text-edit-btn` with aria-label "Edit content". CSS shows it at `opacity: 0` until hover or keyboard focus (`:focus-visible`), and at 0.6 on mobile (`styles.css:2045-2081`).
+- It adds a pencil button `.static-text-edit-btn` with aria-label "Edit content". CSS shows it at `opacity: 0` until hover or keyboard focus (`:focus-visible`), and at 0.6 on mobile (`styles.css:2132-2168`).
 - The content goes into `.static-text-content.markdown-rendered` (`:72`), so tables, code, blockquotes and images are styled as in reading view (M92), via `MarkdownRenderer.render(app, content, contentEl, '', this)`. The source path is `''`. `BaseBlock.openLinksOnClick(contentEl, '')` makes its `[[links]]` open on click, since the static render wires no link handling.
 - With no content, the block shows a hint: "No content yet. Click the pencil icon to add text."
 - `render` returns the `renderContent` promise (`:37-43`, M34), so GridLayout measures after the Markdown has rendered. Its failures, at mount and after an inline Save or Cancel, go through `showRenderFailure`, which logs them and shows `renderErrorHint` "Couldn’t render this content." (`:45-48`, `:140`, `:146`).
@@ -568,7 +568,7 @@ Source: `src/blocks/StaticTextBlock.ts`. It shows Markdown text stored in the bl
    - re-renders from `liveConfig()`;
    - calls `requestAutoHeight()` (`:125-141`).
 4. **Cancel** (button or Esc) clears the flag and re-renders (`:143-147`).
-5. Entering edit mode and adding a block render the grid directly (`src/GridLayout.ts:269`, `:370`), and a reload or a closed tab destroys the grid too. `onunload` then saves an open draft through `saveActiveBlocks` (synchronously in memory), unless the text is unchanged or the stored text was replaced meanwhile, e.g. by Reset or Import (`:15-35`). Cancel drops the draft first, so a cancelled edit is not saved.
+5. Entering edit mode and adding a block render the grid directly (`src/GridLayout.ts:269`, `:371`), and a reload or a closed tab destroys the grid too. `onunload` then saves an open draft through `saveActiveBlocks` (synchronously in memory), unless the text is unchanged or the stored text was replaced meanwhile, e.g. by Reset or Import (`:15-35`). Cancel drops the draft first, so a cancelled edit is not saved.
 
 **Live updates:** none. **Auto-height:** on unless `heightMode === 'fixed'`. `.static-text-content` is observed with `observeSizeForAutoHeight` (`:75`, M34), so the block is measured again whenever the rendered text changes size: a late image, a callout opened, a width change. **Network:** whatever the rendered Markdown references.
 
@@ -648,7 +648,7 @@ Source: `src/blocks/VideoEmbedBlock.ts`. It shows a player iframe for YouTube, V
   - `allow="autoplay; encrypted-media; picture-in-picture"`, with no clipboard-write
   - `allowfullscreen`, `loading="lazy"`, `referrerpolicy="strict-origin-when-cross-origin"` (`:151`, M48): the origin only, never the page path. YouTube refuses an embed sent with no `Referer` (Error 153, seen on mobile); this is not verified on a device
   - `sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"`
-- The iframe fills the cell at `height: 100%`, with no aspect-ratio lock (`styles.css:2132-2144`). In single column, where the card has no height of its own, the player keeps a 16:9 aspect ratio instead (`.hp-single-column .video-embed-*`, M38).
+- The iframe fills the cell at `height: 100%`, with no aspect-ratio lock (`styles.css:2237-2249`). In single column, where the card has no height of its own, the player keeps a 16:9 aspect ratio instead (`.hp-single-column .video-embed-*`, M38).
 
 **Live updates:** none. **Auto-height:** none. **Network:** the provider page and its scripts run inside the sandboxed iframe.
 
@@ -685,7 +685,7 @@ Source: `src/blocks/BookmarkBlock.ts`. It shows a grid of link cards. Web links 
 
 **Limits**
 - **Malformed items.** Item fields are not type-checked at render. A malformed `items` value makes `render` throw, and GridLayout catches it.
-- **Narrow-width rule.** The `@container (max-width: 250px)` override of `--hp-grid-cols` (`styles.css:1653-1656`) loses to the inline value. The 120 px track minimum of `auto-fill` still drops to one column in a narrow block.
+- **Narrow-width rule.** The `@container (max-width: 250px)` override of `--hp-grid-cols` (`styles.css:1659-1662`) loses to the inline value. The 120 px track minimum of `auto-fill` still drops to one column in a narrow block.
 
 ## `recent-files` — Recent files
 
@@ -736,7 +736,7 @@ Source: `src/blocks/PomodoroBlock.ts`. It shows a work/break timer with a progre
 | `soundType` | `'none'` \| `'crystal'` \| `'chime'` \| `'bowl'` | `'crystal'` | dropdown | End-of-phase sound |
 | `autoStartCycle` | boolean | `false` | toggle | Start the next phase automatically |
 
-The four numbers are read through `rangedNumber`, clamped to the settings ranges, with the defaults above as fallbacks (`settings()`, `:142-151`). An import clamps them to the same ranges.
+The four numbers are read through `rangedNumber`, clamped to the settings ranges, with the defaults above as fallbacks (`settings()`, `:143-152`). An import clamps them to the same ranges.
 
 ```mermaid
 stateDiagram-v2
@@ -761,28 +761,28 @@ stateDiagram-v2
 - `skip` moves to the next phase now; it does nothing when idle (`:60-62`). The skipped-to phase is stored as it is shown.
 - `advance(state, settings, now)` completes, in turn, every phase that ended before `now` and returns how many did (`:69-77`). A cycle stops after its long break, so the loop ends within 2 × `sessionsBeforeLong` steps.
 
-**State** (`src/blocks/PomodoroBlock.ts:17-35`; the line numbers below are in this file)
-- Timer state is kept in a module-level `timerStore: Map<blockId, PomodoroState>` (`:22`). It is never written to `data.json`.
-- `setState` writes the shown state and the stored state together (`:154-158`).
-- On mount, a stored phase other than `idle` is restored; an idle timer is rebuilt from the current settings. `advance` then catches up the phases that ended while no block was mounted, silently (`:120-127`).
-- On unload, only an `idle` entry is deleted (`:134-136`). A running or paused timer survives re-renders, edit mode and a closed homepage for the session.
+**State** (`src/blocks/PomodoroBlock.ts:18-36`; the line numbers below are in this file)
+- Timer state is kept in a module-level `timerStore: Map<blockId, PomodoroState>` (`:23`). It is never written to `data.json`.
+- `setState` writes the shown state and the stored state together (`:155-159`).
+- On mount, a stored phase other than `idle` is restored; an idle timer is rebuilt from the current settings. `advance` then catches up the phases that ended while no block was mounted, silently (`:121-128`).
+- On unload, only an `idle` entry is deleted (`:135-137`). A running or paused timer survives re-renders, edit mode and a closed homepage for the session.
 - A shared `AudioContext` is used for sound.
-- Plugin unload calls `clearPomodoroState()` and `closeSharedAudioCtx()` (`src/main.ts:339-340`).
+- Plugin unload calls `clearPomodoroState()` and `closeSharedAudioCtx()` (`src/main.ts:364-365`).
 
-**Rendering** (`:45-137`)
+**Rendering** (`:46-138`)
 - The default header title is `'Pomodoro'`.
 - The SVG ring has radius 52; its progress stroke uses `var(--block-accent, var(--color-accent))`.
-- `MM:SS` is overlaid on the ring, rounded up to the whole second. The phase label reads Ready, Work, Break or Long break (`updateDisplay`, `:249-310`).
+- `MM:SS` is overlaid on the ring, rounded up to the whole second. The phase label reads Ready, Work, Break or Long break (`updateDisplay`, `:250-311`).
 - Buttons: Start/Pause/Resume, Reset and Skip.
-- In view mode, `.block-content` is absolutely positioned over the card (`styles.css:3542-3547`). The ring size is `min(40cqh, 80cqw, 140px)` (`:3569-3575`).
+- In view mode, `.block-content` is absolutely positioned over the card (`styles.css:3656-3661`). The ring size is `min(40cqh, 80cqw, 140px)` (`:3683-3689`).
 
 **Logic**
-- **Tick.** A 1 s `registerInterval` calls `tick` (`:130`, `:160-169`). The clock decides: `tick` runs `advance`, and when one or more phases completed it plays **one** sound (unless `none`) and stores the new state. Otherwise it only refreshes the display of a running phase.
-- **Sounds** are Web Audio sine tones (`:171-233`): crystal is 1200 Hz, chime is 800 Hz then 1000 Hz, bowl is 300 Hz for about 4 s. Changing the sound in settings plays a preview.
+- **Tick.** A 1 s `registerInterval` calls `tick` (`:131`, `:161-170`). The clock decides: `tick` runs `advance`, and when one or more phases completed it plays **one** sound (unless `none`) and stores the new state. Otherwise it only refreshes the display of a running phase.
+- **Sounds** are Web Audio sine tones (`:172-234`): crystal is 1200 Hz, chime is 800 Hz then 1000 Hz, bowl is 300 Hz for about 4 s. Changing the sound in settings plays a preview.
 
 **Live updates:** only the 1 s display timer. **Auto-height:** none. **Network:** none.
 
-**Settings** (`:313-378`): Work duration, Break duration, Long break duration, Sessions before long break, Notification sound, Auto-start next session.
+**Settings** (`:314-379`): Work duration, Break duration, Long break duration, Sessions before long break, Notification sound, Auto-start next session.
 
 **Limits**
 - **Session only.** The timer lives in memory: it is lost on plugin unload or an Obsidian restart.
@@ -795,10 +795,10 @@ Source: `src/blocks/SpacerBlock.ts`. `render` only adds the class `spacer-block`
 
 | Key | Default | Meaning |
 |---|---|---|
-| `_showTitle`, `_showBorder`, `_showBackground`, `_showHeaderAccent` | `false` each | Shared styling keys, preset so a new spacer is invisible (`src/main.ts:172`) |
+| `_showTitle`, `_showBorder`, `_showBackground`, `_showHeaderAccent` | `false` each | Shared styling keys, preset so a new spacer is invisible (`src/main.ts:173`) |
 
 - **Behaviour.** It has no header call (its Header tab shows "This block has no title."), no content settings (the Content tab shows "This block has no content settings."), no listeners, no auto-height and no network access.
-- **Single-column mode.** In single-column mode, `.block-content.spacer-block` gets `min-height: 0` (`styles.css:3009-3011`).
+- **Single-column mode.** In single-column mode, `.block-content.spacer-block` gets `min-height: 0` (`styles.css:3141-3143`).
 
 ## `random-note` — Random note
 
@@ -831,8 +831,8 @@ Source: `src/blocks/RandomNoteBlock.ts`. It shows a card for one random or daily
   - An `https://` value is used directly.
   - Anything else goes through `stripWikiLink`, then `getFirstLinkpathDest`, then `getAbstractFileByPath`, then `getResourcePath`.
   - The image gets `referrerPolicy='no-referrer'` and CSS `max-height: 200px; object-fit: contain`.
-  - The `@container (max-height: 160px)` query hides the cover and the preview (`styles.css:1502-1509`). `.block-content.random-note-block` is the size container (`styles.css:1420-1422`).
-- **Card.** Cover, title, preview and footer go into `div.random-note-body`, the flex column inside `.block-content` (`:132`, `styles.css:1424-1428`).
+  - The `@container (max-height: 160px)` query hides the cover and the preview (`styles.css:1580-1587`). `.block-content.random-note-block` is the size container (`styles.css:1498-1500`).
+- **Card.** Cover, title, preview and footer go into `div.random-note-body`, the flex column inside `.block-content` (`:132`, `styles.css:1502-1506`).
 - **Title and footer.** The title is a `button.random-note-title`. The footer holds the filename, as plain text, and an "Open" button. The title and the "Open" button both open the file itself (`openFile`, `:175`, `:186`), in a new tab with Ctrl/Cmd or a middle click (M21, M65).
 - **Auto-height wiring.** `render` returns `void` (`:55-58`). GridLayout therefore measures immediately, and the block calls `requestAutoHeight()` itself when it finishes (`:188`).
 
@@ -891,69 +891,69 @@ stateDiagram-v2
   saved --> idle: after 1500 ms
 ```
 
-**Rendering** (`:147-297`)
+**Rendering** (`:147-299`)
 - The default header title is `'Voice notes'`.
-- The block shows a `.voice-status` line (`role=status`, `aria-live=polite`), a mic button, an elapsed `m:ss` timer and a "Saved" flash. The state is stored in `el.dataset.voiceState`. The status labels are "Tap to record", "Starting…", "Recording…" and "Transcribing…" (`:278-285`).
+- The block shows a `.voice-status` line (`role=status`, `aria-live=polite`), a mic button, an elapsed `m:ss` timer and a "Saved" flash. The state is stored in `el.dataset.voiceState`. The status labels are "Tap to record", "Starting…", "Recording…" and "Transcribing…" (`:280-287`).
 - **The mic is disabled** (`voice-mic--unavailable`) when:
   - there is no key: status "Add an API key in block settings" (`:184-191`). It is a status line, not a Notice, because `render` runs at every open, settings save and edit-mode exit;
   - the key is still ciphertext: status "API key unavailable on this device";
   - there is no `MediaRecorder` or `getUserMedia`: status "Not available on this platform".
-- **Trigger wiring** (`:209-250`).
+- **Trigger wiring** (`:209-252`).
   - Tap: a click starts from `idle` and stops from `recording`. A click while `starting` is ignored.
-  - Push: `pointerdown` sets `pushHeld` and captures the pointer on the button (`setPointerCapture`), so the release reaches the button even when the pointer has left it. `pointerup` and `pointercancel` stop a recording, or cancel a start still pending (`cancelStart`, `:524-527`). The button gets the class `voice-mic--push`, which sets `touch-action: none`, so a slight pan is no longer a `pointercancel` that ends the hold (M62).
-  - Push from the keyboard (M62): Space or Enter down starts, as a hold, and the key's release stops; key repeats are ignored (`:229-242`).
-- In view mode, `.block-content` is absolutely positioned over the card (`styles.css:3542-3547`).
+  - Push: `pointerdown` sets `pushHeld` and captures the pointer on the button (`setPointerCapture`), so the release reaches the button even when the pointer has left it. `pointerup` and `pointercancel` stop a recording, or cancel a start still pending (`cancelStart`, `:536-539`). The button gets the class `voice-mic--push`, which sets `touch-action: none`, so a slight pan is no longer a `pointercancel` that ends the hold (M62).
+  - Push from the keyboard (M62): Space or Enter down starts, as a hold, and the key's release stops; key repeats are ignored (`:231-244`).
+- In view mode, `.block-content` is absolutely positioned over the card (`styles.css:3656-3661`).
 
-**Recording** (`startRecording`, `:398-511`)
-1. It runs only from `idle` (`:400`). It checks the key again: a missing or encrypted key shows "API key required — configure it in block settings" and is never sent (`:403-406`).
-2. It claims the start: `recordingGen` is incremented and the state becomes `starting` (`:411-412`). A push release, an unload or a re-render increments `recordingGen` again, which cancels the start at its next check.
-3. Consent: if `hasConsent(app, provider)` is false, `VoiceConsentModal` asks, and on confirm `hp-voice-consent[provider] = true` is stored through `app.saveLocalStorage` (per vault, per device, per provider; `:18-53`, `:416-426`). Closing the modal counts as refusal.
+**Recording** (`startRecording`, `:410-523`)
+1. It runs only from `idle` (`:412`). It checks the key again: a missing or encrypted key shows "API key required — configure it in block settings" and is never sent (`:415-418`).
+2. It claims the start: `recordingGen` is incremented and the state becomes `starting` (`:423-424`). A push release, an unload or a re-render increments `recordingGen` again, which cancels the start at its next check.
+3. Consent: if `hasConsent(app, provider)` is false, `VoiceConsentModal` asks, and on confirm `hp-voice-consent[provider] = true` is stored through `app.saveLocalStorage` (per vault, per device, per provider; `:18-53`, `:428-438`). Closing the modal counts as refusal.
    - Tap mode goes on to record after a confirm.
    - Push mode returns to `idle` after the modal, whatever the answer: the press that opened it no longer holds the button, so recording starts from the next press.
-4. `getUserMedia({ audio: true })`. Errors show Notices: "No microphone found on this device", "Microphone access denied" or "Microphone unavailable" (`:431-445`).
+4. `getUserMedia({ audio: true })`. Errors show Notices: "No microphone found on this device", "Microphone access denied" or "Microphone unavailable" (`:443-457`).
 5. If the start was cancelled while the microphone opened, or push mode was released meanwhile, the stream is stopped at once and the state goes back to `idle`.
-6. The MIME type is the first supported of `audio/webm;codecs=opus`, `audio/webm`, `audio/mp4`, `audio/aac` and `audio/ogg`, with any `;codecs=` parameter dropped, so `audio/webm;codecs=opus` records as `audio/webm` (`:457-462`).
-7. **Size limit** (M19). The recorder starts with a 1 s timeslice (`recorder.start(1000)`, `:505`), so data arrives every second and is counted. At the stop size, 23,000,000 bytes for OpenAI or 13,000,000 for Gemini (`PROVIDER_STOP_BYTES`, `src/utils/voiceProviders.ts:49-52`), the Notice "Recording stopped near the <n> MB limit of the transcription service." appears and the recording stops and is transcribed (`:481-492`). The stop size sits below the send limit, `PROVIDER_MAX_BYTES` (`:39-42`): 25,000,000 bytes for OpenAI, whose uploads stop at 25 MB, and 14,500,000 for Gemini, whose inline request stops at 20 MB, base64 adding a third. The gap leaves room for the last chunk the recorder delivers after the stop, so an auto-stopped recording can still be sent. A blob above the send limit is not sent (`RecordingTooLargeError`, `:565`).
-8. Creating or starting the `MediaRecorder` can throw. `abandonStart` then logs the message, stops the stream, shows "Recording could not start on this device" and returns to `idle` (`:514-521`).
-9. The generation number also discards stale `onstop` callbacks (`:494-502`) and results that arrive after a re-render or unload (`:588`).
+6. The MIME type is the first supported of `audio/webm;codecs=opus`, `audio/webm`, `audio/mp4`, `audio/aac` and `audio/ogg`, with any `;codecs=` parameter dropped, so `audio/webm;codecs=opus` records as `audio/webm` (`:469-474`).
+7. **Size limit** (M19). The recorder starts with a 1 s timeslice (`recorder.start(1000)`, `:517`), so data arrives every second and is counted. At the stop size, 23,000,000 bytes for OpenAI or 13,000,000 for Gemini (`PROVIDER_STOP_BYTES`, `src/utils/voiceProviders.ts:49-52`), the Notice "Recording stopped near the <n> MB limit of the transcription service." appears and the recording stops and is transcribed (`:493-504`). The stop size sits below the send limit, `PROVIDER_MAX_BYTES` (`:39-42`): 25,000,000 bytes for OpenAI, whose uploads stop at 25 MB, and 14,500,000 for Gemini, whose inline request stops at 20 MB, base64 adding a third. The gap leaves room for the last chunk the recorder delivers after the stop, so an auto-stopped recording can still be sent. A blob above the send limit is not sent (`RecordingTooLargeError`, `:577`).
+8. Creating or starting the `MediaRecorder` can throw. `abandonStart` then logs the message, stops the stream, shows "Recording could not start on this device" and returns to `idle` (`:526-533`).
+9. The generation number also discards stale `onstop` callbacks (`:506-514`) and results that arrive after a re-render or unload (`:600`).
 
-- **Timers.** The elapsed timer and the "Saved" flash each keep one `window` timer handle, replaced on reuse and cleared on unload (`:302-333`).
+- **Timers.** The elapsed timer and the "Saved" flash each keep one `window` timer handle, replaced on reuse and cleared on unload (`:304-335`).
 
-**Transcription** (`:543-710`)
+**Transcription** (`:555-722`)
 - **Timeout.** Both requests go through `withTimeout(requestUrl(…), 120_000)` (`TRANSCRIBE_TIMEOUT_MS`, `:59`). After 120 s without an answer the promise rejects with `RequestTimeoutError`. The request itself is not cancelled, only no longer awaited (`src/utils/timeout.ts:4-16`).
 - **Whisper.** A hand-built multipart `POST https://api.openai.com/v1/audio/transcriptions` with `Authorization: Bearer <key>`. The text fields come from `whisperTextFields(cfg)` (`:71-77`): `model` (`effectiveModel`, so `gpt-transcribe` when blank; a name that fails `MODEL_NAME_RE` throws "Invalid Whisper model name") and `language` only when it is a language code. A value holding CR/LF or quotes therefore cannot change the multipart body. Then `file`.
 - **Gemini.**
   - The model is `effectiveModel('gemini', model)` and must match `MODEL_NAME_RE`.
   - The request is `POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent` with `x-goog-api-key`.
   - The body holds a text part ("Transcribe this audio exactly…") and the audio as base64 `inlineData`.
-- **Errors.** HTTP 403 or 404 means the provider refused the model for this key (`ModelUnavailableError`, `:644`, `:698`). Any other non-200 status throws `<Provider> API error <status>`, without the response body. An answer with no text is an `EmptyTranscriptError` (`:652`, `:708`, M63): "no speech recognised", or for Gemini the reason it gave, `blocked: <blockReason>` or `stopped: <finishReason>` (`geminiEmptyReason`, `src/utils/voiceProviders.ts:60-67`). The log line carries only the error message.
+- **Errors.** HTTP 403 or 404 means the provider refused the model for this key (`ModelUnavailableError`, `:656`, `:710`). Any other non-200 status throws `<Provider> API error <status>`, without the response body. An answer with no text is an `EmptyTranscriptError` (`:664`, `:720`, M63): "no speech recognised", or for Gemini the reason it gave, `blocked: <blockReason>` or `stopped: <finishReason>` (`geminiEmptyReason`, `src/utils/voiceProviders.ts:60-67`). The log line carries only the error message.
 - **Failure messages** (`failureMessage`, `:106-114`): "Transcription timed out.", "The transcription model “<id>” is not available to this API key. Pick another model in block settings.", "No transcript (<reason>).", "The recording is larger than the transcription service accepts." or "Transcription failed.".
-- **A failed recording is kept** (M19, M63; `saveFailedRecording`, `:351-359`). The audio is written as `YYYY-MM-DD HH-mm-ss.<webm|mp4|ogg|aac>` where Obsidian keeps attachments for the note (`fileManager.getAvailablePathForAttachment`; beside the note when the host lacks it), and the note of the same stamp, in the destination folder, holds the failure message and embeds the audio (`![[<file>]]`). A refused destination folder (`..`) puts that note in the vault root, so the recording is still kept. The Notice, shown for 10 s, adds "The recording was saved as <file>." (`:569-583`). The recording is kept even when the block was closed, reloaded or re-rendered during the request; only the return to `idle` needs the same generation and a connected element. When that save fails too, the Notice gives the reason alone. Before, the audio was lost.
+- **A failed recording is kept** (M19, M63; `saveFailedRecording`, `:353-371`). The audio is written as `YYYY-MM-DD HH-mm-ss.<webm|mp4|ogg|aac>` where Obsidian keeps attachments for the note (`fileManager.getAvailablePathForAttachment`; beside the note when the host lacks it), and the note of the same stamp, in the destination folder, holds the failure message and embeds the audio (`![[<file>]]`). A refused destination folder (`..`) puts that note in the vault root, so the recording is still kept. The Notice, shown for 10 s, adds "The recording was saved as <file>." (`:581-595`). The recording is kept even when the block was closed, reloaded or re-rendered during the request; only the return to `idle` needs the same generation and a connected element. When that save fails too, the Notice gives the reason alone. Before, the audio was lost.
 
-**Saving** (`saveNote`, `:336-343`)
-- **Folder** (`resolveFolder`, `:371-397`).
-  - `sanitizeVoiceFolder` (`src/utils/voiceNote.ts:22-35`) cleans it: leading `/`, `\` and `~`, any drive prefix and NUL characters are removed, and `\` becomes `/`. The path is normalized.
-  - A folder with a `..` segment is refused with a `NoteSaveError`, shown as the Notice "The destination folder can’t contain “..”." (`:603`). No "Saved" flash appears.
+**Saving** (`saveNote`, `:338-345`)
+- **Folder** (`resolveFolder`, `:383-409`).
+  - `sanitizeVoiceFolder` (`src/utils/voiceNote.ts:10-23`) cleans it: leading `/`, `\` and `~`, any drive prefix and NUL characters are removed, and `\` becomes `/`. The path is normalized.
+  - A folder with a `..` segment is refused with a `NoteSaveError`, shown as the Notice "The destination folder can’t contain “..”." (`:615`). No "Saved" flash appears.
   - Each segment matches an existing folder in any letter case, and that folder's own spelling is used. A missing segment is created, and an "already exists" error counts as success (M18): on a case-insensitive file system, a folder that differed only in case used to make every save fail.
-- **Name** (`uniqueFilePath`, `src/utils/voiceNote.ts:38-43`). The note is named `YYYY-MM-DD HH-mm-ss.md`. When that name exists, ` 2`, ` 3` and so on is appended, so two notes saved in the same second are both kept.
-- **Text** (`buildNoteContent`, `src/utils/voiceNote.ts:79-86`).
+- **Name** (`uniqueFilePath`, `src/utils/voiceNote.ts:29-34`). The note is named `YYYY-MM-DD HH-mm-ss.md`. When that name exists, ` 2`, ` 3` and so on is appended, so two notes saved in the same second are both kept.
+- **Text** (`buildNoteContent`, `src/utils/voiceNote.ts:70-77`).
   - No template: the transcript.
   - A template without `{{transcript}}`: the template, a blank line, then the transcript.
   - Otherwise every `{{transcript}}` is filled in, but only if each one sits in plain text (`inPlainText`, `:58-68`): the Markdown block that holds it, i.e. the text since the last blank line, contains no `<`, no `](`, no `]:` and no `url(`, and it is not inside an open `<style>` or `<svg>` element. In such places the transcript would land in a URL that is fetched when the note opens.
-  - A template that fails the rule is ignored for that note, which then holds the transcript alone, and the Notice "Note template ignored: {{transcript}} sits inside a link or an HTML tag." appears (`src/blocks/VoiceDictationBlock.ts:597`).
+  - A template that fails the rule is ignored for that note, which then holds the transcript alone, and the Notice "Note template ignored: {{transcript}} sits inside a link or an HTML tag." appears (`src/blocks/VoiceDictationBlock.ts:609`).
 - **Other save failures** show "Failed to save note".
 
 **Live updates:** none. **Auto-height:** none.
 
 **Network:** the audio and the API key go to the chosen provider, and only after consent.
 
-**Settings** (`:712-843`). The whole panel re-renders when the provider changes, and the model resets to that provider's default (`DEFAULT_MODELS`, `:759`).
+**Settings** (`:724-855`). The whole panel re-renders when the provider changes, and the model resets to that provider's default (`DEFAULT_MODELS`, `:771`).
 - Destination folder: clicking the field opens `FolderSuggestModal`, the vault root included.
 - Trigger mode.
 - Transcription provider.
-- Upload consent: shown only when this device has consented for the selected provider. "Forget" stores `false` for that provider and re-renders the panel (`forgetConsent`, `:47-53`, `:767-772`). The next recording asks again. The consent dialog says that consent can be withdrawn here.
-- API key: a password field. A key from another device shows as empty with the placeholder "Stored key unreadable on this device"; leaving it empty keeps that key. That key is captured once, when the settings open (`:717`), so typing, a provider switch (which re-renders the panel) and then clearing the field still keep it (M56).
-- Model: a dropdown of the provider's models plus "Custom…". Custom shows a "Custom model" text field ("A model ID the provider offers, for example one released after this plugin version.", with the default as placeholder), which stores the trimmed id only when it is empty or matches `MODEL_NAME_RE` (`:788-818`, M15). A stored id that is not in the list opens as Custom.
+- Upload consent: shown only when this device has consented for the selected provider. "Forget" stores `false` for that provider and re-renders the panel (`forgetConsent`, `:47-53`, `:779-784`). The next recording asks again. The consent dialog says that consent can be withdrawn here.
+- API key: a password field. A key from another device shows as empty with the placeholder "Stored key unreadable on this device"; leaving it empty keeps that key. That key is captured once, when the settings open (`:729`), so typing, a provider switch (which re-renders the panel) and then clearing the field still keep it (M56).
+- Model: a dropdown of the provider's models plus "Custom…". Custom shows a "Custom model" text field ("A model ID the provider offers, for example one released after this plugin version.", with the default as placeholder), which stores the trimmed id only when it is empty or matches `MODEL_NAME_RE` (`:800-830`, M15). A stored id that is not in the list opens as Custom.
 - Language.
 - Note template: a 4-row textarea.
 
@@ -994,7 +994,7 @@ Source: `src/blocks/VaultSearchBlock.ts`. It shows a search field that matches M
 **Settings:** Placeholder text.
 
 **Limits**
-- **Stale results.** `closeDropdown` clears `results` but not the dropdown's DOM. Focusing the field again with a query shows the stale rows: the mouse can still use them, but the keyboard sees an empty list (`:123-125`, `:256-266`).
+- **Stale results.** `closeDropdown` clears `results` but not the dropdown's DOM. Focusing the field again with a query shows the stale rows: the mouse can still use them, but the keyboard sees an empty list (`:140-142`, `:256-266`).
 
 ---
 
@@ -1040,7 +1040,7 @@ Source: `src/blocks/VaultSearchBlock.ts`. It shows a search field that matches M
 - Thumbnail generation has a 5 s timeout, started before the image loads, after which the original URL is used. The result settles once, so a `toBlob` that completes after the timeout creates no blob URL (`resizeToBlob`). An image above 100 megapixels is loaded but not resized.
 - Entries are keyed by path and checked against `mtime`.
 - **Blob URL lifetime.** A gallery calls `retain(url)` for each thumbnail it shows and `release(url)` when it re-renders or unloads (`:93-106`). A blob URL that leaves the cache (eviction, `invalidate`, a stale result) is revoked at once when no gallery shows it; otherwise it is kept as an orphan and revoked at its last release (`drop`, `:142-146`). `destroy()` revokes everything, orphans included.
-- `destroy()` runs on unload and `reset()` on load (`src/main.ts:239`, `:338`).
+- `destroy()` runs on unload and `reset()` on load (`src/main.ts:256`, `:363`).
 
 ## Known defects and doc drift
 

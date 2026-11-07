@@ -1,13 +1,13 @@
 # Styling and theming
 
-How the homepage is styled, what a CSS snippet can override, and how per-block styling keys reach the DOM. It describes branch `xray-remediation` after the X-ray fixes and the review-backlog fixes of 2026-10-10. Everything here was read from `styles.css`, `src/utils/blockStyling.ts`, `src/utils/accentContrast.ts` and the TypeScript that toggles classes. Statements marked **(inferred)** follow from CSS cascade, `var()` or container rules and have not been checked in a running Obsidian.
+How the homepage is styled, what a CSS snippet can override, and how per-block styling keys reach the DOM. It describes the code after the X-ray fixes and the review-backlog fixes of 2026-10-10. Everything here was read from `styles.css`, `src/utils/blockStyling.ts`, `src/utils/accentContrast.ts` and the TypeScript that toggles classes. Statements marked **(inferred)** follow from CSS cascade, `var()` or container rules and have not been checked in a running Obsidian.
 
 Related: [architecture](architecture.md) · [data model](data-model.md) (where the `_` keys live and how they migrate) · [flows](flows.md) · [blocks](blocks.md) · [plugin API](api/plugin.md) · [block API](api/blocks.md) · [grid API](api/grid.md).
 
 ## 1. Stylesheet and element tree
 
 - `styles.css` is the only stylesheet. Line 2 is GridStack's core CSS, copied from `gridstack/dist/gridstack.min.css` (`styles.css:1-2`). GridStack sets `--gs-*` variables at runtime; `styles.css` never declares them.
-- GridStack runs with `cellHeight: 80`, `margin: 8` (`src/GridLayout.ts:378-381`).
+- GridStack runs with `cellHeight: 80`, `margin: 8` (`src/GridLayout.ts:460-463`).
 
 ```text
 .view-content.homepage-view                 HomepageView.ts:30  (container "homepage", inline-size)
@@ -29,27 +29,27 @@ The block's own root class is added to `.block-content` itself, not to a child. 
 
 | Type | Wrapper class | Root class on `.block-content` |
 |---|---|---|
-| `greeting` | `hp-block-greeting` | `greeting-block` (`GreetingBlock.ts:177`) |
-| `clock` | `hp-block-clock` | `clock-block` (`ClockBlock.ts:24`) |
+| `greeting` | `hp-block-greeting` | `greeting-block` (`GreetingBlock.ts:188`) |
+| `clock` | `hp-block-clock` | `clock-block` (`ClockBlock.ts:28`) |
 | `folder-links` | `hp-block-folder-links` | `folder-links-block` |
-| `button-grid` | `hp-block-button-grid` | `button-grid-block` (`ButtonGridBlock.ts:16`) |
+| `button-grid` | `hp-block-button-grid` | `button-grid-block` (`ButtonGridBlock.ts:17`) |
 | `quotes-list` | `hp-block-quotes-list` | `quotes-list-block` |
-| `image-gallery` | `hp-block-image-gallery` | `image-gallery-block` (`ImageGalleryBlock.ts:226`) |
+| `image-gallery` | `hp-block-image-gallery` | `image-gallery-block` (`ImageGalleryBlock.ts:260`) |
 | `embedded-note` | `hp-block-embedded-note` | `embedded-note-block` |
 | `static-text` | `hp-block-static-text` | `static-text-block` |
 | `html` | `hp-block-html` | `html-block` |
 | `video-embed` | `hp-block-video-embed` | `video-embed-block` |
-| `bookmarks` | `hp-block-bookmarks` | **`bookmark-block`** (`BookmarkBlock.ts:22`) |
+| `bookmarks` | `hp-block-bookmarks` | **`bookmark-block`** (`BookmarkBlock.ts:23`) |
 | `recent-files` | `hp-block-recent-files` | `recent-files-block` |
-| `pomodoro` | `hp-block-pomodoro` | `pomodoro-block` (`PomodoroBlock.ts:46`) |
+| `pomodoro` | `hp-block-pomodoro` | `pomodoro-block` (`PomodoroBlock.ts:47`) |
 | `spacer` | `hp-block-spacer` | `spacer-block` |
 | `random-note` | `hp-block-random-note` | `random-note-block` |
-| `voice-dictation` | `hp-block-voice-dictation` | **`voice-block`** (`VoiceDictationBlock.ts:131`) |
+| `voice-dictation` | `hp-block-voice-dictation` | **`voice-block`** (`VoiceDictationBlock.ts:149`) |
 | `vault-search` | `hp-block-vault-search` | `vault-search-block` |
 
-`styles.css` itself only uses `hp-block-pomodoro` and `hp-block-voice-dictation` (`styles.css:3048-3049`, `3547-3554`). The others exist for snippets.
+`styles.css` itself only uses `hp-block-pomodoro` and `hp-block-voice-dictation` (`styles.css:3147-3148`, `3656-3663`). The others exist for snippets.
 
-**Children of `.block-content` are clipped.** The collapse animation makes `.block-content` a one-row grid and gives every direct child `overflow: hidden; min-height: 0` (`styles.css:2500-2509`). A block whose content must scroll inside its card therefore needs a rule that outranks that clip. Static Text has one for `.static-text-content` (`:2083-2087`). The height modes that scroll have one each (`:2511-2519`):
+**Children of `.block-content` are clipped.** The collapse animation makes `.block-content` a one-row grid and gives every direct child `overflow: hidden; min-height: 0` (`styles.css:2603-2612`). A block whose content must scroll inside its card therefore needs a rule that outranks that clip. Static Text has one for `.static-text-content` (`:2170-2174`). The height modes that scroll have one each (`:2614-2622`):
 
 | Block, height mode | Scrolling element | Rule |
 |---|---|---|
@@ -59,7 +59,7 @@ The block's own root class is added to `.block-content` itself, not to a child. 
 
 Each sets `overflow-y: auto` at (0,3,0) or more, against the clip's (0,2,0). The Grow and Extend modes keep the clip; their card grows to fit through auto-height instead. These regions keep their scroll bar when Show scroll bar is off (§11).
 
-The same generic rule makes `.block-content` a grid (`.homepage-block-wrapper .block-content { display: grid }`, (0,2,0), `styles.css:2592-2596`). A root class that lays its block out with flex must outrank it: the clock does at (0,3,0) (`.homepage-block-wrapper .block-content.clock-block`, `:896`), which centres the time in its card. Bookmark cards are buttons, so they set `height: auto` against Obsidian's fixed button height (`:3529`). In list mode a quote taken from a note shows its "— Author" line as `.quote-author` (`:1707-1712`). An inline HTML fragment (HTML without `<style>`) renders in `.html-block-content`, which has `contain: paint` (`:2246-2250`): an element of the fragment with `position: fixed` (an Obsidian class such as `modal-container`) is held and clipped inside the block instead of covering the page. The fragment keeps no `style` attributes, media or non-http(s) links (`HtmlBlock.ts`, `disarmInline`).
+The same generic rule makes `.block-content` a grid (`.homepage-block-wrapper .block-content { display: grid }`, (0,2,0), `styles.css:2598-2602`). A root class that lays its block out with flex must outrank it: the clock does at (0,3,0) (`.homepage-block-wrapper .block-content.clock-block`, `:902`), which centres the time in its card. Bookmark cards are buttons, so they set `height: auto` against Obsidian's fixed button height (`:3536`). In list mode a quote taken from a note shows its "— Author" line as `.quote-author` (`:1713-1718`). An inline HTML fragment (HTML without `<style>`) renders in `.html-block-content`, which has `contain: paint` (`:2253-2257`): an element of the fragment with `position: fixed` (an Obsidian class such as `modal-container`) is held and clipped inside the block instead of covering the page. The fragment keeps no `style` attributes, media or non-http(s) links (`HtmlBlock.ts`, `disarmInline`).
 
 The card's shadows are not clipped: `.homepage-grid.grid-stack > .grid-stack-item > .grid-stack-item-content { overflow: visible }` (0,4,0, `:66-68`) outranks GridStack's bundled `overflow-x: hidden; overflow-y: auto` (0,3,0) on the cell.
 
@@ -73,7 +73,7 @@ Three layers feed the card, from weakest to strongest:
 
 Card padding is a hook with a declared default: every rule reads `var(--hp-card-padding, var(--hp-card-padding-default))`, and the plugin declares only `--hp-card-padding-default` (on `.homepage-view`, and smaller values on `.homepage-grid` in narrow panes and on mobile, §8). The plugin never declares `--hp-card-padding` itself, so a snippet value for it, on `.homepage-view` or any other ancestor, wins at every width, on desktop and mobile; a block's own `_cardPadding` (inline `--hp-card-padding` on the card) still wins over the snippet. The grid's own padding is still replaced by literals in narrow panes.
 
-On the Obsidian mobile app, `:where(.is-mobile) .homepage-view` redeclares `--hp-padding: 6px` and `--hp-card-padding-default: 10px` (`styles.css:3851-3854`). `:where()` keeps it at (0,1,0), the specificity of `.homepage-view`, so a snippet on `.homepage-view` that loads after the plugin stylesheet wins on mobile too, and `body .homepage-view` (0,1,1) wins whatever the order. According to the comment at `styles.css:3843`, Obsidian sets `.is-mobile` on `<body>`. A snippet value meant for the mobile app only can still use `body.is-mobile .homepage-view` (0,2,1).
+On the Obsidian mobile app, `:where(.is-mobile) .homepage-view` redeclares `--hp-padding: 6px` and `--hp-card-padding-default: 10px` (`styles.css:3857-3860`). `:where()` keeps it at (0,1,0), the specificity of `.homepage-view`, so a snippet on `.homepage-view` that loads after the plugin stylesheet wins on mobile too, and `body .homepage-view` (0,1,1) wins whatever the order. According to the comment at `styles.css:3850`, Obsidian sets `.is-mobile` on `<body>`. A snippet value meant for the mobile app only can still use `body.is-mobile .homepage-view` (0,2,1).
 
 How card padding is resolved:
 
@@ -98,19 +98,19 @@ flowchart TD
 
 ## 3. Tokens declared on `.homepage-view`
 
-Declared at `styles.css:8-36`, on `.homepage-view, .hp-block-settings-modal`. The second selector is the content element of the block settings modal (`BlockSettingsModal.ts:52`), so its preview card resolves padding and elevation as a card on the homepage does. The comment at `styles.css:5` reads "Override in snippets/homepage.css via .homepage-view { ... }"; a snippet on `.homepage-view` does not reach the modal.
+Declared at `styles.css:8-42`, on `.homepage-view, .hp-block-settings-modal`. The second selector is the content element of the block settings modal (`BlockSettingsModal.ts:52`), so its preview card resolves padding and elevation as a card on the homepage does. The comment at `styles.css:5` reads "Override in snippets/homepage.css via .homepage-view { ... }"; a snippet on `.homepage-view` does not reach the modal.
 
 | Token | Default | Consumed at | Notes |
 |---|---|---|---|
-| `--hp-padding` | `clamp(8px, 1.5cqi, 16px)` | grid `padding` `:50`; toolbar side padding `:2260`, `:2278` | mobile `6px` (`:3851`). Grid padding replaced by literals ≤540px in single-column mode (8px) and ≤380px outside it (4px); the visible toolbar's by `6px 12px` at ≤540px (`:3128`). §8 |
-| `--hp-card-padding-default` | `clamp(6px, 1.5cqi, 12px)` (`:12`) | the fallback of `var(--hp-card-padding, …)`: card `padding` `:132`; skeleton `:658`; pomodoro/voice `inset` `:3654` | mobile `10px` (`:3853`); `10px` / `8px` on `.homepage-grid` at ≤540px / ≤380px (`:3261`, `:3329`). `--hp-card-padding` itself is never declared: a snippet sets it on any ancestor and wins at every width; per-block `_cardPadding` writes it inline and wins over that |
-| `--hp-content-max-width` | `1400px` | grid `max-width` `:51` | grid is centred (`margin-inline: auto`, `:54`) |
-| `--hp-space-1` … `--hp-space-6` | 2, 4, 8, 12, 16, 24px | `--hp-space-4` `:2728`, `--hp-space-1` `:2743` (Add Block rows) | `-2`, `-3`, `-5`, `-6` are never read. The Add Block modal is outside `.homepage-view`, so its fallbacks apply there anyway |
-| `--hp-dur-fast` / `-base` / `-slow` | 0.12s / 0.2s / 0.3s | only `--hp-dur-base` (`:2712`, drag dimming) | |
+| `--hp-padding` | `clamp(8px, 1.5cqi, 16px)` | grid `padding` `:56`; toolbar side padding `:2363`, `:2381` | mobile `6px` (`:3857`). Grid padding replaced by literals ≤540px in single-column mode (8px) and ≤380px outside it (4px); the visible toolbar's by `6px 12px` at ≤540px (`:3134`). §8 |
+| `--hp-card-padding-default` | `clamp(6px, 1.5cqi, 12px)` (`:12`) | the fallback of `var(--hp-card-padding, …)`: card `padding` `:132`; skeleton `:663`; pomodoro/voice `inset` `:3660` | mobile `10px` (`:3859`); `10px` / `8px` on `.homepage-grid` at ≤540px / ≤380px (`:3267`, `:3335`). `--hp-card-padding` itself is never declared: a snippet sets it on any ancestor and wins at every width; per-block `_cardPadding` writes it inline and wins over that |
+| `--hp-content-max-width` | `1400px` | grid `max-width` `:57` | grid is centred (`margin-inline: auto`, `:60`) |
+| `--hp-space-1` … `--hp-space-6` | 2, 4, 8, 12, 16, 24px | `--hp-space-4` `:2827`, `--hp-space-1` `:2842` (Add Block rows) | `-2`, `-3`, `-5`, `-6` are never read. The Add Block modal is outside `.homepage-view`, so its fallbacks apply there anyway |
+| `--hp-dur-fast` / `-base` / `-slow` | 0.12s / 0.2s / 0.3s | only `--hp-dur-base` (`:2811`, drag dimming) | |
 | `--hp-ease` | `cubic-bezier(0.4, 0, 0.2, 1)` | never read | |
-| `--hp-ease-out` | `ease-out` | `:2712` | |
-| `--hp-elevation-1` / `-2` / `-3` | shadow stacks | `.block-elevation-1..3` (`:3361-3369`), and with the border hidden `.block-no-border.block-elevation-1..3` (`:411-416`) | |
-| `--hp-elevation-drag` | shadow stack | dragged card (`:2716-2722`) | |
+| `--hp-ease-out` | `ease-out` | `:2811` | |
+| `--hp-elevation-1` / `-2` / `-3` | shadow stacks | `.block-elevation-1..3` (`:3367-3375`), and with the border hidden `.block-no-border.block-elevation-1..3` (`:416-421`) | |
+| `--hp-elevation-drag` | shadow stack | dragged card (`:2814-2820`) | |
 
 `.homepage-view` also sets `display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; container-type: inline-size; container-name: homepage` (`styles.css:38-46`), in a rule of its own.
 
@@ -122,43 +122,43 @@ A snippet can set these on any ancestor. `applyBlockStyling` writes some of them
 
 | Variable | Fallback | Read at | Also written inline by |
 |---|---|---|---|
-| `--hp-title-gap` | `8px` | card `gap` `:134`; skeleton `:596` | `_titleGap` |
-| `--hp-border-radius` | `var(--radius-m, 8px)` | card `:124` | `_borderRadius` |
-| `--hp-border-width` | `1px` | card `:126` | `_borderWidth` |
-| `--hp-border-style` | `solid` | card `:127` | `_borderStyle` |
-| `--hp-backdrop-blur` | `none` | card `backdrop-filter` `:139-140` | `_backdropBlur` |
-| `--hp-bg-opacity` | `100%` | `:3373`, `:3376`, and the gradient layer `:3956`, only under `.block-custom-opacity` | `_bgOpacity` |
-| `--block-accent-pct` | `15%` | `.block-accented` `:188` | `_accentIntensity` |
+| `--hp-title-gap` | `8px` | card `gap` `:141`; skeleton `:663` | `_titleGap` |
+| `--hp-border-radius` | `var(--radius-m, 8px)` | card `:131` | `_borderRadius` |
+| `--hp-border-width` | `1px` | card `:133` | `_borderWidth` |
+| `--hp-border-style` | `solid` | card `:134` | `_borderStyle` |
+| `--hp-backdrop-blur` | `none` | card `backdrop-filter` `:146-147` | `_backdropBlur` |
+| `--hp-bg-opacity` | `100%` | `:3380`, `:3383`, and the gradient layer `:3963`, only under `.block-custom-opacity` | `_bgOpacity` |
+| `--block-accent-pct` | `15%` | `.block-accented` `:195` | `_accentIntensity` |
 | `--block-accent` | (none inside `.block-accented`; `var(--color-accent)` elsewhere) | §6 | `_accentColor` |
-| `--hp-btn-*` (14 names) | per property | `.button-grid .grid-btn` `:1525-1569` | button-grid `customCss`, §10 |
-| `--hp-quote-font` | `inherit` | `:1703` | Quotes font preset class (`:1713-1720`) or custom font (`QuotesListBlock.ts:132`) |
-| `--hp-quote-line-height` | `1.6` | `:1724` | handwriting preset (`:1719`) |
-| `--hp-quote-valign` | `flex-start` | `:1020` | `QuotesListBlock.ts:109` |
-| `--hp-quote-align` | `start` | `:1710` | `QuotesListBlock.ts:110` (Text alignment setting) |
-| `--hp-card-anim-delay` | `0ms` | `:151` | `BlockWrapper.ts:31` (initial render only) |
+| `--hp-btn-*` (14 names) | per property | `.button-grid .grid-btn` `:1609-1654` | button-grid `customCss`, §10 |
+| `--hp-quote-font` | `inherit` | `:1790` | Quotes font preset class (`:1800-1807`) or custom font (`QuotesListBlock.ts:134`) |
+| `--hp-quote-line-height` | `1.6` | `:1811` | handwriting preset (`:1806`) |
+| `--hp-quote-valign` | `flex-start` | `:1092` | `QuotesListBlock.ts:111` |
+| `--hp-quote-align` | `start` | `:1797` | `QuotesListBlock.ts:112` (Text alignment setting) |
+| `--hp-card-anim-delay` | `0ms` | `:158` | `BlockWrapper.ts:33` (initial render only) |
 
 Obsidian theme variables the card reads, which a snippet can re-scope under `.homepage-view` or `.homepage-block-wrapper`:
-- `--background-secondary`: card background `:129`, and the base of the accent mix `:195` and of the opacity mix `:3373`; the loading skeleton takes the card's own background (`background: inherit`, `:662`)
-- `--background-modifier-border`, `--background-modifier-border-hover`: `:128`, `:166`
+- `--background-secondary`: card background `:130`, and the base of the accent mix `:196` and of the opacity mix `:3380`; the loading skeleton takes the card's own background (`background: inherit`, `:668`)
+- `--background-modifier-border`, `--background-modifier-border-hover`: `:135`, `:173`
 - `--radius-m`, `--radius-s`
 - `--color-accent`, `--interactive-accent`
 - `--text-normal`, `--text-muted`, `--text-faint`
-- `--h1-size` … `--h6-color`: size, weight, line-height, style, font and colour of `.block-header-h1..h6` (`:401-449`)
+- `--h1-size` … `--h6-color`: size, weight, line-height, style, font and colour of `.block-header-h1..h6` (`:471-519`)
 
-Variables written by TypeScript that are internal wiring, not hooks: `--hp-grid-cols` (`BookmarkBlock.ts:32`, `ImageGalleryBlock.ts:344`; `responsiveGridColumns` subtracts the gaps between the tracks from each track's minimum, so N columns fit their row), `--hp-grid-count` (Button grid, only the count: `ButtonGridBlock.ts:31`, read by `repeat(var(--hp-grid-count, 2), 1fr)` at `styles.css:3998`), `--hp-masonry-cols` (`ImageGalleryBlock.ts:336`), `--hp-iframe-height` (the HTML document's height in single-column mode, `HtmlBlock.ts:162`), `--hp-column-count` (`QuotesListBlock.ts:217`), `--hp-quote-color` (`:279`), `--hp-grid-transform` (`GridLayout.ts:268`), `--hp-search-dropdown-top/left/width` (`VaultSearchBlock.ts:217-219`), `--hp-swatch-bg` (`BlockSettingsModal.ts:322`), `--hp-body-width`/`--hp-body-scale` (inside the HTML block's iframe, `HtmlBlock.ts:124-133`). The stylesheet-side caps `--hp-grid-cap`, `--hp-masonry-cap` and `--hp-masonry-gap` are set by the gallery container queries (`styles.css:1849-1878`).
+Variables written by TypeScript that are internal wiring, not hooks: `--hp-grid-cols` (`BookmarkBlock.ts:32`, `ImageGalleryBlock.ts:344`; `responsiveGridColumns` subtracts the gaps between the tracks from each track's minimum, so N columns fit their row), `--hp-grid-count` (Button grid, only the count: `ButtonGridBlock.ts:31`, read by `repeat(var(--hp-grid-count, 2), 1fr)` at `styles.css:4005`), `--hp-masonry-cols` (`ImageGalleryBlock.ts:336`), `--hp-iframe-height` (the HTML document's height in single-column mode, `HtmlBlock.ts:170`), `--hp-column-count` (`QuotesListBlock.ts:224`), `--hp-quote-color` (`:294`), `--hp-grid-transform` (`GridLayout.ts:343`), `--hp-search-dropdown-top/left/width` (`VaultSearchBlock.ts:242-244`), `--hp-swatch-bg` (`BlockSettingsModal.ts:339`), `--hp-body-width`/`--hp-body-scale` (inside the HTML block's iframe, `HtmlBlock.ts:167-189`). The stylesheet-side caps `--hp-grid-cap`, `--hp-masonry-cap` and `--hp-masonry-gap` are set by the gallery container queries (`styles.css:1856-1885`).
 
 ## 5. Per-block styling keys
 
 The shared `_` keys live in each block's `config` (see [data model](data-model.md)). The Header, Body and Card tabs of `BlockSettingsModal` edit them. `applyBlockStyling(el, config)` (`src/utils/blockStyling.ts:73-210`) turns them into classes and inline custom properties. It has two callers:
-- `buildBlockWrapper` (`src/grid/BlockWrapper.ts:29`)
-- the settings preview card (`BlockSettingsModal.ts:85`)
+- `buildBlockWrapper` (`src/grid/BlockWrapper.ts:31`)
+- the settings preview card (`BlockSettingsModal.ts:90`)
 
 ### 5.1 Ranges: `STYLE_RANGES`
 
 `STYLE_RANGES` (`blockStyling.ts:15-25`) is the one range table. It is used by:
 - the sliders (`BlockSettingsModal.ts:194, 214, 232, 242, 286, 352, 376, 397`)
 - the render clamps (`clampStyle`, `blockStyling.ts:30-33`)
-- the clipboard-import validators (`ranged(key)`, `src/utils/importSanitizer.ts:30-31, 46-62`)
+- the clipboard-import validators (`ranged(key)`, `src/utils/importSanitizer.ts:29-30, 45-61`)
 
 `validateLayout` does **not** clamp `_` keys on load. `src/validation.ts` has no reference to `STYLE_RANGES`, so a hand-edited `data.json` is clamped only at render.
 
@@ -168,42 +168,42 @@ The table is in execution order. "0 = default" means that 0 removes the inline p
 
 | Key | Accepted | Range | Unset / 0 means | Output on the card | Control |
 |---|---|---|---|---|---|
-| `customCss` (button-grid only, no `_`) | string | — | nothing | allowlisted `--hp-btn-*` via `setProperty`; key list in `data-hp-custom-css-keys` (`:93-106`) | Content tab textarea, §10 |
-| `_accentColor` | `#rrggbb` (`HEX_COLOR_RE`, `:6`) | — | no accent | class `block-accented`; `--block-accent` (`:109-114`) | Card: picker + 11 presets (`BlockSettingsModal.ts:23-26`) |
-| `_showHeaderAccent` | boolean | — | shown | `false` → class `block-no-header-accent`, set even without an accent (`:112`) | Header: "Show header bar" |
-| `_accentIntensity` | number | 5–100 | unset: 15 (CSS fallback); 0 clamps to 5 | `--block-accent-pct: N%` only when an accent is set and N ≠ 15 (`:117-123`) | Card slider, step 5 |
+| `customCss` (button-grid only, no `_`) | string | — | nothing | allowlisted `--hp-btn-*` via `setProperty`; key list in `data-hp-custom-css-keys` (`:83-96`) | Content tab textarea, §10 |
+| `_accentColor` | `#rrggbb` (`HEX_COLOR_RE`, `:8`) | — | no accent | class `block-accented`; `--block-accent` (`:99-104`) | Card: picker + 11 presets (`BlockSettingsModal.ts:24-27`) |
+| `_showHeaderAccent` | boolean | — | shown | `false` → class `block-no-header-accent`, set even without an accent (`:102`) | Header: "Show header bar" |
+| `_accentIntensity` | number | 5–100 | unset: 15 (CSS fallback); 0 clamps to 5 | `--block-accent-pct: N%` only when an accent is set and N ≠ 15 (`:107-113`) | Card slider, step 5 |
 | (derived) | — | — | — | classes `block-bright-accent`, `block-dark-accent`, `hp-plain-header-light`/`-dark`, `hp-plain-accent-light`/`-dark`, `hp-dark-on-accent`, §6 (`:181-197`, after the background keys below) | — |
-| `_showBorder` | boolean | — | shown | `false` → `block-no-border` (`:143`) | Card toggle |
-| `_showBackground` | boolean | — | shown | `false` → `block-no-background` (`:144`); also suppresses the gradient (`:193`) | Body toggle |
+| `_showBorder` | boolean | — | shown | `false` → `block-no-border` (`:120`) | Card toggle |
+| `_showBackground` | boolean | — | shown | `false` → `block-no-background` (`:121`); also suppresses the gradient (`:173`) | Body toggle |
 | `_cardPadding` | number | 0–48 | token (§2) | `--hp-card-padding: Npx` (`:124-127`) | Body slider, step 4 |
-| `_titleGap` | number | 0–48 | 8px | `--hp-title-gap: Npx` (`:153-156`) | Header slider, step 2 |
-| `_elevation` | number | 0–3 | none | class `block-elevation-N` (`:159-162`) | Card dropdown None/Subtle/Medium/Elevated (`BlockSettingsModal.ts:391-398`) |
-| `_borderRadius` | number | 0–24 | `var(--radius-m, 8px)` | `--hp-border-radius: Npx` (`:165-168`) | Card slider, step 2 |
+| `_titleGap` | number | 0–48 | 8px | `--hp-title-gap: Npx` (`:130-133`) | Header slider, step 2 |
+| `_elevation` | number | 0–3 | none | class `block-elevation-N` (`:136-139`) | Card dropdown None/Subtle/Medium/Elevated (`BlockSettingsModal.ts:408-415`) |
+| `_borderRadius` | number | 0–24 | `var(--radius-m, 8px)` | `--hp-border-radius: Npx` (`:142-145`) | Card slider, step 2 |
 | `_bgOpacity` | number | 0–100 | unset: 100; 0 = fully transparent | below 100, and only while the background is shown: class `block-custom-opacity` + `--hp-bg-opacity: N%` (`:148-155`) | Body slider, step 5 |
-| `_backdropBlur` | number | 0–20 | none | `--hp-backdrop-blur: blur(Npx)` only when N > 0 **and** opacity < 100 (`:178-184`) | Body slider, step 1 |
-| `_gradientStart`, `_gradientEnd` | `#rrggbb` | — | no gradient | both valid and background shown → class `block-has-gradient` + `--hp-bg-gradient: linear-gradient(<angle>deg, start, end)` (`:187-199`) | Body pickers (seeds `#667eea`, `#764ba2`) |
+| `_backdropBlur` | number | 0–20 | none | `--hp-backdrop-blur: blur(Npx)` only when N > 0 **and** opacity < 100 (`:158-164`) | Body slider, step 1 |
+| `_gradientStart`, `_gradientEnd` | `#rrggbb` | — | no gradient | both valid and background shown → class `block-has-gradient` + `--hp-bg-gradient: linear-gradient(<angle>deg, start, end)` (`:167-179`) | Body pickers (seeds `#667eea`, `#764ba2`) |
 | `_gradientAngle` | number | 0–360 | unset: 135; 0 = 0deg | angle of the gradient | Body slider, step 15 |
-| `_borderWidth` | number | 0–4 | 1px | `--hp-border-width: Npx` (`:202-205`) | Card slider, step 1 |
-| `_borderStyle` | `solid` / `dashed` / `dotted` (`VALID_BORDER_STYLES`, `:45`) | — | `solid` | `--hp-border-style` (`:208-212`) | Card dropdown |
+| `_borderWidth` | number | 0–4 | 1px | `--hp-border-width: Npx` (`:200-203`) | Card slider, step 1 |
+| `_borderStyle` | `solid` / `dashed` / `dotted` (`VALID_BORDER_STYLES`, `:35`) | — | `solid` | `--hp-border-style` (`:206-210`) | Card dropdown |
 
 Consequences:
 - Because 0 means "default", no per-block setting gives square corners or a 0px border. A snippet can (§13, example B).
 - The colour pickers always show a colour (`#888888` for the accent, the two gradient seeds). The modal tracks whether a colour was set: the accent counts as set when it held a non-empty string at open or was picked, the gradient when both colours were `#rrggbb` at open or one was picked. Otherwise Save writes `''` for the accent, or for both gradient keys (`BlockSettingsModal.ts:60-63, 432-433`). Picking one gradient colour also takes the seed the other picker shows, so a single changed colour gives a gradient (`:265, 277`). **Clear accent color** and **Clear gradient** reset the pickers to their seeds before they clear the draft, so a cleared colour stays cleared on Save (`:296-301, 323-325`).
-- **(inferred)** An imported fractional `_elevation` (e.g. `2.5`) is clamped but not rounded (`importSanitizer.ts:57`), so it produces the class `block-elevation-2.5`, which matches no rule.
+- **(inferred)** An imported fractional `_elevation` (e.g. `2.5`) is clamped but not rounded (`importSanitizer.ts:56`), so it produces the class `block-elevation-2.5`, which matches no rule.
 
 ### 5.3 Header keys (not in `applyBlockStyling`)
 
 | Key | Handled by | Effect |
 |---|---|---|
 | `_titleLabel` | `BaseBlock.renderHeader` (`src/blocks/BaseBlock.ts:63-97`) | Trimmed label, else the block's default title, `blockTitle(type)` (`src/blockMeta.ts`). Edit-mode placeholder uses it untrimmed, else `blockTitle(type)` or, for the header-less types, the display name (`BlockWrapper.ts:84-86`) |
-| `_titleEmoji` | same | `span.block-header-emoji` (edit mode: `em`, reset to `font-style: normal` at `styles.css:2763-2769`) |
+| `_titleEmoji` | same | `span.block-header-emoji` (edit mode: `em`, reset to `font-style: normal` at `styles.css:2861-2867`) |
 | `_showTitle` | same | `false`, or an empty label → `hp-header-empty` on the header zone (`BaseBlock.ts:75`), which collapses it to height 0 (`styles.css:2533-2539`), and the zone loses `role=button`, `tabindex` and `aria-expanded` (`BaseBlock.ts:76-88`), so it is no Tab stop and cannot collapse the block (`CollapseToggle.ts` checks the role). A block with a hidden title is never rendered collapsed, nor is a Clock, Greeting or Spacer, which draw no header (`isCollapsible`, `src/grid/CollapseToggle.ts:22-24`; `BlockWrapper.ts:23-26`); `viewModeHeight` draws such a stored-collapsed block at its full height. The edit-mode placeholder always shows a header (`BlockWrapper.ts:88`) |
-| `_titleSize` | same; `TITLE_SIZE_RE = /^h[1-6]$/` (`BaseBlock.ts:5`) | Class `block-header-h1..h6`, which uses Obsidian's heading variables (`styles.css:401-449`). Ignored in the edit placeholder |
-| `_showDivider` | `buildBlockWrapper` (`BlockWrapper.ts:46-48`) | Shown only when `=== true`. Hidden when collapsed (`:460`) and in edit mode (`:465`) |
+| `_titleSize` | same; `TITLE_SIZE_RE = /^h[1-6]$/` (`BaseBlock.ts:6`) | Class `block-header-h1..h6`, which uses Obsidian's heading variables (`styles.css:468-516`). Ignored in the edit placeholder |
+| `_showDivider` | `buildBlockWrapper` (`BlockWrapper.ts:46-48`) | Shown only when `=== true`. Hidden when collapsed (`:527`) and in edit mode (`:532`) |
 
 Clock, Greeting and Spacer draw no header (`blockTitle` returns `''` for them). Their Header tab shows only "This block has no title." and the settings preview hides its header (`BlockSettingsModal.ts:88, 141-146`).
 
-Legacy keys (`_transparent`, `_hideTitle`, `_hideBorder`, `_hideBackground`, `_hideHeaderAccent`) are migrated to the `_show*` keys on load (`src/validation.ts:155-176`); see [data model](data-model.md).
+Legacy keys (`_transparent`, `_hideTitle`, `_hideBorder`, `_hideBackground`, `_hideHeaderAccent`) are migrated to the `_show*` keys on load (`src/validation.ts:150-171`); see [data model](data-model.md).
 
 ## 6. Accent colour
 
@@ -221,28 +221,28 @@ flowchart LR
   C2 --> K["text colours scoped by .theme-light / .theme-dark"]
 ```
 
-`.block-accented` (`styles.css:193-214`) derives the card palette from one colour. Every mix is `color-mix(in srgb, …)`:
+`.block-accented` (`styles.css:200-221`) derives the card palette from one colour. Every mix is `color-mix(in srgb, …)`:
 
 | Private variable | Value |
 |---|---|
 | `--_ap` | `var(--block-accent-pct, 15%)` |
 | `--_accent-bg` | accent at `--_ap` over `--background-secondary` → card `background` |
 | `--_accent-border` / `--_accent-border-hover` | 50% / 70% accent over `--background-modifier-border` |
-| `--_accent-header-bg` | 22% accent over transparent → header zone background (`:214-219`) |
-| `--_accent-header-text` | 85% accent over `--text-normal` → `.block-header` colour (`:221-223`) |
-| `--_accent-divider` | 40% accent over the border colour (`:225-227`) |
+| `--_accent-header-bg` | 22% accent over transparent → header zone background (`:221-226`) |
+| `--_accent-header-text` | 85% accent over `--text-normal` → `.block-header` colour (`:228-230`) |
+| `--_accent-divider` | 40% accent over the border colour (`:232-234`) |
 | `--_ctrl` / `--_ctrl-hover` | accent mixed 60% / 50% with black |
 
 Inside the card, the following Obsidian variables are redefined from `--_ctrl`: `--interactive-accent(-hover)`, `--color-accent`, `--color-accent-1`, `--color-accent-2`, `--text-accent(-hover)` and `--checkbox-color(-hover)` (`:205-213`). As a result:
 - Buttons and checkboxes rendered inside an accented block use the darkened accent.
 - Accent-coloured text (`--text-accent`, links) uses it too in the light theme. In the dark theme `.theme-dark .block-accented` mixes it 60% / 50% toward **white** instead (`styles.css:301-304`), since the darkened accent was nearly invisible on a dark card; control fills keep `--_ctrl`.
-- The edit-mode dashed border (`border: 2px dashed var(--color-accent)`, `:2562-2565`) resolves to the darkened accent on the same element.
+- The edit-mode dashed border (`border: 2px dashed var(--color-accent)`, `:2660-2663`) resolves to the darkened accent on the same element.
 
 **Text colours by contrast** (`blockStyling.ts:181-197`, `src/utils/accentContrast.ts`). `accentColors(accent, intensity, opaque, theme, headerAccent)` runs once for each theme; `headerAccent` is `_showHeaderAccent !== false`. It mixes the card the way the stylesheet does (`color-mix(in srgb)`, the accent at its intensity over the theme background) against Obsidian's default theme colours (light `#f6f6f6` / `#222222`, dark `#262626` / `#dadada`), and compares WCAG contrast ratios against 4.5:1. The card counts as opaque only when the background is shown, the opacity is 100 and no gradient is set; otherwise the theme's own text is kept. The results become classes on the card:
 
 | Class | Set when | CSS |
 |---|---|---|
-| `block-bright-accent` | dark theme: the theme text is below 4.5:1 on the card and `#1a1a1a` reads better | `.theme-dark` (`styles.css:238-296`): `--text-normal: #1a1a1a`, black-alpha muted/faint text, controls mixed 50% / 40% with black, re-asserted on `.block-content` and `.markdown-rendered` so theme rules there cannot shadow them (`:265-281`), task items, links and `hr` coloured directly (`:285-296`) |
+| `block-bright-accent` | dark theme: the theme text is below 4.5:1 on the card and `#1a1a1a` reads better | `.theme-dark` (`styles.css:239-298`): `--text-normal: #1a1a1a`, black-alpha muted/faint text, controls mixed 50% / 40% with black, re-asserted on `.block-content` and `.markdown-rendered` so theme rules there cannot shadow them (`:265-281`), task items, links and `hr` coloured directly (`:285-296`) |
 | `block-dark-accent` | light theme: the same test, with `#f5f5f5` as the other text | `.theme-light` (`:307-319`): light text, accent text and links mixed toward white, a light header mix |
 | `hp-plain-header-light` / `-dark` | the 85% accent title mix is below 4.5:1 on what the title sits on: with the header bar on (`_showHeaderAccent !== false`) the header zone, the accent at 22% over the card (`--_accent-header-bg`, `headerBg` in `accentColors`); with it off, the card | the title falls back to `--text-normal` (`:322-325`) |
 | `hp-plain-accent-light` / `-dark` | the accent text colour (mixed toward white on a dark card, toward black on a light one) is below 4.5:1 | `--text-accent`, `--link-color` and their hovers fall back to `--text-normal` (`:326-336`) |
@@ -253,10 +253,10 @@ A theme whose backgrounds sit far from Obsidian's defaults gets approximate choi
 **Header bar off** (`_showHeaderAccent: false`). `.block-accented.block-no-header-accent` makes the header zone transparent and sets the title to `--text-normal`, but keeps the card tint and border (`styles.css:344-351`).
 
 **Rules that read the raw accent.** The first three read `var(--block-accent, var(--color-accent))`: undarkened, and falling back to the theme accent when the block has no accent:
-- Clock "accent" style: `:888`, `:892`
-- voice mic `:1223`, voice saved flash `:1305`
-- `.pomodoro-btn.is-primary` `:3654-3656`
-- `.block-accented .folder-link-btn:hover` `:1011-1013` reads `var(--block-accent)` with no fallback (it only matches accented blocks). It uses `color-mix(in oklch …)`, which contradicts the "srgb to avoid oklch hue shifts" comment at `:184`.
+- Clock "accent" style: `:893`, `:897`
+- voice mic `:1295`, voice saved flash `:1383`
+- `.pomodoro-btn.is-primary` `:3768-3770`
+- `.block-accented .folder-link-btn:hover` `:1083-1085` reads `var(--block-accent)` with no fallback (it only matches accented blocks). It uses `color-mix(in oklch …)`, which contradicts the "srgb to avoid oklch hue shifts" comment at `:191`.
 
 **Snippet interaction (derived from the CSS above).**
 - `--block-accent` is inherited. A snippet value on `.homepage-view` becomes the colour of those raw-accent rules for blocks that have no accent of their own. It does not tint cards, because `block-accented` is only added from config.
@@ -268,36 +268,36 @@ These are cascade outcomes of rules that are each correct on their own. All are 
 
 | Settings combination | Result | Why |
 |---|---|---|
-| `_showBackground: false` + `_bgOpacity < 100` | no background, hovered or not | `applyBlockStyling` sets `block-custom-opacity` only while the background is shown (`blockStyling.ts:152`), so only `.block-no-background` (`:418-423`) applies |
-| accent + gradient | gradient shows | `.homepage-block-wrapper.homepage-block-wrapper.block-has-gradient` (0,3,0, `:3940-3942`), late in the file, beats `.block-accented` (0,1,0) and `.block-custom-opacity.block-accented` (0,3,0, `:3375`) |
-| gradient + `_bgOpacity < 100` (with or without an accent) | translucent gradient; a backdrop blur still shows | `.block-has-gradient.block-custom-opacity` (0,4,0, `:3945-3948`) makes the card transparent and `isolation: isolate`; a `::before` layer behind the content paints the gradient at `opacity: var(--hp-bg-opacity)` (`:3949-3958`), so the opacity does not reach the content and the card's `backdrop-filter` still has a see-through background |
-| `_showBorder: false` + `_elevation > 0` | the elevation shadow, also while hovered | `.block-no-border.block-elevation-N` and its `:hover` (0,3,0) / (0,4,0) (`:411-416`). Without an elevation, a hidden border also means no hover shadow (`:407-410`) |
+| `_showBackground: false` + `_bgOpacity < 100` | no background, hovered or not | `applyBlockStyling` sets `block-custom-opacity` only while the background is shown (`blockStyling.ts:152`), so only `.block-no-background` (`:423-428`) applies |
+| accent + gradient | gradient shows | `.homepage-block-wrapper.homepage-block-wrapper.block-has-gradient` (0,3,0, `:3946-3948`), late in the file, beats `.block-accented` (0,1,0) and `.block-custom-opacity.block-accented` (0,3,0, `:3382`) |
+| gradient + `_bgOpacity < 100` (with or without an accent) | translucent gradient; a backdrop blur still shows | `.block-has-gradient.block-custom-opacity` (0,4,0, `:3951-3954`) makes the card transparent and `isolation: isolate`; a `::before` layer behind the content paints the gradient at `opacity: var(--hp-bg-opacity)` (`:3955-3964`), so the opacity does not reach the content and the card's `backdrop-filter` still has a see-through background |
+| `_showBorder: false` + `_elevation > 0` | the elevation shadow, also while hovered | `.block-no-border.block-elevation-N` and its `:hover` (0,3,0) / (0,4,0) (`:416-421`). Without an elevation, a hidden border also means no hover shadow (`:412-415`) |
 | `_elevation > 0` + hover highlight on, border shown | while hovered, the elevation shadow is replaced by the lighter hover shadow | `.homepage-hover-highlight .homepage-block-wrapper:hover` (0,3,0, `:176-178`) beats `.block-elevation-N` (0,1,0) |
-| `_backdropBlur` with opacity 100 | no blur | not written unless opacity < 100 (`blockStyling.ts:180`) |
-| any border settings in edit mode | 2px dashed accent | `border` shorthand at (0,3,0), `:2562-2565`. Two (0,4,0) rules still change its colour: `.block-no-border.block-accented:hover` (`:403`) makes it transparent while an accented block with a hidden border is hovered, and the drag rule (`:2716-2722`) tints it while the card is dragged |
+| `_backdropBlur` with opacity 100 | no blur | not written unless opacity < 100 (`blockStyling.ts:160`) |
+| any border settings in edit mode | 2px dashed accent | `border` shorthand at (0,3,0), `:2660-2663`. Two (0,4,0) rules still change its colour: `.block-no-border.block-accented:hover` (`:409`) makes it transparent while an accented block with a hidden border is hovered, and the drag rule (`:2723-2729`) tints it while the card is dragged |
 
-Hover highlight (`hoverHighlight`, default `true`, `src/validation.ts:44`) adds only `box-shadow: 0 2px 10px rgba(0,0,0,.06)` on card hover (`:176-178`) and reveals the collapse chevron of an expanded block while hovered (`:2586-2588`). There is no transform. The "lift" wording in the settings description (`HomepageSettingTab.ts:327`), README and CLAUDE.md describes a shadow. The comment at `styles.css:169` calls it "opt-in", but it defaults to on.
+Hover highlight (`hoverHighlight`, default `true`, `src/validation.ts:44`) adds only `box-shadow: 0 2px 10px rgba(0,0,0,.06)` on card hover (`:176-178`) and reveals the collapse chevron of an expanded block while hovered (`:2592-2594`). There is no transform. The "lift" wording in the settings description (`HomepageSettingTab.ts:327`), README and CLAUDE.md describes a shadow. The comment at `styles.css:169` calls it "opt-in", but it defaults to on.
 
 ## 8. Breakpoints: container queries vs grid columns
 
 Two independent systems react to the width of `.homepage-view`:
 - **Container queries** (CSS) adapt the UI.
-- **`ResponsiveColumnsManager`** (JS) changes the GridStack column count. It uses a `ResizeObserver` on `.homepage-view` (`src/grid/ResponsiveColumns.ts:62-76`; wired at `GridLayout.ts:430-431`).
+- **`ResponsiveColumnsManager`** (JS) changes the GridStack column count. It uses a `ResizeObserver` on `.homepage-view` (`src/grid/ResponsiveColumns.ts:62-76`; wired at `GridLayout.ts:525-526`).
 
 | View width | Source | Effect |
 |---|---|---|
-| ≤ 380px | `@container homepage` `styles.css:3319-3336` | grid `padding: 4px` (0,2,0), which loses to the single-column `padding: 8px` (0,3,0, `:3253-3256`), so it shows only outside single-column mode (in practice edit mode with a canonical count above 1, since view mode below 480px is always single-column); `--hp-card-padding-default: 8px` on `.homepage-grid` (a snippet's `--hp-card-padding` still wins); zoom toolbar group hidden (the column picker stays, so a phone can still change columns); add-button text hidden |
+| ≤ 380px | `@container homepage` `styles.css:3325-3342` | grid `padding: 4px` (0,2,0), which loses to the single-column `padding: 8px` (0,3,0, `:3259-3262`), so it shows only outside single-column mode (in practice edit mode with a canonical count above 1, since view mode below 480px is always single-column); `--hp-card-padding-default: 8px` on `.homepage-grid` (a snippet's `--hp-card-padding` still wins); zoom toolbar group hidden (the column picker stays, so a phone can still change columns); add-button text hidden |
 | < 480px | `computeEffectiveColumns` `ResponsiveColumns.ts:40` | 1 column → single-column mode (§9) |
-| ≤ 540px | `styles.css:3229-3316` | toolbar wraps, zoom label hidden; single-column `gap`/`padding: 8px`; `--hp-card-padding-default: 10px` on `.homepage-grid` (a snippet's `--hp-card-padding` still wins); entry animation off; folder links as chips; 44px min-heights; quote text 0.9375rem |
+| ≤ 540px | `styles.css:3235-3322` | toolbar wraps, zoom label hidden; single-column `gap`/`padding: 8px`; `--hp-card-padding-default: 10px` on `.homepage-grid` (a snippet's `--hp-card-padding` still wins); entry animation off; folder links as chips; 44px min-heights; quote text 0.9375rem |
 | < 768px | `ResponsiveColumns.ts:41` | `min(2, canonical)` columns |
-| ≤ 768px | `styles.css:3097-3123` | 44px handle-bar buttons and FAB; larger resize handles |
+| ≤ 768px | `styles.css:3103-3129` | 44px handle-bar buttons and FAB; larger resize handles |
 | < 1024px | `ResponsiveColumns.ts:42` | `min(3, canonical)` columns |
-| ≥ 1024px | `ResponsiveColumns.ts:43` | canonical (saved) columns |
-| ≥ 1200px | `styles.css:3236-3240` | `.homepage-grid { padding: 32px }`: **never applies**, loses to `.homepage-grid.grid-stack` (0,2,0, `:44-50`) |
+| ≥ 1024px | `ResponsiveColumns.ts:44` | canonical (saved) columns |
+| ≥ 1200px | `styles.css:3345-3349` | `.homepage-grid { padding: 32px }`: **never applies**, loses to `.homepage-grid.grid-stack` (0,2,0, `:50-56`) |
 
-- CSS bounds are inclusive (`max-width`); JS bounds are exclusive (`<`). `COLUMN_BREAKPOINTS = { single: 480, double: 768, triple: 1024 }` (`ResponsiveColumns.ts:11`). The two sets are documented as separate at `styles.css:3093-3094` and `ResponsiveColumns.ts:7-9`.
-- **Column reduction is suspended in edit mode.** The observer returns early (`ResponsiveColumns.ts:64`), and `setup` pins the canonical count (`:83-85`). Container queries keep firing.
-- `.is-mobile` rules (`styles.css:3739-3790`) apply to the mobile app at any width: token overrides, 44px tap targets, folder-link chips, and no hover transforms.
+- CSS bounds are inclusive (`max-width`); JS bounds are exclusive (`<`). `COLUMN_BREAKPOINTS = { single: 480, double: 768, triple: 1024 }` (`ResponsiveColumns.ts:12`). The two sets are documented as separate at `styles.css:3207-3208` and `ResponsiveColumns.ts:8-10`.
+- **Column reduction is suspended in edit mode.** The observer returns early (`ResponsiveColumns.ts:65`), and `setup` pins the canonical count (`:84-86`). Container queries keep firing.
+- `.is-mobile` rules (`styles.css:3745-3796`) apply to the mobile app at any width: token overrides, 44px tap targets, folder-link chips, and no hover transforms.
 
 ### Containers and block-level queries
 
@@ -305,59 +305,59 @@ Two independent systems react to the width of `.homepage-view`:
 |---|---|---|
 | `.homepage-view` (`homepage`) | inline-size | `:38-39` |
 | `.homepage-block-wrapper` (unnamed) | inline-size | `:138` |
-| `.greeting-block`, `.clock-block`, `.voice-block`, `.random-note-block`, `.pomodoro-block` | size; inline-size in single-column mode (`:3146-3164`) | `:646`, `:835`, `:1171`, `:1421`, `:3559` |
-| `.button-grid-block`, `.image-gallery-block` | inline-size | `:1513`, `:1750` |
+| `.greeting-block`, `.clock-block`, `.voice-block`, `.random-note-block`, `.pomodoro-block` | size; inline-size in single-column mode (`:3152-3170`) | `:651`, `:840`, `:1243`, `:1499`, `:3673` |
+| `.button-grid-block`, `.image-gallery-block` | inline-size | `:1591`, `:1837` |
 
 Unnamed `@container` queries resolve against the nearest suitable ancestor:
-- greeting: width ≤350 `:701`, height ≤200 `:750`
-- clock: height ≤160 `:899`
-- voice: width ≤200 `:1334`, height 121–180 `:1345`, height ≤120 with width ≥200 `:1362`
-- random note: height ≤160 `:1502`
-- button grid / bookmarks: width ≤250 `:1572`
-- gallery: width ≤500 / ≤400 / ≤280 `:1849-1878`
-- pomodoro: height ≤220 `:3664`, height ≤120 `:3702`
+- greeting: width ≤350 `:770`, height ≤200 `:819`
+- clock: height ≤160 `:971`
+- voice: width ≤200 `:1412`, height 121–180 `:1423`, height ≤120 with width ≥200 `:1440`
+- random note: height ≤160 `:1580`
+- button grid / bookmarks: width ≤250 `:1650`
+- gallery: width ≤500 / ≤400 / ≤280 `:1936-1965`
+- pomodoro: height ≤220 `:3778`, height ≤120 `:3816`
 
 Two exceptions use `@media`:
-- the lightbox, `(max-width: 600px)` `:1952`, because it is mounted on `document.body` with no container ancestor (`:1951`)
-- `(prefers-reduced-motion: reduce)` `:3796`
+- the lightbox, `(max-width: 600px)` `:2039`, because it is mounted on `document.body` with no container ancestor (`:2038`)
+- `(prefers-reduced-motion: reduce)` `:3911`
 
 Rules in these queries that do not take effect **(inferred)**:
-- **Greeting, height query:** `.block-content.greeting-block` (`:751`) targets the size container itself. Its ancestors are inline-size containers only, so a height query cannot match that rule. Its child rules do match. Random note avoids this: the card is `.random-note-body`, a child of the `.random-note-block` size container (`:1420-1428`), so `.random-note-body { gap: 4px }` (`:1504`) matches in a short card.
-- **Button grid and bookmarks at ≤250px:** the button grid does collapse to one column: `.button-grid-block .button-grid { grid-template-columns: 1fr }` (0,2,0, `:1645-1648`) beats `.button-grid { grid-template-columns: repeat(var(--hp-grid-count, 2), 1fr) }` (0,1,0, `:3998`), and the block writes only the count inline (`ButtonGridBlock.ts:31`). `.grid-btn { padding; font-size }` (0,1,0, `:1649-1652`) still loses to `.button-grid .grid-btn` (0,2,0). The bookmark grid does not collapse: `.bookmark-grid { --hp-grid-cols: 1fr }` (`:1653-1656`) loses to the inline `--hp-grid-cols` on the same element (`BookmarkBlock.ts:32`).
-- **Hover resets at ≤540px:** `.grid-btn:hover` (0,2,0, `:3167`) loses to `.button-grid .grid-btn:hover` (0,3,0). `.bookmark-card:hover` (`:3171`) loses to the later equal-specificity rule at `:3437`. The `.is-mobile` variants (`:3780-3784`) do apply.
-- **Gallery grid mode:** `var(--hp-grid-cap, var(--hp-grid-cols))` (`:3876`) replaces the configured column count instead of capping it. From 281 to 400px it is `repeat(2, 1fr)`; from 401 to 500px it is `repeat(auto-fill, minmax(120px, 1fr))`. A 1-column gallery therefore shows more than one column there. Masonry mode does cap, via `min()` (`:3877`).
+- **Greeting, height query:** `.block-content.greeting-block` (`:820`) targets the size container itself. Its ancestors are inline-size containers only, so a height query cannot match that rule. Its child rules do match. Random note avoids this: the card is `.random-note-body`, a child of the `.random-note-block` size container (`:1498-1506`), so `.random-note-body { gap: 4px }` (`:1582`) matches in a short card.
+- **Button grid and bookmarks at ≤250px:** the button grid does collapse to one column: `.button-grid-block .button-grid { grid-template-columns: 1fr }` (0,2,0, `:1651-1654`) beats `.button-grid { grid-template-columns: repeat(var(--hp-grid-count, 2), 1fr) }` (0,1,0, `:4005`), and the block writes only the count inline (`ButtonGridBlock.ts:31`). `.grid-btn { padding; font-size }` (0,1,0, `:1655-1658`) still loses to `.button-grid .grid-btn` (0,2,0). The bookmark grid does not collapse: `.bookmark-grid { --hp-grid-cols: 1fr }` (`:1659-1662`) loses to the inline `--hp-grid-cols` on the same element (`BookmarkBlock.ts:32`).
+- **Hover resets at ≤540px:** `.grid-btn:hover` (0,2,0, `:3277`) loses to `.button-grid .grid-btn:hover` (0,3,0). `.bookmark-card:hover` (`:3311`) loses to the later equal-specificity rule at `:3576`. The `.is-mobile` variants (`:3898-3902`) do apply.
+- **Gallery grid mode:** `var(--hp-grid-cap, var(--hp-grid-cols))` (`:4006`) replaces the configured column count instead of capping it. From 281 to 400px it is `repeat(2, 1fr)`; from 401 to 500px it is `repeat(auto-fill, minmax(120px, 1fr))`. A 1-column gallery therefore shows more than one column there. Masonry mode does cap, via `min()` (`:4009`).
 
 ## 9. Single-column mode
 
 - **Trigger:** the grid gets `hp-single-column` when the effective column count is 1, in view mode only.
-  - At init: `GridLayout.ts:457`, never while editing
+  - At init: `GridLayout.ts:458`, never while editing
   - On resize: `ResponsiveColumns.ts:128` (the observer does nothing in edit mode)
   - This means a view narrower than 480px, or a canonical count of 1 (`mobileColumns` can be 1). A one-column layout in edit mode is drawn by GridStack itself: the flex layout below pinned a dragged item to the top, so every drag saved "move to top".
-- **CSS** (`styles.css:2999-3090`):
+- **CSS** (`styles.css:3098-3199`):
   - The grid becomes `display: flex; flex-direction: column; gap: 12px`.
-  - Items become `position: relative; top/left: auto !important; width: 100% !important; height: auto !important`. The `!important` reclaims GridStack's inline styles (comment `:3009-3012`).
-  - Item content, card and `.block-content` get `height: auto`. `.block-content` gets `min-height: 60px`, except the spacer and a collapsed block (0, `:3134-3136`, `:3165-3168`).
-  - Greeting, clock and random note become inline-size containers, like pomodoro and voice (`:3159-3164`): with size containment they had no intrinsic height and sat at the 60px floor.
-  - The HTML block's document frame takes `height: var(--hp-iframe-height, 150px)`, which `HtmlBlock` sets to the document's height, unscaled, and refits only when the frame's width changes (a refit on its own height change grew it on every round); video embeds keep `aspect-ratio: 16 / 9` (`:2268-2279`).
-  - Pomodoro and voice drop the absolute `.block-content` positioning they use in the grid (`:3547-3551`). They become inline-size containers, with a 100px ring (`:3074-3076`) and a 56px mic (`:1415-1417`). Buttons get a 44px min-height.
-- **Order:** DOM order becomes visual order, so items are put in `(y, x)` order: at init (`GridLayout.ts:490`) and when narrowing (`ResponsiveColumns.ts:208`). `orderChildren` (`src/grid/domOrder.ts`) moves only the items out of place and leaves the longest run already in order where it is, so an iframe that stays put is not reloaded (a playing video kept playing).
+  - Items become `position: relative; top/left: auto !important; width: 100% !important; height: auto !important`. The `!important` reclaims GridStack's inline styles (comment `:3108-3111`).
+  - Item content, card and `.block-content` get `height: auto`. `.block-content` gets `min-height: 60px`, except the spacer and a collapsed block (0, `:3140-3142`, `:3171-3174`).
+  - Greeting, clock and random note become inline-size containers, like pomodoro and voice (`:3165-3170`): with size containment they had no intrinsic height and sat at the 60px floor.
+  - The HTML block's document frame takes `height: var(--hp-iframe-height, 150px)`, which `HtmlBlock` sets to the document's height, unscaled, and refits only when the frame's width changes (a refit on its own height change grew it on every round); video embeds keep `aspect-ratio: 16 / 9` (`:2274-2285`).
+  - Pomodoro and voice drop the absolute `.block-content` positioning they use in the grid (`:3658-3662`). They become inline-size containers, with a 100px ring (`:3182-3184`) and a 56px mic (`:1488-1490`). Buttons get a 44px min-height.
+- **Order:** DOM order becomes visual order, so items are put in `(y, x)` order: at init (`GridLayout.ts:497`) and when narrowing (`ResponsiveColumns.ts:208`). `orderChildren` (`src/grid/domOrder.ts`) moves only the items out of place and leaves the longest run already in order where it is, so an iframe that stays put is not reloaded (a playing video kept playing).
 - **Narrow and mobile tweaks:**
-  - ≤540px: `gap: 8px; padding: 8px` (`:3150-3153`). This literal replaces `--hp-padding`.
-  - `.is-mobile`: `gap: 6px` plus bottom safe-area padding (`:3787-3790`).
-- **Auto-height after narrowing.** When the view narrows to 2 or 3 columns, `ResponsiveColumnsManager` asks every auto-height block to measure again at the new width, since the column change cancelled the measurements queued by the render. One column is sized by this CSS and needs no measurement (`ResponsiveColumns.ts:192-201`).
+  - ≤540px: `gap: 8px; padding: 8px` (`:3157-3160`). This literal replaces `--hp-padding`.
+  - `.is-mobile`: `gap: 6px` plus bottom safe-area padding (`:3900-3903`).
+- **Auto-height after narrowing.** When the view narrows to 2 or 3 columns, `ResponsiveColumnsManager` asks every auto-height block to measure again at the new width, since the column change cancelled the measurements queued by the render. One column is sized by this CSS and needs no measurement (`ResponsiveColumns.ts:193-202`).
 
 ## 10. Button Grid custom CSS allowlist
 
-`customCss` is a Button Grid config string. It is edited in a full-width textarea `.hp-custom-css-textarea` (`maxLength = 4096`, with an example placeholder; `src/blocks/ButtonGridBlock.ts:81-94`; styled at `styles.css:3374-3406`).
+`customCss` is a Button Grid config string. It is edited in a full-width textarea `.hp-custom-css-textarea` (`maxLength = 4096`, with an example placeholder; `src/blocks/ButtonGridBlock.ts:77-90`; styled at `styles.css:3482-3514`).
 
-`applyBlockStyling` parses it (`parseAllowlistedCustomCss`, `blockStyling.ts:63-81`):
+`applyBlockStyling` parses it (`parseAllowlistedCustomCss`, `blockStyling.ts:53-71`):
 
 1. Strip `/* … */` comments.
 2. Split on `;`. Split each part at the first `:` and trim both sides.
-3. Drop the pair if the key or value is empty, if the key fails `^--hp-btn-[a-z0-9-]+$` (lowercase only, `:52`), if the value matches `\b(?:url|image|image-set|cross-fade|element|paint)\s*\(` (case-insensitive, `:58`), or if the value contains a `\p{Cc}` control character (`:77`).
-4. Apply each surviving pair with `el.style.setProperty(key, value)` on the **card**, not on `cssText`, so other inline properties survive. Record the keys in `data-hp-custom-css-keys`, and remove the previous keys first (`:93-106`).
+3. Drop the pair if the key or value is empty, if the key fails `^--hp-btn-[a-z0-9-]+$` (lowercase only, `:42`), if the value matches `\b(?:url|image|image-set|cross-fade|element|paint)\s*\(` (case-insensitive, `:48`), or if the value contains a `\p{Cc}` control character (`:73`).
+4. Apply each surviving pair with `el.style.setProperty(key, value)` on the **card**, not on `cssText`, so other inline properties survive. Record the keys in `data-hp-custom-css-keys`, and remove the previous keys first (`:83-96`).
 
-The values cascade from the card to `.button-grid .grid-btn`. Only these 14 names are read (`styles.css:1525-1569`); any other `--hp-btn-*` passes the filter but has no effect:
+The values cascade from the card to `.button-grid .grid-btn`. Only these 14 names are read (`styles.css:1603-1647`); any other `--hp-btn-*` passes the filter but has no effect:
 
 | Property | Fallback | Applies to |
 |---|---|---|
@@ -377,11 +377,11 @@ The values cascade from the card to `.button-grid .grid-btn`. Only these 14 name
 | `--hp-btn-emoji-size` | `1rem` | `.grid-btn-emoji` `font-size` |
 
 Lifecycle:
-- Deliberately absent from `defaultConfig` (`src/main.ts:78-80`).
-- Stripped on export (`HomepageSettingTab.ts:376-383`) and on import (`importSanitizer.ts:10`).
-- Deleted at load from every block type other than `button-grid` (`src/validation.ts:202-208`).
+- Deliberately absent from `defaultConfig` (`src/main.ts:79-81`).
+- Stripped on export (`HomepageSettingTab.ts:397-404`) and on import (`importSanitizer.ts:11`).
+- Deleted at load from every block type other than `button-grid` (`src/validation.ts:197-203`).
 
-A layout can therefore only carry `customCss` through the user's own input or a hand-edited or synced `data.json`. The comment at `blockStyling.ts:49-51`, which still names "an imported layout" as the source, predates the import strip.
+A layout can therefore only carry `customCss` through the user's own input or a hand-edited or synced `data.json`. The comment at `blockStyling.ts:39-41`, which still names "an imported layout" as the source, predates the import strip.
 
 Notes:
 - The same 14 names can be set by a snippet on any ancestor as a vault-wide default (§13, example D). Per-block `customCss` wins, because it is declared on the card.
@@ -392,42 +392,42 @@ Notes:
 
 | Class | Element | Set by | CSS |
 |---|---|---|---|
-| `homepage-no-scrollbar` | `.homepage-view` | `HomepageView.ts:33`; live `HomepageSettingTab.ts:316` | `:371-382` hides the scroll bar of the view and of its `.homepage-grid` only. Scrolling regions inside blocks (§1, the scrolling height modes) keep theirs, because without one nothing shows that they hold more content. |
-| `homepage-hover-highlight` | `.homepage-view` | `HomepageView.ts:34`; live `HomepageSettingTab.ts:343` | `:170-178`, `:2490-2496` |
-| `hp-toolbar-open` | `.homepage-view` | `EditToolbar.ts:141` | `:2288-2297` (view scrolls, grid gets `margin-top: 12px`) |
+| `homepage-no-scrollbar` | `.homepage-view` | `HomepageView.ts:33`; live `HomepageSettingTab.ts:324` | `:383-395` hides the scroll bar of the view and of its `.homepage-grid` only. Scrolling regions inside blocks (§1, the scrolling height modes) keep theirs, because without one nothing shows that they hold more content. |
+| `homepage-hover-highlight` | `.homepage-view` | `HomepageView.ts:34`; live `HomepageSettingTab.ts:351` | `:170-178`, `:2497-2503` |
+| `hp-toolbar-open` | `.homepage-view` | `EditToolbar.ts:145` | `:2295-2304` (view scrolls, grid gets `margin-top: 12px`) |
 | `is-visible` / `is-hidden` | toolbar / FAB | `EditToolbar.ts:137-138` | toolbar sticky at top with accent bottom border. The hidden toolbar also carries the `inert` attribute (`:141`), so its controls leave the Tab order |
-| `edit-mode` | grid | `GridLayout.ts:159-161` | resize handles, dashed card border, compact placeholders, handle bar (`:2561-2706`). The handle bar wraps its controls (`flex-wrap: wrap`, `:2707`) instead of clipping them on a narrow card |
-| `homepage-grid--animating` | grid | `GridLayout.ts:152-154`, removed by a 500 ms timeout and in `teardown` (`:411`), so a later render does not replay it | `hp-card-enter` 0.3s with `--hp-card-anim-delay` (`:155-158`) |
-| `hp-single-column` | grid | `GridLayout.ts:457` (view mode only), `ResponsiveColumns.ts:128` | §9 |
-| `hp-dragging` | grid | `GridLayout.ts:502, 506` | siblings at opacity 0.5 (`:2710-2713`) |
-| `hp-zoomed` + `viewport-fit` | grid | `GridLayout.setZoom`/`applyZoom` (`GridLayout.ts:322-345`); re-applied after an edit-mode re-render | `transform: var(--hp-grid-transform)` (`:3819-3823`), `overflow: visible` (`:2557-2559`) |
-| `is-auto-height` | `.grid-stack-item` | `GridLayout.ts:563-565` | edit mode hides the `s`/`se` handles (`:2574-2577`) |
-| `block-just-added` | card | `GridLayout.ts:529-531`, removed on `animationend` | `hp-block-appear` 0.4s (`:3345-3358`), played once |
-| `block-collapsed` / `is-collapsed` | card / chevron | `BlockWrapper.ts:26, 43` (only for a block `isCollapsible` accepts, §5.3); `CollapseToggle.ts:55-56` | `.block-content` animates `grid-template-rows` 1fr→0fr (`:2591-2621`) |
-| `hp-header-empty` | header zone | `BlockWrapper.ts:41`, `BaseBlock.ts:75`, `BlockWrapper.ts:88` | height 0 (`:2533-2539`) |
+| `edit-mode` | grid | `GridLayout.ts:159-161` | resize handles, dashed card border, compact placeholders, handle bar (`:2568-2713`). The handle bar wraps its controls (`flex-wrap: wrap`, `:2714`) instead of clipping them on a narrow card |
+| `homepage-grid--animating` | grid | `GridLayout.ts:152-154`, removed by a 500 ms timeout and in `teardown` (`:412`), so a later render does not replay it | `hp-card-enter` 0.3s with `--hp-card-anim-delay` (`:155-158`) |
+| `hp-single-column` | grid | `GridLayout.ts:458` (view mode only), `ResponsiveColumns.ts:128` | §9 |
+| `hp-dragging` | grid | `GridLayout.ts:509, 513` | siblings at opacity 0.5 (`:2808-2811`) |
+| `hp-zoomed` + `viewport-fit` | grid | `GridLayout.setZoom`/`applyZoom` (`GridLayout.ts:323-346`); re-applied after an edit-mode re-render | `transform: var(--hp-grid-transform)` (`:3934-3938`), `overflow: visible` (`:2631-2633`) |
+| `is-auto-height` | `.grid-stack-item` | `GridLayout.ts:570-572` | edit mode hides the `s`/`se` handles (`:2648-2651`) |
+| `block-just-added` | card | `GridLayout.ts:536-538`, removed on `animationend` | `hp-block-appear` 0.4s (`:3352-3365`), played once |
+| `block-collapsed` / `is-collapsed` | card / chevron | `BlockWrapper.ts:26, 43` (only for a block `isCollapsible` accepts, §5.3); `CollapseToggle.ts:66-67` | `.block-content` animates `grid-template-rows` 1fr→0fr (`:2597-2627`) |
+| `hp-header-empty` | header zone | `BlockWrapper.ts:41`, `BaseBlock.ts:75`, `BlockWrapper.ts:88` | height 0 (`:2539-2545`) |
 | `block-accented`, `block-bright-accent`, `block-dark-accent`, `hp-plain-header-light`/`-dark`, `hp-plain-accent-light`/`-dark`, `hp-dark-on-accent`, `block-no-header-accent`, `block-no-border`, `block-no-background`, `block-elevation-N`, `block-custom-opacity`, `block-has-gradient` | card | `applyBlockStyling` | §5–§7 |
-| `voice-mic--push` | voice mic | push-to-talk mode (`VoiceDictationBlock.ts`) | `touch-action: none` (`:1300-1302`), so a slight pan does not cancel the hold |
-| `hp-visually-hidden` | Vault search live region | `VaultSearchBlock.ts` | clipped to 1px, read by screen readers only (`:4005-4012`) |
-| `hp-no-transition`, `hp-auto-rows` | `.block-content` | `src/grid/AutoHeight.ts:126-137` (while measuring) | `!important` (`:3828-3829`) |
-| `hp-hidden` | various | e.g. `BlockSettingsModal.ts:78-84` | `display: none` (`:3816`) |
+| `voice-mic--push` | voice mic | push-to-talk mode (`VoiceDictationBlock.ts`) | `touch-action: none` (`:1306-1308`), so a slight pan does not cancel the hold |
+| `hp-visually-hidden` | Vault search live region | `VaultSearchBlock.ts` | clipped to 1px, read by screen readers only (`:4011-4018`) |
+| `hp-no-transition`, `hp-auto-rows` | `.block-content` | `src/grid/AutoHeight.ts:126-137` (while measuring) | `!important` (`:3906-3907`) |
+| `hp-hidden` | various | e.g. `BlockSettingsModal.ts:78-84` | `display: none` (`:3845`) |
 
 Collapse notes:
-- The chevron of an expanded block has opacity 0 unless `homepage-hover-highlight` is on and the card is hovered (`:2563-2588`). A collapsed block always shows its chevron, with or without hover highlight (`:2582-2584`).
-- The header zone is a `div[role=button]` only while it shows a header (§5.3). It has its own focus ring, `.block-header-zone[role="button"]:focus-visible`, as do the Embedded note content and other `[role=region][tabindex=0]` scroll regions inside `.homepage-view` (`:4032-4039`). The other plugin focus rings target `button`, `select`, `input` and `textarea` inside `.homepage-view` (`:2631-2644`).
+- The chevron of an expanded block has opacity 0 unless `homepage-hover-highlight` is on and the card is hovered (`:2592-2617`). A collapsed block always shows its chevron, with or without hover highlight (`:2588-2590`).
+- The header zone is a `div[role=button]` only while it shows a header (§5.3). It has its own focus ring, `.block-header-zone[role="button"]:focus-visible`, as do the Embedded note content and other `[role=region][tabindex=0]` scroll regions inside `.homepage-view` (`:4038-4045`). The other plugin focus rings target `button`, `select`, `input` and `textarea` inside `.homepage-view` (`:2637-2650`).
 
-The Static Text pencil button (`.static-text-edit-btn`) is hidden (opacity 0) until the block is hovered. It also turns visible on `:focus-visible`, so a keyboard user who tabs onto it sees it (`styles.css:2064-2067`). On the mobile app it stays at opacity 0.6, and edit mode hides it (`:2069-2081`).
+The Static Text pencil button (`.static-text-edit-btn`) is hidden (opacity 0) until the block is hovered. It also turns visible on `:focus-visible`, so a keyboard user who tabs onto it sees it (`styles.css:2151-2154`). On the mobile app it stays at opacity 0.6, and edit mode hides it (`:2156-2168`).
 
 ## 12. Surfaces outside `.homepage-view`
 
-The `.homepage-view` focus rings and the reduced-motion rule (`.homepage-view, .homepage-view *`, `:3796-3813`) do not reach elements mounted elsewhere. The tokens reach only the block settings modal, which declares them too (§3):
+The `.homepage-view` focus rings and the reduced-motion rule (`.homepage-view, .homepage-view *`, `:3914-3931`) do not reach elements mounted elsewhere. The tokens reach only the block settings modal, which declares them too (§3):
 
 | Surface | Mounted on | Consequence (inferred unless noted) |
 |---|---|---|
-| Block settings modal, incl. preview card `div.settings-preview-card.homepage-block-wrapper` (`BlockSettingsModal.ts:68-76`) | Obsidian modal | The tokens are declared on `.hp-block-settings-modal` (`styles.css:8-36`), so the preview shows the default card padding and the elevation shadows. A snippet value on `.homepage-view` does not reach it. The swatch focus ring promised at `BlockSettingsModal.ts:332-333` is scoped to `.homepage-view` (`styles.css:2632`). The reorder grips of settings lists are `button.drag-grip` with the button chrome removed (`:4023-4030`) |
+| Block settings modal, incl. preview card `div.settings-preview-card.homepage-block-wrapper` (`BlockSettingsModal.ts:68-76`) | Obsidian modal | The tokens are declared on `.hp-block-settings-modal` (`styles.css:8-37`), so the preview shows the default card padding and the elevation shadows. A snippet value on `.homepage-view` does not reach it. The swatch focus ring promised at `BlockSettingsModal.ts:332-333` is scoped to `.homepage-view` (`styles.css:2639`). The reorder grips of settings lists are `button.drag-grip` with the button chrome removed (`:4029-4036`) |
 | Add Block `SuggestModal` | Obsidian modal | `--hp-space-*` fallbacks apply (same values) |
-| Gallery lightbox | `doc.body` (`ImageGalleryBlock.ts:45`) | `@media (max-width: 600px)` instead of container queries (`:1951-1952`). Its Close button `.gallery-lightbox-close` sits top right (`:4015-4020`) |
-| Vault-search dropdown | `el.doc.body` (`VaultSearchBlock.ts:62`) | positioned by inline `--hp-search-dropdown-*` |
-| HTML block iframe (HTML containing `<style>`) | `srcdoc` iframe | each `var(--x)` referenced in the HTML is resolved against `getComputedStyle(doc.body)` and copied to the iframe's `:root` (`HtmlBlock.ts:54-81`, verified in code). `--hp-*` tokens and the accent overrides on a card are therefore not visible inside the iframe; theme variables are. The bridge stylesheet gives the iframe's `body` `display: flow-root`, so a first child's top margin stays inside it. See [blocks](blocks.md) |
+| Gallery lightbox | `doc.body` (`ImageGalleryBlock.ts:47`) | `@media (max-width: 600px)` instead of container queries (`:2038-2039`). Its Close button `.gallery-lightbox-close` sits top right (`:4021-4026`) |
+| Vault-search dropdown | `el.doc.body` (`VaultSearchBlock.ts:80`) | positioned by inline `--hp-search-dropdown-*` |
+| HTML block iframe (HTML containing `<style>`) | `srcdoc` iframe | each `var(--x)` referenced in the HTML is resolved against `getComputedStyle(doc.body)` and copied to the iframe's `:root` (`HtmlBlock.ts:80-108`, verified in code). `--hp-*` tokens and the accent overrides on a card are therefore not visible inside the iframe; theme variables are. The bridge stylesheet gives the iframe's `body` `display: flow-root`, so a first child's top margin stays inside it. See [blocks](blocks.md) |
 
 ## 13. Worked snippet examples
 
@@ -451,7 +451,7 @@ body.is-mobile .homepage-view {
 - `body.is-mobile .homepage-view` (0,2,1) applies only on the mobile app.
 - Still overridden by:
   - the literal grid padding at ≤540px in single-column mode (8px) and at ≤380px outside single-column mode (4px)
-  - on the mobile app, the literal single-column bottom padding (`styles.css:3787-3790`)
+  - on the mobile app, the literal single-column bottom padding (`styles.css:3793-3796`)
   - any block with `_cardPadding` ≠ 0
 - `--hp-card-padding` applies at every width: the plugin's narrow-pane and mobile values are only `--hp-card-padding-default`, its fallback (§2).
 
@@ -523,7 +523,7 @@ A block's own `customCss` overrides any of these per property.
 }
 ```
 
-- Specificity is (0,4,0). That beats every view-mode background, border and shadow rule on the card, including `.block-custom-opacity.block-accented` (0,3,0) and the hover-highlight shadow (0,3,0), except those it ties with. `.block-no-border.block-accented:hover` and `.block-no-background.block-accented:hover` (0,4,0, `:403`, `:421`) set the same transparent/none values. `.block-no-border.block-elevation-N:hover` (0,4,0, `:411-416`) sets a shadow, so the result for a hovered block with a hidden border and an Elevation depends on stylesheet order. A gradient with opacity below 100 is painted by a `::before` layer (§7), which this snippet does not remove; add `::before { display: none }` for that case.
+- Specificity is (0,4,0). That beats every view-mode background, border and shadow rule on the card, including `.block-custom-opacity.block-accented` (0,3,0) and the hover-highlight shadow (0,3,0), except those it ties with. `.block-no-border.block-accented:hover` and `.block-no-background.block-accented:hover` (0,4,0, `:409`, `:427`) set the same transparent/none values. `.block-no-border.block-elevation-N:hover` (0,4,0, `:416-421`) sets a shadow, so the result for a hovered block with a hidden border and an Elevation depends on stylesheet order. A gradient with opacity below 100 is painted by a `::before` layer (§7), which this snippet does not remove; add `::before { display: none }` for that case.
 - `:not(.edit-mode)` leaves the edit-mode dashed border alone.
 - Use the wrapper classes from §1 (`hp-block-bookmarks`, `hp-block-voice-dictation`, …).
 
@@ -536,7 +536,7 @@ A block's own `customCss` overrides any of these per property.
 }
 ```
 
-- The id is the card's `data-block-id` attribute (`BlockWrapper.ts:27`); read it in DevTools. Ids come from `crypto.randomUUID()`, with an `hp-<random><time>` fallback (`src/utils/ids.ts::newId`).
+- The id is the card's `data-block-id` attribute (`BlockWrapper.ts:29`); read it in DevTools. Ids come from `crypto.randomUUID()`, with an `hp-<random><time>` fallback (`src/utils/ids.ts::newId`).
 - (0,3,0) beats `.block-header` (0,1,0).
 
 **H. Always-visible collapse chevron**
@@ -545,8 +545,8 @@ A block's own `customCss` overrides any of these per property.
 .homepage-view .block-collapse-chevron { opacity: 0.5; }
 ```
 
-- Shows a dimmed chevron on expanded blocks too, with or without hover highlight. A collapsed block already shows it at full opacity (`.block-collapse-chevron.is-collapsed`, (0,2,0), `styles.css:2582-2584`, which this (0,2,0) rule overrides if the snippet loads later; add `.homepage-view .block-collapse-chevron.is-collapsed { opacity: 1; }` to keep it).
-- With hover highlight on, the plugin's hover rule (0,4,0, `styles.css:2586-2588`) still raises it to 1.
+- Shows a dimmed chevron on expanded blocks too, with or without hover highlight. A collapsed block already shows it at full opacity (`.block-collapse-chevron.is-collapsed`, (0,2,0), `styles.css:2588-2590`, which this (0,2,0) rule overrides if the snippet loads later; add `.homepage-view .block-collapse-chevron.is-collapsed { opacity: 1; }` to keep it).
+- With hover highlight on, the plugin's hover rule (0,4,0, `styles.css:2592-2594`) still raises it to 1.
 - Edit mode keeps it hidden. A header hidden with `_showTitle: false` has zero height, so no chevron shows there either.
 
 **I. Default quote font**
@@ -557,7 +557,7 @@ body .homepage-view {
 }
 ```
 
-Applies to Quotes blocks whose font style is Default and that have no custom font. A preset class or an inline font on the block wins (`styles.css:1713-1720`, `QuotesListBlock.ts:132`).
+Applies to Quotes blocks whose font style is Default and that have no custom font. A preset class or an inline font on the block wins (`styles.css:1800-1807`, `QuotesListBlock.ts:134`).
 
 **J. Disable the card entry animation**
 
@@ -567,7 +567,7 @@ Applies to Quotes blocks whose font style is Default and that have no custom fon
 }
 ```
 
-(0,3,0) beats `.homepage-grid--animating .homepage-block-wrapper` (0,2,0, `styles.css:149`).
+(0,3,0) beats `.homepage-grid--animating .homepage-block-wrapper` (0,2,0, `styles.css:156`).
 
 **What does not work from a snippet:**
 - `--hp-padding` on `:root` or `body`: shadowed by the `.homepage-view` declaration. (`--hp-card-padding` is not declared by the plugin, so it works there too, §2.)
@@ -581,12 +581,12 @@ For maintainers. Each item was checked against the code on disk.
 
 1. The ≥1200px padding rule never applies (§8).
 2. Resolved (M102): the cell's `overflow: visible` now outranks GridStack's rule in view mode too (§1), so card shadows are no longer clipped.
-3. The elevation-token comment (`styles.css:30-31`) says they drive "every transient shadow (hover, drag, popovers)". Only drag and the elevation presets use them; hover (`:177`), the search dropdown (`:1111`), button hover (`:1559`) and the active toolbar button (`:2411`) use literal shadows. The "prefer these over ad-hoc literals" note (`:15-16`) covers tokens that are unused (§3).
-4. The comment "sized from the block wrapper" (`styles.css:1747-1748`) is wrong. The gallery's query container is `.block-content.image-gallery-block` (`:1749-1751`).
-5. The `oklch` mix at `:1013` contradicts the srgb rationale at `:184`.
-6. "Lifts" (settings description, README, CLAUDE.md) and "opt-in" (`styles.css:169`) misdescribe hover highlight (§7).
-7. CLAUDE.md calls the `BlockWrapper.ts` helpers "pure DOM builders". In fact `removeSkeleton` schedules a timer (`:71`) and `renderEmptyState` attaches a click listener (`:115`).
-8. `homepage-grid--animating` is removed at 500 ms (`GridLayout.ts:145`). The delays are 0, 50, 100, 140, 170, 195, 215, 230 ms, then 240 ms for every later card (`GridLayout.ts:486`), so from the seventh card on (215 ms delay + 300 ms animation = 515 ms) a card is still animating then and snaps to its final state. **(inferred)**
-9. **(inferred)** `.block-accented.block-no-header-accent .block-header-zone` (0,3,0) outranks `.hp-header-empty` (0,2,0) on padding. An accented block with a hidden title and the header bar off therefore keeps 2px + 2px of header-zone padding. Every block with a hidden title also keeps one `--hp-title-gap` above its content, because the zero-height zone is still a flex item of the card (`styles.css:132-134`).
-10. Resolved (M109): the skeleton overlay takes the card's own background (`background: inherit`, `:662`), so accented, translucent and gradient cards keep their look while loading.
-11. The accent-swatch focus ring promised by the comment at `BlockSettingsModal.ts:332-333` does not exist in the modal: the button focus ring is scoped to `.homepage-view` (`styles.css:2632`).
+3. The elevation-token comment (`styles.css:34-35`) says they drive "every transient shadow (hover, drag, popovers)". Only drag and the elevation presets use them; hover (`:184`), the search dropdown (`:1183`), button hover (`:1637`) and the active toolbar button (`:2514`) use literal shadows. The "prefer these over ad-hoc literals" note (`:19-20`) covers tokens that are unused (§3).
+4. The comment "sized from the block wrapper" (`styles.css:1834-1835`) is wrong. The gallery's query container is `.block-content.image-gallery-block` (`:1836-1838`).
+5. The `oklch` mix at `:1085` contradicts the srgb rationale at `:191`.
+6. "Lifts" (settings description, README, CLAUDE.md) and "opt-in" (`styles.css:176`) misdescribe hover highlight (§7).
+7. CLAUDE.md calls the `BlockWrapper.ts` helpers "pure DOM builders". In fact `removeSkeleton` schedules a timer (`:78`) and `renderEmptyState` attaches a click listener (`:122`).
+8. `homepage-grid--animating` is removed at 500 ms (`GridLayout.ts:152`). The delays are 0, 50, 100, 140, 170, 195, 215, 230 ms, then 240 ms for every later card (`GridLayout.ts:577`), so from the seventh card on (215 ms delay + 300 ms animation = 515 ms) a card is still animating then and snaps to its final state. **(inferred)**
+9. **(inferred)** `.block-accented.block-no-header-accent .block-header-zone` (0,3,0) outranks `.hp-header-empty` (0,2,0) on padding. An accented block with a hidden title and the header bar off therefore keeps 2px + 2px of header-zone padding. Every block with a hidden title also keeps one `--hp-title-gap` above its content, because the zero-height zone is still a flex item of the card (`styles.css:139-141`).
+10. Resolved (M109): the skeleton overlay takes the card's own background (`background: inherit`, `:668`), so accented, translucent and gradient cards keep their look while loading.
+11. The accent-swatch focus ring promised by the comment at `BlockSettingsModal.ts:332-333` does not exist in the modal: the button focus ring is scoped to `.homepage-view` (`styles.css:2639`).

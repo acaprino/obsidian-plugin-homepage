@@ -1,6 +1,6 @@
 # Data model
 
-What the plugin persists, how it validates and migrates it on load, how it writes it back, and what each device keeps for itself. Everything here describes branch `xray-remediation` after the X-ray fixes of 2026-10-10. Each claim cites its source as `path:line`.
+What the plugin persists, how it validates and migrates it on load, how it writes it back, and what each device keeps for itself. Everything here describes the code after the X-ray fixes of 2026-10-10. Each claim cites its source as `path:line`.
 
 Related docs:
 
@@ -36,29 +36,29 @@ flowchart LR
 
 | Store | Content | Scope | Written by |
 |---|---|---|---|
-| `<plugin dir>/data.json` | One `LayoutConfig` object as JSON. `apiKey` values are ciphertext wherever encryption works. Blocks and top-level fields written by a newer plugin version are kept in it (§2.5). | Synced with the vault | `Plugin.saveData` inside `saveLayout` (`src/main.ts:450-487`) |
+| `<plugin dir>/data.json` | One `LayoutConfig` object as JSON. `apiKey` values are ciphertext wherever encryption works. Blocks and top-level fields written by a newer plugin version are kept in it (§2.5). | Synced with the vault | `Plugin.saveData` inside `saveLayout` (`src/main.ts:459-496`) |
 | `data.json.invalid`, `data.json.invalid.<ms>` | A verbatim copy of a `data.json` that could not be used | Plugin dir, synced; ignored by git (`.gitignore`) | `backupDataFile` (`src/utils/loadRecovery.ts:81-104`) |
-| `plugin.layout` | The live `LayoutConfig`. It holds plaintext `apiKey` values where this device can decrypt them. | Memory | `onload` (`src/main.ts:283`), then `saveLayout`, which assigns it synchronously (`src/main.ts:452`). The grid callback and Discard also assign it just before calling `saveLayout` (`src/HomepageView.ts:37`, `src/EditToolbar.ts:118`). `onExternalSettingsChange` assigns the layout another device wrote, without a save (`src/main.ts:558`, §7.5). |
-| IndexedDB `homepage-blocks-kv` / `keys` / `apiKeyDeviceKey` | The device's AES-GCM-256 `CryptoKey` | Per device and origin (§9.2) | `loadDeviceKey` (`src/utils/apiKeyCrypto.ts:89-127`) |
-| `app.loadLocalStorage` / `saveLocalStorage` keys | Notice bookkeeping and voice consent | Per device and vault (§10) | `src/main.ts:353-370`, `src/blocks/VoiceDictationBlock.ts:23-51` |
+| `plugin.layout` | The live `LayoutConfig`. It holds plaintext `apiKey` values where this device can decrypt them. | Memory | `onload` (`src/main.ts:292`), then `saveLayout`, which assigns it synchronously (`src/main.ts:461`). The grid callback and Discard also assign it just before calling `saveLayout` (`src/HomepageView.ts:37`, `src/EditToolbar.ts:119`). `onExternalSettingsChange` assigns the layout another device wrote, without a save (`src/main.ts:567`, §7.5). |
+| IndexedDB `homepage-blocks-kv` / `keys` / `apiKeyDeviceKey` | The device's AES-GCM-256 `CryptoKey` | Per device and origin (§9.2) | `loadDeviceKey` (`src/utils/apiKeyCrypto.ts:106-144`) |
+| `app.loadLocalStorage` / `saveLocalStorage` keys | Notice bookkeeping and voice consent | Per device and vault (§10) | `src/main.ts:378-395`, `src/blocks/VoiceDictationBlock.ts:25-53` |
 
-The plugin dir is `manifest.dir`, falling back to `${vault.configDir}/plugins/${manifest.id}` (`dataFilePath`, `src/main.ts:489-492`). The manifest id is `homepage-blocks`.
+The plugin dir is `manifest.dir`, falling back to `${vault.configDir}/plugins/${manifest.id}` (`dataFilePath`, `src/main.ts:522-525`). The manifest id is `homepage-blocks`.
 
 ## 2. `LayoutConfig`
 
-Declared at `src/types.ts:51-88`. The defaults come from `DEFAULT_LAYOUT_DATA` (`src/validation.ts:24-109`). Always take a copy through `getDefaultLayout()`, which is `structuredClone` of that template (`src/validation.ts:112-114`).
+Declared at `src/types.ts:62-101`. The defaults come from `DEFAULT_LAYOUT_DATA` (`src/validation.ts:24-104`). Always take a copy through `getDefaultLayout()`, which is `structuredClone` of that template (`src/validation.ts:107-109`).
 
-The "On load" column states what `validateLayout` accepts (`src/validation.ts:307-405`). Any other value is replaced by the fallback shown.
+The "On load" column states what `validateLayout` accepts (`src/validation.ts:348-451`). Any other value is replaced by the fallback shown.
 
 ### 2.1 Layout
 
 | Field | Type | Default | On load | Meaning |
 |---|---|---|---|---|
-| `columns` | `number` | `3` | One of `2, 3, 4, 5`, else `3` (`validation.ts:320-322`) | Desktop grid columns. In Unified mode every device uses them. `blocks` is clamped to this value (§6.2). |
-| `layoutPriority` | `'row'` | `'row'` | Only `'row'`. Anything else, legacy `'column'` included, becomes `'row'` (`validation.ts:323-325`). | Packing direction. It is a reserved single-value union; the `priority` parameters are threaded through but ignored (`types.ts:16-25`). |
-| `responsiveMode` | `'unified' \| 'separate'` | `'unified'` | One of those two (`validation.ts:326-328`) | **Unified:** every device renders `blocks` with `columns`. **Separate:** a device with `Platform.isMobile` renders `mobileBlocks` with `mobileColumns` (`main.ts:379-393`). |
-| `mobileColumns` | `number` | `1` | One of `1, 2, 3`, else `1` (`validation.ts:329-331`) | Mobile grid columns in Separate mode. `mobileBlocks` is clamped to this value on every load, even in Unified mode. |
-| `mobileLayoutPriority` | `'row'` | `'row'` | As `layoutPriority` (`validation.ts:332-334`) | Mobile packing direction (reserved) |
+| `columns` | `number` | `3` | One of `2, 3, 4, 5`, else `3` (`validation.ts:361-363`) | Desktop grid columns. In Unified mode every device uses them. `blocks` is clamped to this value (§6.2). |
+| `layoutPriority` | `'row'` | `'row'` | Only `'row'`. Anything else, legacy `'column'` included, becomes `'row'` (`validation.ts:363-365`). | Packing direction. It is a reserved single-value union; the `priority` parameters are threaded through but ignored (`types.ts:16-25`). |
+| `responsiveMode` | `'unified' \| 'separate'` | `'unified'` | One of those two (`validation.ts:367-369`) | **Unified:** every device renders `blocks` with `columns`. **Separate:** a device with `Platform.isMobile` renders `mobileBlocks` with `mobileColumns` (`main.ts:404-418`). |
+| `mobileColumns` | `number` | `1` | One of `1, 2, 3`, else `1` (`validation.ts:370-372`) | Mobile grid columns in Separate mode. `mobileBlocks` is clamped to this value on every load, even in Unified mode. |
+| `mobileLayoutPriority` | `'row'` | `'row'` | As `layoutPriority` (`validation.ts:373-375`) | Mobile packing direction (reserved) |
 | `mobileBlocks` | `BlockInstance[]` | `[]` | See §6.2. Missing or `null` becomes `[]`. Any other non-array becomes `[]` and is reported as `unusable`. | Mobile block list. It is kept, unused, in Unified mode. |
 | `blocks` | `BlockInstance[]` | 8 demo blocks (§4) | See §6.2. Missing or `null` becomes the demo blocks **without a report**. Any other non-array becomes the demo blocks and is reported as `unusable`. `[]` stays empty. | Desktop block list, and the only list in Unified mode |
 
@@ -68,17 +68,17 @@ The same gating logic is described in [flows.md](flows.md). A mobile device (`Pl
 
 | Field | Type | Default | On load | Meaning |
 |---|---|---|---|---|
-| `openOnStartup` | `boolean` | `false` | boolean (`validation.ts:335-337`) | Open the homepage in `onLayoutReady` |
-| `openMode` | `OpenMode` | `'retain'` | `'replace-all' \| 'replace-last' \| 'retain'` (`validation.ts:338-340`) | Tab handling for the startup open |
-| `manualOpenMode` | `OpenMode` | `'retain'` | As above (`validation.ts:341-343`) | Tab handling for the ribbon and command |
-| `openWhenEmpty` | `boolean` | `false` | boolean (`validation.ts:344-346`) | Open when every root leaf is empty |
-| `pin` | `boolean` | `false` | boolean (`validation.ts:347-349`) | Pin the homepage tab |
-| `separateStartup` | `boolean` | `false` | boolean (`validation.ts:350-352`) | Mobile devices use the `mobile*` values below |
-| `mobileOpenOnStartup` | `boolean` | resolved `openOnStartup` | boolean, else the **resolved desktop value** (`validation.ts:356-358`) | Mobile override |
-| `mobileOpenMode` | `OpenMode` | resolved `openMode` | (`validation.ts:359-361`) | Mobile override |
-| `mobileManualOpenMode` | `OpenMode` | resolved `manualOpenMode` | (`validation.ts:362-364`) | Mobile override |
-| `mobileOpenWhenEmpty` | `boolean` | resolved `openWhenEmpty` | (`validation.ts:365-367`) | Mobile override |
-| `mobilePin` | `boolean` | resolved `pin` | (`validation.ts:368-370`) | Mobile override |
+| `openOnStartup` | `boolean` | `false` | boolean (`validation.ts:376-378`) | Open the homepage in `onLayoutReady` |
+| `openMode` | `OpenMode` | `'retain'` | `'replace-all' \| 'replace-last' \| 'retain'` (`validation.ts:379-381`) | Tab handling for the startup open |
+| `manualOpenMode` | `OpenMode` | `'retain'` | As above (`validation.ts:382-384`) | Tab handling for the ribbon and command |
+| `openWhenEmpty` | `boolean` | `false` | boolean (`validation.ts:385-387`) | Open when every root leaf is empty |
+| `pin` | `boolean` | `false` | boolean (`validation.ts:388-390`) | Pin the homepage tab |
+| `separateStartup` | `boolean` | `false` | boolean (`validation.ts:391-393`) | Mobile devices use the `mobile*` values below |
+| `mobileOpenOnStartup` | `boolean` | resolved `openOnStartup` | boolean, else the **resolved desktop value** (`validation.ts:397-399`) | Mobile override |
+| `mobileOpenMode` | `OpenMode` | resolved `openMode` | (`validation.ts:400-402`) | Mobile override |
+| `mobileManualOpenMode` | `OpenMode` | resolved `manualOpenMode` | (`validation.ts:403-405`) | Mobile override |
+| `mobileOpenWhenEmpty` | `boolean` | resolved `openWhenEmpty` | (`validation.ts:406-408`) | Mobile override |
+| `mobilePin` | `boolean` | resolved `pin` | (`validation.ts:409-411`) | Mobile override |
 
 Each `mobile*` fallback is the desktop value after that value has itself been validated, not the template constant. A `data.json` written before these fields existed therefore mirrors desktop on mobile.
 
@@ -86,15 +86,15 @@ Each `mobile*` fallback is the desktop value after that value has itself been va
 
 | Field | Type | Default | On load | Meaning |
 |---|---|---|---|---|
-| `showScrollbar` | `boolean` | `true` | If it is a boolean, it is used. Otherwise, if legacy `hideScrollbar` is a boolean, its inverse is used. Otherwise `true`. (`validation.ts:374-378`) | `false` adds `homepage-no-scrollbar` (`src/HomepageView.ts:33`), which hides the scroll bar of the homepage grid only; scrolling regions inside blocks keep theirs ([styling.md](styling.md)) |
-| `compactLayout` | `boolean` | `true` | boolean (`validation.ts:379-381`) | Initial y-packing in view mode. The repack after an auto-height change runs whatever this value is ([flows.md](flows.md) §7). |
-| `hoverHighlight` | `boolean` | `true` | boolean (`validation.ts:382-384`) | Adds `homepage-hover-highlight` (`src/HomepageView.ts:34`) |
+| `showScrollbar` | `boolean` | `true` | If it is a boolean, it is used. Otherwise, if legacy `hideScrollbar` is a boolean, its inverse is used. Otherwise `true`. (`validation.ts:415-419`) | `false` adds `homepage-no-scrollbar` (`src/HomepageView.ts:33`), which hides the scroll bar of the homepage grid only; scrolling regions inside blocks keep theirs ([styling.md](styling.md)) |
+| `compactLayout` | `boolean` | `true` | boolean (`validation.ts:420-422`) | Initial y-packing in view mode. The repack after an auto-height change runs whatever this value is ([flows.md](flows.md) §7). |
+| `hoverHighlight` | `boolean` | `true` | boolean (`validation.ts:423-425`) | Adds `homepage-hover-highlight` (`src/HomepageView.ts:34`) |
 
 ### 2.4 Shape guarantees
 
-- `validateLayout` returns an object literal with these 21 fields (`validation.ts:420-427`), plus `preserved` when the raw value held data of a newer version (`:428-430`, §2.5).
+- `validateLayout` returns an object literal with these 21 fields (`validation.ts:439-446`), plus `preserved` when the raw value held data of a newer version (`:447-449`, §2.5).
   - Any other top-level key moves into `preserved.fields` and is written back to the top level of `data.json` by every save (§2.5). Only legacy `hideScrollbar` (and `preserved` itself) is read and not kept, so the next save, normally the post-load resave (§7.4), removes it from `data.json`.
-- Only the load, import and external-change paths run validation. `saveLayout` writes whatever object it is given, after `toStoredLayout` (`main.ts:467`). In-tree writers build that object by spreading `plugin.layout` (reset included, §11.4), or from `validateLayout` output (import, which drops `preserved`, §11.2).
+- Only the load, import and external-change paths run validation. `saveLayout` writes whatever object it is given, after `toStoredLayout` (`main.ts:476`). In-tree writers build that object by spreading `plugin.layout` (reset included, §11.4), or from `validateLayout` output (import, which drops `preserved`, §11.2).
 
 ### 2.5 Data of a newer version (`preserved`)
 
@@ -102,11 +102,11 @@ Each `mobile*` fallback is the desktop value after that value has itself been va
 
 | `PreservedData` field | Holds | Filled by |
 |---|---|---|
-| `blocks`, `mobileBlocks` | Blocks of a type outside `BLOCK_TYPES` that are otherwise well formed (`isUnknownTypeBlock`, `validation.ts:238-249`). The test runs on a migrated copy of the block and of its `config`, so a legacy type (`tag-grid`) is a known block and not preserved; then the type must be a non-empty string outside `BLOCK_TYPES` and outside `RETIRED_BLOCK_TYPES` (`{'insight'}`, `:252`), and the block must pass `isValidBlockInstance` once its type is swapped for a known one. The stored object is kept exactly as stored: not migrated (the in-place `config` migrations of `migrateBlockInstance`, §6.4, run on the copy only), clamped, de-duplicated or counted against `MAX_BLOCKS`. | `validateBlocks`' `onUnknownType` callback (`:274-279, 420-421`) |
-| `fields` | Top-level keys outside `KNOWN_LAYOUT_KEYS`, the keys of `DEFAULT_LAYOUT_DATA` plus `hideScrollbar` and `preserved` (`:435`) | `readPreserved` (`:442-455`) |
+| `blocks`, `mobileBlocks` | Blocks of a type outside `BLOCK_TYPES` that are otherwise well formed (`isUnknownTypeBlock`, `validation.ts:238-258`). The test runs on a migrated copy of the block and of its `config`, so a legacy type (`tag-grid`) is a known block and not preserved; then the type must be a non-empty string outside `BLOCK_TYPES` and outside `RETIRED_BLOCK_TYPES` (`{'insight'}`, `:252`), and the block must pass `isValidBlockInstance` once its type is swapped for a known one. The stored object is kept exactly as stored: not migrated (the in-place `config` migrations of `migrateBlockInstance`, §6.4, run on the copy only), clamped, de-duplicated or counted against `MAX_BLOCKS`. | `validateBlocks`' `onUnknownType` callback (`:279-284, 439-440`) |
+| `fields` | Top-level keys outside `KNOWN_LAYOUT_KEYS`, the keys of `DEFAULT_LAYOUT_DATA` plus `hideScrollbar` and `preserved` (`:454`) | `readPreserved` (`:461-474`) |
 
 - **Not drawn.** Preserved blocks never reach the grid or the accessors. At load a 12 s Notice says "`N` block(s) need a newer version of the plugin. They are kept and not shown.", once per set of kept blocks on each device: the ids last told about are stored in local storage (`hp-newer-version-told`), and only a new or changed set is told again (`newerVersionNotice`, `src/utils/loadRecovery.ts`, `src/main.ts`). They count toward the 100-block limit (those past it are dropped and reported like other blocks past it), and one sharing its id with a known block is dropped, as the newer version's dedup would. A block placed over their cell is moved there by GridStack once the newer version draws them (a recorded cost of M58).
-- **Written back.** `toStoredLayout` (`validation.ts:462-471`) runs on every save (`main.ts:467`): preserved blocks go back at the end of their arrays, preserved fields back at the top level (a current field of the same name wins). `apiKey` encryption runs before it, on the known blocks only, so a preserved block is written exactly as it was read.
+- **Written back.** `toStoredLayout` (`validation.ts:477-486`) runs on every save (`main.ts:476`): preserved blocks go back at the end of their arrays, preserved fields back at the top level (a current field of the same name wins). `apiKey` encryption runs before it, on the known blocks only, so a preserved block is written exactly as it was read.
 - **Idempotent.** `readPreserved` also reads the `preserved` of an in-memory layout validated again, so `validateLayout(validateLayout(x))` keeps it unchanged (§6.1).
 - **Never exported or imported.** Export deletes `preserved` (`HomepageSettingTab.ts:395-396`), and `sanitizeImportedLayout` drops it (`importSanitizer.ts:128-135`): an import is untrusted and could not check such data.
 - **Replaced with their half.** Reset and Copy to mobile replace one half "with all its blocks", so they also clear the preserved blocks of that half (`dropPreserved(layout, half)`, `src/utils/layoutReset.ts:74-77`; §11.3, §11.4); kept, those blocks would come back at their old cells on the newer device. Preserved fields stay.
@@ -116,66 +116,66 @@ Each `mobile*` fallback is the desktop value after that value has itself been va
 
 Declared at `src/types.ts:29-49`.
 
-| Field | Type | On load (`isValidBlockInstance`, `validation.ts:225-237`, and the rebuild at `validation.ts:271-287`) | Meaning |
+| Field | Type | On load (`isValidBlockInstance`, `validation.ts:220-232`, and the rebuild at `validation.ts:312-328`) | Meaning |
 |---|---|---|---|
-| `id` | `string` | Must match `/^[a-zA-Z0-9_-]+$/` (`SAFE_ID_RE`, `validation.ts:119`). Duplicates within one array are removed. | Identity (§5) |
+| `id` | `string` | Must match `/^[a-zA-Z0-9_-]+$/` (`SAFE_ID_RE`, `validation.ts:114`). Duplicates within one array are removed. | Identity (§5) |
 | `type` | `BlockType` | One of the 17 `BLOCK_TYPES` (`types.ts:4-10`), after the legacy rename (§6.4). An otherwise well-formed block of another type is kept apart as data of a newer version (§2.5). | Block factory key |
 | `x` | `number` | Finite, `>= 0`. Clamped to `max(0, columns - min(w, columns))`. | Column, 0-indexed |
 | `y` | `number` | Finite, `>= 0`. **No upper bound.** | Row, 0-indexed |
 | `w` | `number` | Finite, `>= 1`. Clamped to `columns`. | Width in columns |
 | `h` | `number` | Finite, `>= 1`. **No upper bound.** | Height in rows |
-| `collapsed?` | `boolean` | Kept only when `true`; any other value drops the field (`validation.ts:281`) | Collapsed state |
-| `_expandedH?` | `number` | Kept only when a finite number `>= 1`, then rounded; any other value drops the field (`validation.ts:282-285`). No upper bound. | Height to restore on expand |
+| `collapsed?` | `boolean` | Kept only when `true`; any other value drops the field (`validation.ts:322`) | Collapsed state |
+| `_expandedH?` | `number` | Kept only when a finite number `>= 1`, then rounded; any other value drops the field (`validation.ts:323-326`). No upper bound. | Height to restore on expand |
 | `config` | `Record<string, unknown>` | Must be a non-null, non-array object. **Apart from the migrations of §6.4, its contents are not validated on load.** | Block settings (§3.2) |
 
-There is no integer check: a fractional `x` passes. `validateBlocks` rebuilds each block from the fields above, so any other top-level field of a block is dropped at load and import (`validation.ts:293-309`); the post-load resave removes it from `data.json`. The import sanitizer rewrites only `config` (`src/utils/importSanitizer.ts:121-137`).
+There is no integer check: a fractional `x` passes. `validateBlocks` rebuilds each block from the fields above, so any other top-level field of a block is dropped at load and import (`validation.ts:334-350`); the post-load resave removes it from `data.json`. The import sanitizer rewrites only `config` (`src/utils/importSanitizer.ts:121-137`).
 
 ### 3.1 Position semantics
 
 - **Canonical columns.** Positions are stored against the persisted `columns` / `mobileColumns`. The grid can narrow responsively, so that its effective column count is below the canonical one. In that state a position persist writes only `h`, and only for fixed-height blocks drawn at their stored height (`src/grid/LayoutPersister.ts:69, 100-120`).
-- **Auto-height blocks.** Position persists write `x`, `y` and `w` only; the stored `h` is not rewritten (`LayoutPersister.ts:94-107, 118`; the same rule applies on block removal, `src/grid/EditHandleBar.ts:189-195`). The rendered height comes from measuring content. See [api/grid.md](api/grid.md).
+- **Auto-height blocks.** Position persists write `x`, `y` and `w` only; the stored `h` is not rewritten (`LayoutPersister.ts:94-107, 118`; the same rule applies on block removal, `src/grid/EditHandleBar.ts:191-197`). The rendered height comes from measuring content. See [api/grid.md](api/grid.md).
 - **Collapsed blocks.** Their node is drawn at a display height (one row, or `_expandedH` when the title is hidden), except in edit mode with a visible title. Outside that case a position persist keeps the stored `h` as it does for an auto-height block, so the one-row height never reaches disk (`nodeShowsStoredHeight`, `LayoutPersister.ts:31-34, 103, 113`).
 - **Column changes.**
-  - Changing the column count from the edit toolbar clamps `w` and saves the new count (`src/GridLayout.ts:241-256`).
-  - The settings tab dropdowns save only `columns` or `mobileColumns`, through `applyLayoutChange`: open edit sessions end as Done first, and the open homepages reload with the new count (`src/settings/HomepageSettingTab.ts:66-70, 246-256, 266-276`).
-  - Render clamps `w` again (`GridLayout.ts:358`), and the next load clamps `x` and `w` (§6.2).
-  - Discard restores the column count the edit session started with (`src/EditToolbar.ts:70, 113-116`).
+  - Changing the column count from the edit toolbar clamps `w` and saves the new count (`src/GridLayout.ts:306-321`).
+  - The settings tab dropdowns save only `columns` or `mobileColumns`, through `applyLayoutChange`: open edit sessions end as Done first, and the open homepages reload with the new count (`src/settings/HomepageSettingTab.ts:67-71, 247-257, 267-277`).
+  - Render clamps `w` again (`GridLayout.ts:438`), and the next load clamps `x` and `w` (§6.2).
+  - Discard restores the column count the edit session started with (`src/EditToolbar.ts:71, 114-117`).
 - **Collapse.**
-  - Collapsing resizes the cell to 1 row, then writes `collapsed: true` and `_expandedH: <live h>` (`src/grid/CollapseToggle.ts:63-69`). The stored `h` is not changed by the toggle; in view mode a collapsed block is drawn one row high whatever `h` holds (`viewModeHeight`, `CollapseToggle.ts:16-28`), at render and when the pane widens back to the saved columns.
-  - Expanding resizes the cell and writes `collapsed: false` and `h: _expandedH` when that is a number `>= 1`, else the render-time `h` (`CollapseToggle.ts:70-79`).
+  - Collapsing resizes the cell to 1 row, then writes `collapsed: true` and `_expandedH: <live h>` (`src/grid/CollapseToggle.ts:74-80`). The stored `h` is not changed by the toggle; in view mode a collapsed block is drawn one row high whatever `h` holds (`viewModeHeight`, `CollapseToggle.ts:26-38`), at render and when the pane widens back to the saved columns.
+  - Expanding resizes the cell and writes `collapsed: false` and `h: _expandedH` when that is a number `>= 1`, else the render-time `h` (`CollapseToggle.ts:81-90`).
   - The toggle is a no-op in edit mode, and on a header zone that draws no header (no `role="button"`, M49), so a header-less block is never written collapsed.
-  - A block with `collapsed: true` that has no header to expand it again renders expanded: one with `_showTitle === false`, and since `isCollapsible` (`src/grid/CollapseToggle.ts:22-24`) any Clock, Greeting or Spacer, which draw no header. Such a block renders at `_expandedH` when that is a positive number and at `h` otherwise (`CollapseToggle.ts:16-28`, `GridLayout.ts:349-353`, `src/grid/BlockWrapper.ts:21-24`).
+  - A block with `collapsed: true` that has no header to expand it again renders expanded: one with `_showTitle === false`, and since `isCollapsible` (`src/grid/CollapseToggle.ts:22-24`) any Clock, Greeting or Spacer, which draw no header. Such a block renders at `_expandedH` when that is a positive number and at `h` otherwise (`CollapseToggle.ts:16-28`, `GridLayout.ts:429-433`, `src/grid/BlockWrapper.ts:21-24`).
 
 ### 3.2 `config`
 
 - **Key namespaces** (`types.ts:43-48`):
   - Keys starting with `_` are shared card, header and body styling that every block accepts.
   - Block-specific keys must not start with `_`.
-- **Declared keys.** Each factory's `defaultConfig` in `registerBlocks()` (`src/main.ts:41-207`) lists the keys its block reads. It seeds new blocks as a deep copy, `structuredClone(factory.defaultConfig)` (`src/EditToolbar.ts:234-235`), so nested defaults such as `items: []` are not shared with the factory object. It also serves as the import allowlist (§11.2).
+- **Declared keys.** Each factory's `defaultConfig` in `registerBlocks()` (`src/main.ts:42-208`) lists the keys its block reads. It seeds new blocks as a deep copy, `structuredClone(factory.defaultConfig)` (`src/EditToolbar.ts:248-249`), so nested defaults such as `items: []` are not shared with the factory object. It also serves as the import allowlist (§11.2).
   - A key declared as `undefined` is never serialized, because JSON drops `undefined`.
   - The per-type key lists are in [blocks.md](blocks.md).
-- **Numeric ranges.** A number key listed in `CONFIG_RANGES` (`src/utils/configRanges.ts:10-21`) is rounded and clamped to its range at import (§11.2), and again where the block reads it through `rangedNumber` (`:32-36`): Pomodoro's minutes and `sessionsBeforeLong`, Quotes' `columns` and `maxItems`, Recent files' `maxItems`. Button grid, Bookmarks and Image gallery bound their `columns` and `maxItems` with their own read-time clamps (for example `src/blocks/ImageGalleryBlock.ts:292-294`). Load does not rewrite a stored out-of-range number.
-- **Settings modal.** Save replaces the whole `config` with a `structuredClone` draft (`src/modals/BlockSettingsModal.ts:51`; `EditHandleBar.ts:99-105`).
+- **Numeric ranges.** A number key listed in `CONFIG_RANGES` (`src/utils/configRanges.ts:10-21`) is rounded and clamped to its range at import (§11.2), and again where the block reads it through `rangedNumber` (`:32-36`): Pomodoro's minutes and `sessionsBeforeLong`, Quotes' `columns` and `maxItems`, Recent files' `maxItems`. Button grid, Bookmarks and Image gallery bound their `columns` and `maxItems` with their own read-time clamps (for example `src/blocks/ImageGalleryBlock.ts:310-312`). Load does not rewrite a stored out-of-range number.
+- **Settings modal.** Save replaces the whole `config` with a `structuredClone` draft (`src/modals/BlockSettingsModal.ts:54`; `EditHandleBar.ts:101-107`).
 - **Keys with special persistence rules:**
 
 | Key | Where | Rule |
 |---|---|---|
-| `apiKey` | voice-dictation (declared `''`, `main.ts:192`). The crypto helpers match any block's `config.apiKey` by name (`src/utils/apiKeyLayout.ts:6-9`). | Encrypted at rest (§9). Removed by export and import. Set to `''` by copy-to-mobile (§11). |
-| `customCss` | button-grid only. It is read but deliberately undeclared (`main.ts:78-79`). | Deleted from every other type on load (`validation.ts:206-208`). Removed by export and import. |
+| `apiKey` | voice-dictation (declared `''`, `main.ts:193`). The crypto helpers match any block's `config.apiKey` by name (`src/utils/apiKeyLayout.ts:6-9`). | Encrypted at rest (§9). Removed by export and import. Set to `''` by copy-to-mobile (§11). |
+| `customCss` | button-grid only. It is read but deliberately undeclared (`main.ts:79-80`). | Deleted from every other type on load (`validation.ts:201-203`). Removed by export and import. |
 
 #### Shared `_` keys
 
-The persisted types and ranges are below. Rendering is described in [styling.md](styling.md). Numeric ranges come from `STYLE_RANGES` (`src/utils/blockStyling.ts:13-23`). Render clamps each value (`blockStyling.ts:83-213`), but an out-of-range value stays stored until an import sanitizes it.
+The persisted types and ranges are below. Rendering is described in [styling.md](styling.md). Numeric ranges come from `STYLE_RANGES` (`src/utils/blockStyling.ts:15-25`). Render clamps each value (`blockStyling.ts:73-211`), but an out-of-range value stays stored until an import sanitizes it.
 
 | Key | Type / format | Default when absent |
 |---|---|---|
 | `_titleLabel` | string (import keeps at most 200 chars) | The block's built-in title, `blockTitle(type)` (`src/blockMeta.ts`); Clock, Greeting and Spacer draw no header, and their settings show no title controls |
 | `_titleEmoji` | string (import keeps at most 16 chars) | none |
 | `_showTitle`, `_showBorder`, `_showBackground`, `_showHeaderAccent` | boolean | Shown; only `false` hides |
-| `_showDivider` | boolean | Hidden; only `true` shows (`src/grid/BlockWrapper.ts:44`) |
+| `_showDivider` | boolean | Hidden; only `true` shows (`src/grid/BlockWrapper.ts:46`) |
 | `_titleSize` | `/^h[1-6]$/` (`BaseBlock.ts:5`) | No size class |
-| `_borderStyle` | `solid` \| `dashed` \| `dotted` (`blockStyling.ts:45`) | CSS default |
-| `_accentColor`, `_gradientStart`, `_gradientEnd` | `''` or `#rrggbb` (`blockStyling.ts:6`) | none |
+| `_borderStyle` | `solid` \| `dashed` \| `dotted` (`blockStyling.ts:35`) | CSS default |
+| `_accentColor`, `_gradientStart`, `_gradientEnd` | `''` or `#rrggbb` (`blockStyling.ts:8`) | none |
 | `_titleGap` | 0–48 | CSS default, 8px (a stored 0 also means the default) |
 | `_cardPadding` | 0–48 (a stored negative value renders as the default and is clamped to 0 at import) | A snippet's `--hp-card-padding`, else the plugin's `--hp-card-padding-default` token (a stored 0 also means the default) |
 | `_bgOpacity` | 0–100 | 100 |
@@ -201,26 +201,26 @@ The template is `validation.ts:45-103`, with `columns: 3`.
 | `default-voice-dictation` | voice-dictation | 0, 8, 2, 3 | `{ folder: '', triggerMode: 'tap', _titleLabel: 'Voice notes' }` (no `apiKey`) |
 | `default-gallery` | image-gallery | 0, 11, 3, 3 | `{ folder: '', _titleLabel: 'Gallery', columns: 3, maxItems: 0 }` |
 
-The stored rectangles of `default-quotes` (rows 6–8) and `default-voice-dictation` (from row 8) overlap in columns 0–1. The comment "Row 3 (y: 8)" (`validation.ts:89`) does not match the "Row 2 (y: 6–8)" comment above it (`validation.ts:82`). The default `mobileBlocks` is `[]`.
+The stored rectangles of `default-quotes` (rows 6–8) and `default-voice-dictation` (from row 8) overlap in columns 0–1. The comment "Row 3 (y: 8)" (`validation.ts:84`) does not match the "Row 2 (y: 6–8)" comment above it (`validation.ts:79`). The default `mobileBlocks` is `[]`.
 
 ## 5. Block ids
 
 | Source | Form | Where |
 |---|---|---|
-| Default layout | `default-<name>` | `validation.ts:48-103` |
+| Default layout | `default-<name>` | `validation.ts:48-98` |
 | `newId()` | `crypto.randomUUID()`, or `'hp-' + base36 random + base36 Date.now()` when that API is missing | `src/utils/ids.ts:5-9` |
 
 Both forms match `SAFE_ID_RE`.
 
-- **Minted** by: add block (`EditToolbar.ts:225`), duplicate (`EditHandleBar.ts:82`) and copy-to-mobile (`HomepageSettingTab.ts:289`, every block).
+- **Minted** by: add block (`EditToolbar.ts:239`), duplicate (`EditHandleBar.ts:84`) and copy-to-mobile (`HomepageSettingTab.ts:294`, every block).
 - **Kept** by: load, import, settings save, collapse, moves and a followed rename.
 - **Reset:** a desktop-half reset brings back the `default-*` ids in `blocks`. A phone reset in Separate mode fills `mobileBlocks` with copies of the default blocks under the same `default-*` ids (§11.4).
-- **Uniqueness** is enforced per array at validation. The first occurrence wins (`validation.ts:287-292`), and the drop is not reported. The same id may appear in both `blocks` and `mobileBlocks`.
+- **Uniqueness** is enforced per array at validation. The first occurrence wins (`validation.ts:340-345`), and the drop is not reported. The same id may appear in both `blocks` and `mobileBlocks`.
 - **Keyed by id:**
-  - GridStack `gs-id` and `updateBlockConfig` (`main.ts:596-620`).
-  - The refuse-to-downgrade lookup, keyed by id per array (`apiKeyLayout.ts:49-59`).
+  - GridStack `gs-id` and `updateBlockConfig` (`main.ts:605-629`).
+  - The refuse-to-downgrade lookup, keyed by id per array (`apiKeyLayout.ts:70-80`).
   - The unreadable-key Notice record (`apiKeyLayout.ts:188-196`).
-  - Pomodoro's in-memory `timerStore` (`src/blocks/PomodoroBlock.ts:22, 125`).
+  - Pomodoro's in-memory `timerStore` (`src/blocks/PomodoroBlock.ts:23, 126`).
 
 ## 6. Validation and migration
 
@@ -231,40 +231,40 @@ Defined at `validation.ts:329-432`.
 - `null` or `undefined` returns the defaults and fires **no** callback (`:335`).
 - A non-object or an array fires `onTopLevelCorruption` and returns the defaults (`:336-339`).
 - Each scalar field is checked independently, with the fallbacks from §2.
-- A `blocks` or `mobileBlocks` that is present, not `null` and not an array fires `onTopLevelCorruption`. The array is replaced by its default (`:409-410`).
-- Dropped-block counts from both arrays (invalid blocks and blocks past the limit) are summed into one `onBlocksDropped(count)` (`:413-418`).
-- Blocks of unknown types and unknown top-level fields go to `preserved` (§2.5, `:415-417, 428-430`).
-- **Contract:** idempotent. `validateLayout(validateLayout(x))` deep-equals `validateLayout(x)`, because every load resaves (`:316-318`). `preserved` is read back from its own field for that (§2.5).
+- A `blocks` or `mobileBlocks` that is present, not `null` and not an array fires `onTopLevelCorruption`. The array is replaced by its default (`:428-429`).
+- Dropped-block counts from both arrays (invalid blocks and blocks past the limit) are summed into one `onBlocksDropped(count)` (`:432-437`).
+- Blocks of unknown types and unknown top-level fields go to `preserved` (§2.5, `:434-436, 447-449`).
+- **Contract:** idempotent. `validateLayout(validateLayout(x))` deep-equals `validateLayout(x)`, because every load resaves (`:335-337`). `preserved` is read back from its own field for that (§2.5).
 
 ### 6.2 `validateBlocks(raw, columns, defaults, onInvalidDropped?, onUnknownType?)`
 
-Defined at `validation.ts:260-310`. Steps run in this order:
+Defined at `validation.ts:264-329`. Steps run in this order:
 
 1. A non-array input returns `defaults` (`:267`).
-2. When `onUnknownType` is passed (`validateLayout` always passes it), each well-formed block of an unknown type, judged on a migrated copy so that a legacy type such as `tag-grid` counts as known and a retired one (`insight`) does not qualify, is handed to it as stored and leaves the array (`:270-276`, §2.5). Without the callback such a block counts as invalid at step 4.
-3. `migrateBlockInstance` runs on every remaining entry (`:277`).
-4. Entries are filtered through `isValidBlockInstance` (`:278`).
-5. The result is sliced to `MAX_BLOCKS` (100) (`:282`). The invalid entries and the blocks past the limit are reported together as one count (`:279-281`): a block past the limit is lost as surely as an invalid one (M8).
-6. Ids are de-duplicated, first occurrence wins. This is **not reported** (`:287-292`).
-7. `w = min(w, columns)` and `x = min(x, max(0, columns - w))` (`:294-297`). `blocks` uses `columns` and `mobileBlocks` uses `mobileColumns`.
-8. Each block is rebuilt from `id`, `type`, `x`, `y`, `w`, `h` and `config`. `collapsed` is kept only when `true`, and `_expandedH` only when it is a finite number `>= 1`, rounded. Any other top-level field is dropped (`:293-309`).
+2. When `onUnknownType` is passed (`validateLayout` always passes it), each well-formed block of an unknown type, judged on a migrated copy so that a legacy type such as `tag-grid` counts as known and a retired one (`insight`) does not qualify, is handed to it as stored and leaves the array (`:270-277`, §2.5). Without the callback such a block counts as invalid at step 4.
+3. `migrateBlockInstance` runs on every remaining entry (`:282`).
+4. Entries are filtered through `isValidBlockInstance` (`:283`).
+5. The result is sliced to `MAX_BLOCKS` (100) (`:286`). The invalid entries and the blocks past the limit are reported together as one count (`:284-285`): a block past the limit is lost as surely as an invalid one (M8).
+6. Ids are de-duplicated, first occurrence wins. This is **not reported** (`:306-311`).
+7. `w = min(w, columns)` and `x = min(x, max(0, columns - w))` (`:313-316`). `blocks` uses `columns` and `mobileBlocks` uses `mobileColumns`.
+8. Each block is rebuilt from `id`, `type`, `x`, `y`, `w`, `h` and `config`. `collapsed` is kept only when `true`, and `_expandedH` only when it is a finite number `>= 1`, rounded. Any other top-level field is dropped (`:312-328`).
 
 ### 6.3 Limits
 
 | Limit | Value | Enforced |
 |---|---|---|
-| Blocks per array | `MAX_BLOCKS = 100` (`validation.ts:115`) | Load and import, which drop the blocks past it and report them (§6.2; at load as `blocks-dropped`, §7.3). Add block and Duplicate refuse a 101st block with the Notice "a homepage holds at most 100 blocks." (`canAddBlock`, `src/grid/blockLimit.ts:9-13`; `GridLayout.ts:361`, `EditHandleBar.ts:81`). Preserved blocks of a newer version count too: the known blocks come first, and preserved blocks past the limit are dropped and reported (§2.5). |
-| Grid columns | 2–5 desktop, 1–3 mobile | Load, the settings dropdowns, and the toolbar choices (`EditToolbar.ts:118`) |
-| `x`, `w` | Clamped to the column count | Load and import. Also: the toolbar column change (`w` only, `GridLayout.ts:250-253`), copy to mobile and a phone reset (§11.3, §11.4), move up/down (`x` only, `EditHandleBar.ts:243, 246`) and position persists (`LayoutPersister.ts:84-86`). The settings dropdowns do not clamp. |
+| Blocks per array | `MAX_BLOCKS = 100` (`validation.ts:115`) | Load and import, which drop the blocks past it and report them (§6.2; at load as `blocks-dropped`, §7.3). Add block and Duplicate refuse a 101st block with the Notice "a homepage holds at most 100 blocks." (`canAddBlock`, `src/grid/blockLimit.ts:9-13`; `GridLayout.ts:362`, `EditHandleBar.ts:81`). Preserved blocks of a newer version count too: the known blocks come first, and preserved blocks past the limit are dropped and reported (§2.5). |
+| Grid columns | 2–5 desktop, 1–3 mobile | Load, the settings dropdowns, and the toolbar choices (`EditToolbar.ts:169`) |
+| `x`, `w` | Clamped to the column count | Load and import. Also: the toolbar column change (`w` only, `GridLayout.ts:315-318`), copy to mobile and a phone reset (§11.3, §11.4), move up/down (`x` only, `EditHandleBar.ts:245, 248`) and position persists (`LayoutPersister.ts:84-86`). The settings dropdowns do not clamp. |
 | `y`, `h` | Unbounded | never |
-| `_expandedH` | `>= 1`, no upper bound | Load and import (`validation.ts:282-285`); expand ignores a value below 1 (`CollapseToggle.ts:73-74`) |
+| `_expandedH` | `>= 1`, no upper bound | Load and import (`validation.ts:323-326`); expand ignores a value below 1 (`CollapseToggle.ts:84-85`) |
 | Numeric block settings | Per key in `CONFIG_RANGES` (`src/utils/configRanges.ts:10-21`) | Import, and where Pomodoro, Quotes and Recent files read them (§3.2). Not on load. |
-| button-grid `config.columns` | at most 3 | Load migration (`validation.ts:199-201`) |
-| `_titleLabel` / `_titleEmoji` length | 200 / 16 | Import only (`importSanitizer.ts:43-44`) |
+| button-grid `config.columns` | at most 3 | Load migration (`validation.ts:194-196`) |
+| `_titleLabel` / `_titleEmoji` length | 200 / 16 | Import only (`importSanitizer.ts:41-42`) |
 
 ### 6.4 `migrateBlockInstance(b)`
 
-Defined at `validation.ts:131-222`. It takes a shallow copy of the block (`:132`) but **mutates the nested `config` in place** (`:152-154`), so the caller's object changes too (`isUnknownTypeBlock` therefore passes it a copy of the config, so a preserved block is written back as stored). Migrations run in this order, and each one deletes its legacy key or writes only when the target key is unset, which keeps the function idempotent (`:127-129`).
+Defined at `validation.ts:126-217`. It takes a shallow copy of the block (`:127`) but **mutates the nested `config` in place** (`:147-149`), so the caller's object changes too (`isUnknownTypeBlock` therefore passes it a copy of the config, so a preserved block is written back as stored). Migrations run in this order, and each one deletes its legacy key or writes only when the target key is unset, which keeps the function idempotent (`:122-124`).
 
 | # | Legacy shape | Result | Lines |
 |---|---|---|---|
@@ -283,7 +283,7 @@ There are two top-level migrations as well: `hideScrollbar` becomes `showScrollb
 
 ## 7. Load path and recovery
 
-`onload` runs `registerBlocks()` first, re-arms the image cache, installs the tag-cache listeners and registers the vault `rename` listener that calls `followRename` (§8), then loads the layout (`src/main.ts:233-277`). The view, commands, ribbon and settings tab are registered only after the load completes (`main.ts:279-301`).
+`onload` runs `registerBlocks()` first, re-arms the image cache, installs the tag-cache listeners and registers the vault `rename` listener that calls `followRename` (§8), then loads the layout (`src/main.ts:250-302`). The view, commands, ribbon and settings tab are registered only after the load completes (`main.ts:304-326`).
 
 ### 7.1 `loadData()`: `null` versus `undefined`
 
@@ -324,14 +324,14 @@ flowchart TD
 
 ### 7.3 Problems, backups and the guard
 
-- **Only the first problem is reported** (`loadRecovery.ts:59`). An `unusable` top level or blocks field is recorded before `blocks-dropped`, because `validateLayout` checks it first (`validation.ts:388` versus `:395`).
-- **Problem kinds and their Notice.** The Notice is shown for 12 s (`main.ts:268-273`, `loadRecovery.ts:139-150`):
+- **Only the first problem is reported** (`loadRecovery.ts:59`). An `unusable` top level or blocks field is recorded before `blocks-dropped`, because `validateLayout` checks it first (`validation.ts:429` versus `:437`).
+- **Problem kinds and their Notice.** The Notice is shown for 12 s (`main.ts:271-276`, `loadRecovery.ts:139-150`):
 
   | Problem | Notice text | Also |
   |---|---|---|
   | `unreadable` | "data.json could not be read, so the default layout was loaded." | – |
   | `unusable` | "data.json does not hold a usable layout, so the default blocks were loaded." | – |
-  | `blocks-dropped` | "N block(s) couldn't be loaded (invalid, or past the limit of 100) and were removed." | A `console.warn`: "N block(s) were dropped from the layout on load (invalid, or past the block limit)" (`main.ts:270`) |
+  | `blocks-dropped` | "N block(s) couldn't be loaded (invalid, or past the limit of 100) and were removed." | A `console.warn`: "N block(s) were dropped from the layout on load (invalid, or past the block limit)" (`main.ts:273`) |
 
   Each Notice ends with a backup sentence. With a backup it reads "The original file was saved as `<name>`." Without one it reads "The original file could not be backed up, so nothing will be saved until it can be; data.json is kept as it is."
 - **Backup** (`backupDataFile`, `loadRecovery.ts:81-104`):
@@ -350,51 +350,51 @@ stateDiagram-v2
   Open --> Open: every write allowed
 ```
 
-When a retry succeeds, the save shows a 12 s Notice: "the original data.json was saved as `<name>`; saving resumes" (`main.ts:441`).
+When a retry succeeds, the save shows a 12 s Notice: "the original data.json was saved as `<name>`; saving resumes" (`main.ts:450`).
 
 ### 7.4 After validation
 
-When the loaded layout holds preserved blocks of a newer version, a 12 s Notice counts them first (§2.5, `main.ts:274-275`); the external-change path (§7.5) shows no such Notice. Then:
+When the loaded layout holds preserved blocks of a newer version, a 12 s Notice counts them first (§2.5, `main.ts:277-284`); the external-change path (§7.5) shows no such Notice. Then:
 
 1. `decryptApiKeys(validated)` runs (§9.4). It returns a new layout and leaves `validated` unchanged.
-2. `plugin.layout = decryptResult.layout` (`main.ts:283`).
-3. If the decrypt was not `stable`, a 10 s Notice says the voice API key could not be loaded and will be retried at the next restart (`main.ts:284-286`).
+2. `plugin.layout = decryptResult.layout` (`main.ts:292`).
+3. If the decrypt was not `stable`, a 10 s Notice says the voice API key could not be loaded and will be retried at the next restart (`main.ts:293-295`).
 4. `announceUnreadableKeys` runs (§10).
-5. **If `stable`, `saveLayout(plugin.layout)` runs.** A normal launch therefore rewrites `data.json` (`main.ts:291-293`). This resave is how migrations, clamps, dropped keys and first-time key encryption reach disk. The guard still applies to it.
+5. **If `stable`, `saveLayout(plugin.layout)` runs.** A normal launch therefore rewrites `data.json` (`main.ts:300-302`). This resave is how migrations, clamps, dropped keys and first-time key encryption reach disk. The guard still applies to it.
 
 ### 7.5 External changes to `data.json`
 
-Obsidian calls `onExternalSettingsChange` when `data.json` changes on disk from outside the plugin, typically when a sync client brings another device's layout (`src/main.ts:532-564`). Without it, the next save on this device would write its stale in-memory layout over the newer file. The steps:
+Obsidian calls `onExternalSettingsChange` when `data.json` changes on disk from outside the plugin, typically when a sync client brings another device's layout (`src/main.ts:541-573`). Without it, the next save on this device would write its stale in-memory layout over the newer file. The steps:
 
-1. Wait for the save chain to drain and note `saveSeq`, which every `saveLayout` call increments (`:533-534`), then `loadData()` (`:535`).
-2. `null` (the file is gone) changes nothing: the next save writes it again (`:536`).
-3. A parsed value that serializes to the JSON this device wrote last (`lastWrittenJson`, §8) is this device's own save and changes nothing (`:537`).
-4. `loadLayoutWithRecovery` runs as at load (§7.1–§7.3). On a problem, the new guard replaces `dataGuard`, a `console.warn` and a 12 s Notice say the file could not be used (naming the backup when one was written), and the loaded layout stays (`:538-545`).
-5. While any homepage view is in edit mode, nothing is loaded: a 10 s Notice says the layout changed on another device and that leaving edit mode keeps the layout shown here (`:546-550`). That session's Done or Discard then writes this device's layout.
-6. `decryptApiKeys` runs (`:551`). If a local save happened meanwhile (`saveSeq` changed), nothing is loaded: that write lands after the synced file and wins, so memory and disk agree (`:555`).
-7. Otherwise each view's queued position save is cancelled, `plugin.layout` takes the result without a save, a key the device store cannot read right now gets the same Notice as at load (§9.4), unreadable keys are announced, and every homepage view reloads with `reload(true)` (`:557-563`).
+1. Wait for the save chain to drain and note `saveSeq`, which every `saveLayout` call increments (`:547-548`), then `loadData()` (`:549`).
+2. `null` (the file is gone) changes nothing: the next save writes it again (`:550`).
+3. A parsed value that serializes to the JSON this device wrote last (`lastWrittenJson`, §8) is this device's own save and changes nothing (`:551`).
+4. `loadLayoutWithRecovery` runs as at load (§7.1–§7.3). On a problem, the new guard replaces `dataGuard`, a `console.warn` and a 12 s Notice say the file could not be used (naming the backup when one was written), and the loaded layout stays (`:552-559`).
+5. While any homepage view is in edit mode, nothing is loaded: a 10 s Notice says the layout changed on another device and that leaving edit mode keeps the layout shown here (`:560-564`). That session's Done or Discard then writes this device's layout.
+6. `decryptApiKeys` runs (`:565`). If a local save happened meanwhile (`saveSeq` changed), nothing is loaded: that write lands after the synced file and wins, so memory and disk agree (`:569`).
+7. Otherwise each view's queued position save is cancelled, `plugin.layout` takes the result without a save, a key the device store cannot read right now gets the same Notice as at load (§9.4), unreadable keys are announced, and every homepage view reloads with `reload(true)` (`:571-577`).
 
 A view reloaded with `reload(true)` calls `GridLayout.holdDerivedPersist()` on its new grid (`src/HomepageView.ts:42-45`). Until the next edit-mode switch, that grid does not save the positions and heights it derives in view mode (auto-height measurement, repack), because they depend on the pane width: two running devices with different widths would otherwise rewrite and reload each other's layout without end. User actions such as a collapse still save. Later reads of `data.json` for the key lookup (`readPriorLayout`, §9.3) are unrelated to this path. Flow: [flows.md](flows.md) §12.
 
 ## 8. Save chain
 
-All persistence goes through `saveLayout` (`src/main.ts:450-487`).
+All persistence goes through `saveLayout` (`src/main.ts:459-496`).
 
 | Writer | Path | What it replaces |
 |---|---|---|
 | Post-load resave | `main.ts:291-293` | The whole validated layout |
-| Grid: drag stop, resize stop, auto-height persists, edit-mode flushes and the edit-exit repack, column change, add, duplicate, move up/down, remove, block settings save | `GridLayout` `onLayoutChange` → `HomepageView.ts:36-39` (sets `plugin.layout`, then `saveLayout`) | The active array through `buildLayoutUpdate` (`GridLayout.ts:587-601`), plus the active column count on a column change. A grid held by `holdDerivedPersist` skips the view-mode auto-height persists (§7.5). |
-| Collapse toggle | `CollapseToggle.ts:81` | The active array |
-| Edit mode Discard | `EditToolbar.ts:110-119` (sets `plugin.layout` synchronously first) | The active array and the active column count, from the snapshots taken on entering edit mode (`EditToolbar.ts:69-70`) |
+| Grid: drag stop, resize stop, auto-height persists, edit-mode flushes and the edit-exit repack, column change, add, duplicate, move up/down, remove, block settings save | `GridLayout` `onLayoutChange` → `HomepageView.ts:38-41` (sets `plugin.layout`, then `saveLayout`) | The active array through `buildLayoutUpdate` (`GridLayout.ts:684-698`), plus the active column count on a column change. A grid held by `holdDerivedPersist` skips the view-mode auto-height persists (§7.5). |
+| Collapse toggle | `CollapseToggle.ts:92` | The active array |
+| Edit mode Discard | `EditToolbar.ts:111-120` (sets `plugin.layout` synchronously first) | The active array and the active column count, from the snapshots taken on entering edit mode (`EditToolbar.ts:70-71`) |
 | Renamed file or folder | `followRename`, from the vault `rename` listener (`main.ts:262, 494-510`) | Every config path the rename concerns, in both arrays, through `followRenameInBlock` (`src/utils/pathRename.ts:72-102`): Embedded note `filePath`; the `folder` of Gallery, Folder links and Voice notes; Folder links `links[].path`, Button grid `items[].link` and Bookmarks `items[].url` (the last two vault values only, not URLs with a scheme); Recent files `excludeFolders`. A path matches the renamed path itself, the same note without `.md`, or a path inside a renamed folder (`renamePath`, `:10-15`). A typed link is rewritten by `renameLink` (`:25-39`), which keeps `[[ ]]`, a `#heading` and an `|alias`, and also follows a bare name (`Plan`) when that name no longer resolves to another note (`resolves`, `metadataCache.getFirstLinkpathDest`, passed in by `followRename`). It also rewrites the Discard snapshot of an open edit session (`mapEditSnapshot`). When a path changed, it saves and then reloads every open homepage view that is not being edited (`view.reload()`, `main.ts:504-509`), so mounted blocks use the new paths at once; a view in edit mode keeps its placeholders and its rewritten snapshot. |
 | Static text inline edit; an embedded note that saw a rename the plugin missed | `updateBlockConfig` (`StaticTextBlock.ts:132`, `EmbeddedNoteBlock.ts:44`) | One block's config in the active array, and in the Discard snapshot of an open edit session (§8.2) |
 | Settings tab | `applyLayoutChange` (`HomepageSettingTab.ts:66-70`), the startup and display controls, copy (`:296`), reset (`:375`), import (`:465`). Copy and reset run only after a `ConfirmActionModal` (`src/modals/ConfirmActionModal.ts`) whose Cancel button takes the focus. | Top-level fields, `mobileBlocks` (copy), one layout half (reset), or the whole layout (import) |
 
 One path assigns `plugin.layout` without saving: `onExternalSettingsChange` loads the layout another device already wrote (§7.5).
 
-The object written is `toStoredLayout(persistableLayout(layout))` (`main.ts:467`): the encrypted copy, with the data of a newer version put back where that version reads it (§2.5). After each successful `saveData` the step stores the JSON it wrote in `lastWrittenJson` (`main.ts:469`), so that `onExternalSettingsChange` can tell this device's own write from another device's.
+The object written is `toStoredLayout(persistableLayout(layout))` (`main.ts:476`): the encrypted copy, with the data of a newer version put back where that version reads it (§2.5). After each successful `saveData` the step stores the JSON it wrote in `lastWrittenJson` (`main.ts:478`), so that `onExternalSettingsChange` can tell this device's own write from another device's.
 
-`buildLayoutUpdate` and `saveActiveBlocks` (`main.ts:582-587`) route the block array to `mobileBlocks` when `isMobileActive()`, and to `blocks` otherwise. Only `buildLayoutUpdate` takes a column count (`extra.columns`), routed the same way to `mobileColumns` / `columns`.
+`buildLayoutUpdate` and `saveActiveBlocks` (`main.ts:591-596`) route the block array to `mobileBlocks` when `isMobileActive()`, and to `blocks` otherwise. Only `buildLayoutUpdate` takes a column count (`extra.columns`), routed the same way to `mobileColumns` / `columns`.
 
 ### 8.1 Mechanics
 
@@ -425,25 +425,25 @@ sequenceDiagram
 
 ### 8.2 Ordering guarantees
 
-1. **Memory first.** `plugin.layout` is assigned before the call returns (`main.ts:452`). Any later `activeBlocks()` read sees the new value, even before it reaches disk.
+1. **Memory first.** `plugin.layout` is assigned before the call returns (`main.ts:476`). Any later `activeBlocks()` read sees the new value, even before it reaches disk.
 2. **FIFO writes, last call wins.** Steps run strictly in call order. Each step writes the layout passed to *its own* call, not `plugin.layout` at run time. Once the chain drains, disk holds the last call's layout, provided that write succeeded.
-3. **The whole write sits in one step.** The guard check, the prior-disk read, encryption and `saveData` all run inside the same step. Save N+1's `readPriorLayout` therefore sees save N's output (`main.ts:455-469, 573-580`).
+3. **The whole write sits in one step.** The guard check, the prior-disk read, encryption and `saveData` all run inside the same step. Save N+1's `readPriorLayout` therefore sees save N's output (`main.ts:479-493, 604-611`).
 4. **No coalescing here.** N calls produce N writes. Debouncing happens upstream, for example `LayoutPersister.persistDebounced` at 50 ms (`LayoutPersister.ts:130-134`).
-5. **The chain never breaks and never rejects.** A failed step is caught by the rejection handler (`main.ts:472-484`), later steps still run, and `saveLayout` always resolves. A step the guard blocks counts as a success.
-6. **`saveLayout` resolves when its own step is done** (`main.ts:486`), not when later steps are done.
-7. **`updateBlockConfig(id, patch)`** (`main.ts:596-620`):
+5. **The chain never breaks and never rejects.** A failed step is caught by the rejection handler (`main.ts:592-604`), later steps still run, and `saveLayout` always resolves. A step the guard blocks counts as a success.
+6. **`saveLayout` resolves when its own step is done** (`main.ts:606`), not when later steps are done.
+7. **`updateBlockConfig(id, patch)`** (`main.ts:612-636`):
    1. It awaits `savePromise` as it stood at call time.
    2. It then reads `activeBlocks()` and builds `{ ...b, config: { ...b.config, ...patch } }`, so positions from saves queued before or during the wait are kept.
-   3. It applies the same patch to the Discard snapshot of every open edit session (`mapEditSnapshot`, `:613-616`): a session that started while the patch waited took its snapshot without it, and Discard must not revert a view-mode save (M52).
+   3. It applies the same patch to the Discard snapshot of every open edit session (`mapEditSnapshot`, `:629-632`): a session that started while the patch waited took its snapshot without it, and Discard must not revert a view-mode save (M52).
    4. It saves through `saveActiveBlocks`.
    5. A missing id logs `console.warn` and the patch is dropped. The same happens to a block that exists only in the inactive platform's array.
 
-   A caller that builds a layout from a value read before an `await` can overwrite newer in-memory state. This is the hazard noted at `main.ts:593-594`.
+   A caller that builds a layout from a value read before an `await` can overwrite newer in-memory state. This is the hazard noted at `main.ts:622-623`.
 
 ### 8.3 Failure handling
 
 - On a `saveData` rejection, `console.error('[Homepage Blocks] Failed to save layout:', err.message)` is logged. The raw error object is never logged, so a key cannot leak into the console.
-- An 8 s Notice, "failed to save layout. Check disk space / permissions.", is shown once until the next success (`main.ts:472-484`).
+- An 8 s Notice, "failed to save layout. Check disk space / permissions.", is shown once until the next success (`main.ts:494-508`).
 - Memory stays authoritative, so the session keeps working.
 - Whether `saveData` actually rejects on a disk error is host behaviour and is not visible in this repo.
 
@@ -453,23 +453,23 @@ The code is in `src/utils/apiKeyCrypto.ts` (primitives) and `src/utils/apiKeyLay
 
 ### 9.1 Format
 
-`enc:v1:<base64 IV>:<base64 AES-GCM output>` (`apiKeyCrypto.ts:23-25, 178-180`). The IV is 12 random bytes per encryption. `isEncrypted(v)` is a prefix test for `enc:v1:` (`:145-147`). Any other string is treated as plaintext.
+`enc:v1:<base64 IV>:<base64 AES-GCM output>` (`apiKeyCrypto.ts:23-25, 195-197`). The IV is 12 random bytes per encryption. `isEncrypted(v)` is a prefix test for `enc:v1:` (`:162-164`). Any other string is treated as plaintext.
 
 ### 9.2 Device key
 
-- `loadDeviceKey()` (`apiKeyCrypto.ts:89-98`) returns the key cached in the module. Otherwise it reads IndexedDB database `homepage-blocks-kv` (version 1), store `keys`, record `apiKeyDeviceKey` (`readOrCreateDeviceKey`, `:101-127`).
-- **One load at a time.** Callers that ask while a load is in progress share its promise (`inflightKey`, `:96`), which clears itself when it settles. Parallel first-use encryptions therefore generate and store a single key.
-- If no key is stored, it generates an **AES-GCM 256, non-extractable** key with usages `encrypt` and `decrypt`, stores it and caches it (`:110-117`).
-- **Missing WebCrypto or IndexedDB** gives `{ key: null, transient: false }`, which is permanent (`:93`).
-- **An exception** gives `{ key: null, transient: true }` and a `console.error` (`:120-126`).
-- `onunload` drops the cached reference and any load in progress (`_resetDeviceKeyCache`, `apiKeyCrypto.ts:259-262`, `main.ts:345`); the IndexedDB record stays.
+- `loadDeviceKey()` (`apiKeyCrypto.ts:106-115`) returns the key cached in the module. Otherwise it reads IndexedDB database `homepage-blocks-kv` (version 1), store `keys`, record `apiKeyDeviceKey` (`readOrCreateDeviceKey`, `:118-144`).
+- **One load at a time.** Callers that ask while a load is in progress share its promise (`inflightKey`, `:113`), which clears itself when it settles. Parallel first-use encryptions therefore generate and store a single key.
+- If no key is stored, it generates an **AES-GCM 256, non-extractable** key with usages `encrypt` and `decrypt`, stores it and caches it (`:127-134`).
+- **Missing WebCrypto or IndexedDB** gives `{ key: null, transient: false }`, which is permanent (`:110`).
+- **An exception** gives `{ key: null, transient: true }` and a `console.error` (`:137-143`).
+- `onunload` drops the cached reference and any load in progress (`_resetDeviceKeyCache`, `apiKeyCrypto.ts:279-283`, `main.ts:354`); the IndexedDB record stays.
 - **Scope.** The database name has no vault component. Vaults opened in the same Obsidian install therefore presumably share one device key, since IndexedDB is per origin. This has not been verified at runtime. Clearing site data or IndexedDB loses the key, and every stored ciphertext on that device becomes unreadable (§9.4).
 
 ### 9.3 Save: `persistableLayout` → `encryptApiKeys`
 
 - `persistableLayout(layout, readPrior)` (`apiKeyLayout.ts:31-38`) first swaps every plaintext `apiKey` this device has already encrypted or decrypted for that same ciphertext (`withKnownCiphertext`, `:45-58`). The plaintext-to-ciphertext memo is `knownCiphertext` in `apiKeyCrypto.ts:45-55` (`knownCiphertextFor`, `rememberCiphertext`): `encryptApiKeys` records each ciphertext it makes (`apiKeyLayout.ts:106`) and `decryptApiKeys` each one it reads (`:150`). `_resetDeviceKeyCache` clears it with the cached device key (`apiKeyCrypto.ts:276-280`), so it lives one plugin session.
 - The result is returned as it is unless some block in either array still holds a non-empty plaintext `apiKey` (`needsEncryption`, `:16-22`): a key typed this session, or one the memo does not hold.
-- Only then does it read the on-disk layout (`readPriorLayout` → `loadData()`, raw and unvalidated, `main.ts:573-580`) and return a **copy** with encrypted keys. Memory keeps the plaintext.
+- Only then does it read the on-disk layout (`readPriorLayout` → `loadData()`, raw and unvalidated, `main.ts:582-589`) and return a **copy** with encrypted keys. Memory keeps the plaintext.
 - So an unchanged key is written with the same ciphertext, without encryption and without a read of `data.json`; drags and auto-height persists leave the stored ciphertext as it is (M57). A fresh IV is drawn only when a key is new or changed. Before this, every save on a device holding its own readable key re-read `data.json` and changed the ciphertext, which made each save a new synced version.
 
 Per block, `encryptApiKeys` (`apiKeyLayout.ts:69-115`) works as follows. Empty, non-string and already-encrypted values pass through.
@@ -480,23 +480,23 @@ Per block, `encryptApiKeys` (`apiKeyLayout.ts:69-115`) works as follows. Empty, 
 | Failed, transient (key store error or `encrypt()` threw) | yes | The prior ciphertext (refuse to downgrade, `:67-71`) |
 | Failed, transient | no | `''`. Memory keeps the plaintext, so the next save retries. If the session ends first, the key is lost on disk (`:78-80`). |
 | Failed, permanent (no WebCrypto) | yes | The prior ciphertext |
-| Failed, permanent | no | **Plaintext**, with a `console.warn` (`:81-85`, `apiKeyCrypto.ts:170-175`) |
+| Failed, permanent | no | **Plaintext**, with a `console.warn` (`:102-107`, `apiKeyCrypto.ts:187-192`) |
 
-Both arrays, and every block within them, are encrypted concurrently (`apiKeyLayout.ts:61-62, 88-91`). On a device with no stored key, those parallel calls share one device-key load (§9.2), so every ciphertext of that save uses the key IndexedDB keeps.
+Both arrays, and every block within them, are encrypted concurrently (`apiKeyLayout.ts:82-83, 110-113`). On a device with no stored key, those parallel calls share one device-key load (§9.2), so every ciphertext of that save uses the key IndexedDB keeps.
 
 ### 9.4 Load: `decryptApiKeys`
 
-Defined at `apiKeyLayout.ts:114-152`. It runs sequentially, desktop array first, and returns `{ layout, stable, unreadable }`: `layout` is a new object with new block and config objects, and the input is not modified (`:151`). **Keys are never cleared.**
+Defined at `apiKeyLayout.ts:136-175`. It runs sequentially, desktop array first, and returns `{ layout, stable, unreadable }`: `layout` is a new object with new block and config objects, and the input is not modified (`:174`). **Keys are never cleared.**
 
 | Stored value | Decrypt result | Memory holds | Effect |
 |---|---|---|---|
 | `''`, non-string, or plaintext | passed through | as is | A plaintext key is encrypted by the post-load resave |
 | `enc:v1:`, readable here | ok | plaintext | – |
-| `enc:v1:`, key store transiently unavailable | `no-key`, transient | ciphertext | `stable = false`: Notice, no resave this launch (`:129-134`) |
-| `enc:v1:`, no WebCrypto here | `no-key`, permanent | ciphertext | Id added to `unreadable` (`:135-144`) |
-| `enc:v1:`, another device's key, a lost key, or malformed | `corrupt` (`apiKeyCrypto.ts:226, 239-244`) | ciphertext | Id added to `unreadable` |
+| `enc:v1:`, key store transiently unavailable | `no-key`, transient | ciphertext | `stable = false`: Notice, no resave this launch (`:152-157`) |
+| `enc:v1:`, no WebCrypto here | `no-key`, permanent | ciphertext | Id added to `unreadable` (`:158-167`) |
+| `enc:v1:`, another device's key, a lost key, or malformed | `corrupt` (`apiKeyCrypto.ts:243, 256-261`) | ciphertext | Id added to `unreadable` |
 
-Blocks treat an encrypted value as "no usable key on this device" and never send it. The voice block disables the mic and shows "API key unavailable on this device" (`src/blocks/VoiceDictationBlock.ts:178-183, 336`).
+Blocks treat an encrypted value as "no usable key on this device" and never send it. The voice block disables the mic and shows "API key unavailable on this device" (`src/blocks/VoiceDictationBlock.ts:196-201, 415`).
 
 ### 9.5 What other devices see
 
@@ -510,9 +510,9 @@ There is one `apiKey` slot per block. The key follows whichever device last encr
 
 - **Entering a key on a device that cannot read the stored one** (the settings field is blank, with placeholder "Stored key unreadable on this device"):
   - A typed value replaces the key for every device sharing the block.
-  - Leaving the field blank, or clearing what was typed, keeps the stored ciphertext. The settings capture that ciphertext once, when they open (`VoiceDictationBlock.ts:716, 782-784`), so a provider switch, which redraws the settings, no longer loses it (M56).
+  - Leaving the field blank, or clearing what was typed, keeps the stored ciphertext. The settings capture that ciphertext once, when they open (`VoiceDictationBlock.ts:728, 794-796`), so a provider switch, which redraws the settings, no longer loses it (M56).
 - **Exception:** on a device without WebCrypto, a typed key over a stored ciphertext is *not* persisted. Refuse-to-downgrade writes the prior ciphertext back, and the new key lives in memory for that session only.
-- In Separate mode `blocks` and `mobileBlocks` are distinct blocks, each with its own slot and its own prior-map lookup (`apiKeyLayout.ts:58-59`).
+- In Separate mode `blocks` and `mobileBlocks` are distinct blocks, each with its own slot and its own prior-map lookup (`apiKeyLayout.ts:79-80`).
 
 ### 9.6 Keys across flows
 
@@ -525,19 +525,19 @@ There is one `apiKey` slot per block. The key follows whichever device last encr
 | Copy desktop to mobile | Set to `''` when the key is present (`HomepageSettingTab.ts:294-295`) |
 | Reset | The half that is reset loses its blocks, keys included; the default blocks hold no `apiKey` (§4). The other half keeps its keys. |
 | External change (§7.5) | Decrypted as at load |
-| Duplicate | Copied with the block under a new id (`EditHandleBar.ts:80-84`). A plaintext copy is encrypted by the next save; a foreign ciphertext stays as it is. |
+| Duplicate | Copied with the block under a new id (`EditHandleBar.ts:82-86`). A plaintext copy is encrypted by the next save; a foreign ciphertext stays as it is. |
 
 ## 10. Device-local storage
 
 | Key | Store | Value | Owner |
 |---|---|---|---|
 | `homepage-blocks-kv` / `keys` / `apiKeyDeviceKey` | IndexedDB | A non-extractable `CryptoKey` | `apiKeyCrypto.ts:31-33` |
-| `hp-unreadable-api-keys` | `app.loadLocalStorage` / `saveLocalStorage` | `string[]` of block ids already announced as unreadable; `null` clears the entry | `main.ts:228, 353-370` |
-| `hp-voice-consent` | same | `{ whisper?: boolean, gemini?: boolean }`: `true` once the consent modal is confirmed, `false` after **Forget** in the block settings; only `true` counts as consent | `VoiceDictationBlock.ts:8, 23-51` |
+| `hp-unreadable-api-keys` | `app.loadLocalStorage` / `saveLocalStorage` | `string[]` of block ids already announced as unreadable; `null` clears the entry | `main.ts:242, 378-395` |
+| `hp-voice-consent` | same | `{ whisper?: boolean, gemini?: boolean }`: `true` once the consent modal is confirmed, `false` after **Forget** in the block settings; only `true` counts as consent | `VoiceDictationBlock.ts:12, 27-59` |
 
 - **Scope.** `App.loadLocalStorage` / `saveLocalStorage` scope keys to the vault (Obsidian ≥ 1.8.7, the `minAppVersion` in `manifest.json`). Both keys are wrapped in try/catch; unavailable storage means "nothing recorded".
 - **Unreadable-key Notice** (`unreadableKeyNotice`, `apiKeyLayout.ts:188-196`):
-  - Only the array this device renders counts: `mobileBlocks` when `Platform.isMobile && responsiveMode === 'separate'`, else `blocks` (`main.ts:354`).
+  - Only the array this device renders counts: `mobileBlocks` when `Platform.isMobile && responsiveMode === 'separate'`, else `blocks` (`main.ts:379`).
   - A 12 s Notice fires when an unreadable id is not in the stored record. The record is then replaced with the current unreadable ids.
   - Ids are used, not ciphertexts, because the owning device changes the ciphertext whenever the key is entered again (§9.3).
   - A launch where the key store is transiently unavailable finds no unreadable id, so it clears the stored record; the Notice then repeats at the next launch that finds the key unreadable.
@@ -602,7 +602,7 @@ The button is at `HomepageSettingTab.ts:357-378`. It first asks "Reset the layou
 | Case | Desktop half | Mobile half | Startup, display flags, `responsiveMode` |
 |---|---|---|---|
 | A phone in Separate mode (`isMobileActive()`, `:58-65`) | Kept | Reset: the default blocks fitted to the default mobile columns (`fitBlocksToColumns(fresh.blocks, fresh.mobileColumns)`, ids kept, §11.3), `1`, `'row'` | Kept |
-| Every other device, in either mode (`:66`) | Reset from a `structuredClone` of the template: demo blocks, `3`, `'row'` | Kept | Kept |
+| Every other device, in either mode (`:67`) | Reset from a `structuredClone` of the template: demo blocks, `3`, `'row'` | Kept | Kept |
 
 Every field outside the replaced half survives without being listed, so a new `LayoutConfig` field survives a reset unless it is added to one of the two lists (`:4-9`); so do the preserved fields and the other half's preserved blocks (§2.5). The setting's description ("Restore all blocks to the default layout.") does not say that only the half this device shows is reset; the confirmation does.
 
@@ -610,6 +610,6 @@ Every field outside the replaced half survives without being listed, so a new `L
 
 | Location | Says | Code does |
 |---|---|---|
-| `main.ts:463-465`, `apiKeyLayout.ts:25-27` | Drags and auto-height persists skip the prior-disk read | Now true once this device has encrypted or decrypted the key (§9.3). The first save after a key is typed still reads `data.json`. |
-| `validation.ts:89` | "Row 3 (y: 8)" | That row overlaps `default-quotes` (§4) |
+| `main.ts:472-474`, `apiKeyLayout.ts:25-27` | Drags and auto-height persists skip the prior-disk read | Now true once this device has encrypted or decrypted the key (§9.3). The first save after a key is typed still reads `data.json`. |
+| `validation.ts:84` | "Row 3 (y: 8)" | That row overlaps `default-quotes` (§4) |
 | CLAUDE.md, Layout Persistence | `validateLayout` "clamps positions" | It clamps only `x` and `w`; `y` and `h` are unbounded and `_expandedH` has only a lower bound of 1 (§6.3) |

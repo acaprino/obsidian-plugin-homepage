@@ -119,7 +119,7 @@ var Utils = class _Utils {
    * }
    */
   static lazyLoad(n) {
-    return n.lazyLoad || n.grid?.opts?.lazyLoad && n.lazyLoad !== false;
+    return !!(n.lazyLoad || n.grid?.opts?.lazyLoad && n.lazyLoad !== false);
   }
   /**
    * Create a div element with the specified CSS classes.
@@ -154,7 +154,7 @@ var Utils = class _Utils {
    * }
    */
   static shouldSizeToContent(n, strict = false) {
-    return n?.grid && (strict ? n.sizeToContent === true || n.grid.opts.sizeToContent === true && n.sizeToContent === void 0 : !!n.sizeToContent || n.grid.opts.sizeToContent && n.sizeToContent !== false);
+    return !!(n?.grid && (strict ? n.sizeToContent === true || n.grid.opts.sizeToContent === true && n.sizeToContent === void 0 : !!n.sizeToContent || n.grid.opts.sizeToContent && n.sizeToContent !== false));
   }
   /**
    * Check if two grid positions overlap/intersect.
@@ -236,7 +236,7 @@ var Utils = class _Utils {
    * const reverse = Utils.sort(nodes, -1); // Sort bottom-right to top-left
    */
   static sort(nodes, dir = 1) {
-    const und = 1e4;
+    const und = Number.MAX_SAFE_INTEGER;
     return nodes.sort((a, b) => {
       const diffY = dir * ((a.y ?? und) - (b.y ?? und));
       if (diffY === 0)
@@ -257,6 +257,31 @@ var Utils = class _Utils {
    */
   static find(nodes, id) {
     return id ? nodes.find((n) => n.id === id) : void 0;
+  }
+  /**
+   * Find a node by ID in a grid, optionally searching nested sub-grids.
+   *
+   * @param g the grid to search
+   * @param id the ID to search for
+   * @param recursive if true (default), also search nested sub-grids
+   * @returns the node with matching ID, or undefined if not found
+   *
+   * @example
+   * const node = Utils.findInGrid(grid, 'widget-1');          // recursive by default
+   * const top  = Utils.findInGrid(grid, 'widget-1', false);   // top-level only
+   */
+  static findInGrid(g, id, recursive) {
+    const hit = g.engine.nodes.find((n) => String(n.id) === id);
+    if (hit || !recursive)
+      return hit;
+    for (const n of g.engine.nodes) {
+      if (n.subGrid) {
+        const nested = _Utils.findInGrid(n.subGrid, id);
+        if (nested)
+          return nested;
+      }
+    }
+    return void 0;
   }
   /**
    * Convert various value types to boolean.
@@ -340,11 +365,11 @@ var Utils = class _Utils {
    * Utils.defaults(config, { width: 200, height: 50 });
    * // config is now { width: 100, height: 50 }
    */
-  // eslint-disable-next-line
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static defaults(target, ...sources) {
     sources.forEach((source) => {
       for (const key in source) {
-        if (!source.hasOwnProperty(key))
+        if (!Object.prototype.hasOwnProperty.call(source, key))
           return;
         if (target[key] === null || target[key] === void 0) {
           target[key] = source[key];
@@ -372,10 +397,12 @@ var Utils = class _Utils {
       return a == b;
     if (typeof a !== typeof b)
       return false;
-    if (Object.keys(a).length !== Object.keys(b).length)
+    const ao = a;
+    const bo = b;
+    if (Object.keys(ao).length !== Object.keys(bo).length)
       return false;
-    for (const key in a) {
-      if (a[key] !== b[key])
+    for (const key in ao) {
+      if (ao[key] !== bo[key])
         return false;
     }
     return true;
@@ -437,26 +464,31 @@ var Utils = class _Utils {
   static removeInternalAndSame(a, b) {
     if (typeof a !== "object" || typeof b !== "object")
       return;
+    if (!a || !b)
+      return;
     if (Array.isArray(a) || Array.isArray(b))
       return;
-    for (let key in a) {
-      const aVal = a[key];
-      const bVal = b[key];
+    const ao = a;
+    const bo = b;
+    for (const key in ao) {
+      const aVal = ao[key];
+      const bVal = bo[key];
       if (key[0] === "_" || aVal === bVal) {
-        delete a[key];
+        delete ao[key];
       } else if (aVal && typeof aVal === "object" && bVal !== void 0) {
         _Utils.removeInternalAndSame(aVal, bVal);
         if (!Object.keys(aVal).length) {
-          delete a[key];
+          delete ao[key];
         }
       }
     }
   }
   /** removes internal fields '_' and default values for saving */
   static removeInternalForSave(n, removeEl = true) {
-    for (let key in n) {
-      if (key[0] === "_" || n[key] === null || n[key] === void 0)
-        delete n[key];
+    const nd = n;
+    for (const key in nd) {
+      if (key[0] === "_" || nd[key] === null || nd[key] === void 0)
+        delete nd[key];
     }
     delete n.grid;
     if (removeEl)
@@ -474,14 +506,6 @@ var Utils = class _Utils {
     if (n.h === 1 || n.h === n.minH)
       delete n.h;
   }
-  /** return the closest parent (or itself) matching the given class */
-  // static closestUpByClass(el: HTMLElement, name: string): HTMLElement {
-  //   while (el) {
-  //     if (el.classList.contains(name)) return el;
-  //     el = el.parentElement
-  //   }
-  //   return null;
-  // }
   /** delay calling the given function for given delay, preventing new calls from happening while waiting */
   static throttle(func, delay) {
     let isWaiting = false;
@@ -513,43 +537,28 @@ var Utils = class _Utils {
       style.removeProperty("height");
     }
   }
-  /** @internal returns the passed element if scrollable, else the closest parent that will, up to the entire document scrolling element */
+  /** @internal V bounds (viewport coordinates) of what the user can actually see.
+   * Use this instead of `window.innerHeight` for clipping math: on iOS Safari `innerHeight` is the
+   * *layout* viewport, which extends underneath the overlaying URL/tool bars (and ignores pinch-zoom),
+   * so an item hidden behind the bottom bar still measured as fully visible and auto-scroll never
+   * kicked in - see #2666. `visualViewport` reports what is truly on screen on every browser. */
+  static getVisibleViewport() {
+    const vv = typeof window !== "undefined" ? window.visualViewport : void 0;
+    if (vv)
+      return { top: vv.offsetTop, bottom: vv.offsetTop + vv.height };
+    const h = window.innerHeight || document.documentElement.clientHeight;
+    return { top: 0, bottom: h };
+  }
+  /** @internal returns the passed element if vertically scrollable, else the closest parent that will, up to the entire document scrolling element */
   static getScrollElement(el) {
     if (!el)
       return document.scrollingElement || document.documentElement;
-    const style = getComputedStyle(el);
-    const overflowRegex = /(auto|scroll)/;
-    if (overflowRegex.test(style.overflow + style.overflowY)) {
+    const overflowY = getComputedStyle(el).overflowY;
+    if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
       return el;
     } else {
-      return _Utils.getScrollElement(el.parentElement);
+      return _Utils.getScrollElement(el.parentElement ?? void 0);
     }
-  }
-  /** @internal */
-  static updateScrollPosition(el, position, distance) {
-    const scrollEl = _Utils.getScrollElement(el);
-    if (!scrollEl)
-      return;
-    const elRect = el.getBoundingClientRect();
-    const scrollRect = scrollEl.getBoundingClientRect();
-    const innerHeightOrClientHeight = window.innerHeight || document.documentElement.clientHeight;
-    const offsetDiffDown = elRect.bottom - Math.min(scrollRect.bottom, innerHeightOrClientHeight);
-    const offsetDiffUp = elRect.top - Math.max(scrollRect.top, 0);
-    const prevScroll = scrollEl.scrollTop;
-    if (offsetDiffUp < 0 && distance < 0) {
-      if (el.offsetHeight > scrollRect.height) {
-        scrollEl.scrollTop += distance;
-      } else {
-        scrollEl.scrollTop += Math.abs(offsetDiffUp) > Math.abs(distance) ? distance : offsetDiffUp;
-      }
-    } else if (offsetDiffDown > 0 && distance > 0) {
-      if (el.offsetHeight > scrollRect.height) {
-        scrollEl.scrollTop += distance;
-      } else {
-        scrollEl.scrollTop += offsetDiffDown > distance ? distance : offsetDiffDown;
-      }
-    }
-    position.top += scrollEl.scrollTop - prevScroll;
   }
   /**
    * @internal Function used to scroll the page.
@@ -571,6 +580,16 @@ var Utils = class _Utils {
       scrollEl.scrollBy({ behavior: "smooth", top: distance - (height - pointerPosY) });
     }
   }
+  /**
+   * disable/re-enable pointer events on all iframes on the page while dragging/resizing, otherwise
+   * fast mouse moves over an iframe get swallowed by its own document instead of reaching ours,
+   * which stalls the drag/resize. See https://github.com/gridstack/gridstack.js/issues/934
+   */
+  static pauseIframePointerEvents(pause) {
+    document.querySelectorAll("iframe").forEach((iframe) => {
+      iframe.style.pointerEvents = pause ? "none" : "";
+    });
+  }
   /** single level clone, returning a new object with same top fields. This will share sub objects and arrays */
   static clone(obj) {
     if (obj === null || obj === void 0 || typeof obj !== "object") {
@@ -589,13 +608,13 @@ var Utils = class _Utils {
     const skipFields = ["parentGrid", "el", "grid", "subGrid", "engine"];
     const ret = _Utils.clone(obj);
     for (const key in ret) {
-      if (ret.hasOwnProperty(key) && typeof ret[key] === "object" && key.substring(0, 2) !== "__" && !skipFields.find((k) => k === key)) {
+      if (Object.prototype.hasOwnProperty.call(ret, key) && typeof ret[key] === "object" && key.substring(0, 2) !== "__" && !skipFields.find((k) => k === key)) {
         ret[key] = _Utils.cloneDeep(obj[key]);
       }
     }
     return ret;
   }
-  /** deep clone the given HTML node, removing teh unique id field */
+  /** deep clone the given HTML node, removing the unique id field */
   static cloneNode(el) {
     const node = el.cloneNode(true);
     node.removeAttribute("id");
@@ -612,21 +631,17 @@ var Utils = class _Utils {
       parentNode.appendChild(el);
     }
   }
-  // public static setPositionRelative(el: HTMLElement): void {
-  //   if (!(/^(?:r|a|f)/).test(getComputedStyle(el).position)) {
-  //     el.style.position = "relative";
-  //   }
-  // }
   static addElStyles(el, styles) {
     if (styles instanceof Object) {
+      const elStyle = el.style;
       for (const s in styles) {
-        if (styles.hasOwnProperty(s)) {
+        if (Object.prototype.hasOwnProperty.call(styles, s)) {
           if (Array.isArray(styles[s])) {
             styles[s].forEach((val) => {
-              el.style[s] = val;
+              elStyle[s] = val;
             });
           } else {
-            el.style[s] = styles[s];
+            elStyle[s] = styles[s];
           }
         }
       }
@@ -642,8 +657,9 @@ var Utils = class _Utils {
       cancelable: true,
       target: info.target ? info.target : e.target
     };
-    ["altKey", "ctrlKey", "metaKey", "shiftKey"].forEach((p) => evt[p] = e[p]);
-    ["pageX", "pageY", "clientX", "clientY", "screenX", "screenY"].forEach((p) => evt[p] = e[p]);
+    const src = e;
+    ["altKey", "ctrlKey", "metaKey", "shiftKey"].forEach((p) => evt[p] = src[p]);
+    ["pageX", "pageY", "clientX", "clientY", "screenX", "screenY"].forEach((p) => evt[p] = src[p]);
     return { ...evt, ...obj };
   }
   /** copies the MouseEvent (or convert Touch) properties and sends it as another event to the given target */
@@ -673,14 +689,15 @@ var Utils = class _Utils {
    * returns the scale and offsets from said element
   */
   static getValuesFromTransformedElement(parent) {
+    const probeSize = 1e3;
     const transformReference = document.createElement("div");
     _Utils.addElStyles(transformReference, {
       opacity: "0",
       position: "fixed",
       top: "0px",
       left: "0px",
-      width: "1px",
-      height: "1px",
+      width: probeSize + "px",
+      height: probeSize + "px",
       zIndex: "-999999"
     });
     parent.appendChild(transformReference);
@@ -688,8 +705,8 @@ var Utils = class _Utils {
     parent.removeChild(transformReference);
     transformReference.remove();
     return {
-      xScale: 1 / transformValues.width,
-      yScale: 1 / transformValues.height,
+      xScale: probeSize / transformValues.width,
+      yScale: probeSize / transformValues.height,
       xOffset: transformValues.left,
       yOffset: transformValues.top
     };
@@ -698,22 +715,11 @@ var Utils = class _Utils {
   static swap(o, a, b) {
     if (!o)
       return;
-    const tmp = o[a];
-    o[a] = o[b];
-    o[b] = tmp;
+    const obj = o;
+    const tmp = obj[a];
+    obj[a] = obj[b];
+    obj[b] = tmp;
   }
-  /** returns true if event is inside the given element rectangle */
-  // Note: Safari Mac has null event.relatedTarget which causes #1684 so check if DragEvent is inside the coordinates instead
-  //    Utils.el.contains(event.relatedTarget as HTMLElement)
-  // public static inside(e: MouseEvent, el: HTMLElement): boolean {
-  //   // srcElement, toElement, target: all set to placeholder when leaving simple grid, so we can't use that (Chrome)
-  //   const target: HTMLElement = e.relatedTarget || (e as any).fromElement;
-  //   if (!target) {
-  //     const { bottom, left, right, top } = el.getBoundingClientRect();
-  //     return (e.x < right && e.x > left && e.y < bottom && e.y > top);
-  //   }
-  //   return el.contains(target);
-  // }
   /** true if the item can be rotated (checking for prop, not space available) */
   static canBeRotated(n) {
     return !(!n || n.w === n.h || n.locked || n.noResize || n.grid?.opts.disableResize || n.minW && n.minW === n.maxW || n.minH && n.minH === n.maxH);
@@ -729,10 +735,11 @@ var GridStackEngine = class _GridStackEngine {
     this.column = opts.column || this.defaultColumn;
     if (this.column > this.defaultColumn)
       this.defaultColumn = this.column;
-    this.maxRow = opts.maxRow;
-    this._float = opts.float;
+    this.maxRow = opts.maxRow ?? 0;
+    this._mode = opts.mode || "top";
     this.nodes = opts.nodes || [];
-    this.onChange = opts.onChange;
+    this.onChange = opts.onChange ?? (() => {
+    });
   }
   /**
    * Enable/disable batch mode for multiple operations to optimize performance.
@@ -754,22 +761,27 @@ var GridStackEngine = class _GridStackEngine {
       return this;
     this.batchMode = flag;
     if (flag) {
-      this._prevFloat = this._float;
-      this._float = true;
+      this._prevMode = this._mode;
+      this._mode = "float";
       this.cleanNodes();
-      this.saveInitial();
+      if (!this.nodes.some((n) => n._updating))
+        this.saveInitial();
     } else {
-      this._float = this._prevFloat;
-      delete this._prevFloat;
+      this._mode = this._prevMode || "top";
+      delete this._prevMode;
       if (doPack)
         this._packNodes();
       this._notify();
     }
     return this;
   }
+  /** @internal the mode we will actually end up in: batchUpdate() temporarily forces 'float' so things can go anywhere */
+  get _realMode() {
+    return this.batchMode ? this._prevMode || "top" : this.mode;
+  }
   // use entire row for hitting area (will use bottom reverse sorted first) if we not actively moving DOWN and didn't already skip
   _useEntireRowArea(node, nn) {
-    return (!this.float || this.batchMode && !this._prevFloat) && !this._hasLocked && (!node._moving || node._skipDown || nn.y <= node.y);
+    return (this.mode !== "float" || this.batchMode && this._prevMode !== "float") && !this._hasLocked && (!node._moving || node._skipDown || nn.y <= node.y);
   }
   /** @internal fix collision on given 'node', going to given new location 'nn', with optional 'collide' node already found.
    * return true if we moved. */
@@ -778,7 +790,7 @@ var GridStackEngine = class _GridStackEngine {
     collide = collide || this.collide(node, nn);
     if (!collide)
       return false;
-    if (node._moving && !opt.nested && !this.float) {
+    if (node._moving && !node._isExternal && !opt.nested && this.mode !== "float") {
       if (this.swap(node, collide))
         return true;
     }
@@ -795,7 +807,7 @@ var GridStackEngine = class _GridStackEngine {
         throw new Error("Infinite collide check");
       }
       let moved;
-      if (collide.locked || this._loading || node._moving && !node._skipDown && nn.y > node.y && !this.float && // can take space we had, or before where we're going
+      if (collide.locked || this._loading || node._moving && !node._skipDown && nn.y > node.y && this.mode !== "float" && // can take space we had, or before where we're going
       (!this.collide(collide, { ...collide, y: node.y }, node) || !this.collide(collide, { ...collide, y: nn.y - collide.h }, node))) {
         node._skipDown = node._skipDown || nn.y > node.y;
         const newNN = { ...nn, y: collide.y + collide.h, ...newOpt };
@@ -862,22 +874,22 @@ var GridStackEngine = class _GridStackEngine {
     const r0 = node._rect;
     const r = { ...o.rect };
     if (r.y > r0.y) {
-      r.h += r.y - r0.y;
+      r.h = r.h + r.y - r0.y;
       r.y = r0.y;
     } else {
-      r.h += r0.y - r.y;
+      r.h = r.h + r0.y - r.y;
     }
     if (r.x > r0.x) {
-      r.w += r.x - r0.x;
+      r.w = r.w + r.x - r0.x;
       r.x = r0.x;
     } else {
-      r.w += r0.x - r.x;
+      r.w = r.w + r0.x - r.x;
     }
     let collide;
     let overMax = 0.5;
-    for (let n of collides) {
+    for (const n of collides) {
       if (n.locked || !n._rect) {
-        break;
+        continue;
       }
       const r2 = n._rect;
       let yOver = Number.MAX_VALUE, xOver = Number.MAX_VALUE;
@@ -900,22 +912,6 @@ var GridStackEngine = class _GridStackEngine {
     o.collide = collide;
     return collide;
   }
-  /** does a pixel coverage returning the node that has the most coverage by area */
-  /*
-  protected collideCoverage(r: GridStackPosition, collides: GridStackNode[]): {collide: GridStackNode, over: number} {
-    const collide: GridStackNode;
-    const overMax = 0;
-    collides.forEach(n => {
-      if (n.locked || !n._rect) return;
-      const over = Utils.areaIntercept(r, n._rect);
-      if (over > overMax) {
-        overMax = over;
-        collide = n;
-      }
-    });
-    return {collide, over: overMax};
-  }
-  */
   /**
    * Cache the pixel rectangles for all nodes used for collision detection during drag operations.
    * This optimization converts grid coordinates to pixel coordinates for faster collision detection.
@@ -1036,61 +1032,78 @@ var GridStackEngine = class _GridStackEngine {
   compact(layout = "compact", doSort = true) {
     if (this.nodes.length === 0)
       return this;
-    if (doSort)
-      this.sortNodes();
     const wasBatch = this.batchMode;
     if (!wasBatch)
       this.batchUpdate();
-    const wasColumnResize = this._inColumnResize;
-    if (!wasColumnResize)
-      this._inColumnResize = true;
-    const copyNodes = this.nodes;
-    this.nodes = [];
-    copyNodes.forEach((n, index, list) => {
-      let after;
-      if (!n.locked) {
-        n.autoPosition = true;
-        if (layout === "list" && index)
-          after = list[index - 1];
-      }
-      this.addNode(n, false, after);
-    });
-    if (!wasColumnResize)
-      delete this._inColumnResize;
+    this._relayout(layout, doSort);
     if (!wasBatch)
       this.batchUpdate(false);
     return this;
   }
+  /** @internal clears and re-adds every node in a fresh row-major layout - shared by compact() and the continuous 'list'/'compact' mode pack */
+  _relayout(layout, doSort = true) {
+    if (this.nodes.length === 0)
+      return this;
+    if (doSort)
+      this.sortNodes();
+    const wasColumnResize = this._inColumnResize;
+    if (!wasColumnResize)
+      this._inColumnResize = true;
+    const copyNodes = this.nodes;
+    this.nodes = copyNodes.filter((n) => n.locked);
+    const taken = /* @__PURE__ */ new Set();
+    let firstFree = 0;
+    const fill = (n) => {
+      for (let y = n.y; y < n.y + n.h; y++) {
+        for (let x = n.x; x < n.x + n.w; x++)
+          taken.add(y * this.column + x);
+      }
+      while (taken.has(firstFree))
+        ++firstFree;
+    };
+    this.nodes.forEach(fill);
+    copyNodes.forEach((n, index, list) => {
+      if (n.locked)
+        return;
+      n.autoPosition = true;
+      const after = layout === "list" ? index ? list[index - 1] : 0 : firstFree;
+      this.addNode(n, false, after);
+      fill(n);
+    });
+    if (!wasColumnResize)
+      delete this._inColumnResize;
+    return this;
+  }
   /**
-   * Enable/disable floating widgets (default: `false`).
-   * When floating is enabled, widgets can move up to fill empty spaces.
-   * See [example](http://gridstackjs.com/demo/float.html)
+   * Set the layout mode controlling how widgets pack/reflow (default: `'top'`). See {@link GridStackMode}.
+   * See [float example](http://gridstackjs.com/demo/float.html) and [list example](http://gridstackjs.com/demo/list.html)
    *
-   * @param val true to enable floating, false to disable
+   * @param val the new mode
    *
    * @example
-   * engine.float = true;  // Enable floating
-   * engine.float = false; // Disable floating (default)
+   * engine.mode = 'float'; // no gravity, widgets stay where placed
+   * engine.mode = 'top';   // top gravity packing (default)
+   * engine.mode = 'list';  // continuous sequential reflow
    */
-  set float(val) {
-    if (this._float === val)
+  set mode(val) {
+    if (this._mode === val)
       return;
-    this._float = val || false;
-    if (!val) {
+    this._mode = val || "top";
+    if (this._mode !== "float") {
       this._packNodes()._notify();
     }
   }
   /**
-   * Get the current floating mode setting.
+   * Get the current layout mode setting.
    *
-   * @returns true if floating is enabled, false otherwise
+   * @returns the current mode
    *
    * @example
-   * const isFloating = engine.float;
-   * console.log('Floating enabled:', isFloating);
+   * const mode = engine.mode;
+   * console.log('Current mode:', mode);
    */
-  get float() {
-    return this._float || false;
+  get mode() {
+    return this._mode || "top";
   }
   /**
    * Sort the nodes array from first to last, or reverse.
@@ -1107,13 +1120,13 @@ var GridStackEngine = class _GridStackEngine {
     this.nodes = Utils.sort(this.nodes, dir);
     return this;
   }
-  /** @internal called to top gravity pack the items back OR revert back to original Y positions when floating */
+  /** @internal called to top gravity pack the items back, continuously reflow (list/compact), OR revert back to original Y positions when floating */
   _packNodes() {
     if (this.batchMode) {
       return this;
     }
     this.sortNodes();
-    if (this.float) {
+    if (this.mode === "float") {
       this.nodes.forEach((n) => {
         if (n._updating || n._orig === void 0 || n.y === n._orig.y)
           return;
@@ -1127,6 +1140,12 @@ var GridStackEngine = class _GridStackEngine {
           }
         }
       });
+    } else if (this.mode === "list" || this.mode === "compact") {
+      const layout = this.mode === "compact" && this.nodes.some((n) => n._updating) ? "list" : this.mode;
+      const wasBatch = this.batchMode;
+      this.batchMode = true;
+      this._relayout(layout, false);
+      this.batchMode = wasBatch;
     } else {
       this.nodes.forEach((n, i) => {
         if (n.locked)
@@ -1224,6 +1243,14 @@ var GridStackEngine = class _GridStackEngine {
    */
   nodeBoundFix(node, resizing) {
     const before = node._orig || Utils.copyPos({}, node);
+    if (node.x !== void 0 && !Number.isFinite(node.x))
+      node.x = 0;
+    if (node.y !== void 0 && !Number.isFinite(node.y))
+      node.y = 0;
+    if (node.w !== void 0 && !Number.isFinite(node.w))
+      node.w = 1;
+    if (node.h !== void 0 && !Number.isFinite(node.h))
+      node.h = 1;
     if (node.maxW) {
       node.w = Math.min(node.w || 1, node.maxW);
     }
@@ -1298,7 +1325,7 @@ var GridStackEngine = class _GridStackEngine {
    */
   getDirtyNodes(verify) {
     if (verify) {
-      return this.nodes.filter((n) => n._dirty && !Utils.samePos(n, n._orig));
+      return this.nodes.filter((n) => n._dirty && n._orig && !Utils.samePos(n, n._orig));
     }
     return this.nodes.filter((n) => n._dirty);
   }
@@ -1380,7 +1407,7 @@ var GridStackEngine = class _GridStackEngine {
    * }
    */
   findEmptyPosition(node, nodeList = this.nodes, column = this.column, after) {
-    const start = after ? after.y * column + (after.x + after.w) : 0;
+    const start = typeof after === "number" ? after : after ? after.y * column + (after.x + after.w) : 0;
     let found = false;
     for (let i = start; !found; ++i) {
       const x = i % column;
@@ -1406,7 +1433,7 @@ var GridStackEngine = class _GridStackEngine {
    *
    * @param node the node to add to the grid
    * @param triggerAddEvent if true, adds node to addedNodes list for event triggering
-   * @param after optional node to place this node after (for ordering)
+   * @param after optional node to place this node after (for ordering), or a raw row-major cell index to start scanning at
    * @returns the added node (or existing node if duplicate)
    *
    * @example
@@ -1420,12 +1447,21 @@ var GridStackEngine = class _GridStackEngine {
     this._inColumnResize ? this.nodeBoundFix(node) : this.prepareNode(node);
     delete node._temporaryRemoved;
     delete node._removeDOM;
-    let skipCollision;
-    if (node.autoPosition && this.findEmptyPosition(node, this.nodes, this.column, after)) {
-      delete node.autoPosition;
-      skipCollision = true;
+    let skipCollision = false;
+    if (node.autoPosition) {
+      if (after === void 0 && this._realMode === "list")
+        after = this.nodes[this.nodes.length - 1];
+      if (this.findEmptyPosition(node, this.nodes, this.column, after)) {
+        delete node.autoPosition;
+        skipCollision = true;
+      }
     }
-    this.nodes.push(node);
+    if (!skipCollision && (this.mode === "list" || this.mode === "compact")) {
+      this.nodes.unshift(node);
+      skipCollision = true;
+    } else {
+      this.nodes.push(node);
+    }
     if (triggerAddEvent) {
       this.addedNodes.push(node);
     }
@@ -1500,16 +1536,18 @@ var GridStackEngine = class _GridStackEngine {
    * }
    */
   moveNodeCheck(node, o) {
-    if (!this.changedPosConstrain(node, o))
+    const changed = this.changedPosConstrain(node, o);
+    if (!changed && !o.forceCollide)
       return false;
-    o.pack = true;
+    if (o.pack === void 0 && !this.batchMode)
+      o.pack = true;
     if (!this.maxRow) {
       return this.moveNode(node, o);
     }
     let clonedNode;
     const clone = new _GridStackEngine({
       column: this.column,
-      float: this.float,
+      mode: this.mode,
       nodes: this.nodes.map((n) => {
         if (n._id === node._id) {
           clonedNode = { ...n };
@@ -1521,9 +1559,9 @@ var GridStackEngine = class _GridStackEngine {
     if (!clonedNode)
       return false;
     const canMove = clone.moveNode(clonedNode, o) && clone.getRow() <= Math.max(this.getRow(), this.maxRow);
-    if (!canMove && !o.resizing && o.collide) {
-      const collide = o.collide.el.gridstackNode;
-      if (this.swap(node, collide)) {
+    if (!canMove && !o.resizing && o.collide && !node._isExternal) {
+      const collide = o.collide.el?.gridstackNode;
+      if (collide && this.swap(node, collide)) {
         this._notify();
         return true;
       }
@@ -1547,7 +1585,7 @@ var GridStackEngine = class _GridStackEngine {
       return true;
     const clone = new _GridStackEngine({
       column: this.column,
-      float: this.float,
+      mode: this.mode,
       nodes: this.nodes.map((n2) => {
         return { ...n2 };
       })
@@ -1564,6 +1602,19 @@ var GridStackEngine = class _GridStackEngine {
       return true;
     }
     return false;
+  }
+  /** @internal if sub-grids can be created on the fly, see if we're covering 80% of the item we're dragging over
+   * (which means the user wants to nest into it rather than push it away). return true if we created one. */
+  _makeDynamicSubGrid(node, o, collide) {
+    if (!collide || !node.grid?.opts?.subGridDynamic || node.grid._isTemp || !o.rect || !collide._rect)
+      return false;
+    const over = Utils.areaIntercept(o.rect, collide._rect);
+    const a1 = Utils.area(o.rect);
+    const a2 = Utils.area(collide._rect);
+    if (over / (a1 < a2 ? a1 : a2) <= 0.8)
+      return false;
+    collide.grid.makeSubGrid(collide.el, void 0, node);
+    return true;
   }
   /** true if x,y or w,h are different after clamping to min/max */
   changedPosConstrain(node, p) {
@@ -1590,7 +1641,7 @@ var GridStackEngine = class _GridStackEngine {
     if (!node || /*node.locked ||*/
     !o)
       return false;
-    let wasUndefinedPack;
+    let wasUndefinedPack = false;
     if (o.pack === void 0 && !this.batchMode) {
       wasUndefinedPack = o.pack = true;
     }
@@ -1614,32 +1665,81 @@ var GridStackEngine = class _GridStackEngine {
     if (!o.forceCollide && Utils.samePos(node, o))
       return false;
     const prevPos = Utils.copyPos({}, node);
-    const collides = this.collideAll(node, nn, o.skip);
-    let needToMove = true;
-    if (collides.length) {
-      const activeDrag = node._moving && !o.nested;
-      let collide = activeDrag ? this.directionCollideCoverage(node, o, collides) : collides[0];
-      if (activeDrag && collide && node.grid?.opts?.subGridDynamic && !node.grid._isTemp) {
-        const over = Utils.areaIntercept(o.rect, collide._rect);
-        const a1 = Utils.area(o.rect);
-        const a2 = Utils.area(collide._rect);
-        const perc = over / (a1 < a2 ? a1 : a2);
-        if (perc > 0.8) {
-          collide.grid.makeSubGrid(collide.el, void 0, node);
-          collide = void 0;
+    if (this.mode === "list" || this.mode === "compact") {
+      let nested = false;
+      if (node._moving && !o.nested && node.grid?.opts?.subGridDynamic) {
+        const collide = this.directionCollideCoverage(node, o, this.collideAll(node, nn, o.skip));
+        if (this._makeDynamicSubGrid(node, o, collide)) {
+          nested = true;
+          if (wasUndefinedPack)
+            delete o.pack;
         }
       }
-      if (collide) {
-        needToMove = !this._fixCollisions(node, nn, collide, o);
-      } else {
+      let skip2 = false;
+      if (!nested && node._moving && !o.nested && o.rect && node._rect) {
+        const collides = this.collideAll(node, nn, o.skip);
+        if (collides.length) {
+          const target = this.directionCollideCoverage(node, o, collides);
+          if (target) {
+            nn.x = target.x;
+            nn.y = target.y;
+          } else
+            skip2 = true;
+        }
+      }
+      if (skip2) {
+        if (wasUndefinedPack)
+          delete o.pack;
+      } else if (!nested) {
+        node._dirty = true;
+        const prevIndex = prevPos.y * this.column + prevPos.x;
+        Utils.copyPos(node, nn);
+        const i = this.nodes.indexOf(node);
+        if (i !== -1) {
+          this.nodes.splice(i, 1);
+          if (node.y * this.column + node.x < prevIndex)
+            this.nodes.unshift(node);
+          else
+            this.nodes.push(node);
+        }
+      }
+    } else {
+      const collides = this.collideAll(node, nn, o.skip);
+      let needToMove = true;
+      if (collides.length) {
+        const activeDrag = node._moving && !o.nested;
+        let collide = activeDrag ? this.directionCollideCoverage(node, o, collides) : collides[0];
+        const madeSubGrid = activeDrag && this._makeDynamicSubGrid(node, o, collide);
+        if (madeSubGrid)
+          collide = void 0;
+        if (collide) {
+          needToMove = !this._fixCollisions(node, nn, collide, o);
+        } else {
+          needToMove = false;
+          if (wasUndefinedPack)
+            delete o.pack;
+          if (!madeSubGrid && activeDrag && nn.x !== node.x && nn.y !== node.y) {
+            const horizontal = Math.abs(nn.x - node.x) >= Math.abs(nn.y - node.y);
+            const nnAxis = horizontal ? { ...nn, y: node.y } : { ...nn, x: node.x };
+            const collidesAxis = this.collideAll(node, nnAxis, o.skip);
+            const collideAxis = collidesAxis.length ? this.directionCollideCoverage(node, o, collidesAxis) : void 0;
+            if (!collidesAxis.length || collideAxis) {
+              needToMove = collidesAxis.length ? !this._fixCollisions(node, nnAxis, collideAxis, o) : true;
+              if (needToMove)
+                Utils.copyPos(nn, nnAxis);
+            }
+          }
+        }
+      }
+      if (needToMove && this.collideAll(node, nn, o.skip).some((n) => n.locked)) {
         needToMove = false;
         if (wasUndefinedPack)
           delete o.pack;
       }
-    }
-    if (needToMove && !Utils.samePos(node, nn)) {
-      node._dirty = true;
-      Utils.copyPos(node, nn);
+      if (needToMove && !Utils.samePos(node, nn)) {
+        node._dirty = true;
+        Utils.copyPos(node, nn);
+      }
     }
     if (o.pack) {
       this._packNodes()._notify();
@@ -1663,6 +1763,8 @@ var GridStackEngine = class _GridStackEngine {
     if (n) {
       delete n._updating;
       delete n._skipDown;
+      if (this.mode === "compact")
+        this._packNodes()._notify();
     }
     return this;
   }
@@ -1702,7 +1804,7 @@ var GridStackEngine = class _GridStackEngine {
       return this;
     this._layouts.forEach((layout, column) => {
       if (!layout || column === this.column)
-        return this;
+        return;
       if (column < this.column) {
         this._layouts[column] = void 0;
       } else {
@@ -1714,7 +1816,7 @@ var GridStackEngine = class _GridStackEngine {
           if (!n)
             return;
           if (n.y >= 0 && node.y !== node._orig.y) {
-            n.y += node.y - node._orig.y;
+            n.y = n.y + (node.y - node._orig.y);
             if (n.y < 0)
               n.y = 0;
           }
@@ -1743,10 +1845,11 @@ var GridStackEngine = class _GridStackEngine {
    * @param layout specify the type of re-layout that will happen (position, size, etc...).
    * Note: items will never be outside of the current column boundaries. default (moveScale). Ignored for 1 column
    */
-  columnChanged(prevColumn, column, layout = "moveScale") {
+  columnChanged(prevColumn, column, layout) {
     if (!this.nodes.length || !column || prevColumn === column)
       return this;
-    const doCompact = layout === "compact" || layout === "list";
+    layout = layout ?? (this.mode === "list" || this.mode === "compact" ? this.mode : "moveScale");
+    const doCompact = layout === "compact" || layout === "list" ? layout : void 0;
     if (doCompact) {
       this.sortNodes(1);
     }
@@ -1795,7 +1898,7 @@ var GridStackEngine = class _GridStackEngine {
       });
     }
     if (doCompact) {
-      this.compact(layout, false);
+      this.compact(doCompact, false);
     } else {
       if (nodes.length) {
         if (typeof layout === "function") {
@@ -1883,9 +1986,10 @@ var GridStackEngine = class _GridStackEngine {
   }
   /** called to remove all internal values but the _id */
   cleanupNode(node) {
-    for (const prop in node) {
+    const nd = node;
+    for (const prop in nd) {
       if (prop[0] === "_" && prop !== "_id")
-        delete node[prop];
+        delete nd[prop];
     }
     return this;
   }
@@ -1916,7 +2020,7 @@ var gridDefaults = {
   // **** same as not being set ****
   // disableDrag: false,
   // disableResize: false,
-  // float: false,
+  // mode: 'top',
   // handleClass: null,
   // removable: false,
   // staticGrid: false,
@@ -1928,9 +2032,35 @@ var DDManager = class {
 };
 
 // node_modules/gridstack/dist/dd-touch.js
-var isTouch = typeof window !== "undefined" && typeof document !== "undefined" && ("ontouchstart" in document || "ontouchstart" in window || window.DocumentTouch && document instanceof window.DocumentTouch || navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0);
+var isTouch = typeof window !== "undefined" && typeof document !== "undefined" && ("ontouchstart" in document || "ontouchstart" in window || window.DocumentTouch && document instanceof window.DocumentTouch || navigator.maxTouchPoints > 0 && window.matchMedia("(any-pointer: coarse)").matches || navigator.msMaxTouchPoints > 0);
+var touchDragDelay = 300;
+var touchDelayMoveThreshold = 10;
 var DDTouch = class {
 };
+function preventDefaultEvent(e) {
+  e.preventDefault();
+}
+function suppressContextMenu() {
+  document.addEventListener("contextmenu", preventDefaultEvent, true);
+  document.addEventListener("selectstart", preventDefaultEvent, true);
+}
+function restoreContextMenu() {
+  document.removeEventListener("contextmenu", preventDefaultEvent, true);
+  document.removeEventListener("selectstart", preventDefaultEvent, true);
+}
+function cancelDelayedTouchStart(target, onMove, onEnd) {
+  target.removeEventListener("touchmove", onMove);
+  target.removeEventListener("touchend", onEnd);
+  target.removeEventListener("touchcancel", onEnd);
+  cancelPendingTouchDrag();
+}
+function cancelPendingTouchDrag() {
+  if (DDTouch.touchDelayTimer) {
+    window.clearTimeout(DDTouch.touchDelayTimer);
+    delete DDTouch.touchDelayTimer;
+  }
+  restoreContextMenu();
+}
 function simulateMouseEvent(e, simulatedType) {
   if (e.touches.length > 1)
     return;
@@ -1938,16 +2068,29 @@ function simulateMouseEvent(e, simulatedType) {
     e.preventDefault();
   Utils.simulateMouseEvent(e.changedTouches[0], simulatedType);
 }
-function simulatePointerMouseEvent(e, simulatedType) {
-  if (e.cancelable)
-    e.preventDefault();
-  Utils.simulateMouseEvent(e, simulatedType);
-}
 function touchstart(e) {
   if (DDTouch.touchHandled)
     return;
-  DDTouch.touchHandled = true;
-  simulateMouseEvent(e, "mousedown");
+  const target = e.currentTarget;
+  const startX = e.touches[0].clientX;
+  const startY = e.touches[0].clientY;
+  const onEnd = () => cancelDelayedTouchStart(target, onMove, onEnd);
+  const onMove = (ev) => {
+    const t = ev.touches[0];
+    if (Math.abs(t.clientX - startX) + Math.abs(t.clientY - startY) > touchDelayMoveThreshold)
+      onEnd();
+  };
+  target.addEventListener("touchmove", onMove, { passive: true });
+  target.addEventListener("touchend", onEnd, { passive: true });
+  target.addEventListener("touchcancel", onEnd, { passive: true });
+  DDTouch.touchDelayTimer = window.setTimeout(() => {
+    cancelDelayedTouchStart(target, onMove, onEnd);
+    DDTouch.touchHandled = true;
+    DDTouch.wasDelayed = true;
+    suppressContextMenu();
+    simulateMouseEvent(e, "mousedown");
+    delete DDTouch.wasDelayed;
+  }, touchDragDelay);
 }
 function touchmove(e) {
   if (!DDTouch.touchHandled)
@@ -1957,40 +2100,13 @@ function touchmove(e) {
 function touchend(e) {
   if (!DDTouch.touchHandled)
     return;
-  if (DDTouch.pointerLeaveTimeout) {
-    window.clearTimeout(DDTouch.pointerLeaveTimeout);
-    delete DDTouch.pointerLeaveTimeout;
-  }
+  restoreContextMenu();
   const wasDragging = !!DDManager.dragElement;
   simulateMouseEvent(e, "mouseup");
-  if (!wasDragging) {
+  if (!wasDragging && e.type !== "touchcancel") {
     simulateMouseEvent(e, "click");
   }
   DDTouch.touchHandled = false;
-}
-function pointerdown(e) {
-  if (e.pointerType === "mouse")
-    return;
-  e.target.releasePointerCapture(e.pointerId);
-}
-function pointerenter(e) {
-  if (!DDManager.dragElement) {
-    return;
-  }
-  if (e.pointerType === "mouse")
-    return;
-  simulatePointerMouseEvent(e, "mouseenter");
-}
-function pointerleave(e) {
-  if (!DDManager.dragElement) {
-    return;
-  }
-  if (e.pointerType === "mouse")
-    return;
-  DDTouch.pointerLeaveTimeout = window.setTimeout(() => {
-    delete DDTouch.pointerLeaveTimeout;
-    simulatePointerMouseEvent(e, "mouseleave");
-  }, 10);
 }
 
 // node_modules/gridstack/dist/dd-resizable-handle.js
@@ -1999,7 +2115,6 @@ var DDResizableHandle = class _DDResizableHandle {
     this.host = host;
     this.dir = dir;
     this.option = option;
-    this.moving = false;
     this._mouseDown = this._mouseDown.bind(this);
     this._mouseMove = this._mouseMove.bind(this);
     this._mouseUp = this._mouseUp.bind(this);
@@ -2022,29 +2137,24 @@ var DDResizableHandle = class _DDResizableHandle {
     }
     this.el.classList.add("ui-resizable-handle");
     this.el.classList.add(`${_DDResizableHandle.prefix}${this.dir}`);
-    this.el.style.zIndex = "100";
-    this.el.style.userSelect = "none";
     this.el.addEventListener("mousedown", this._mouseDown);
     if (isTouch) {
       this.el.addEventListener("touchstart", touchstart);
-      this.el.addEventListener("pointerdown", pointerdown);
     }
     return this;
   }
   /** call this when resize handle needs to be removed and cleaned up */
   destroy() {
-    if (this.moving)
+    if (this.mouseDownEvent)
       this._mouseUp(this.mouseDownEvent);
+    cancelPendingTouchDrag();
     this.el.removeEventListener("mousedown", this._mouseDown);
     if (isTouch) {
       this.el.removeEventListener("touchstart", touchstart);
-      this.el.removeEventListener("pointerdown", pointerdown);
     }
     if (!this.option.element) {
       this.host.removeChild(this.el);
     }
-    delete this.el;
-    delete this.host;
     return this;
   }
   /** @internal called on mouse down on us: capture move on the entire document (mouse might not stay on us) until we release the mouse */
@@ -2055,6 +2165,10 @@ var DDResizableHandle = class _DDResizableHandle {
     if (isTouch) {
       this.el.addEventListener("touchmove", touchmove);
       this.el.addEventListener("touchend", touchend);
+      this.el.addEventListener("touchcancel", touchend);
+    }
+    if (DDTouch.wasDelayed) {
+      this.el.classList.add("ui-resizable-armed");
     }
     e.stopPropagation();
     e.preventDefault();
@@ -2066,6 +2180,7 @@ var DDResizableHandle = class _DDResizableHandle {
       this._triggerEvent("move", e);
     } else if (Math.abs(e.x - s.x) + Math.abs(e.y - s.y) > 2) {
       this.moving = true;
+      this.el.classList.remove("ui-resizable-armed");
       this._triggerEvent("start", this.mouseDownEvent);
       this._triggerEvent("move", e);
       document.addEventListener("keydown", this._keyEvent);
@@ -2078,11 +2193,13 @@ var DDResizableHandle = class _DDResizableHandle {
       this._triggerEvent("stop", e);
       document.removeEventListener("keydown", this._keyEvent);
     }
+    this.el.classList.remove("ui-resizable-armed");
     document.removeEventListener("mousemove", this._mouseMove, true);
     document.removeEventListener("mouseup", this._mouseUp, true);
     if (isTouch) {
       this.el.removeEventListener("touchmove", touchmove);
       this.el.removeEventListener("touchend", touchend);
+      this.el.removeEventListener("touchcancel", touchend);
     }
     delete this.moving;
     delete this.mouseDownEvent;
@@ -2098,8 +2215,9 @@ var DDResizableHandle = class _DDResizableHandle {
   }
   /** @internal */
   _triggerEvent(name, event) {
-    if (this.option[name])
-      this.option[name](event);
+    const opt = this.option;
+    if (opt[name])
+      opt[name](event);
     return this;
   }
 };
@@ -2111,7 +2229,7 @@ var DDBaseImplement = class {
     this._eventRegister = {};
   }
   /**
-   * Returns the current disabled state.
+   * Returns the current disabled state (undefined if not set yet).
    * Note: Use enable()/disable() methods to change state as other operations need to happen.
    */
   get disabled() {
@@ -2153,7 +2271,7 @@ var DDBaseImplement = class {
    * Removes all event handlers and clears internal state.
    */
   destroy() {
-    delete this._eventRegister;
+    this._eventRegister = {};
   }
   /**
    * Trigger a registered event callback if one exists and the implementation is enabled.
@@ -2163,7 +2281,7 @@ var DDBaseImplement = class {
    * @returns Result from the callback function, if any
    */
   triggerEvent(eventName, event) {
-    if (!this.disabled && this._eventRegister && this._eventRegister[eventName])
+    if (!this.disabled && this._eventRegister[eventName])
       return this._eventRegister[eventName](event);
   }
 };
@@ -2183,12 +2301,14 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
         width: this.originalRect.width,
         height: this.originalRect.height + this.scrolled,
         left: this.originalRect.left,
+        right: this.originalRect.right,
         top: this.originalRect.top - this.scrolled
       };
       const rect = this.temporalRect || newRect;
+      const leftPos = this.option.rtl ? (containmentRect.right - rect.right) * this.rectScale.x : (rect.left - containmentRect.left) * this.rectScale.x;
       return {
         position: {
-          left: (rect.left - containmentRect.left) * this.rectScale.x,
+          left: leftPos,
           top: (rect.top - containmentRect.top) * this.rectScale.y
         },
         size: {
@@ -2213,7 +2333,7 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
     this._mouseOver = this._mouseOver.bind(this);
     this._mouseOut = this._mouseOut.bind(this);
     this.enable();
-    this._setupAutoHide(this.option.autoHide);
+    this._setupAutoHide(!!this.option.autoHide);
     this._setupHandlers();
   }
   on(event, callback) {
@@ -2225,7 +2345,7 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
   enable() {
     super.enable();
     this.el.classList.remove("ui-resizable-disabled");
-    this._setupAutoHide(this.option.autoHide);
+    this._setupAutoHide(!!this.option.autoHide);
   }
   disable() {
     super.disable();
@@ -2233,6 +2353,8 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
     this._setupAutoHide(false);
   }
   destroy() {
+    if (DDManager.resizeElement === this)
+      delete DDManager.resizeElement;
     this._removeHandlers();
     this._setupAutoHide(false);
     delete this.el;
@@ -2241,13 +2363,13 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
   updateOption(opts) {
     const updateHandles = opts.handles && opts.handles !== this.option.handles;
     const updateAutoHide = opts.autoHide && opts.autoHide !== this.option.autoHide;
-    Object.keys(opts).forEach((key) => this.option[key] = opts[key]);
+    Object.assign(this.option, opts);
     if (updateHandles) {
       this._removeHandlers();
       this._setupHandlers();
     }
     if (updateAutoHide) {
-      this._setupAutoHide(this.option.autoHide);
+      this._setupAutoHide(!!this.option.autoHide);
     }
     return this;
   }
@@ -2273,7 +2395,8 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
     if (DDManager.overResizeElement || DDManager.dragElement)
       return;
     DDManager.overResizeElement = this;
-    this.el.classList.remove("ui-resizable-autohide");
+    if (!DDManager.resizeElement)
+      this.el.classList.remove("ui-resizable-autohide");
   }
   /** @internal */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -2285,7 +2408,7 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
   }
   /** @internal */
   _setupHandlers() {
-    this.handlers = this.option.handles.split(",").map((dir) => dir.trim()).map((dir) => new DDResizableHandle(this.el, dir, {
+    this.handlers = (this.option.handles ?? "se").split(",").map((dir) => dir.trim()).map((dir) => new DDResizableHandle(this.el, dir, {
       element: this.option.element,
       start: (event) => this._resizeStart(event),
       stop: (event) => this._resizeStop(event),
@@ -2301,9 +2424,11 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
     this.scrollY = this.scrollEl.scrollTop;
     this.scrolled = 0;
     this.startEvent = event;
+    Utils.pauseIframePointerEvents(true);
     this._setupHelper();
     this._applyChange();
     const ev = Utils.initEvent(event, { type: "resizestart", target: this.el });
+    DDManager.resizeElement = this;
     if (this.option.start) {
       this.option.start(ev, this._ui());
     }
@@ -2317,6 +2442,9 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
     this.temporalRect = this._getChange(event, dir);
     this._applyChange();
     const ev = Utils.initEvent(event, { type: "resize", target: this.el });
+    ev.resizeDir = dir;
+    ev.hasMovedX = this.option.rtl ? dir.includes("e") : dir.includes("w");
+    ev.hasMovedY = dir.includes("n");
     if (this.option.resize) {
       this.option.resize(ev, this._ui());
     }
@@ -2326,11 +2454,17 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
   /** @internal */
   _resizeStop(event) {
     const ev = Utils.initEvent(event, { type: "resizestop", target: this.el });
+    Utils.pauseIframePointerEvents(false);
     this._cleanHelper();
     if (this.option.stop) {
       this.option.stop(ev);
     }
     this.el.classList.remove("ui-resizable-resizing");
+    if (DDManager.resizeElement === this)
+      delete DDManager.resizeElement;
+    if (!DDManager.resizeElement && DDManager.overResizeElement) {
+      DDManager.overResizeElement.el.classList.remove("ui-resizable-autohide");
+    }
     this.triggerEvent("resizestop", ev);
     delete this.startEvent;
     delete this.originalRect;
@@ -2342,15 +2476,15 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
   /** @internal */
   _setupHelper() {
     this.elOriginStyleVal = _DDResizable._originStyleProp.map((prop) => this.el.style[prop]);
-    this.parentOriginStylePosition = this.el.parentElement.style.position;
-    const parent = this.el.parentElement;
-    const dragTransform = Utils.getValuesFromTransformedElement(parent);
+    const parentEl = this.el.parentElement;
+    this.parentOriginStylePosition = parentEl.style.position;
+    const dragTransform = Utils.getValuesFromTransformedElement(parentEl);
     this.rectScale = {
       x: dragTransform.xScale,
       y: dragTransform.yScale
     };
-    if (getComputedStyle(this.el.parentElement).position.match(/static/)) {
-      this.el.parentElement.style.position = "relative";
+    if (getComputedStyle(parentEl).position.match(/static/)) {
+      parentEl.style.position = "relative";
     }
     this.el.style.position = "absolute";
     this.el.style.opacity = "0.8";
@@ -2371,17 +2505,25 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
       width: this.originalRect.width,
       height: this.originalRect.height + this.scrolled,
       left: this.originalRect.left,
+      right: this.originalRect.right,
       top: this.originalRect.top - this.scrolled
     };
     const offsetX = event.clientX - oEvent.clientX;
     const offsetY = this.sizeToContent ? 0 : event.clientY - oEvent.clientY;
-    let moveLeft;
-    let moveUp;
-    if (dir.indexOf("e") > -1) {
+    let moveLeft = false;
+    let moveUp = false;
+    const isRtl = this.option.rtl;
+    if (!isRtl && dir.indexOf("e") > -1) {
       newRect.width += offsetX;
-    } else if (dir.indexOf("w") > -1) {
+    } else if (isRtl && dir.indexOf("w") > -1) {
+      newRect.width -= offsetX;
+    } else if (!isRtl && dir.indexOf("w") > -1) {
       newRect.width -= offsetX;
       newRect.left += offsetX;
+      moveLeft = true;
+    } else if (isRtl && dir.indexOf("e") > -1) {
+      newRect.width += offsetX;
+      newRect.right += offsetX;
       moveLeft = true;
     }
     if (dir.indexOf("s") > -1) {
@@ -2393,8 +2535,10 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
     }
     const constrain = this._constrainSize(newRect.width, newRect.height, moveLeft, moveUp);
     if (Math.round(newRect.width) !== Math.round(constrain.width)) {
-      if (dir.indexOf("w") > -1) {
+      if (!isRtl && dir.indexOf("w") > -1) {
         newRect.left += newRect.width - constrain.width;
+      } else if (isRtl && dir.indexOf("e") > -1) {
+        newRect.right -= newRect.width - constrain.width;
       }
       newRect.width = constrain.width;
     }
@@ -2410,27 +2554,35 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
   _constrainSize(oWidth, oHeight, moveLeft, moveUp) {
     const o = this.option;
     const maxWidth = (moveLeft ? o.maxWidthMoveLeft : o.maxWidth) || Number.MAX_SAFE_INTEGER;
-    const minWidth = o.minWidth / this.rectScale.x || oWidth;
+    const minWidth = (o.minWidth ?? 0) / this.rectScale.x || oWidth;
     const maxHeight = (moveUp ? o.maxHeightMoveUp : o.maxHeight) || Number.MAX_SAFE_INTEGER;
-    const minHeight = o.minHeight / this.rectScale.y || oHeight;
+    const minHeight = (o.minHeight ?? 0) / this.rectScale.y || oHeight;
     const width = Math.min(maxWidth, Math.max(minWidth, oWidth));
     const height = Math.min(maxHeight, Math.max(minHeight, oHeight));
     return { width, height };
   }
   /** @internal */
   _applyChange() {
-    let containmentRect = { left: 0, top: 0, width: 0, height: 0 };
+    let containmentRect = { left: 0, right: 0, top: 0, width: 0, height: 0 };
     if (this.el.style.position === "absolute") {
       const containmentEl = this.el.parentElement;
-      const { left, top } = containmentEl.getBoundingClientRect();
-      containmentRect = { left, top, width: 0, height: 0 };
+      const { left, right, top } = containmentEl.getBoundingClientRect();
+      containmentRect = { left, right, top, width: 0, height: 0 };
     }
     if (!this.temporalRect)
       return this;
-    Object.keys(this.temporalRect).forEach((key) => {
-      const value = this.temporalRect[key];
-      const scaleReciprocal = key === "width" || key === "left" ? this.rectScale.x : key === "height" || key === "top" ? this.rectScale.y : 1;
-      this.el.style[key] = (value - containmentRect[key]) * scaleReciprocal + "px";
+    const cRect = containmentRect;
+    Object.entries(this.temporalRect).forEach(([key, value]) => {
+      if (this.option.rtl ? key === "left" : key === "right")
+        return;
+      const scaleReciprocal = key === "width" || key === "left" || key === "right" ? this.rectScale.x : key === "height" || key === "top" ? this.rectScale.y : 1;
+      let finalValue;
+      if (key === "right") {
+        finalValue = (containmentRect.right - value) * this.rectScale.x + "px";
+      } else {
+        finalValue = (value - cRect[key]) * scaleReciprocal + "px";
+      }
+      this.el.style[key] = finalValue;
     });
     return this;
   }
@@ -2441,332 +2593,16 @@ var DDResizable = class _DDResizable extends DDBaseImplement {
     return this;
   }
 };
-DDResizable._originStyleProp = ["width", "height", "position", "left", "top", "opacity", "zIndex"];
-
-// node_modules/gridstack/dist/dd-draggable.js
-var skipMouseDown = 'input,textarea,button,select,option,[contenteditable="true"],.ui-resizable-handle';
-var DDDraggable = class _DDDraggable extends DDBaseImplement {
-  constructor(el, option = {}) {
-    super();
-    this.el = el;
-    this.option = option;
-    this.dragTransform = {
-      xScale: 1,
-      yScale: 1,
-      xOffset: 0,
-      yOffset: 0
-    };
-    const handleName = option?.handle?.substring(1);
-    const n = el.gridstackNode;
-    this.dragEls = !handleName || el.classList.contains(handleName) ? [el] : n?.subGrid ? [el.querySelector(option.handle) || el] : Array.from(el.querySelectorAll(option.handle));
-    if (this.dragEls.length === 0) {
-      this.dragEls = [el];
-    }
-    this._mouseDown = this._mouseDown.bind(this);
-    this._mouseMove = this._mouseMove.bind(this);
-    this._mouseUp = this._mouseUp.bind(this);
-    this._keyEvent = this._keyEvent.bind(this);
-    this.enable();
-  }
-  on(event, callback) {
-    super.on(event, callback);
-  }
-  off(event) {
-    super.off(event);
-  }
-  enable() {
-    if (this.disabled === false)
-      return;
-    super.enable();
-    this.dragEls.forEach((dragEl) => {
-      dragEl.addEventListener("mousedown", this._mouseDown);
-      if (isTouch) {
-        dragEl.addEventListener("touchstart", touchstart);
-        dragEl.addEventListener("pointerdown", pointerdown);
-      }
-    });
-    this.el.classList.remove("ui-draggable-disabled");
-  }
-  disable(forDestroy = false) {
-    if (this.disabled === true)
-      return;
-    super.disable();
-    this.dragEls.forEach((dragEl) => {
-      dragEl.removeEventListener("mousedown", this._mouseDown);
-      if (isTouch) {
-        dragEl.removeEventListener("touchstart", touchstart);
-        dragEl.removeEventListener("pointerdown", pointerdown);
-      }
-    });
-    if (!forDestroy)
-      this.el.classList.add("ui-draggable-disabled");
-  }
-  destroy() {
-    if (this.dragTimeout)
-      window.clearTimeout(this.dragTimeout);
-    delete this.dragTimeout;
-    if (this.mouseDownEvent)
-      this._mouseUp(this.mouseDownEvent);
-    this.disable(true);
-    delete this.el;
-    delete this.helper;
-    delete this.option;
-    super.destroy();
-  }
-  updateOption(opts) {
-    Object.keys(opts).forEach((key) => this.option[key] = opts[key]);
-    return this;
-  }
-  /** @internal call when mouse goes down before a dragstart happens */
-  _mouseDown(e) {
-    if (DDTouch.touchHandled && e.isTrusted)
-      DDTouch.touchHandled = false;
-    if (DDManager.mouseHandled)
-      return;
-    if (e.button !== 0)
-      return true;
-    if (!this.dragEls.find((el) => el === e.target) && e.target.closest(skipMouseDown))
-      return true;
-    if (this.option.cancel) {
-      if (e.target.closest(this.option.cancel))
-        return true;
-    }
-    this.mouseDownEvent = e;
-    delete this.dragging;
-    delete DDManager.dragElement;
-    delete DDManager.dropElement;
-    document.addEventListener("mousemove", this._mouseMove, { capture: true, passive: true });
-    document.addEventListener("mouseup", this._mouseUp, true);
-    if (isTouch) {
-      e.currentTarget.addEventListener("touchmove", touchmove);
-      e.currentTarget.addEventListener("touchend", touchend);
-    }
-    e.preventDefault();
-    if (document.activeElement)
-      document.activeElement.blur();
-    DDManager.mouseHandled = true;
-    return true;
-  }
-  /** @internal method to call actual drag event */
-  _callDrag(e) {
-    if (!this.dragging)
-      return;
-    const ev = Utils.initEvent(e, { target: this.el, type: "drag" });
-    if (this.option.drag) {
-      this.option.drag(ev, this.ui());
-    }
-    this.triggerEvent("drag", ev);
-  }
-  /** @internal called when the main page (after successful mousedown) receives a move event to drag the item around the screen */
-  _mouseMove(e) {
-    const s = this.mouseDownEvent;
-    this.lastDrag = e;
-    if (this.dragging) {
-      this._dragFollow(e);
-      if (DDManager.pauseDrag) {
-        const pause = Number.isInteger(DDManager.pauseDrag) ? DDManager.pauseDrag : 100;
-        if (this.dragTimeout)
-          window.clearTimeout(this.dragTimeout);
-        this.dragTimeout = window.setTimeout(() => this._callDrag(e), pause);
-      } else {
-        this._callDrag(e);
-      }
-    } else if (Math.abs(e.x - s.x) + Math.abs(e.y - s.y) > 3) {
-      this.dragging = true;
-      DDManager.dragElement = this;
-      const grid = this.el.gridstackNode?.grid;
-      if (grid) {
-        DDManager.dropElement = grid.el.ddElement.ddDroppable;
-      } else {
-        delete DDManager.dropElement;
-      }
-      this.helper = this._createHelper();
-      this._setupHelperContainmentStyle();
-      this.dragTransform = Utils.getValuesFromTransformedElement(this.helperContainment);
-      this.dragOffset = this._getDragOffset(e, this.el, this.helperContainment);
-      this._setupHelperStyle(e);
-      const ev = Utils.initEvent(e, { target: this.el, type: "dragstart" });
-      if (this.option.start) {
-        this.option.start(ev, this.ui());
-      }
-      this.triggerEvent("dragstart", ev);
-      document.addEventListener("keydown", this._keyEvent);
-    }
-    return true;
-  }
-  /** @internal call when the mouse gets released to drop the item at current location */
-  _mouseUp(e) {
-    document.removeEventListener("mousemove", this._mouseMove, true);
-    document.removeEventListener("mouseup", this._mouseUp, true);
-    if (isTouch && e.currentTarget) {
-      e.currentTarget.removeEventListener("touchmove", touchmove, true);
-      e.currentTarget.removeEventListener("touchend", touchend, true);
-    }
-    if (this.dragging) {
-      delete this.dragging;
-      delete this.el.gridstackNode?._origRotate;
-      document.removeEventListener("keydown", this._keyEvent);
-      if (DDManager.dropElement?.el === this.el.parentElement) {
-        delete DDManager.dropElement;
-      }
-      this.helperContainment.style.position = this.parentOriginStylePosition || null;
-      if (this.helper !== this.el)
-        this.helper.remove();
-      this._removeHelperStyle();
-      const ev = Utils.initEvent(e, { target: this.el, type: "dragstop" });
-      if (this.option.stop) {
-        this.option.stop(ev);
-      }
-      this.triggerEvent("dragstop", ev);
-      if (DDManager.dropElement) {
-        DDManager.dropElement.drop(e);
-      }
-    }
-    delete this.helper;
-    delete this.mouseDownEvent;
-    delete DDManager.dragElement;
-    delete DDManager.dropElement;
-    delete DDManager.mouseHandled;
-    e.preventDefault();
-  }
-  /** @internal call when keys are being pressed - use Esc to cancel, R to rotate */
-  _keyEvent(e) {
-    const n = this.el.gridstackNode;
-    const grid = n?.grid || DDManager.dropElement?.el?.gridstack;
-    if (e.key === "Escape") {
-      if (n && n._origRotate) {
-        n._orig = n._origRotate;
-        delete n._origRotate;
-      }
-      grid?.cancelDrag();
-      this._mouseUp(this.mouseDownEvent);
-    } else if (n && grid && (e.key === "r" || e.key === "R")) {
-      if (!Utils.canBeRotated(n))
-        return;
-      n._origRotate = n._origRotate || { ...n._orig };
-      delete n._moving;
-      grid.setAnimation(false).rotate(n.el, { top: -this.dragOffset.offsetTop, left: -this.dragOffset.offsetLeft }).setAnimation();
-      n._moving = true;
-      this.dragOffset = this._getDragOffset(this.lastDrag, n.el, this.helperContainment);
-      this.helper.style.width = this.dragOffset.width + "px";
-      this.helper.style.height = this.dragOffset.height + "px";
-      Utils.swap(n._orig, "w", "h");
-      delete n._rect;
-      this._mouseMove(this.lastDrag);
-    }
-  }
-  /** @internal create a clone copy (or user defined method) of the original drag item if set */
-  _createHelper() {
-    let helper = this.el;
-    if (typeof this.option.helper === "function") {
-      helper = this.option.helper(this.el);
-    } else if (this.option.helper === "clone") {
-      helper = Utils.cloneNode(this.el);
-    }
-    if (!helper.parentElement) {
-      Utils.appendTo(helper, this.option.appendTo === "parent" ? this.el.parentElement : this.option.appendTo);
-    }
-    this.dragElementOriginStyle = _DDDraggable.originStyleProp.map((prop) => this.el.style[prop]);
-    return helper;
-  }
-  /** @internal set the fix position of the dragged item */
-  _setupHelperStyle(e) {
-    this.helper.classList.add("ui-draggable-dragging");
-    this.el.gridstackNode?.grid?.el.classList.add("grid-stack-dragging");
-    const style = this.helper.style;
-    style.pointerEvents = "none";
-    style.width = this.dragOffset.width + "px";
-    style.height = this.dragOffset.height + "px";
-    style.willChange = "left, top";
-    style.position = "fixed";
-    this._dragFollow(e);
-    style.transition = "none";
-    setTimeout(() => {
-      if (this.helper) {
-        style.transition = null;
-      }
-    }, 0);
-    return this;
-  }
-  /** @internal restore back the original style before dragging */
-  _removeHelperStyle() {
-    this.helper.classList.remove("ui-draggable-dragging");
-    this.el.gridstackNode?.grid?.el.classList.remove("grid-stack-dragging");
-    const node = this.helper?.gridstackNode;
-    if (!node?._isAboutToRemove && this.dragElementOriginStyle) {
-      const helper = this.helper;
-      const transition = this.dragElementOriginStyle["transition"] || null;
-      helper.style.transition = this.dragElementOriginStyle["transition"] = "none";
-      _DDDraggable.originStyleProp.forEach((prop) => helper.style[prop] = this.dragElementOriginStyle[prop] || null);
-      setTimeout(() => helper.style.transition = transition, 50);
-    }
-    delete this.dragElementOriginStyle;
-    return this;
-  }
-  /** @internal updates the top/left position to follow the mouse */
-  _dragFollow(e) {
-    const containmentRect = { left: 0, top: 0 };
-    const style = this.helper.style;
-    const offset = this.dragOffset;
-    style.left = (e.clientX + offset.offsetLeft - containmentRect.left) * this.dragTransform.xScale + "px";
-    style.top = (e.clientY + offset.offsetTop - containmentRect.top) * this.dragTransform.yScale + "px";
-  }
-  /** @internal */
-  _setupHelperContainmentStyle() {
-    this.helperContainment = this.helper.parentElement;
-    if (this.helper.style.position !== "fixed") {
-      this.parentOriginStylePosition = this.helperContainment.style.position;
-      if (getComputedStyle(this.helperContainment).position.match(/static/)) {
-        this.helperContainment.style.position = "relative";
-      }
-    }
-    return this;
-  }
-  /** @internal */
-  _getDragOffset(event, el, parent) {
-    let xformOffsetX = 0;
-    let xformOffsetY = 0;
-    if (parent) {
-      xformOffsetX = this.dragTransform.xOffset;
-      xformOffsetY = this.dragTransform.yOffset;
-    }
-    const targetOffset = el.getBoundingClientRect();
-    return {
-      left: targetOffset.left,
-      top: targetOffset.top,
-      offsetLeft: -event.clientX + targetOffset.left - xformOffsetX,
-      offsetTop: -event.clientY + targetOffset.top - xformOffsetY,
-      width: targetOffset.width * this.dragTransform.xScale,
-      height: targetOffset.height * this.dragTransform.yScale
-    };
-  }
-  /** @internal TODO: set to public as called by DDDroppable! */
-  ui() {
-    const containmentEl = this.el.parentElement;
-    const containmentRect = containmentEl.getBoundingClientRect();
-    const offset = this.helper.getBoundingClientRect();
-    return {
-      position: {
-        top: (offset.top - containmentRect.top) * this.dragTransform.yScale,
-        left: (offset.left - containmentRect.left) * this.dragTransform.xScale
-      }
-      /* not used by GridStack for now...
-      helper: [this.helper], //The object arr representing the helper that's being dragged.
-      offset: { top: offset.top, left: offset.left } // Current offset position of the helper as { top, left } object.
-      */
-    };
-  }
-};
-DDDraggable.originStyleProp = ["width", "height", "transform", "transform-origin", "transition", "pointerEvents", "position", "left", "top", "minWidth", "willChange"];
+DDResizable._originStyleProp = ["width", "height", "position", "left", "right", "top", "opacity", "zIndex"];
 
 // node_modules/gridstack/dist/dd-droppable.js
-var DDDroppable = class extends DDBaseImplement {
+var DDDroppable = class _DDDroppable extends DDBaseImplement {
   constructor(el, option = {}) {
     super();
     this.el = el;
     this.option = option;
-    this._mouseEnter = this._mouseEnter.bind(this);
-    this._mouseLeave = this._mouseLeave.bind(this);
+    this.eventEl = this.el.closest(".grid-stack-item") || this.el;
+    _DDDroppable.byEventEl.set(this.eventEl, this);
     this.enable();
     this._setupAccept();
   }
@@ -2782,12 +2618,6 @@ var DDDroppable = class extends DDBaseImplement {
     super.enable();
     this.el.classList.add("ui-droppable");
     this.el.classList.remove("ui-droppable-disabled");
-    this.el.addEventListener("mouseenter", this._mouseEnter);
-    this.el.addEventListener("mouseleave", this._mouseLeave);
-    if (isTouch) {
-      this.el.addEventListener("pointerenter", pointerenter);
-      this.el.addEventListener("pointerleave", pointerleave);
-    }
   }
   disable(forDestroy = false) {
     if (this.disabled === true)
@@ -2796,34 +2626,30 @@ var DDDroppable = class extends DDBaseImplement {
     this.el.classList.remove("ui-droppable");
     if (!forDestroy)
       this.el.classList.add("ui-droppable-disabled");
-    this.el.removeEventListener("mouseenter", this._mouseEnter);
-    this.el.removeEventListener("mouseleave", this._mouseLeave);
-    if (isTouch) {
-      this.el.removeEventListener("pointerenter", pointerenter);
-      this.el.removeEventListener("pointerleave", pointerleave);
-    }
   }
   destroy() {
     this.disable(true);
     this.el.classList.remove("ui-droppable");
     this.el.classList.remove("ui-droppable-disabled");
+    if (_DDDroppable.byEventEl.get(this.eventEl) === this)
+      _DDDroppable.byEventEl.delete(this.eventEl);
     super.destroy();
   }
   updateOption(opts) {
-    Object.keys(opts).forEach((key) => this.option[key] = opts[key]);
+    Object.assign(this.option, opts);
     this._setupAccept();
     return this;
   }
-  /** @internal called when the cursor enters our area - prepare for a possible drop and track leaving */
+  /**
+   * @internal the dragged item came in (enough of it is over us, see DDDraggable._checkDropTarget - not the cursor, which depends
+   * on where it was grabbed) - prepare for a possible drop
+   */
   _mouseEnter(e) {
     if (!DDManager.dragElement)
       return;
-    if (DDTouch.touchHandled && e.isTrusted)
-      return;
     if (!this._canDrop(DDManager.dragElement.el))
       return;
-    e.preventDefault();
-    e.stopPropagation();
+    DDManager.dragElement._stopScrolling();
     if (DDManager.dropElement && DDManager.dropElement !== this) {
       DDManager.dropElement._mouseLeave(e, true);
     }
@@ -2835,12 +2661,12 @@ var DDDroppable = class extends DDBaseImplement {
     this.triggerEvent("dropover", ev);
     this.el.classList.add("ui-droppable-over");
   }
-  /** @internal called when the item is leaving our area, stop tracking if we had moving item */
+  /** @internal the dragged item went out (calledByEnter: into another target) */
   _mouseLeave(e, calledByEnter = false) {
     if (!DDManager.dragElement || DDManager.dropElement !== this)
       return;
-    e.preventDefault();
-    e.stopPropagation();
+    if (calledByEnter)
+      DDManager.dragElement._stopScrolling();
     const ev = Utils.initEvent(e, { target: this.el, type: "dropout" });
     if (this.option.out) {
       this.option.out(ev, this._ui(DDManager.dragElement));
@@ -2848,18 +2674,35 @@ var DDDroppable = class extends DDBaseImplement {
     this.triggerEvent("dropout", ev);
     if (DDManager.dropElement === this) {
       delete DDManager.dropElement;
-      if (!calledByEnter) {
-        let parentDrop;
-        let parent = this.el.parentElement;
-        while (!parentDrop && parent) {
-          parentDrop = parent.ddElement?.ddDroppable;
-          parent = parent.parentElement;
-        }
-        if (parentDrop) {
-          parentDrop._mouseEnter(e);
-        }
-      }
     }
+  }
+  /** @internal fraction (0-1) of the smaller box that is covered by the intersection of the two */
+  static overlap(a, b) {
+    const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    const area = Math.min(a.width * a.height, b.width * b.height);
+    return w > 0 && h > 0 && area > 0 ? w * h / area : 0;
+  }
+  /** @internal the closest droppable above us (the parent grid when we're a sub-grid) */
+  parentDroppable() {
+    for (let el = _DDDroppable.parentOf(this.el); el; el = _DDDroppable.parentOf(el)) {
+      const parentDrop = el.ddElement?.ddDroppable;
+      if (parentDrop)
+        return parentDrop;
+    }
+    return void 0;
+  }
+  /** @internal true if we're the given droppable, or nested inside it */
+  within(drop) {
+    for (let el = this.el; drop && el; el = _DDDroppable.parentOf(el)) {
+      if (el === drop.el)
+        return true;
+    }
+    return false;
+  }
+  /** @internal the element above, stepping out of a shadow root to its host (a grid inside a web component) */
+  static parentOf(el) {
+    return el.parentElement || el.getRootNode().host;
   }
   /** item is being dropped on us - called by the drag mouseup handler - this calls the client drop event */
   drop(e) {
@@ -2893,6 +2736,609 @@ var DDDroppable = class extends DDBaseImplement {
     };
   }
 };
+DDDroppable.byEventEl = /* @__PURE__ */ new WeakMap();
+DDDroppable.enterOver = { grid: 0.5, sub: 0.75, trash: 0.5 };
+DDDroppable.stayOver = { grid: 0.25, sub: 0.5, trash: 0.4 };
+DDDroppable.switchBy = 0.2;
+
+// node_modules/gridstack/dist/dd-draggable.js
+var skipMouseDown = 'input,textarea,button,select,option,[contenteditable="true"],.ui-resizable-handle';
+var DDDraggable = class _DDDraggable extends DDBaseImplement {
+  constructor(el, option = {}) {
+    super();
+    this.el = el;
+    this.option = option;
+    this.dragTransform = {
+      xScale: 1,
+      yScale: 1,
+      xOffset: 0,
+      yOffset: 0
+    };
+    this._cbDrift = { dx: 0, dy: 0 };
+    this._updateCBDrift = () => {
+      if (!this.dragging || !this.helperContainment)
+        return;
+      const t = Utils.getValuesFromTransformedElement(this.helperContainment);
+      this._cbDrift = {
+        dx: t.xOffset - this.dragTransform.xOffset,
+        dy: t.yOffset - this.dragTransform.yOffset
+      };
+      if (this.lastDrag)
+        this._dragFollow(this.lastDrag);
+    };
+    this._autoScrollTick = () => {
+      const el2 = this.helper;
+      const scrollCont = this._autoScrollContainer;
+      if (!el2 || !scrollCont || !this.lastDrag) {
+        this._stopScrolling();
+        return;
+      }
+      const scrollAmount = this._getScrollAmount(el2, scrollCont, this.lastDrag.clientY);
+      if (!scrollAmount) {
+        this._stopScrolling();
+        return;
+      }
+      const prevScroll = scrollCont.scrollTop;
+      scrollCont.scrollTop += scrollAmount;
+      if (scrollCont.scrollTop === prevScroll) {
+        const next2 = scrollCont.parentElement ? Utils.getScrollElement(scrollCont.parentElement) : void 0;
+        if (!next2 || next2 === scrollCont) {
+          this._stopScrolling();
+          return;
+        }
+        const nextPrev = next2.scrollTop;
+        next2.scrollTop += scrollAmount;
+        if (next2.scrollTop === nextPrev) {
+          this._stopScrolling();
+          return;
+        }
+        this._autoScrollContainer = next2;
+      }
+      if (this.dragging && this.lastDrag) {
+        this._updateCBDrift();
+        this._dragFollow(this.lastDrag);
+        this._callDrag(this.lastDrag);
+      }
+      this._autoScrollAnimId = requestAnimationFrame(this._autoScrollTick);
+    };
+    const handleName = option?.handle?.substring(1);
+    const n = el.gridstackNode;
+    this.dragEls = !handleName || el.classList.contains(handleName) ? [el] : n?.subGrid ? [el.querySelector(option.handle) || el] : this.getAllHandles();
+    if (this.dragEls.length === 0) {
+      this.dragEls = [el];
+    }
+    this._mouseDown = this._mouseDown.bind(this);
+    this._mouseMove = this._mouseMove.bind(this);
+    this._mouseUp = this._mouseUp.bind(this);
+    this._keyEvent = this._keyEvent.bind(this);
+    this.enable();
+  }
+  /** return all handles omitting other nested `.grid-stack-item` children (in case node.subGrid isn't set for some reason) */
+  getAllHandles() {
+    const handle = this.option.handle;
+    if (!handle)
+      return [];
+    const found = [];
+    const scan = (root) => {
+      found.push(...Array.from(root.querySelectorAll(handle)));
+      root.querySelectorAll("*").forEach((child) => {
+        const shadow = child.shadowRoot;
+        if (shadow)
+          scan(shadow);
+      });
+    };
+    scan(this.el);
+    return found.filter((node) => {
+      if (!(node instanceof HTMLElement))
+        return false;
+      let owner = node.closest(".grid-stack-item");
+      let root = node.getRootNode();
+      while (!owner && root instanceof ShadowRoot) {
+        owner = root.host.closest(".grid-stack-item");
+        root = root.host.getRootNode();
+      }
+      return owner === this.el || !owner;
+    });
+  }
+  on(event, callback) {
+    super.on(event, callback);
+  }
+  off(event) {
+    super.off(event);
+  }
+  enable() {
+    if (this.disabled === false)
+      return;
+    super.enable();
+    this.dragEls.forEach((dragEl) => {
+      dragEl.addEventListener("mousedown", this._mouseDown);
+      if (isTouch) {
+        dragEl.addEventListener("touchstart", touchstart);
+      }
+    });
+    this.el.classList.remove("ui-draggable-disabled");
+  }
+  disable(forDestroy = false) {
+    if (this.disabled === true)
+      return;
+    super.disable();
+    cancelPendingTouchDrag();
+    this.dragEls.forEach((dragEl) => {
+      dragEl.removeEventListener("mousedown", this._mouseDown);
+      if (isTouch) {
+        dragEl.removeEventListener("touchstart", touchstart);
+      }
+    });
+    if (!forDestroy)
+      this.el.classList.add("ui-draggable-disabled");
+  }
+  destroy() {
+    if (this.dragTimeout)
+      window.clearTimeout(this.dragTimeout);
+    delete this.dragTimeout;
+    if (this.mouseDownEvent)
+      this._mouseUp(this.mouseDownEvent);
+    this.disable(true);
+    delete this.el;
+    delete this.option;
+    super.destroy();
+  }
+  updateOption(opts) {
+    Object.assign(this.option, opts);
+    return this;
+  }
+  /**
+   * Re-scans the item element for drag-handle elements after delayed content (React portal,
+   * Angular component, etc.) has been rendered into the item.  Removes listeners from the
+   * previous handle set, re-queries, then re-attaches.
+   * Not needed for the default `.grid-stack-item-content` handle which is always present.
+   */
+  refreshHandles() {
+    const wasDisabled = this.disabled;
+    if (!wasDisabled)
+      this.disable(true);
+    const handleName = this.option?.handle?.substring(1);
+    const n = this.el.gridstackNode;
+    this.dragEls = !handleName || this.el.classList.contains(handleName) ? [this.el] : n?.subGrid ? [this.el.querySelector(this.option.handle) || this.el] : this.getAllHandles();
+    if (this.dragEls.length === 0)
+      this.dragEls = [this.el];
+    if (!wasDisabled)
+      this.enable();
+  }
+  /** @internal does any element on the event's path match the selector?
+   * Same walk as `e.target.closest(sel)` but through shadow DOM: for a listener outside the shadow
+   * tree the browser retargets `e.target` to the *host*, and `closest()` won't cross the boundary
+   * either, so a `cancel` selector living inside a web component could never match (#2729). */
+  _matchInPath(e, selector) {
+    const path = e.composedPath?.();
+    if (!path?.length)
+      return e.target?.closest(selector) ?? void 0;
+    for (const t of path) {
+      const el = t;
+      if (el?.nodeType !== 1)
+        continue;
+      if (el.matches?.(selector))
+        return el;
+    }
+    return void 0;
+  }
+  /** @internal call when mouse goes down before a dragstart happens */
+  _mouseDown(e) {
+    if (e.isTrusted) {
+      if (DDTouch.touchHandled)
+        DDTouch.touchHandled = false;
+      if (DDManager.mouseHandled && e.timeStamp !== DDManager.mouseHandledTimeStamp)
+        delete DDManager.mouseHandled;
+    }
+    if (DDManager.mouseHandled)
+      return true;
+    if (e.button !== 0)
+      return true;
+    const skipEl = e.target.closest(skipMouseDown);
+    if (skipEl && !this.dragEls.some((el) => el === e.target || el === skipEl))
+      return true;
+    if (this.option.cancel) {
+      if (this._matchInPath(e, this.option.cancel))
+        return true;
+    }
+    this.mouseDownEvent = e;
+    delete this.dragging;
+    delete DDManager.dragElement;
+    delete DDManager.dropElement;
+    delete this._autoScrollMaxSpeed;
+    delete this._autoScrollContainer;
+    document.addEventListener("mousemove", this._mouseMove, { capture: true, passive: true });
+    document.addEventListener("mouseup", this._mouseUp, true);
+    if (isTouch && e.currentTarget) {
+      this._touchTarget = e.currentTarget;
+      this._touchTarget.addEventListener("touchmove", touchmove);
+      this._touchTarget.addEventListener("touchend", touchend);
+      this._touchTarget.addEventListener("touchcancel", touchend);
+    }
+    if (DDTouch.wasDelayed) {
+      this.el.classList.add("ui-draggable-armed");
+    }
+    e.preventDefault();
+    if (document.activeElement)
+      document.activeElement.blur();
+    DDManager.mouseHandled = true;
+    DDManager.mouseHandledTimeStamp = e.timeStamp;
+    return true;
+  }
+  /** @internal method to call actual drag event */
+  _callDrag(e) {
+    if (!this.dragging)
+      return;
+    const ev = Utils.initEvent(e, { target: this.el, type: "drag" });
+    if (this.option.drag) {
+      this.option.drag(ev, this.ui());
+    }
+    this.triggerEvent("drag", ev);
+  }
+  /**
+   * @internal fraction of the dragged item over the given drop target (a sub-grid's whole cell, as its nested .grid-stack
+   * is only as tall as its rows), or undefined while a sub-grid is still sliding into place: its parent grid pushes it
+   * out of our way as we go in or out, and deciding on that mid-way position would flip us right back.
+   */
+  _overlap(drop, rect) {
+    if (drop.eventEl !== drop.el && drop.eventEl.getAnimations?.().some((a) => "transitionProperty" in a))
+      return void 0;
+    return DDDroppable.overlap(rect, drop.eventEl.getBoundingClientRect());
+  }
+  /**
+   * Which grid (or trash) we're over goes by how much of the item is over it rather than where the cursor is, which depends on
+   * where the item was grabbed (and can't get it above/below a sub-grid flush with its parent's edge, as both share that edge).
+   * Go into the innermost one under the item's center once enough of it is over it (DDDroppable.enterOver - more for a
+   * sub-grid, so coming in at the edge of a nest we go into its outer grid first, as we come out of it), and out once not
+   * enough is (stayOver) to the closest outer grid still having enough of it. Going to a neighbor instead takes clearly
+   * more of it over that one than ours (switchBy).
+   */
+  _checkDropTarget(e) {
+    const shape = this.helper?.getBoundingClientRect();
+    const rect = shape?.width && shape.height ? shape : { left: e.clientX, top: e.clientY, right: e.clientX + 1, bottom: e.clientY + 1, width: 1, height: 1 };
+    const cur = DDManager.dropElement;
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+    let el = document.elementFromPoint?.(x, y);
+    while (el?.shadowRoot) {
+      const inner = el.shadowRoot.elementFromPoint?.(x, y);
+      if (!inner || !el.shadowRoot.contains(inner))
+        break;
+      el = inner;
+    }
+    const under = [];
+    for (; el; el = DDDroppable.parentOf(el)) {
+      const d = DDDroppable.byEventEl.get(el);
+      if (d && !d.disabled && d._canDrop(this.el))
+        under.push(d);
+    }
+    const kind = (d) => !d.el.gridstack ? "trash" : d.parentDroppable() ? "sub" : "grid";
+    const over = cur ? this._overlap(cur, rect) : 0;
+    if (over === void 0)
+      return;
+    for (const d of under) {
+      if (cur?.within(d))
+        break;
+      const o = this._overlap(d, rect) ?? 0;
+      const neighbor = cur && !d.within(cur) && DDDroppable.overlap(d.eventEl.getBoundingClientRect(), cur.eventEl.getBoundingClientRect()) < 0.5;
+      const sibling = neighbor && cur.within(d.parentDroppable());
+      if (o >= (sibling ? 0.5 : DDDroppable.enterOver[kind(d)]) && (!neighbor || o >= over + DDDroppable.switchBy))
+        return d._mouseEnter(e);
+    }
+    if (!cur || over >= DDDroppable.stayOver[kind(cur)])
+      return;
+    if (under.some((d) => !cur.within(d) && (this._overlap(d, rect) ?? 0) >= 0.5))
+      return;
+    let to = cur.parentDroppable();
+    while (to && !(to._canDrop(this.el) && (this._overlap(to, rect) ?? 1) >= DDDroppable.stayOver[kind(to)]))
+      to = to.parentDroppable();
+    if (to)
+      to._mouseEnter(e);
+    else
+      cur._mouseLeave(e);
+  }
+  /** @internal called when the main page (after successful mousedown) receives a move event to drag the item around the screen */
+  _mouseMove(e) {
+    const s = this.mouseDownEvent;
+    this.lastDrag = e;
+    if (this.dragging) {
+      this._dragFollow(e);
+      if (DDManager.pauseDrag) {
+        const pause = Number.isInteger(DDManager.pauseDrag) ? DDManager.pauseDrag : 100;
+        if (this.dragTimeout)
+          window.clearTimeout(this.dragTimeout);
+        this.dragTimeout = window.setTimeout(() => this._callDrag(e), pause);
+      } else {
+        this._callDrag(e);
+      }
+      this._checkDropTarget(e);
+      if (!DDManager.dropElement && this._autoScrollContainer)
+        this._checkAutoScroll();
+    } else if (Math.abs(e.x - s.x) + Math.abs(e.y - s.y) > 3) {
+      this.dragging = true;
+      Utils.pauseIframePointerEvents(true);
+      this.el.classList.remove("ui-draggable-armed");
+      DDManager.dragElement = this;
+      const grid = this.el.gridstackNode?.grid;
+      if (grid) {
+        DDManager.dropElement = grid.el.ddElement?.ddDroppable;
+        if (grid.opts.draggable?.scroll !== false)
+          this._autoScrollContainer = Utils.getScrollElement(grid.el);
+      } else {
+        delete DDManager.dropElement;
+      }
+      this.helper = this._createHelper();
+      this._setupHelperContainmentStyle();
+      this.dragTransform = Utils.getValuesFromTransformedElement(this.helperContainment);
+      this._cbDrift = { dx: 0, dy: 0 };
+      this.dragOffset = this._getDragOffset(e, this.el, this.helperContainment);
+      document.addEventListener("scroll", this._updateCBDrift, { capture: true, passive: true });
+      this._setupHelperStyle(e);
+      const ev = Utils.initEvent(e, { target: this.el, type: "dragstart" });
+      if (this.option.start) {
+        this.option.start(ev, this.ui());
+      }
+      this.triggerEvent("dragstart", ev);
+      this._checkAutoScroll();
+      document.addEventListener("keydown", this._keyEvent);
+    }
+    return true;
+  }
+  /** @internal call when the mouse gets released to drop the item at current location */
+  _mouseUp(e) {
+    this._stopScrolling();
+    this.el.classList.remove("ui-draggable-armed");
+    document.removeEventListener("mousemove", this._mouseMove, true);
+    document.removeEventListener("mouseup", this._mouseUp, true);
+    if (isTouch && this._touchTarget) {
+      this._touchTarget.removeEventListener("touchmove", touchmove);
+      this._touchTarget.removeEventListener("touchend", touchend);
+      this._touchTarget.removeEventListener("touchcancel", touchend);
+      delete this._touchTarget;
+    }
+    if (this.dragging) {
+      delete this.dragging;
+      Utils.pauseIframePointerEvents(false);
+      delete this.el.gridstackNode?._origRotate;
+      document.removeEventListener("keydown", this._keyEvent);
+      document.removeEventListener("scroll", this._updateCBDrift, true);
+      this._cbDrift = { dx: 0, dy: 0 };
+      if (DDManager.dropElement?.el === this.el.parentElement) {
+        delete DDManager.dropElement;
+      }
+      this.helperContainment.style.position = this.parentOriginStylePosition || null;
+      if (this.helper && this.helper !== this.el)
+        this.helper.remove();
+      this._removeHelperStyle();
+      const ev = Utils.initEvent(e, { target: this.el, type: "dragstop" });
+      if (this.option.stop) {
+        this.option.stop(ev);
+      }
+      this.triggerEvent("dragstop", ev);
+      if (DDManager.dropElement) {
+        DDManager.dropElement.drop(e);
+      }
+    }
+    delete this.helper;
+    delete this.mouseDownEvent;
+    delete DDManager.dragElement;
+    delete DDManager.dropElement;
+    delete DDManager.mouseHandled;
+    delete DDManager.mouseHandledTimeStamp;
+    DDTouch.touchHandled = false;
+    e.preventDefault();
+  }
+  /** @internal call when keys are being pressed - use Esc to cancel, R to rotate */
+  _keyEvent(e) {
+    const n = this.el.gridstackNode;
+    const grid = n?.grid || DDManager.dropElement?.el?.gridstack;
+    if (e.key === "Escape") {
+      if (n && n._origRotate) {
+        n._orig = n._origRotate;
+        delete n._origRotate;
+      }
+      grid?.cancelDrag();
+      this._mouseUp(this.mouseDownEvent);
+    } else if (n && grid && (e.key === "r" || e.key === "R")) {
+      if (!Utils.canBeRotated(n))
+        return;
+      n._origRotate = n._origRotate || { ...n._orig };
+      delete n._moving;
+      grid.setAnimation(false).rotate(n.el, {
+        top: -this.dragOffset.offsetTop,
+        left: -this.dragOffset.offsetX
+      }).setAnimation();
+      n._moving = true;
+      this.dragOffset = this._getDragOffset(this.lastDrag, n.el, this.helperContainment);
+      this.helper.style.width = this.dragOffset.width + "px";
+      this.helper.style.height = this.dragOffset.height + "px";
+      Utils.swap(n._orig, "w", "h");
+      delete n._rect;
+      this._mouseMove(this.lastDrag);
+    }
+  }
+  /** @internal create a clone copy (or user defined method) of the original drag item if set */
+  _createHelper() {
+    let helper = this.el;
+    if (typeof this.option.helper === "function") {
+      helper = this.option.helper(this.el);
+    } else if (this.option.helper === "clone") {
+      helper = Utils.cloneNode(this.el);
+    }
+    if (!helper.parentElement) {
+      Utils.appendTo(helper, this.option.appendTo === "parent" ? this.el.parentElement : this.option.appendTo ?? "body");
+    }
+    this.dragElementOriginStyle = _DDDraggable.originStyleProp.map((prop) => this.el.style[prop]);
+    return helper;
+  }
+  /** @internal set the fix position of the dragged item */
+  _setupHelperStyle(e) {
+    this.helper.classList.add("ui-draggable-dragging");
+    this.el.gridstackNode?.grid?.el.classList.add("grid-stack-dragging");
+    const style = this.helper.style;
+    style.pointerEvents = "none";
+    style.width = this.dragOffset.width + "px";
+    style.height = this.dragOffset.height + "px";
+    style.willChange = "left, right, top";
+    style.position = "fixed";
+    this._dragFollow(e);
+    style.transition = "none";
+    setTimeout(() => {
+      if (this.helper) {
+        style.transition = null;
+      }
+    }, 0);
+    return this;
+  }
+  /** @internal restore back the original style before dragging */
+  _removeHelperStyle() {
+    this.helper.classList.remove("ui-draggable-dragging");
+    (this.el._gridstackNodeOrig || this.el.gridstackNode)?.grid?.el.classList.remove("grid-stack-dragging");
+    const node = this.helper?.gridstackNode;
+    if (!node?._isAboutToRemove && this.dragElementOriginStyle) {
+      const helper = this.helper;
+      const originStyle = this.dragElementOriginStyle;
+      const idxOf = _DDDraggable.originStyleProp.indexOf("transition");
+      const transition = originStyle[idxOf] || null;
+      helper.style.transition = originStyle[idxOf] = "none";
+      const hStyle = helper.style;
+      _DDDraggable.originStyleProp.forEach((prop, i) => hStyle[prop] = originStyle[i] || null);
+      setTimeout(() => helper.style.transition = transition || "", 50);
+    }
+    delete this.dragElementOriginStyle;
+    return this;
+  }
+  /** @internal updates the top/left position to follow the mouse */
+  _dragFollow(e) {
+    const style = this.helper.style;
+    const offset = this.dragOffset;
+    const { dx, dy } = this._cbDrift;
+    if (this.option.rtl) {
+      style.right = (window.innerWidth - e.clientX + offset.offsetX + dx) * this.dragTransform.xScale + "px";
+      if (style.left)
+        style.left = "";
+    } else {
+      style.left = (e.clientX + offset.offsetX - dx) * this.dragTransform.xScale + "px";
+      if (style.right)
+        style.right = "";
+    }
+    style.top = (e.clientY + offset.offsetTop - dy) * this.dragTransform.yScale + "px";
+  }
+  /** @internal */
+  _setupHelperContainmentStyle() {
+    this.helperContainment = this.helper.parentElement;
+    if (this.helper.style.position !== "fixed") {
+      this.parentOriginStylePosition = this.helperContainment.style.position;
+      if (getComputedStyle(this.helperContainment).position.match(/static/)) {
+        this.helperContainment.style.position = "relative";
+      }
+    }
+    return this;
+  }
+  /** @internal */
+  _getDragOffset(event, el, parent) {
+    let xformOffsetX = 0;
+    let xformOffsetY = 0;
+    if (parent) {
+      xformOffsetX = this.dragTransform.xOffset;
+      xformOffsetY = this.dragTransform.yOffset;
+    }
+    const targetOffset = el.getBoundingClientRect();
+    let x = this.option.rtl ? targetOffset.right : targetOffset.left;
+    let offsetX = this.option.rtl ? event.clientX - targetOffset.right + xformOffsetX : -event.clientX + targetOffset.left - xformOffsetX;
+    return {
+      x,
+      top: targetOffset.top,
+      offsetX,
+      offsetTop: -event.clientY + targetOffset.top - xformOffsetY,
+      width: targetOffset.width * this.dragTransform.xScale,
+      height: targetOffset.height * this.dragTransform.yScale
+    };
+  }
+  /** @internal starts or continues auto-scroll when the cursor nears a scroll edge during a drag.
+   * Takes the grid's own element to find the scroll container so external/sidebar drags work too (#2074). */
+  updateScrollPosition(gridEl) {
+    this._autoScrollContainer = Utils.getScrollElement(gridEl);
+    this._checkAutoScroll();
+  }
+  /** @internal start/stop auto-scroll of _autoScrollContainer for the current cursor position */
+  _checkAutoScroll() {
+    if (!this.lastDrag || !this.helper || !this._autoScrollContainer)
+      return;
+    const y = this.lastDrag.clientY;
+    const amount = this._getScrollAmount(this.helper, this._autoScrollContainer, y);
+    if (!amount) {
+      this._stopScrolling();
+      return;
+    }
+    if (this._autoScrollAnimId)
+      return;
+    const dir = Math.sign(amount);
+    const moved = (y - (this.mouseDownEvent?.clientY ?? y)) * dir;
+    const edges = this._scrollEdges(this._autoScrollContainer);
+    const toEdge = dir < 0 ? y - edges.top : edges.bottom - y;
+    if (moved >= _DDDraggable.autoScrollStartMove || toEdge <= _DDDraggable.autoScrollStartMove) {
+      this._autoScrollAnimId = requestAnimationFrame(this._autoScrollTick);
+    }
+  }
+  /** @internal V edges (viewport coords) of the scroll container that are actually on screen - what's really
+   * visible, NOT window.innerHeight which sits under iOS's overlaying tool bars (#2666) */
+  _scrollEdges(scrollEl) {
+    const rect = scrollEl.getBoundingClientRect();
+    const view = Utils.getVisibleViewport();
+    return { top: Math.max(rect.top, view.top), bottom: Math.min(rect.bottom, view.bottom) };
+  }
+  /** @internal how many px to scroll this frame based on the CURSOR: negative = up, positive = down, 0 = don't scroll.
+   * We trigger off the cursor nearing an edge (intentional - the user is driving toward it) rather than the dragged
+   * box touching it: an item taller than the view overhangs both edges for the whole drag and would scroll non-stop
+   * (#3356). We still require the item to be clipped on that side so we don't scroll when nothing of it is left to
+   * reveal that way. Speed ramps up the closer the cursor gets to the edge, capped at `_autoScrollMaxSpeed`. */
+  _getScrollAmount(el, scrollEl, clientY) {
+    const elRect = el.getBoundingClientRect();
+    const { top: topEdge, bottom: botEdge } = this._scrollEdges(scrollEl);
+    if (botEdge <= topEdge)
+      return 0;
+    const band = Math.max((botEdge - topEdge) * _DDDraggable.autoScrollBand, _DDDraggable.autoScrollBandMin);
+    if (!this._autoScrollMaxSpeed)
+      this._autoScrollMaxSpeed = Math.max((botEdge - topEdge) / 50, 12);
+    const ramp = (depth) => this._autoScrollMaxSpeed * (_DDDraggable.autoScrollMinRatio + (1 - _DDDraggable.autoScrollMinRatio) * Math.min(depth / band, 1));
+    const topDepth = topEdge + band - clientY;
+    if (topDepth > 0 && elRect.top < topEdge - 1)
+      return -ramp(topDepth);
+    const botDepth = clientY - (botEdge - band);
+    if (botDepth > 0 && elRect.bottom > botEdge + 1)
+      return ramp(botDepth);
+    return 0;
+  }
+  /** @internal stop any active auto-scroll animation */
+  _stopScrolling() {
+    if (this._autoScrollAnimId) {
+      cancelAnimationFrame(this._autoScrollAnimId);
+      delete this._autoScrollAnimId;
+    }
+  }
+  /** @internal TODO: set to public as called by DDDroppable! */
+  ui() {
+    const containmentEl = this.el.parentElement;
+    const containmentRect = containmentEl.getBoundingClientRect();
+    const offset = this.helper.getBoundingClientRect();
+    const leftPos = this.option.rtl ? (containmentRect.right - offset.right) * this.dragTransform.xScale : (offset.left - containmentRect.left) * this.dragTransform.xScale;
+    return {
+      position: {
+        top: (offset.top - containmentRect.top) * this.dragTransform.yScale,
+        left: leftPos
+      }
+      /* not used by GridStack for now...
+      helper: [this.helper], //The object arr representing the helper that's being dragged.
+      offset: { top: offset.top, left: offset.left } // Current offset position of the helper as { top, left } object.
+      */
+    };
+  }
+};
+DDDraggable.originStyleProp = ["width", "height", "transform", "transform-origin", "transition", "pointerEvents", "position", "left", "right", "top", "minWidth", "willChange"];
+DDDraggable.autoScrollBand = 0.08;
+DDDraggable.autoScrollBandMin = 30;
+DDDraggable.autoScrollMinRatio = 0.4;
+DDDraggable.autoScrollStartMove = 10;
 
 // node_modules/gridstack/dist/dd-element.js
 var DDElement = class _DDElement {
@@ -2988,7 +3434,7 @@ var DDGridStack = class {
    * dd.resizable(element, 'option', 'minWidth', 100);  // Set minimum width
    */
   resizable(el, opts, key, value) {
-    this._getDDElements(el, opts).forEach((dEl) => {
+    this._getDDElements(el, typeof opts === "string" ? opts : void 0).forEach((dEl) => {
       if (opts === "disable" || opts === "enable") {
         dEl.ddResizable && dEl.ddResizable[opts]();
       } else if (opts === "destroy") {
@@ -3002,13 +3448,15 @@ var DDGridStack = class {
         if (handles === "all")
           handles = "n,e,s,w,se,sw,ne,nw";
         const autoHide = !grid.opts.alwaysShowResizeHandle;
+        const resOpts = opts;
         dEl.setupResizable({
           ...grid.opts.resizable,
           ...{ handles, autoHide },
           ...{
-            start: opts.start,
-            stop: opts.stop,
-            resize: opts.resize
+            start: resOpts.start,
+            stop: resOpts.stop,
+            resize: resOpts.resize,
+            rtl: resOpts.rtl
           }
         });
       }
@@ -3022,6 +3470,7 @@ var DDGridStack = class {
    * @param opts - Drag options or command ('enable', 'disable', 'destroy', 'option', or config object)
    * @param key - Option key when using 'option' command
    * @param value - Option value when using 'option' command
+   * @param rtl - Are we in rtl mode?
    * @returns this instance for chaining
    *
    * @example
@@ -3029,7 +3478,7 @@ var DDGridStack = class {
    * dd.draggable(element, {handle: '.drag-handle'});  // Configure drag handle
    */
   draggable(el, opts, key, value) {
-    this._getDDElements(el, opts).forEach((dEl) => {
+    this._getDDElements(el, typeof opts === "string" ? opts : void 0).forEach((dEl) => {
       if (opts === "disable" || opts === "enable") {
         dEl.ddDraggable && dEl.ddDraggable[opts]();
       } else if (opts === "destroy") {
@@ -3038,13 +3487,15 @@ var DDGridStack = class {
         dEl.setupDraggable({ [key]: value });
       } else {
         const grid = dEl.el.gridstackNode.grid;
+        const dragOpts = opts;
         dEl.setupDraggable({
           ...grid.opts.draggable,
           ...{
             // containment: (grid.parentGridNode && grid.opts.dragOut === false) ? grid.el.parentElement : (grid.opts.draggable.containment || null),
-            start: opts.start,
-            stop: opts.stop,
-            drag: opts.drag
+            start: dragOpts.start,
+            stop: dragOpts.stop,
+            drag: dragOpts.drag,
+            rtl: dragOpts.rtl
           }
         });
       }
@@ -3056,11 +3507,15 @@ var DDGridStack = class {
     return this;
   }
   droppable(el, opts, key, value) {
-    if (typeof opts.accept === "function" && !opts._accept) {
-      opts._accept = opts.accept;
-      opts.accept = (el2) => opts._accept(el2);
+    if (typeof opts !== "string") {
+      const o = opts;
+      if (typeof o.accept === "function" && !o._accept) {
+        o._accept = o.accept;
+        o.accept = (el2) => o._accept(el2);
+      }
     }
-    this._getDDElements(el, opts).forEach((dEl) => {
+    const ddOpts = typeof opts === "string" ? opts : void 0;
+    this._getDDElements(el, ddOpts).forEach((dEl) => {
       if (opts === "disable" || opts === "enable") {
         dEl.ddDroppable && dEl.ddDroppable[opts]();
       } else if (opts === "destroy") {
@@ -3087,7 +3542,7 @@ var DDGridStack = class {
   }
   on(el, name, callback) {
     this._getDDElements(el).forEach((dEl) => dEl.on(name, (event) => {
-      callback(event, DDManager.dragElement ? DDManager.dragElement.el : event.target, DDManager.dragElement ? DDManager.dragElement.helper : null);
+      callback(event, DDManager.dragElement ? DDManager.dragElement.el : event.target, DDManager.dragElement ? DDManager.dragElement.helper : void 0);
     }));
     return this;
   }
@@ -3101,7 +3556,7 @@ var DDGridStack = class {
     const hosts = Utils.getElements(els);
     if (!hosts.length)
       return [];
-    const list = hosts.map((e) => e.ddElement || (create ? DDElement.init(e) : null)).filter((d) => d);
+    const list = hosts.map((e) => e.ddElement || (create ? DDElement.init(e) : null)).filter((d) => !!d);
     return list;
   }
 };
@@ -3200,6 +3655,15 @@ var GridStack = class _GridStack {
   static registerEngine(engineClass) {
     _GridStack.engineClass = engineClass;
   }
+  /** @internal migrates the old `float: boolean` option (removed) to the new `mode` option, for JS callers/saved JSON that still pass it */
+  static _migrateFloat(o) {
+    const legacyFloat = o.float;
+    if (legacyFloat !== void 0) {
+      if (o.mode === void 0)
+        o.mode = legacyFloat ? "float" : "top";
+      delete o.float;
+    }
+  }
   /**
    * @internal create placeholder DIV as needed
    * @returns the placeholder element for indicating drop zones during drag operations
@@ -3228,6 +3692,7 @@ var GridStack = class _GridStack {
     this.dragTransform = { xScale: 1, yScale: 1, xOffset: 0, yOffset: 0 };
     el.gridstack = this;
     this.opts = opts = opts || {};
+    _GridStack._migrateFloat(opts);
     if (!el.classList.contains("grid-stack")) {
       this.el.classList.add("grid-stack");
     }
@@ -3248,9 +3713,11 @@ var GridStack = class _GridStack {
       if (!resp.columnWidth && !bk?.length) {
         delete opts.columnOpts;
       } else {
-        resp.columnMax = resp.columnMax || 12;
-        if (bk?.length > 1)
+        if (bk && bk.length > 1) {
           bk.sort((a, b) => (b.w || 0) - (a.w || 0));
+          delete resp.columnWidth;
+        }
+        resp.columnMax ?? (resp.columnMax = 12);
       }
     }
     const defaults = {
@@ -3290,7 +3757,8 @@ var GridStack = class _GridStack {
       parentNode.el.classList.add("grid-stack-sub-grid");
     }
     this._isAutoCellHeight = opts.cellHeight === "auto";
-    if (this._isAutoCellHeight || opts.cellHeight === "initial") {
+    this._isFillCellHeight = opts.cellHeight === "fill";
+    if (this._isAutoCellHeight || this._isFillCellHeight || opts.cellHeight === "initial") {
       this.cellHeight(void 0);
     } else {
       if (typeof opts.cellHeight == "number" && opts.cellHeightUnit && opts.cellHeightUnit !== gridDefaults.cellHeightUnit) {
@@ -3308,7 +3776,7 @@ var GridStack = class _GridStack {
     const engineClass = opts.engineClass || _GridStack.engineClass || GridStackEngine;
     this.engine = new engineClass({
       column: this.getColumn(),
-      float: opts.float,
+      mode: opts.mode,
       maxRow: opts.maxRow,
       onChange: (cbNodes) => {
         cbNodes.forEach((n) => {
@@ -3350,8 +3818,10 @@ var GridStack = class _GridStack {
   }
   _updateColumnVar(opts = this.opts) {
     this.el.classList.add("gs-" + opts.column);
-    if (typeof opts.column === "number")
+    if (typeof opts.column === "number") {
       this.el.style.setProperty("--gs-column-width", `${100 / opts.column}%`);
+      this.el.style.setProperty("--gs-columns", String(opts.column));
+    }
   }
   /**
    * add a new widget and returns it.
@@ -3462,7 +3932,7 @@ var GridStack = class _GridStack {
       ...ops || node.subGridOpts || {}
     });
     node.subGridOpts = ops;
-    let autoColumn;
+    let autoColumn = false;
     if (ops.column === "auto") {
       autoColumn = true;
       ops.column = Math.max(node.w || 1, nodeToAdd?.w || 1);
@@ -3481,7 +3951,7 @@ var GridStack = class _GridStack {
         delete node.content;
       }
       if (_GridStack.addRemoveCB) {
-        newItem = _GridStack.addRemoveCB(this.el, newItemOpt, true, false);
+        newItem = _GridStack.addRemoveCB(this.el, newItemOpt, true, false) || void 0;
       } else {
         newItem = Utils.createDiv(["grid-stack-item"]);
         newItem.appendChild(content);
@@ -3495,9 +3965,9 @@ var GridStack = class _GridStack {
       const style = node.el.style;
       style.transition = "none";
       this.update(node.el, { w, h });
-      setTimeout(() => style.transition = null);
+      setTimeout(() => style.transition = "");
     }
-    const subGrid = node.subGrid = _GridStack.addGrid(content, ops);
+    const subGrid = node.subGrid = _GridStack.addGrid(content, ops) || void 0;
     if (nodeToAdd?._moving)
       subGrid._isTemp = true;
     if (autoColumn)
@@ -3507,7 +3977,7 @@ var GridStack = class _GridStack {
     }
     if (nodeToAdd) {
       if (nodeToAdd._moving) {
-        window.setTimeout(() => Utils.simulateMouseEvent(nodeToAdd._event, "mouseenter", subGrid.el), 0);
+        window.setTimeout(() => subGrid.el.ddElement?.ddDroppable?._mouseEnter(nodeToAdd._event), 0);
       } else {
         subGrid.makeWidget(node.el, node);
       }
@@ -3526,8 +3996,11 @@ var GridStack = class _GridStack {
     pGrid.batchUpdate();
     pGrid.removeWidget(this.parentGridNode.el, true, true);
     this.engine.nodes.forEach((n) => {
-      n.x += this.parentGridNode.x;
-      n.y += this.parentGridNode.y;
+      n.x = (n.x ?? 0) + (this.parentGridNode.x ?? 0);
+      n.y = (n.y ?? 0) + (this.parentGridNode.y ?? 0);
+      this._removeDD(n.el);
+      n.el.remove();
+      delete n.el.gridstackNode;
       pGrid.makeWidget(n.el, n);
     });
     pGrid.batchUpdate(false);
@@ -3535,7 +4008,9 @@ var GridStack = class _GridStack {
       delete this.parentGridNode.subGrid;
     delete this.parentGridNode;
     if (nodeThatRemoved) {
-      window.setTimeout(() => Utils.simulateMouseEvent(nodeThatRemoved._event, "mouseenter", pGrid.el), 0);
+      const origNode = nodeThatRemoved.el?.gridstackNode;
+      if (origNode && origNode !== nodeThatRemoved)
+        origNode._temporaryRemoved = true;
     }
   }
   /**
@@ -3639,8 +4114,6 @@ var GridStack = class _GridStack {
    * @see {@link http://gridstackjs.com/demo/serialization.html} for complete example
    */
   load(items, addRemove = _GridStack.addRemoveCB || true) {
-    items = Utils.cloneDeep(items);
-    const column = this.getColumn();
     items.forEach((n) => {
       n.w = n.w || n.minW || 1;
       n.h = n.h || n.minH || 1;
@@ -3653,6 +4126,7 @@ var GridStack = class _GridStack {
     });
     if (maxColumn > this.engine.defaultColumn)
       this.engine.defaultColumn = maxColumn;
+    const column = this.getColumn();
     if (maxColumn > column) {
       if (this.engine.nodes.length === 0 && this.responseLayout) {
         this.engine.nodes = items;
@@ -3689,14 +4163,14 @@ var GridStack = class _GridStack {
     this.engine._loading = true;
     const updateNodes = [];
     this.engine.nodes = this.engine.nodes.filter((n) => {
-      if (Utils.find(items, n.id)) {
+      if (n.id && Utils.find(items, n.id)) {
         updateNodes.push(n);
         return false;
       }
       return true;
     });
     items.forEach((w) => {
-      const item = Utils.find(updateNodes, w.id);
+      const item = w.id ? Utils.find(updateNodes, w.id) : void 0;
       if (item) {
         if (Utils.shouldSizeToContent(item))
           w.h = item.h;
@@ -3775,12 +4249,16 @@ var GridStack = class _GridStack {
     if (this.opts.cellHeightUnit === "mm") {
       return this.opts.cellHeight * (96 / 2.54) / 10;
     }
+    if (this.opts.cellHeightUnit === "vw" || this.opts.cellHeightUnit === "vh") {
+      const view = this.opts.cellHeightUnit === "vw" ? window.innerWidth || document.documentElement.clientWidth : window.innerHeight || document.documentElement.clientHeight;
+      return this.opts.cellHeight * view / 100;
+    }
     const el = this.el.querySelector("." + this.opts.itemClass);
     if (el) {
       const h = Utils.toNumber(el.getAttribute("gs-h")) || 1;
       return Math.round(el.offsetHeight / h);
     }
-    const rows = parseInt(this.el.getAttribute("gs-current-row"));
+    const rows = parseInt(this.el.getAttribute("gs-current-row") || "0");
     return rows ? Math.round(this.el.getBoundingClientRect().height / rows) : this.opts.cellHeight;
   }
   /**
@@ -3802,13 +4280,21 @@ var GridStack = class _GridStack {
    */
   cellHeight(val) {
     if (val !== void 0) {
-      if (this._isAutoCellHeight !== (val === "auto")) {
+      if (this._isAutoCellHeight !== (val === "auto") || this._isFillCellHeight !== (val === "fill")) {
         this._isAutoCellHeight = val === "auto";
+        this._isFillCellHeight = val === "fill";
         this._updateResizeEvent();
       }
     }
-    if (val === "initial" || val === "auto") {
+    if (val === "initial" || val === "auto" || val === "fill") {
       val = void 0;
+    }
+    if (val === void 0 && this._isFillCellHeight) {
+      let rows = this.getRow() || this.opts.row || this.opts.maxRow || 1;
+      const h = this.el.clientHeight;
+      if (h > 0) {
+        val = Math.max(1, h / rows);
+      }
     }
     if (val === void 0) {
       const marginDiff = -this.opts.marginRight - this.opts.marginLeft + this.opts.marginTop + this.opts.marginBottom;
@@ -3923,9 +4409,10 @@ var GridStack = class _GridStack {
    * // Single column layout (vertical stack)
    * grid.column(1);
    */
-  column(column, layout = "moveScale") {
+  column(column, layout) {
     if (!column || column < 1 || this.opts.column === column)
       return this;
+    layout ?? (layout = this.opts.mode === "list" || this.opts.mode === "compact" ? this.opts.mode : "moveScale");
     const oldColumn = this.getColumn();
     this.opts.column = column;
     if (!this.engine) {
@@ -3936,7 +4423,7 @@ var GridStack = class _GridStack {
     this.el.classList.remove("gs-" + oldColumn);
     this._updateColumnVar();
     this.engine.columnChanged(oldColumn, column, layout);
-    if (this._isAutoCellHeight)
+    if (this._isAutoCellHeight || this._isFillCellHeight)
       this.cellHeight();
     this.resizeToContentCheck(true);
     this._ignoreLayoutsNodeChange = true;
@@ -3983,7 +4470,7 @@ var GridStack = class _GridStack {
    * }
    */
   isIgnoreChangeCB() {
-    return this._ignoreLayoutsNodeChange;
+    return !!this._ignoreLayoutsNodeChange;
   }
   /**
    * Destroys a grid instance. DO NOT CALL any methods or access any vars after this as it will free up members.
@@ -3991,7 +4478,7 @@ var GridStack = class _GridStack {
    */
   destroy(removeDOM = true) {
     if (!this.el)
-      return;
+      return this;
     this.offAll();
     this._updateResizeEvent(true);
     this.setStatic(true, false);
@@ -4014,34 +4501,35 @@ var GridStack = class _GridStack {
     return this;
   }
   /**
-   * Enable/disable floating widgets (default: `false`). When enabled, widgets can float up to fill empty spaces.
-   * See [example](http://gridstackjs.com/demo/float.html)
+   * Set the layout mode controlling how widgets pack/reflow (default: `'top'`). See {@link GridStackMode}.
+   * See [float example](http://gridstackjs.com/demo/float.html) and [list example](http://gridstackjs.com/demo/list.html)
    *
-   * @param val true to enable floating, false to disable
+   * @param val the new mode ('top' | 'float' | 'list' | 'compact')
    * @returns the grid instance for chaining
    *
    * @example
-   * grid.float(true);  // Enable floating
-   * grid.float(false); // Disable floating (default)
+   * grid.mode('float'); // no gravity, widgets stay where placed
+   * grid.mode('top');   // top gravity packing (default)
+   * grid.mode('list');  // continuous sequential reflow, like a re-orderable list
    */
-  float(val) {
-    if (this.opts.float !== val) {
-      this.opts.float = this.engine.float = val;
+  mode(val) {
+    if (this.opts.mode !== val) {
+      this.opts.mode = this.engine.mode = val;
       this._triggerChangeEvent();
     }
     return this;
   }
   /**
-   * Get the current float mode setting.
+   * Get the current layout mode setting.
    *
-   * @returns true if floating is enabled, false otherwise
+   * @returns the current mode
    *
    * @example
-   * const isFloating = grid.getFloat();
-   * console.log('Floating enabled:', isFloating);
+   * const mode = grid.getMode();
+   * console.log('Current mode:', mode);
    */
-  getFloat() {
-    return this.engine.float;
+  getMode() {
+    return this.engine.mode;
   }
   /**
    * Get the position of the cell under a pixel on screen.
@@ -4063,7 +4551,7 @@ var GridStack = class _GridStack {
     const relativeLeft = position.left - containerPos.left;
     const relativeTop = position.top - containerPos.top;
     const columnWidth = box.width / this.getColumn();
-    const rowHeight = box.height / parseInt(this.el.getAttribute("gs-current-row"));
+    const rowHeight = box.height / parseInt(this.el.getAttribute("gs-current-row") || "0");
     return { x: Math.floor(relativeLeft / columnWidth), y: Math.floor(relativeTop / rowHeight) };
   }
   /**
@@ -4077,7 +4565,7 @@ var GridStack = class _GridStack {
    * console.log('Grid has', rowCount, 'rows');
    */
   getRow() {
-    return Math.max(this.engine.getRow(), this.opts.minRow || 0);
+    return Math.max(this.engine?.getRow() || 0, this.opts.minRow || 0);
   }
   /**
    * Checks if the specified rectangular area is empty (no widgets occupy any part of it).
@@ -4133,7 +4621,7 @@ var GridStack = class _GridStack {
     if (node.subGridOpts) {
       this.makeSubGrid(el, node.subGridOpts, void 0, false);
     }
-    let resetIgnoreLayoutsNodeChange;
+    let resetIgnoreLayoutsNodeChange = false;
     if (this.opts.column === 1 && !this._ignoreLayoutsNodeChange) {
       resetIgnoreLayoutsNodeChange = this._ignoreLayoutsNodeChange = true;
     }
@@ -4307,6 +4795,7 @@ var GridStack = class _GridStack {
     const opts = this.opts;
     if (o === opts)
       return this;
+    _GridStack._migrateFloat(o);
     if (o.acceptWidgets !== void 0) {
       opts.acceptWidgets = o.acceptWidgets;
       this._setupAcceptWidget();
@@ -4322,7 +4811,10 @@ var GridStack = class _GridStack {
         this.el.classList.add(o.class);
     }
     if (o.columnOpts) {
+      const hadColumnOpts = !!this.opts.columnOpts;
       this.opts.columnOpts = o.columnOpts;
+      if (hadColumnOpts !== !!this.opts.columnOpts)
+        this._updateResizeEvent();
       this.checkDynamicColumn();
     } else if (o.columnOpts === null && this.opts.columnOpts) {
       delete this.opts.columnOpts;
@@ -4337,18 +4829,23 @@ var GridStack = class _GridStack {
       this.enableMove(!o.disableDrag);
     if (o.disableResize !== void 0 && !o.staticGrid)
       this.enableResize(!o.disableResize);
-    if (o.float !== void 0)
-      this.float(o.float);
+    if (o.mode !== void 0)
+      this.mode(o.mode);
     if (o.row !== void 0) {
-      opts.minRow = opts.maxRow = opts.row = o.row;
+      opts.minRow = opts.maxRow = this.engine.maxRow = opts.row = o.row;
       this._updateContainerHeight();
+      if (this.engine.getRow() > o.row)
+        this.compact();
     } else {
       if (o.minRow !== void 0) {
         opts.minRow = o.minRow;
         this._updateContainerHeight();
       }
-      if (o.maxRow !== void 0)
-        opts.maxRow = o.maxRow;
+      if (o.maxRow !== void 0) {
+        opts.maxRow = this.engine.maxRow = o.maxRow;
+        if (this.engine.getRow() > o.maxRow)
+          this.compact();
+      }
     }
     if (o.lazyLoad !== void 0)
       opts.lazyLoad = o.lazyLoad;
@@ -4392,11 +4889,14 @@ var GridStack = class _GridStack {
       delete w.autoPosition;
       const keys = ["x", "y", "w", "h"];
       let m;
-      if (keys.some((k) => w[k] !== void 0 && w[k] !== n[k])) {
+      const wRec = w;
+      const nRec = n;
+      if (keys.some((k) => wRec[k] !== void 0 && wRec[k] !== nRec[k])) {
         m = {};
+        const mRec = m;
         keys.forEach((k) => {
-          m[k] = w[k] !== void 0 ? w[k] : n[k];
-          delete w[k];
+          mRec[k] = wRec[k] !== void 0 ? wRec[k] : nRec[k];
+          delete wRec[k];
         });
       }
       if (!m && (w.minW || w.minH || w.maxW || w.maxH)) {
@@ -4416,9 +4916,9 @@ var GridStack = class _GridStack {
       }
       let changed = false;
       let ddChanged = false;
-      for (const key in w) {
-        if (key[0] !== "_" && n[key] !== w[key]) {
-          n[key] = w[key];
+      for (const key in wRec) {
+        if (key[0] !== "_" && nRec[key] !== wRec[key]) {
+          nRec[key] = wRec[key];
           changed = true;
           ddChanged = ddChanged || !this.opts.staticGrid && (key === "noResize" || key === "noMove" || key === "locked");
         }
@@ -4432,7 +4932,8 @@ var GridStack = class _GridStack {
         } else {
           this.resizeToContentCheck(widthChanged, n);
         }
-        delete n._orig;
+        if (!n._updating)
+          delete n._orig;
       }
       if (m || changed) {
         this._writeAttr(el, n);
@@ -4449,7 +4950,7 @@ var GridStack = class _GridStack {
     const wasUpdating = n._updating;
     if (!wasUpdating)
       this.engine.cleanNodes().beginUpdate(n);
-    this.engine.moveNode(n, m);
+    this.engine.moveNodeCheck(n, m);
     this._updateContainerHeight();
     if (!wasUpdating) {
       this._triggerChangeEvent();
@@ -4490,7 +4991,7 @@ var GridStack = class _GridStack {
     if (!cell)
       return;
     let height = n.h ? n.h * cell : el.clientHeight;
-    let item;
+    let item = null;
     if (n.resizeToContentParent)
       item = el.querySelector(n.resizeToContentParent);
     if (!item)
@@ -4559,7 +5060,7 @@ var GridStack = class _GridStack {
   rotate(els, relative) {
     _GridStack.getElements(els).forEach((el) => {
       const n = el.gridstackNode;
-      if (!Utils.canBeRotated(n))
+      if (!n || !Utils.canBeRotated(n))
         return;
       const rot = { w: n.h, h: n.w, minH: n.minW, minW: n.minH, maxH: n.maxW, maxW: n.maxH };
       if (relative) {
@@ -4568,9 +5069,10 @@ var GridStack = class _GridStack {
         rot.x = n.x + pivotX - (n.h - (pivotY + 1));
         rot.y = n.y + pivotY - pivotX;
       }
-      Object.keys(rot).forEach((k) => {
-        if (rot[k] === void 0)
-          delete rot[k];
+      const rotRec = rot;
+      Object.keys(rotRec).forEach((k) => {
+        if (rotRec[k] === void 0)
+          delete rotRec[k];
       });
       const _orig = n._orig;
       this.update(el, rot);
@@ -4598,7 +5100,7 @@ var GridStack = class _GridStack {
     if (!isMultiValue) {
       const data = Utils.parseHeight(value);
       if (this.opts.marginUnit === data.unit && this.opts.margin === data.h)
-        return;
+        return this;
     }
     this.opts.margin = value;
     this.opts.marginTop = this.opts.marginBottom = this.opts.marginLeft = this.opts.marginRight = void 0;
@@ -4649,6 +5151,35 @@ var GridStack = class _GridStack {
       this._triggerEvent("change", elements);
     }
     this.engine.saveInitial();
+    this._sortDom();
+    if (this._isFillCellHeight) {
+      this.cellHeight();
+    }
+    return this;
+  }
+  /** @internal Re-orders the HTML DOM nodes to match the visual layout for accessibility (Tab navigation) and printing (when not using CSS grids). */
+  _sortDom() {
+    let nodes = this.engine.nodes;
+    nodes.forEach((n) => {
+      if (n.subGrid)
+        n.subGrid._sortDom();
+    });
+    if (nodes.length < 2)
+      return this;
+    this.engine.sortNodes();
+    nodes = this.engine.nodes;
+    const children = this.el.children;
+    if (nodes.some((n, i) => n.el !== children[i])) {
+      const moveBefore = this.el.moveBefore?.bind(this.el);
+      nodes.forEach((n) => {
+        if (n.el && n.el.parentElement === this.el) {
+          if (moveBefore)
+            moveBefore(n.el, null);
+          else
+            this.el.appendChild(n.el);
+        }
+      });
+    }
     return this;
   }
   /** @internal */
@@ -4710,7 +5241,7 @@ var GridStack = class _GridStack {
     this.el.setAttribute("gs-current-row", String(row));
     this.el.style.removeProperty("min-height");
     this.el.style.removeProperty("height");
-    if (row) {
+    if (row && (parent || !this._isFillCellHeight)) {
       this.el.style[parent ? "minHeight" : "height"] = row * cellHeight + unit;
     }
     if (parent && Utils.shouldSizeToContent(parent)) {
@@ -4731,20 +5262,27 @@ var GridStack = class _GridStack {
     sizeToContent ? el.classList.add("size-to-content") : el.classList.remove("size-to-content");
     if (sizeToContent)
       this.resizeToContentCheck(false, node);
-    if (!Utils.lazyLoad(node))
+    if (!Utils.lazyLoad(node) || !node.visibleObservable) {
       this.prepareDragDrop(node.el);
+    }
     return this;
   }
   /** @internal write position CSS vars and x,y,w,h attributes (not used for CSS but by users) back to element */
   _writePosAttr(el, n) {
     if (!n._moving && !n._resizing || this._placeholder === el) {
-      el.style.top = n.y ? n.y === 1 ? `var(--gs-cell-height)` : `calc(${n.y} * var(--gs-cell-height))` : null;
-      el.style.left = n.x ? n.x === 1 ? `var(--gs-column-width)` : `calc(${n.x} * var(--gs-column-width))` : null;
-      el.style.width = n.w > 1 ? `calc(${n.w} * var(--gs-column-width))` : null;
-      el.style.height = n.h > 1 ? `calc(${n.h} * var(--gs-cell-height))` : null;
+      const xProp = this.opts.rtl ? "right" : "left";
+      const elStyle = el.style;
+      elStyle.top = n.y ? n.y === 1 ? `var(--gs-cell-height)` : `calc(${n.y} * var(--gs-cell-height))` : null;
+      elStyle[xProp] = n.x ? n.x === 1 ? `var(--gs-column-width)` : `calc(${n.x} * var(--gs-column-width))` : null;
+      elStyle.width = n.w > 1 ? `calc(${n.w} * var(--gs-column-width))` : null;
+      elStyle.height = n.h > 1 ? `calc(${n.h} * var(--gs-cell-height))` : null;
     }
-    el.setAttribute("gs-x", String(n.x));
-    el.setAttribute("gs-y", String(n.y));
+    el.style.setProperty("--gs-x", String(n.x || 0));
+    el.style.setProperty("--gs-y", String(n.y || 0));
+    el.style.setProperty("--gs-w", String(n.w || 1));
+    el.style.setProperty("--gs-h", String(n.h || 1));
+    el.setAttribute("gs-x", String(n.x ?? 0));
+    el.setAttribute("gs-y", String(n.y ?? 0));
     n.w > 1 ? el.setAttribute("gs-w", String(n.w)) : el.removeAttribute("gs-w");
     n.h > 1 ? el.setAttribute("gs-h", String(n.h)) : el.removeAttribute("gs-h");
     return this;
@@ -4762,12 +5300,38 @@ var GridStack = class _GridStack {
       id: "gs-id",
       sizeToContent: "gs-size-to-content"
     };
-    for (const key in attrs) {
-      if (node[key]) {
-        el.setAttribute(attrs[key], String(node[key]));
+    const nodeRec = node;
+    const attrsRec = attrs;
+    for (const key in attrsRec) {
+      if (nodeRec[key] !== void 0 && nodeRec[key] !== null && nodeRec[key] !== false) {
+        el.setAttribute(attrsRec[key], String(nodeRec[key]));
       } else {
-        el.removeAttribute(attrs[key]);
+        el.removeAttribute(attrsRec[key]);
       }
+    }
+    const print = node.print;
+    if (print) {
+      if (print.pageBreak)
+        el.setAttribute("gs-page-break", String(print.pageBreak));
+      else
+        el.removeAttribute("gs-page-break");
+      if (print.hide)
+        el.classList.add("gs-print-hide");
+      else
+        el.classList.remove("gs-print-hide");
+      if (print.orientation)
+        el.setAttribute("gs-print-orientation", String(print.orientation));
+      else
+        el.removeAttribute("gs-print-orientation");
+      if (print.breakInside)
+        el.setAttribute("gs-break-inside", String(print.breakInside));
+      else
+        el.removeAttribute("gs-break-inside");
+    } else {
+      el.removeAttribute("gs-page-break");
+      el.classList.remove("gs-print-hide");
+      el.removeAttribute("gs-print-orientation");
+      el.removeAttribute("gs-break-inside");
     }
     return this;
   }
@@ -4782,6 +5346,21 @@ var GridStack = class _GridStack {
     n.noResize = Utils.toBool(el.getAttribute("gs-no-resize"));
     n.noMove = Utils.toBool(el.getAttribute("gs-no-move"));
     n.locked = Utils.toBool(el.getAttribute("gs-locked"));
+    let pageBreak = el.getAttribute("gs-page-break");
+    let hide = el.classList.contains("gs-print-hide");
+    let orientation = el.getAttribute("gs-print-orientation");
+    let breakInside = el.getAttribute("gs-break-inside");
+    if (pageBreak || hide || orientation || breakInside) {
+      n.print = {};
+      if (pageBreak)
+        n.print.pageBreak = Utils.toBool(pageBreak);
+      if (hide)
+        n.print.hide = true;
+      if (orientation)
+        n.print.orientation = orientation;
+      if (breakInside)
+        n.print.breakInside = Utils.toBool(breakInside);
+    }
     const attr = el.getAttribute("gs-size-to-content");
     if (attr) {
       if (attr === "true" || attr === "false")
@@ -4789,7 +5368,7 @@ var GridStack = class _GridStack {
       else
         n.sizeToContent = parseInt(attr, 10);
     }
-    n.id = el.getAttribute("gs-id");
+    n.id = el.getAttribute("gs-id") ?? void 0;
     n.maxW = Utils.toNumber(el.getAttribute("gs-max-w"));
     n.minW = Utils.toNumber(el.getAttribute("gs-min-w"));
     n.maxH = Utils.toNumber(el.getAttribute("gs-max-h"));
@@ -4808,11 +5387,12 @@ var GridStack = class _GridStack {
       if (n.minH)
         el.removeAttribute("gs-min-h");
     }
-    for (const key in n) {
+    const nRec = n;
+    for (const key in nRec) {
       if (!n.hasOwnProperty(key))
-        return;
-      if (!n[key] && n[key] !== 0 && key !== "sizeToContent") {
-        delete n[key];
+        continue;
+      if (!nRec[key] && nRec[key] !== 0 && key !== "sizeToContent") {
+        delete nRec[key];
       }
     }
     return n;
@@ -4834,12 +5414,15 @@ var GridStack = class _GridStack {
    * and remember the prev columns we used, or get our count from parent, as well as check for cellHeight==='auto' (square)
    * or `sizeToContent` gridItem options.
    */
-  onResize(clientWidth = this.el?.clientWidth) {
+  onResize(clientWidth = this.el?.clientWidth, clientHeight = this.el?.clientHeight) {
     if (!clientWidth)
-      return;
-    if (this.prevWidth === clientWidth)
-      return;
+      return this;
+    if (clientWidth === this.prevWidth && clientHeight === this.prevHeight)
+      return this;
+    if (clientWidth === this.prevWidth && !this._isFillCellHeight)
+      return this;
     this.prevWidth = clientWidth;
+    this.prevHeight = clientHeight;
     this.batchUpdate();
     let columnChanged = false;
     if (this._autoColumn && this.parentGridNode) {
@@ -4850,7 +5433,7 @@ var GridStack = class _GridStack {
     } else {
       columnChanged = this.checkDynamicColumn();
     }
-    if (this._isAutoCellHeight)
+    if (this._isAutoCellHeight || this._isFillCellHeight)
       this.cellHeight();
     this.engine.nodes.forEach((n) => {
       if (n.subGrid)
@@ -4863,11 +5446,13 @@ var GridStack = class _GridStack {
     return this;
   }
   /** resizes content for given node (or all) if shouldSizeToContent() is true */
-  resizeToContentCheck(delay = false, n = void 0) {
+  resizeToContentCheck(delay = false, n) {
     if (!this.engine)
       return;
-    if (delay && this.hasAnimationCSS())
-      return setTimeout(() => this.resizeToContentCheck(false, n), this.animationDelay);
+    if (delay && this.hasAnimationCSS()) {
+      setTimeout(() => this.resizeToContentCheck(false, n), this.animationDelay);
+      return;
+    }
     if (n) {
       if (Utils.shouldSizeToContent(n))
         this.resizeToContentCBCheck(n.el);
@@ -4882,12 +5467,13 @@ var GridStack = class _GridStack {
       this.batchUpdate(false);
       this._ignoreLayoutsNodeChange = false;
     }
-    if (this._gsEventHandler["resizecontent"])
-      this._gsEventHandler["resizecontent"](null, n ? [n] : this.engine.nodes);
+    const rcHandler = this._gsEventHandler["resizecontent"];
+    if (rcHandler)
+      rcHandler(new Event("resizecontent"), n ? [n] : this.engine.nodes);
   }
   /** add or remove the grid element size event handler */
   _updateResizeEvent(forceRemove = false) {
-    const trackSize = !this.parentGridNode && (this._isAutoCellHeight || this.opts.sizeToContent || this.opts.columnOpts || this.engine.nodes.find((n) => n.sizeToContent));
+    const trackSize = !this.parentGridNode && (this._isAutoCellHeight || this._isFillCellHeight || this.opts.sizeToContent || this.opts.columnOpts || this.engine.nodes.find((n) => n.sizeToContent));
     if (!forceRemove && trackSize && !this.resizeObserver) {
       this._sizeThrottle = Utils.throttle(() => this.onResize(), this.opts.cellHeightThrottle);
       this.resizeObserver = new ResizeObserver(() => this._sizeThrottle());
@@ -4918,7 +5504,7 @@ var GridStack = class _GridStack {
   }
   /** @internal initialize margin top/bottom/left/right and units */
   _initMargin() {
-    let data;
+    let data = { h: 0, unit: "px" };
     let margin = 0;
     let margins = [];
     if (typeof this.opts.margin === "string") {
@@ -4938,12 +5524,13 @@ var GridStack = class _GridStack {
       margin = this.opts.margin = data.h;
     }
     const keys = ["marginTop", "marginRight", "marginBottom", "marginLeft"];
+    const optsRec = this.opts;
     keys.forEach((k) => {
-      if (this.opts[k] === void 0) {
-        this.opts[k] = margin;
+      if (optsRec[k] === void 0) {
+        optsRec[k] = margin;
       } else {
-        data = Utils.parseHeight(this.opts[k]);
-        this.opts[k] = data.h;
+        data = Utils.parseHeight(optsRec[k]);
+        optsRec[k] = data.h;
         delete this.opts.margin;
       }
     });
@@ -4990,10 +5577,27 @@ var GridStack = class _GridStack {
       DDManager.pauseDrag = dragInOptions.pause;
     }
     dragInOptions = { appendTo: "body", helper: "clone", ...dragInOptions || {} };
+    const userStart = dragInOptions.start, userDrag = dragInOptions.drag, userStop = dragInOptions.stop;
+    const emit = (el, type, ui) => el.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { el, ui } }));
     const els = typeof dragIn === "string" ? Utils.getElements(dragIn, root) : dragIn;
     els.forEach((el, i) => {
-      if (!dd.isDraggable(el))
-        dd.dragIn(el, dragInOptions);
+      if (!dd.isDraggable(el)) {
+        dd.dragIn(el, {
+          ...dragInOptions,
+          start: (event, ui) => {
+            userStart?.(event, ui);
+            emit(el, "dragstart", ui);
+          },
+          drag: (event, ui) => {
+            userDrag?.(event, ui);
+            emit(el, "drag", ui);
+          },
+          stop: (event) => {
+            userStop?.(event);
+            emit(el, "dragstop");
+          }
+        });
+      }
       if (widgets?.[i])
         el.gridstackNode = widgets[i];
     });
@@ -5079,7 +5683,7 @@ var GridStack = class _GridStack {
    */
   disable(recurse = true) {
     if (this.opts.staticGrid)
-      return;
+      return this;
     this.enableMove(false, recurse);
     this.enableResize(false, recurse);
     this._triggerEvent("disable");
@@ -5107,7 +5711,7 @@ var GridStack = class _GridStack {
    */
   enable(recurse = true) {
     if (this.opts.staticGrid)
-      return;
+      return this;
     this.enableMove(true, recurse);
     this.enableResize(true, recurse);
     this._triggerEvent("enable");
@@ -5173,6 +5777,25 @@ var GridStack = class _GridStack {
   }
   /** @internal call when drag (and drop) needs to be cancelled (Esc key) */
   cancelDrag() {
+    const dragEl = DDManager.dragElement?.el;
+    if (dragEl?._gridstackNodeOrig) {
+      const origNode = dragEl._gridstackNodeOrig;
+      const origGrid = origNode.grid;
+      const n2 = this._placeholder?.gridstackNode;
+      if (n2) {
+        n2._isAboutToRemove = true;
+        this.engine.removeNode(n2);
+      }
+      this.engine.restoreInitial();
+      dragEl.gridstackNode = origNode;
+      delete dragEl._gridstackNodeOrig;
+      delete DDManager.dropElement;
+      if (origGrid) {
+        origGrid.engine.addNode(origNode, false);
+        origGrid.engine.restoreInitial();
+      }
+      return;
+    }
     const n = this._placeholder?.gridstackNode;
     if (!n)
       return;
@@ -5181,6 +5804,9 @@ var GridStack = class _GridStack {
       this.engine.removeNode(n);
     } else if (n._isAboutToRemove) {
       _GridStack._itemRemoving(n.el, false);
+    }
+    if (!n._isExternal && n._temporaryRemoved && n._orig) {
+      Utils.copyPos(n, n._orig);
     }
     this.engine.restoreInitial();
   }
@@ -5223,10 +5849,24 @@ var GridStack = class _GridStack {
         }
       };
       if (node._temporaryRemoved) {
-        node.x = Math.max(0, Math.round(left / cellWidth));
+        node.x = Math.max(0, Math.min(this.getColumn() - node.w, Math.round(left / cellWidth)));
         node.y = Math.max(0, Math.round(top / cellHeight));
         delete node.autoPosition;
         this.engine.nodeBoundFix(node);
+        const sub = this._acceptingSubGrid(node);
+        if (sub) {
+          const dx = (left / cellWidth + node.w / 2 - (sub.x + sub.w / 2)) / sub.w;
+          const dy = (top / cellHeight + node.h / 2 - (sub.y + sub.h / 2)) / sub.h;
+          if (Math.abs(dy) >= Math.abs(dx)) {
+            if (dy > 0)
+              node.y = sub.y + sub.h;
+          } else if (dx > 0) {
+            if (sub.x + sub.w + node.w <= this.getColumn())
+              node.x = sub.x + sub.w;
+          } else if (sub.x >= node.w) {
+            node.x = sub.x - node.w;
+          }
+        }
         if (!this.engine.willItFit(node)) {
           node.autoPosition = true;
           if (!this.engine.willItFit(node)) {
@@ -5362,7 +6002,7 @@ var GridStack = class _GridStack {
       }
       delete node.grid?._isTemp;
       dd.off(el, "drag");
-      if (helper !== el) {
+      if (helper && helper !== el) {
         helper.remove();
         el = helper;
       } else {
@@ -5376,7 +6016,7 @@ var GridStack = class _GridStack {
       Utils.removePositioningStyles(el);
       if (wasSidebar && (node.content || node.subGridOpts || _GridStack.addRemoveCB)) {
         delete node.el;
-        el = this.addWidget(node);
+        el = this.addWidget(node) || el;
       } else {
         this._prepareElement(el, true, node);
         this.el.appendChild(el);
@@ -5420,6 +6060,26 @@ var GridStack = class _GridStack {
     return this;
   }
   /**
+   * Re-scans one or more widget elements for drag handle elements after delayed content
+   * (React portal, Angular component, etc.) has been rendered inside the item.
+   * Only needed when you use a custom `draggable.handle` selector that lives *inside* the
+   * item's dynamically-created content. The default `.grid-stack-item-content` handle is
+   * created synchronously and never needs this call.
+   *
+   * @param els widget element(s) or selector
+   *
+   * @example
+   * // React: after portal renders (see GridStackItem useEffect)
+   * // Angular: after createComp() inside gsCreateNgComponents
+   * grid.refreshDragHandles(itemEl);
+   */
+  refreshDragHandles(els) {
+    _GridStack.getElements(els).forEach((el) => {
+      el.ddElement?.ddDraggable?.refreshHandles();
+    });
+    return this;
+  }
+  /**
    * prepares the element for drag&drop - this is normally called by makeWidget() unless are are delay loading
    * @param el GridItemHTMLElement of the widget
    * @param [force=false]
@@ -5427,7 +6087,7 @@ var GridStack = class _GridStack {
   prepareDragDrop(el, force = false) {
     const node = el?.gridstackNode;
     if (!node)
-      return;
+      return this;
     const noMove = node.noMove || this.opts.disableDrag;
     const noResize = node.noResize || this.opts.disableResize;
     const disable = this.opts.staticGrid || noMove && noResize;
@@ -5436,10 +6096,10 @@ var GridStack = class _GridStack {
         this._removeDD(el);
         delete node._initDD;
       }
-      if (disable)
+      if (disable) {
         el.classList.add("ui-draggable-disabled", "ui-resizable-disabled");
-      if (!force)
         return this;
+      }
     }
     if (!node._initDD) {
       let cellWidth;
@@ -5460,7 +6120,7 @@ var GridStack = class _GridStack {
         delete node._resizing;
         delete node._event;
         delete node._lastTried;
-        const widthChanged = node.w !== node._orig.w;
+        const widthChanged = !!node._orig && node.w !== node._orig.w;
         const target = event.target;
         if (!target.gridstackNode || target.gridstackNode.grid !== this)
           return;
@@ -5495,11 +6155,13 @@ var GridStack = class _GridStack {
       dd.draggable(el, {
         start: onStartMoving,
         stop: onEndMoving,
-        drag: dragOrResize
+        drag: dragOrResize,
+        rtl: this.opts.rtl === "auto" ? void 0 : this.opts.rtl
       }).resizable(el, {
         start: onStartMoving,
         stop: onEndMoving,
-        resize: dragOrResize
+        resize: dragOrResize,
+        rtl: this.opts.rtl === "auto" ? void 0 : this.opts.rtl
       });
       node._initDD = true;
     }
@@ -5545,7 +6207,7 @@ var GridStack = class _GridStack {
   /** @internal handles actual drag/resize */
   _dragOrResize(el, event, ui, node, cellWidth, cellHeight) {
     const p = { ...node._orig };
-    let resizing;
+    let resizing = false;
     let mLeft = this.opts.marginLeft, mRight = this.opts.marginRight, mTop = this.opts.marginTop, mBottom = this.opts.marginBottom;
     const mHeight = Math.round(cellHeight * 0.1), mWidth = Math.round(cellWidth * 0.1);
     mLeft = Math.min(mLeft, mWidth);
@@ -5555,10 +6217,9 @@ var GridStack = class _GridStack {
     if (event.type === "drag") {
       if (node._temporaryRemoved)
         return;
-      const distance = ui.position.top - node._prevYPix;
       node._prevYPix = ui.position.top;
       if (this.opts.draggable.scroll !== false) {
-        Utils.updateScrollPosition(el, ui.position, distance);
+        DDManager.dragElement?.updateScrollPosition(this.el);
       }
       const left = ui.position.left + (ui.position.left > node._lastUiPosition.left ? -mRight : mLeft);
       const top = ui.position.top + (ui.position.top > node._lastUiPosition.top ? -mBottom : mTop);
@@ -5578,20 +6239,27 @@ var GridStack = class _GridStack {
         this._updateContainerHeight();
       if (node.x === p.x && node.y === p.y)
         return;
+      if (this._acceptingSubGrid(node, p))
+        return;
     } else if (event.type === "resize") {
-      if (p.x < 0)
+      if ((p.x ?? 0) < 0)
         return;
       Utils.updateScrollResize(event, el, cellHeight);
-      p.w = Math.round((ui.size.width - mLeft) / cellWidth);
-      p.h = Math.round((ui.size.height - mTop) / cellHeight);
+      const dir = event.resizeDir || "";
+      p.w = dir.indexOf("e") > -1 || dir.indexOf("w") > -1 ? Math.round((ui.size.width - mLeft) / cellWidth) : node.w;
+      p.h = dir.indexOf("n") > -1 || dir.indexOf("s") > -1 ? Math.round((ui.size.height - mTop) / cellHeight) : node.h;
       if (node.w === p.w && node.h === p.h)
         return;
       if (node._lastTried && node._lastTried.w === p.w && node._lastTried.h === p.h)
         return;
-      const left = ui.position.left + mLeft;
-      const top = ui.position.top + mTop;
-      p.x = Math.round(left / cellWidth);
-      p.y = Math.round(top / cellHeight);
+      if (event.hasMovedX) {
+        const calcPX = node.x - (p.w - node.w);
+        p.x = calcPX < 0 ? 0 : calcPX;
+      }
+      if (event.hasMovedY) {
+        const calcPY = node.y - (p.h - node.h);
+        p.y = calcPY < 0 ? 0 : calcPY;
+      }
       resizing = true;
     }
     node._event = event;
@@ -5617,6 +6285,16 @@ var GridStack = class _GridStack {
       this.triggerEvent(event, target);
     }
   }
+  /** @internal sub-grid node at the given spot that would take the dragged item in (once mostly over it, see DDDraggable._checkDropTarget) */
+  _acceptingSubGrid(node, p = node) {
+    const drag = DDManager.dragElement;
+    if (!drag)
+      return void 0;
+    return this.engine.collideAll(node, { ...node, ...p }).find((n) => {
+      const drop = n.subGrid?.el?.ddElement?.ddDroppable;
+      return drop && !drop.disabled && drop._canDrop(drag.el);
+    });
+  }
   /** call given event callback on our main top-most grid (if we're nested) */
   triggerEvent(event, target) {
     let grid = this;
@@ -5635,7 +6313,7 @@ var GridStack = class _GridStack {
     const node = helper.gridstackNode;
     if (!node)
       return;
-    helper.style.transform = helper.style.transformOrigin = null;
+    helper.style.transform = helper.style.transformOrigin = "";
     dd.off(el, "drag");
     if (node._temporaryRemoved)
       return;
@@ -5664,7 +6342,7 @@ GridStack.renderCB = (el, w) => {
 GridStack.resizeToContentParent = ".grid-stack-item-content";
 GridStack.Utils = Utils;
 GridStack.Engine = GridStackEngine;
-GridStack.GDRev = "12.4.2";
+GridStack.GDRev = "14.1.0";
 
 // src/BlockRegistry.ts
 var BlockRegistryClass = class {
@@ -5765,19 +6443,13 @@ var AutoHeightManager = class {
     }
     const batch = Array.from(this.pending.values());
     this.pending.clear();
-    const isStatic = !!gridStack.opts.staticGrid;
-    if (isStatic) gridStack.setStatic(false);
-    try {
-      let anyResized = false;
-      for (const { gsEl, instance } of batch) {
-        if (this.measureAndResize(gsEl, instance)) anyResized = true;
-      }
-      if (anyResized) {
-        this.host.repackGridNodes();
-        this.host.persistLayoutDebounced();
-      }
-    } finally {
-      if (isStatic) gridStack.setStatic(true);
+    let anyResized = false;
+    for (const { gsEl, instance } of batch) {
+      if (this.measureAndResize(gsEl, instance)) anyResized = true;
+    }
+    if (anyResized) {
+      this.host.repackGridNodes();
+      this.host.persistLayoutDebounced();
     }
   }
   /**
@@ -5928,6 +6600,14 @@ function orderChildren(parent, ordered) {
     if (!keep.has(i)) parent.insertBefore(ordered[i], next2);
     next2 = ordered[i];
   }
+}
+function disableGridStackDomSort(grid) {
+  const target = grid;
+  if (typeof target._sortDom !== "function") {
+    console.warn("[Homepage Blocks] GridStack has no _sortDom to turn off: video and iframe blocks may reload when blocks move. Check the gridstack version.");
+    return;
+  }
+  target._sortDom = () => void 0;
 }
 function longestIncreasing(seq) {
   const tails = [];
@@ -8461,11 +9141,11 @@ var GridLayout = class {
     }
     this.effectiveColumns = columns;
     this.gridEl.classList.toggle("hp-single-column", columns === 1 && !this.editMode);
-    this.gridStack = GridStack.init({
+    this.gridStack = new GridStack(this.gridEl, {
       column: columns,
       cellHeight: 80,
       margin: 8,
-      float: true,
+      mode: "float",
       animate: true,
       staticGrid: !this.editMode || this.inPopout(),
       removable: false,
@@ -8473,7 +9153,8 @@ var GridLayout = class {
       // Horizontal-only resize in edit mode (vertical managed by sizeToContent / GridStack rows).
       // In view mode, staticGrid disables all interaction so handles are irrelevant.
       resizable: { handles: "e,s,se" }
-    }, this.gridEl);
+    });
+    disableGridStackDomSort(this.gridStack);
     this.gridStack.load(items);
     for (const [i, instance] of blocks.entries()) {
       this.mountBlock(instance, i, isInitial);
@@ -8591,6 +9272,7 @@ var GridLayout = class {
     attachCollapseToggle(this, gsEl, instance, headerZone);
     if (this.editMode) {
       attachEditHandleBar(this, wrapper, instance);
+      this.gridStack?.refreshDragHandles(gsEl);
     }
   }
   // buildBlockWrapper / createSkeleton / removeSkeleton / renderCompactPlaceholder /
@@ -14884,7 +15566,7 @@ var HomepagePlugin = class extends import_obsidian34.Plugin {
 
 gridstack/dist/gridstack.js:
   (*!
-   * GridStack 12.4.2
+   * GridStack 14.1.0
    * https://gridstackjs.com/
    *
    * Copyright (c) 2021-2025  Alain Dumesny

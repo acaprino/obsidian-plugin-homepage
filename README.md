@@ -40,7 +40,7 @@ Requires Obsidian 1.8.7 or later.
 
 1. Click the **house icon** in the ribbon, or run `Open homepage` from the command palette.
 2. Click the **pencil FAB** to enter edit mode.
-3. **Add Block** inserts new blocks (up to 100). The **gear icon** opens settings, the **grip handle** reorders, and the **corner grip** resizes. In a pop-out window, drag and resize are off: use the arrow buttons on each block to reorder.
+3. **Add Block** inserts new blocks (up to 100). The **gear icon** opens settings, the **grip handle** reorders, and the **corner grip** resizes. On a touch screen, hold a grip for a moment before you drag it: a quick swipe leaves the block where it is. Holding a block near the top or bottom edge scrolls the homepage, unless the editor is zoomed out. In a pop-out window, drag and resize are off: use the arrow buttons on each block to reorder.
 4. Click **Done** to exit edit mode.
 
 ## Block types

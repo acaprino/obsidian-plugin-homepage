@@ -29,6 +29,8 @@ Requires Obsidian 1.8.7 or later.
 2. Search for **Homepage Blocks**
 3. Click **Install**, then **Enable**
 
+You can also open the [Homepage Blocks page on Obsidian Community](https://community.obsidian.md/plugins/homepage-blocks) and choose **Add to Obsidian**. To update, use **Settings > Community plugins > Check for updates**.
+
 ### Manual
 
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/acaprino/obsidian-plugin-homepage/releases/latest)
@@ -116,16 +118,17 @@ Open **Settings > Homepage Blocks**:
 | Setting | Description |
 |---------|-------------|
 | Open on startup | Opens the homepage automatically when Obsidian launches |
-| Startup open mode | Controls how the homepage opens on startup -- keep existing tabs (new tab), replace the active tab, or close all tabs |
+| Startup open mode | Controls how the homepage opens on startup -- keep existing tabs (new tab), replace the active tab, or close all tabs. Shown while **Open on startup** is on |
 | Open when empty | Opens the homepage when no other tabs are open |
 | Manual open mode | Controls how the homepage opens from ribbon/command -- keep existing tabs (new tab), replace the active tab, or close all tabs |
 | Pin homepage tab | Prevents the homepage tab from being closed |
 | Separate startup for mobile | Use independent startup settings on mobile (open-on-startup, open mode, pin, ...) instead of mirroring desktop |
 | Default columns | Grid column count (2, 3, 4, or 5) |
+| Mobile columns | Grid column count of the mobile layout (1, 2, or 3). Shown in **Separate** responsive mode |
 | Responsive mode | **Unified** (one adaptive layout) or **Separate** (independent desktop + mobile layouts, with copy-to-mobile, which asks for confirmation and fits the desktop blocks to the mobile columns without overlaps) |
 | Compact layout | Removes vertical gaps between blocks in view mode. Turned off, gaps are kept only until a block that sizes itself to its content (gallery, quotes, text, button grid, random note, a note set to grow) changes height, which packs the grid again |
 | Hover highlight | Subtly lifts blocks on hover and reveals the collapse toggle |
-| Show scroll bar | Shows or hides the homepage scroll bar (scrolling regions inside blocks keep theirs) |
+| Show scrollbar | Shows or hides the homepage scroll bar (scrolling regions inside blocks keep theirs) |
 | Reset to default layout | Restores the demo blocks of the layout this device shows -- the desktop layout, or in Separate mode on a phone the mobile layout -- and keeps every other setting, after a confirmation (**cannot be undone**) |
 | Export layout | Copies your layout to the clipboard as JSON, without API keys and button custom CSS |
 | Import layout | Replaces the whole layout, mobile layout and settings included, with a layout from the clipboard, after a confirmation. API keys, custom CSS, unknown settings and values of the wrong type are dropped, and numbers are clamped to the ranges the settings offer. The confirmation lists blocks that bring text which is rendered or written into notes (Static Text content, HTML, the Voice Notes template and folder) and bookmark, button and quick-link targets with a scheme other than `http:`/`https:` (such as `obsidian://`), and lets you **Import without content**, which drops those too |

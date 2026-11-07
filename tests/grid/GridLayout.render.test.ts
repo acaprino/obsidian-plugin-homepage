@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Notice, type App } from 'obsidian';
-import { GridStack } from 'gridstack';
 import { GridLayout } from '../../src/GridLayout';
 import { BaseBlock } from '../../src/blocks/BaseBlock';
 import { Phase } from '../../src/grid/phase';
@@ -479,17 +478,16 @@ describe('GridLayout — GridStack and the DOM order (M78)', () => {
   });
 });
 
-describe('GridLayout — GridStack returns no grid', () => {
-  it('stays usable, with nothing left waiting for an init to settle', () => {
-    const init = vi.spyOn(GridStack, 'init').mockReturnValueOnce(null);
-    const plugin = makePlugin({ blocks: [clock('a')] });
-    const grid = new GridLayout(host, plugin.app, plugin, () => {});
+describe('GridLayout — the drag handle', () => {
+  type Draggable = HTMLElement & { ddElement?: { ddDraggable?: { dragEls: HTMLElement[] } } };
 
-    expect(() => grid.render(plugin.activeBlocks(), 3)).not.toThrow();
+  it('is the only part of a block that drags in edit mode', () => {
+    const { gridEl } = editingGrid([clock('a')]);
+    const item = gridEl.querySelector<Draggable>('[gs-id="a"]')!;
 
-    expect(grid.gridStack).toBeNull();
-    expect(grid.phase).toBe(Phase.Ready);
-    init.mockRestore();
+    // GridStack names no event for which part started a drag, so this reads the
+    // elements it listens on; a change in its internals fails here, to be re-checked.
+    expect(item.ddElement?.ddDraggable?.dragEls).toEqual([item.querySelector('.block-move-handle')]);
   });
 });
 
@@ -639,8 +637,8 @@ describe('GridLayout flush and anti-corruption guards (M120)', () => {
   });
 
   it('a drag that ends in view mode saves nothing', () => {
-    // AutoHeightManager lifts staticGrid for its batch: a pointer twitch then can
-    // become a drag in view mode, which must not be saved.
+    // A drag still in flight when edit mode ends can fire dragstop in view mode,
+    // which must not be saved.
     const { grid, emits } = dragging(false);
     const handlers = (grid as unknown as { gridStack: { _gsEventHandler: Record<string, (e: Event) => void> } }).gridStack._gsEventHandler;
     handlers.dragstop(new Event('dragstop'));

@@ -71,28 +71,21 @@ export class AutoHeightManager {
     const batch = Array.from(this.pending.values());
     this.pending.clear();
 
-    // Lift static grid for the entire batch so updates + compaction work.
-    const isStatic = !!gridStack.opts.staticGrid;
-    if (isStatic) gridStack.setStatic(false);
+    // The grid stays static: GridStack's update(), batchUpdate() and compact() do not
+    // read `staticGrid`. Lifting it for a batch built a drag and a resize object, with
+    // three resize handles, for every item, on every batch.
+    let anyResized = false;
+    for (const { gsEl, instance } of batch) {
+      if (this.measureAndResize(gsEl, instance)) anyResized = true;
+    }
 
-    try {
-      let anyResized = false;
-      for (const { gsEl, instance } of batch) {
-        if (this.measureAndResize(gsEl, instance)) anyResized = true;
-      }
-
-      // Repack ALL blocks after any auto-height change so those below shift up to
-      // fill gaps left by shrinking blocks. Always repack (regardless of compactLayout)
-      // because auto-height blocks don't persist their height — initial placement
-      // uses the stale saved h until the first repack with measured values.
-      if (anyResized) {
-        this.host.repackGridNodes();
-        this.host.persistLayoutDebounced();
-      }
-    } finally {
-      // Always restore staticGrid even if a measurement threw — otherwise view mode
-      // silently becomes draggable and the dragstop handler would persist positions.
-      if (isStatic) gridStack.setStatic(true);
+    // Repack ALL blocks after any auto-height change so those below shift up to
+    // fill gaps left by shrinking blocks. Always repack (regardless of compactLayout)
+    // because auto-height blocks don't persist their height — initial placement
+    // uses the stale saved h until the first repack with measured values.
+    if (anyResized) {
+      this.host.repackGridNodes();
+      this.host.persistLayoutDebounced();
     }
   }
 
@@ -160,7 +153,6 @@ export class AutoHeightManager {
     const node = (gsEl as HTMLElement & { gridstackNode?: GridStackNode }).gridstackNode;
     const currentH = node?.h ?? instance.h;
     if (rows !== currentH) {
-      // Static grid is already lifted by runBatch().
       gridStack.update(gsEl, { h: rows });
       return true;
     }

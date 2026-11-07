@@ -457,7 +457,9 @@ export class GridLayout {
     // drag was saved as "move to top" (M25).
     this.gridEl.classList.toggle('hp-single-column', columns === 1 && !this.editMode);
 
-    this.gridStack = GridStack.init({
+    // The constructor, not GridStack.init: init returns null without a document, and
+    // teardown's destroy() already removes the element's previous grid.
+    this.gridStack = new GridStack(this.gridEl, {
       column: columns,
       cellHeight: 80,
       margin: 8,
@@ -469,12 +471,7 @@ export class GridLayout {
       // Horizontal-only resize in edit mode (vertical managed by sizeToContent / GridStack rows).
       // In view mode, staticGrid disables all interaction so handles are irrelevant.
       resizable: { handles: 'e,s,se' },
-    }, this.gridEl);
-    // Null only without a document or a grid element, and gridEl always is one.
-    if (!this.gridStack) {
-      this.phase = Phase.Ready;
-      return;
-    }
+    });
     disableGridStackDomSort(this.gridStack);
 
     this.gridStack.load(items);
@@ -499,10 +496,9 @@ export class GridLayout {
 
     // GridStack already compensates for CSS transform via getValuesFromTransformedElement
     // (dragTransform.xScale/yScale), so we do NOT need to clear the viewport-fit scale.
-    // editMode guard: AutoHeightManager temporarily lifts staticGrid during its rAF
-    // batch (see AutoHeightManager.runBatch). A pointer twitch latched at mousedown can become
-    // a real drag during that lift in view mode -- without this guard, dragstop would
-    // persist the phantom drag and silently corrupt the saved layout.
+    // editMode guard: a drag still in flight when edit mode ends (Done, Discard) can
+    // fire dragstop after the switch. Without this guard it would persist positions
+    // the user asked to discard, or ones of a view-mode grid.
     // hp-dragging dims the sibling cards while a block is picked up (CSS hook;
     // replaces a .grid-stack:has(.ui-draggable-dragging) selector).
     this.gridStack.on('dragstart', () => {
@@ -651,6 +647,11 @@ export class GridLayout {
     // Edit handles
     if (this.editMode) {
       attachEditHandleBar(this, wrapper, instance);
+      // GridStack looked for the grip when it made the item, in load(), before this
+      // bar existed, and fell back to the whole item as the drag surface. Look again,
+      // so only the grip drags: a touch held on one of the bar's buttons then never
+      // arms a drag, which would leave GridStack's long-press handling stuck on.
+      this.gridStack?.refreshDragHandles(gsEl);
     }
   }
 

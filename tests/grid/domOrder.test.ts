@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { orderChildren } from '../../src/grid/domOrder';
+import { describe, it, expect, vi } from 'vitest';
+import { orderChildren, disableGridStackDomSort } from '../../src/grid/domOrder';
 
 function list(...ids: string[]): HTMLElement {
   const parent = document.createElement('div');
@@ -34,5 +34,32 @@ describe('orderChildren (M78)', () => {
 
     expect([...parent.children].map(e => e.id)).toEqual(['a', 'c', 'd', 'b']);
     expect(moves()).toBe(1);
+  });
+});
+
+describe('disableGridStackDomSort (M78)', () => {
+  it('makes the grid skip its own sort', () => {
+    const sort = vi.fn();
+    const grid = { _sortDom: sort };
+
+    disableGridStackDomSort(grid);
+    grid._sortDom();
+
+    expect(sort).not.toHaveBeenCalled();
+  });
+
+  it('says so, and adds nothing, when the grid has no sort to turn off', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const grid: Record<string, unknown> = {};
+
+      disableGridStackDomSort(grid);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toMatch(/^\[Homepage Blocks\].*_sortDom/);
+      expect(grid).toEqual({});
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

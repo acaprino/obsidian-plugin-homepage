@@ -1,0 +1,98 @@
+name: Release
+
+# Pushing a version tag (the same X.Y.Z as manifest.json, no "v" prefix) builds
+# the plugin from that tag, attests main.js, manifest.json and styles.css, and
+# publishes them as the release assets. If a release for the tag already
+# exists (created by hand with its notes), the assets are added to it, replacing
+# any with the same name; otherwise a release with generated notes is created.
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write      # create the release and upload its assets
+      id-token: write      # sign the build provenance attestation
+      attestations: write  # store the attestation
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check the tag against the version files
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          manifest=$(node -p "require('./manifest.json').version")
+          package=$(node -p "require('./package.json').version")
+          min=$(node -p "require('./manifest.json').minAppVersion")
+          mapped=$(node -p "require('./versions.json')[require('./manifest.json').version] ?? ''")
+          fail=0
+          if [ "$TAG" != "$manifest" ]; then
+            echo "::error::Tag $TAG does not match manifest.json version $manifest"; fail=1
+          fi
+          if [ "$manifest" != "$package" ]; then
+            echo "::error::manifest.json version $manifest does not match package.json version $package"; fail=1
+          fi
+          if [ "$mapped" != "$min" ]; then
+            echo "::error::versions.json maps $manifest to '$mapped', but manifest.json minAppVersion is $min"; fail=1
+          fi
+          exit $fail
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint src package.json
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # main.js is tracked in git. The released file is the one built here, so a
+      # difference only means the committed copy is stale or not reproducible.
+      - name: Compare the build with the committed main.js
+        run: |
+          if ! git diff --quiet -- main.js; then
+            echo "::warning file=main.js::The main.js built from this tag differs from the committed main.js. The release uses the built one."
+          fi
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
+      - name: Publish the release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$TAG" main.js manifest.json styles.css \
+              --title "$TAG" --generate-notes --verify-tag
+          fi

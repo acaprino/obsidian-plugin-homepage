@@ -15,3 +15,6 @@ claude_.bat
 docs/superpowers/
 .superpowers/
 .playwright-mcp/
+.jcode/local/
+.daodan/
+effectiveness-metrics.json

@@ -53,7 +53,7 @@ flowchart LR
 
 ### Mounting
 
-`GridLayout.mountBlock` (`src/GridLayout.ts:563-655`) builds the wrapper DOM and then, in view mode only, runs the steps below. In edit mode no block object is created. The grid draws a placeholder instead (`renderCompactPlaceholder`, `src/grid/BlockWrapper.ts:76-96`) and stores `block: null` (`src/GridLayout.ts:589-592`).
+`GridLayout.mountBlock` (`src/GridLayout.ts:559-656`) builds the wrapper DOM and then, in view mode only, runs the steps below. In edit mode no block object is created. The grid draws a placeholder instead (`renderCompactPlaceholder`, `src/grid/BlockWrapper.ts:76-96`) and stores `block: null` (`src/GridLayout.ts:585-588`).
 
 ```mermaid
 sequenceDiagram
@@ -83,7 +83,7 @@ sequenceDiagram
   end
 ```
 
-Cites: create `:594`, `setHeaderContainer` `:595`, `load()` `:596`, listener `:603-610`, skeleton `:612`, render `:621-626`, async branch `:627-639`, sync branch `:640-644`.
+Cites: create `:590`, `setHeaderContainer` `:591`, `load()` `:592`, listener `:599-606`, skeleton `:608`, render `:617-622`, async branch `:623-635`, sync branch `:636-640`.
 
 `el`, the element passed to `render`, is the wrapper's `.block-content` (`src/grid/BlockWrapper.ts:49`). The wrapper also carries:
 
@@ -113,9 +113,9 @@ Consequences:
 
 ### Render errors and the skeleton
 
-- **Throw handling.** A synchronous throw from `render` is caught and turned into a rejected promise, so it takes the same path as a failed async render (`src/GridLayout.ts:617-626`). A rejection logs `[Homepage Blocks] Error rendering block <type>:` and replaces the content with the text `Error rendering block. Check console for details.` (`:635-639`).
+- **Throw handling.** A synchronous throw from `render` is caught and turned into a rejected promise, so it takes the same path as a failed async render (`src/GridLayout.ts:613-622`). A rejection logs `[Homepage Blocks] Error rendering block <type>:` and replaces the content with the text `Error rendering block. Check console for details.` (`:631-635`).
 - **Own error UI.** Blocks should catch their own errors and call `renderErrorHint` for a styled message (as `src/blocks/EmbeddedNoteBlock.ts:51-54` does). GridLayout's text is the fallback.
-- **Skeleton.** It is created only on the initial render (`src/GridLayout.ts:702`). For an async render it goes when the promise settles (`:632`, `:636`), and at the latest after `SKELETON_MAX_MS`, 300 ms (`:24`, `:616`): an Embedded Note waited for every remote image in the note, forever when a host never answered. The auto-height measurement still waits for the whole promise, so resolve it when the first useful paint is done, not after background work.
+- **Skeleton.** It is created only on the initial render (`src/GridLayout.ts:608`). For an async render it goes when the promise settles (`:628`, `:632`), and at the latest after `SKELETON_MAX_MS`, 300 ms (`:24`, `:612`): an Embedded Note waited for every remote image in the note, forever when a host never answered. The auto-height measurement still waits for the whole promise, so resolve it when the first useful paint is done, not after background work.
 
 ---
 
@@ -165,7 +165,7 @@ Inherited from `Component` and used by blocks: `registerEvent`, `registerInterva
 - `el` is `.block-content`. CSS makes it a grid, `display: grid; grid-template-rows: 1fr`, and by default every direct child gets `overflow: hidden; min-height: 0` (`styles.css:2597-2607`). Some blocks override this for their children, for example greeting (`styles.css:2631-2634`), and the scrolling height modes of embedded-note, quotes-list and image-gallery restore `overflow-y: auto` on their scroll element (`styles.css:2614-2622`).
 - **Sync or async.**
   - Return a promise when there is async work. GridLayout then waits for it before removing the skeleton and measuring auto-height.
-  - A sync render is queued for measurement as soon as it returns; the measurement runs in the next animation frame (`src/GridLayout.ts:550-554`, `src/grid/AutoHeight.ts:54-57`). Content written later is not re-measured unless the block asks for it, or observes its content with `observeSizeForAutoHeight`. StaticText returns the promise of its Markdown render, so the grid measures the rendered Markdown rather than an empty box (`src/blocks/StaticTextBlock.ts:37-43`).
+  - A sync render is queued for measurement as soon as it returns; the measurement runs in the next animation frame (`src/GridLayout.ts:636-640`, `src/grid/AutoHeight.ts:54-57`). Content written later is not re-measured unless the block asks for it, or observes its content with `observeSizeForAutoHeight`. StaticText returns the promise of its Markdown render, so the grid measures the rendered Markdown rather than an empty box (`src/blocks/StaticTextBlock.ts:37-43`).
 - **Error handling.** Catch your own errors: `.catch(e => { console.error('[Homepage Blocks] …', e); this.renderErrorHint(el, '…'); })`.
 - **Re-renders.** GridLayout never empties `el` for you on a re-render. The function passed to `scheduleRender` must call `el.empty()` itself. Classes added to `el` stay across re-renders, so toggle config-dependent classes rather than adding them (`src/blocks/EmbeddedNoteBlock.ts:66`).
 
@@ -313,15 +313,15 @@ flowchart TD
 
 Details:
 
-- **Listener lifetime.** The listener is attached at mount only when `shouldAutoHeight(instance)` is true, and it re-checks the live instance on every event (`src/GridLayout.ts:597-610`). A block mounted as not-auto-height ignores requests until it is re-mounted.
-- **What is measured.** `measureAndResize` takes the **first** `[data-auto-height-content]` in the grid item (`src/grid/AutoHeight.ts:115`). Mark exactly one element, and one whose height is its content's. Do not mark `el` when CSS makes it fill the cell: its height is then the cell's, and each measurement adds the padding again and grows the block by a row. RandomNote marks its inner card `.random-note-body` for this reason (`src/blocks/RandomNoteBlock.ts:129-134`).
-- **Formula.** Header-zone height + wrapper padding + content height + gaps + 2 × margin + 4 px, divided by the cell height and rounded up, with a minimum of 1 row (`src/grid/AutoHeight.ts:131-158`). The block can grow or shrink.
+- **Listener lifetime.** The listener is attached at mount only when `shouldAutoHeight(instance)` is true, and it re-checks the live instance on every event (`src/GridLayout.ts:593-606`). A block mounted as not-auto-height ignores requests until it is re-mounted.
+- **What is measured.** `measureAndResize` takes the **first** `[data-auto-height-content]` in the grid item (`src/grid/AutoHeight.ts:108`). Mark exactly one element, and one whose height is its content's. Do not mark `el` when CSS makes it fill the cell: its height is then the cell's, and each measurement adds the padding again and grows the block by a row. RandomNote marks its inner card `.random-note-body` for this reason (`src/blocks/RandomNoteBlock.ts:129-134`).
+- **Formula.** Header-zone height + wrapper padding + content height + gaps + 2 × margin + 4 px, divided by the cell height and rounded up, with a minimum of 1 row (`src/grid/AutoHeight.ts:124-151`). The block can grow or shrink.
 - **No-ops.**
   - Single-column mode, where CSS sizes the blocks (`:66-69`).
   - Collapsed blocks (`:112-113`).
   - A missing marker or header zone, or a marker whose `offsetHeight` is 0 (`:117`, `:140`).
 - **Persistence.** For auto-height blocks `LayoutPersister` writes only `x/y/w`, never `h`, and in a narrowed (responsive) layout it writes nothing for them (`src/grid/LayoutPersister.ts:94-120`). The same rule covers a collapsed block, whose node is drawn at a display height, except in edit mode with a visible title (`nodeShowsStoredHeight`, `:31-34`). The stored `h` is whatever another path last wrote: `defaultSize.h` at creation, the last persisted height from a period when the block was not auto-height, or, when the block is expanded after a collapse, its `_expandedH`, the GridStack height read when it was collapsed (`src/grid/CollapseToggle.ts:74-89`). Expanding uses `_expandedH` only when it is a number ≥ 1, and the block's `h` otherwise.
-- **Edit mode.** Auto-height blocks are drawn at 2 rows (`src/GridLayout.ts:19`, `:361`), and their vertical resize handles are hidden (`styles.css:2579-2583`).
+- **Edit mode.** Auto-height blocks are drawn at 2 rows (`src/GridLayout.ts:21`, `:440`), and their vertical resize handles are hidden (`styles.css:2579-2583`).
 
 `requestAutoHeight()` (`src/blocks/BaseBlock.ts:173-175`) dispatches the event from `containerEl`. Call it after content changes outside `scheduleRender`, as StaticText does after an inline save. It does nothing while `containerEl` is null.
 
@@ -347,7 +347,7 @@ The shared `BlockSettingsModal` has four tabs: Header, Body, Card and Content. T
 - **Save.** Save replaces the block's whole `config` with the draft (`src/grid/EditHandleBar.ts:99-104`), then re-mounts the grid. Before that, `commit()` resets `_accentColor` to `''` unless it held a colour when the modal opened or one was picked since, and resets `_gradientStart` and `_gradientEnd` to `''` unless both held valid hex colours when the modal opened or a gradient colour was set since (`src/modals/BlockSettingsModal.ts:60-63`, `:431-434`). Clear accent color and Clear gradient count as unset again.
 - **Cancel.** Cancel, Esc or X discard the draft.
 - **Runs repeatedly.** It runs **each time the Content tab is shown**: `switchTab` empties the tab body and calls it again (`:126-139`). Build every control from `draft`, and keep no settings state on `this`.
-- **Temporary block.** It runs on a **temporary block**. The settings button exists only on the edit-mode handle bar (`src/GridLayout.ts:652-654`), and edit mode stores `block: null` (`:592`). The handle bar therefore creates one with `factory.create(...)` (`src/grid/EditHandleBar.ts:108-115`) and calls `unload()` on it when the modal closes (`:119-133`). This object:
+- **Temporary block.** It runs on a **temporary block**. The settings button exists only on the edit-mode handle bar (`src/GridLayout.ts:648-655`), and edit mode stores `block: null` (`:588`). The handle bar therefore creates one with `factory.create(...)` (`src/grid/EditHandleBar.ts:108-115`) and calls `unload()` on it when the modal closes (`:119-133`). This object:
   - was never `load()`ed and never rendered, so `containerEl` is null and there is no header container;
   - must not register events or intervals;
   - must not depend on state that `render()` sets up.
@@ -494,12 +494,12 @@ These are registered in this order, which is also the order of the Add Block pic
 
 - **Population.** `registerBlocks()` calls `clear()` first (`src/main.ts:43`) and runs at the start of `onload` (`src/main.ts:250`).
 - **Consumers.**
-  - `GridLayout.shouldAutoHeight` and `mountBlock` (`src/GridLayout.ts:123`, `:502`)
+  - `GridLayout.shouldAutoHeight` and `mountBlock` (`src/GridLayout.ts:123`, `:582`)
   - `EditHandleBar`'s settings button (`src/grid/EditHandleBar.ts:111`)
   - `BlockSettingsModal` (`src/modals/BlockSettingsModal.ts:55`)
   - `AddBlockModal` (`src/EditToolbar.ts:235`, `:312`)
   - `sanitizeImportedConfig` and `withoutActiveContent` (`src/utils/importSanitizer.ts:80`, `:206`); `findActiveContent` reads `displayName` for the confirmation list (`:181`)
-- **Missing factory.** A block whose type has no factory is silently skipped at mount: the wrapper is already built, but it gets no content, no collapse toggle and, in edit mode, no placeholder or handle bar (`src/GridLayout.ts:502-503`).
+- **Missing factory.** A block whose type has no factory is silently skipped at mount: the wrapper is already built, but it gets no content, no collapse toggle and, in edit mode, no placeholder or handle bar (`src/GridLayout.ts:582-583`).
 - **Tests.** Tests that need real factories call `registerBlocks()` (`tests/utils/importSanitizer.test.ts:90`). Tests with stubs call `BlockRegistry.clear()` and then `register(stub)` (`tests/EditToolbar.test.ts:13-19`, `:49-56`).
 
 ## BLOCK_META

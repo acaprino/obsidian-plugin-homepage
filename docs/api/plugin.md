@@ -160,7 +160,7 @@ The contract is in the doc comment at `src/types.ts:124-133`. The implementation
 5. It applies the same patch to the Discard snapshot of every open edit session (`HomepageView.mapEditSnapshot`, `src/main.ts:629-632`). The patch was made in view mode; a session that started while it waited took its snapshot without it, and a Discard would otherwise revert it (M52). It then awaits `saveActiveBlocks(next)` (`:633`).
 6. The calling block's `this.instance` is never updated. Read the saved values back with `BaseBlock.liveConfig()` (`src/blocks/BaseBlock.ts::liveConfig`) after the promise resolves. See [block API](blocks.md).
 
-The callers are `src/blocks/StaticTextBlock.ts:136` and `src/blocks/EmbeddedNoteBlock.ts:45`. The EmbeddedNote call is the fallback for a rename the plugin's own listener missed; `followRename` (§3.6) normally rewrites `filePath` first. `saveActiveBlocks` has no other production caller; the `GridLayout` test mock also implements it (`tests/grid/GridLayout.render.test.ts:37`).
+The callers are `src/blocks/StaticTextBlock.ts:136` and `src/blocks/EmbeddedNoteBlock.ts:45`. The EmbeddedNote call is the fallback for a rename the plugin's own listener missed; `followRename` (§3.6) normally rewrites `filePath` first. `saveActiveBlocks` has no other production caller; the `GridLayout` test mock also implements it (`tests/grid/GridLayout.render.test.ts:36`).
 
 ---
 

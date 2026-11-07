@@ -7,7 +7,7 @@ Related: [architecture](architecture.md) · [data model](data-model.md) (where t
 ## 1. Stylesheet and element tree
 
 - `styles.css` is the only stylesheet. Line 2 is GridStack's core CSS, copied from `gridstack/dist/gridstack.min.css` (`styles.css:1-2`). GridStack sets `--gs-*` variables at runtime; `styles.css` never declares them.
-- GridStack runs with `cellHeight: 80`, `margin: 8` (`src/GridLayout.ts:460-463`).
+- GridStack runs with `cellHeight: 80`, `margin: 8` (`src/GridLayout.ts:460-465`).
 
 ```text
 .view-content.homepage-view                 HomepageView.ts:30  (container "homepage", inline-size)
@@ -282,7 +282,7 @@ Hover highlight (`hoverHighlight`, default `true`, `src/validation.ts:44`) adds 
 
 Two independent systems react to the width of `.homepage-view`:
 - **Container queries** (CSS) adapt the UI.
-- **`ResponsiveColumnsManager`** (JS) changes the GridStack column count. It uses a `ResizeObserver` on `.homepage-view` (`src/grid/ResponsiveColumns.ts:62-76`; wired at `GridLayout.ts:525-526`).
+- **`ResponsiveColumnsManager`** (JS) changes the GridStack column count. It uses a `ResizeObserver` on `.homepage-view` (`src/grid/ResponsiveColumns.ts:62-76`; wired at `GridLayout.ts:521-522`).
 
 | View width | Source | Effect |
 |---|---|---|
@@ -340,7 +340,7 @@ Rules in these queries that do not take effect **(inferred)**:
   - Greeting, clock and random note become inline-size containers, like pomodoro and voice (`:3165-3170`): with size containment they had no intrinsic height and sat at the 60px floor.
   - The HTML block's document frame takes `height: var(--hp-iframe-height, 150px)`, which `HtmlBlock` sets to the document's height, unscaled, and refits only when the frame's width changes (a refit on its own height change grew it on every round); video embeds keep `aspect-ratio: 16 / 9` (`:2274-2285`).
   - Pomodoro and voice drop the absolute `.block-content` positioning they use in the grid (`:3658-3662`). They become inline-size containers, with a 100px ring (`:3182-3184`) and a 56px mic (`:1488-1490`). Buttons get a 44px min-height.
-- **Order:** DOM order becomes visual order, so items are put in `(y, x)` order: at init (`GridLayout.ts:497`) and when narrowing (`ResponsiveColumns.ts:208`). `orderChildren` (`src/grid/domOrder.ts`) moves only the items out of place and leaves the longest run already in order where it is, so an iframe that stays put is not reloaded (a playing video kept playing).
+- **Order:** DOM order becomes visual order, so items are put in `(y, x)` order: at init (`GridLayout.ts:494`) and when narrowing (`ResponsiveColumns.ts:208`). `orderChildren` (`src/grid/domOrder.ts`) moves only the items out of place and leaves the longest run already in order where it is, so an iframe that stays put is not reloaded (a playing video kept playing).
 - **Narrow and mobile tweaks:**
   - ≤540px: `gap: 8px; padding: 8px` (`:3157-3160`). This literal replaces `--hp-padding`.
   - `.is-mobile`: `gap: 6px` plus bottom safe-area padding (`:3900-3903`).
@@ -399,16 +399,16 @@ Notes:
 | `edit-mode` | grid | `GridLayout.ts:159-161` | resize handles, dashed card border, compact placeholders, handle bar (`:2568-2713`). The handle bar wraps its controls (`flex-wrap: wrap`, `:2714`) instead of clipping them on a narrow card |
 | `homepage-grid--animating` | grid | `GridLayout.ts:152-154`, removed by a 500 ms timeout and in `teardown` (`:412`), so a later render does not replay it | `hp-card-enter` 0.3s with `--hp-card-anim-delay` (`:155-158`) |
 | `hp-single-column` | grid | `GridLayout.ts:458` (view mode only), `ResponsiveColumns.ts:128` | §9 |
-| `hp-dragging` | grid | `GridLayout.ts:509, 513` | siblings at opacity 0.5 (`:2808-2811`) |
+| `hp-dragging` | grid | `GridLayout.ts:505, 509` | siblings at opacity 0.5 (`:2808-2811`) |
 | `hp-zoomed` + `viewport-fit` | grid | `GridLayout.setZoom`/`applyZoom` (`GridLayout.ts:323-346`); re-applied after an edit-mode re-render | `transform: var(--hp-grid-transform)` (`:3934-3938`), `overflow: visible` (`:2631-2633`) |
-| `is-auto-height` | `.grid-stack-item` | `GridLayout.ts:570-572` | edit mode hides the `s`/`se` handles (`:2648-2651`) |
-| `block-just-added` | card | `GridLayout.ts:536-538`, removed on `animationend` | `hp-block-appear` 0.4s (`:3352-3365`), played once |
+| `is-auto-height` | `.grid-stack-item` | `GridLayout.ts:566-568` | edit mode hides the `s`/`se` handles (`:2648-2651`) |
+| `block-just-added` | card | `GridLayout.ts:532-534`, removed on `animationend` | `hp-block-appear` 0.4s (`:3352-3365`), played once |
 | `block-collapsed` / `is-collapsed` | card / chevron | `BlockWrapper.ts:26, 43` (only for a block `isCollapsible` accepts, §5.3); `CollapseToggle.ts:66-67` | `.block-content` animates `grid-template-rows` 1fr→0fr (`:2597-2627`) |
 | `hp-header-empty` | header zone | `BlockWrapper.ts:41`, `BaseBlock.ts:75`, `BlockWrapper.ts:88` | height 0 (`:2539-2545`) |
 | `block-accented`, `block-bright-accent`, `block-dark-accent`, `hp-plain-header-light`/`-dark`, `hp-plain-accent-light`/`-dark`, `hp-dark-on-accent`, `block-no-header-accent`, `block-no-border`, `block-no-background`, `block-elevation-N`, `block-custom-opacity`, `block-has-gradient` | card | `applyBlockStyling` | §5–§7 |
 | `voice-mic--push` | voice mic | push-to-talk mode (`VoiceDictationBlock.ts`) | `touch-action: none` (`:1306-1308`), so a slight pan does not cancel the hold |
 | `hp-visually-hidden` | Vault search live region | `VaultSearchBlock.ts` | clipped to 1px, read by screen readers only (`:4011-4018`) |
-| `hp-no-transition`, `hp-auto-rows` | `.block-content` | `src/grid/AutoHeight.ts:126-137` (while measuring) | `!important` (`:3906-3907`) |
+| `hp-no-transition`, `hp-auto-rows` | `.block-content` | `src/grid/AutoHeight.ts:119-130` (while measuring) | `!important` (`:3906-3907`) |
 | `hp-hidden` | various | e.g. `BlockSettingsModal.ts:78-84` | `display: none` (`:3845`) |
 
 Collapse notes:
@@ -586,7 +586,7 @@ For maintainers. Each item was checked against the code on disk.
 5. The `oklch` mix at `:1085` contradicts the srgb rationale at `:191`.
 6. "Lifts" (settings description, README, CLAUDE.md) and "opt-in" (`styles.css:176`) misdescribe hover highlight (§7).
 7. CLAUDE.md calls the `BlockWrapper.ts` helpers "pure DOM builders". In fact `removeSkeleton` schedules a timer (`:78`) and `renderEmptyState` attaches a click listener (`:122`).
-8. `homepage-grid--animating` is removed at 500 ms (`GridLayout.ts:152`). The delays are 0, 50, 100, 140, 170, 195, 215, 230 ms, then 240 ms for every later card (`GridLayout.ts:577`), so from the seventh card on (215 ms delay + 300 ms animation = 515 ms) a card is still animating then and snaps to its final state. **(inferred)**
+8. `homepage-grid--animating` is removed at 500 ms (`GridLayout.ts:152`). The delays are 0, 50, 100, 140, 170, 195, 215, 230 ms, then 240 ms for every later card (`GridLayout.ts:575`), so from the seventh card on (215 ms delay + 300 ms animation = 515 ms) a card is still animating then and snaps to its final state. **(inferred)**
 9. **(inferred)** `.block-accented.block-no-header-accent .block-header-zone` (0,3,0) outranks `.hp-header-empty` (0,2,0) on padding. An accented block with a hidden title and the header bar off therefore keeps 2px + 2px of header-zone padding. Every block with a hidden title also keeps one `--hp-title-gap` above its content, because the zero-height zone is still a flex item of the card (`styles.css:139-141`).
 10. Resolved (M109): the skeleton overlay takes the card's own background (`background: inherit`, `:668`), so accented, translucent and gradient cards keep their look while loading.
 11. The accent-swatch focus ring promised by the comment at `BlockSettingsModal.ts:332-333` does not exist in the modal: the button focus ring is scoped to `.homepage-view` (`styles.css:2639`).

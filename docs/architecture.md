@@ -82,13 +82,13 @@ Dependencies point downward. The table lists what each layer imports from the la
 
 | File | Lines | Role |
 |---|---|---|
-| `src/GridLayout.ts` | 747 | Owns the GridStack lifecycle: render and teardown, `mountBlock`, edit mode, column changes, zoom (kept across edit-mode re-renders), `addBlock`, write routing (`buildLayoutUpdate`, `:684`), and `holdDerivedPersist` (`:726`), which stops a grid redrawn after a sync from saving the positions it measures. A re-render restores the scroll position and the focused control (`captureViewState`); in a pop-out window the grid stays static (`inPopout`). |
+| `src/GridLayout.ts` | 748 | Owns the GridStack lifecycle: render and teardown, `mountBlock`, edit mode, column changes, zoom (kept across edit-mode re-renders), `addBlock`, write routing (`buildLayoutUpdate`, `:685`), and `holdDerivedPersist` (`:727`), which stops a grid redrawn after a sync from saving the positions it measures. A re-render restores the scroll position and the focused control (`captureViewState`); in a pop-out window the grid stays static (`inPopout`). |
 | `src/grid/phase.ts` | 13 | `Phase`: a `const` object (`Destroyed` 0, `Initializing` 1, `Ready` 2) plus a type alias. It is not a TS `enum`. `LayoutPersister.persist` and the `dragstop`/`resizestop` handlers run only in `Ready`; `setEditMode`, `setColumns` and `addBlock` do nothing once `Destroyed`. The collapse toggle and the `EditHandleBar` writes do not check it. |
-| `src/grid/AutoHeight.ts` | 169 | `AUTO_HEIGHT_ATTR` and `AutoHeightManager`. Measures marked content once per animation frame (rAF-batched) and calls `gridStack.update({h})`. |
+| `src/grid/AutoHeight.ts` | 161 | `AUTO_HEIGHT_ATTR` and `AutoHeightManager`. Measures marked content once per animation frame (rAF-batched) and calls `gridStack.update({h})`. |
 | `src/grid/LayoutPersister.ts` | 162 | Reads GridStack nodes, diffs them against the active blocks, and emits the changed positions. Keeps the stored `h` of auto-height blocks and of collapsed blocks drawn at a display height (`nodeShowsStoredHeight`). Has a 50 ms debounced variant and re-packs the live nodes' `y`. |
 | `src/grid/ResponsiveColumns.ts` | 211 | A `ResizeObserver` on `.homepage-view` that lowers the effective column count below 480, 768 and 1024 px, and asks auto-height blocks to measure again after narrowing. View mode only. |
 | `src/grid/packing.ts` | 111 | Pure `packRows` (mutates in place) and `repackEditLayout` (returns a copy). |
-| `src/grid/domOrder.ts` | 46 | `orderChildren`: puts grid items in order by moving only those out of place (a longest increasing run stays), so iframes in the others do not reload. Used by `initGridStack` and the single-column reorder. `disableGridStackDomSort`: turns off GridStack's own sort, which re-appends every item. |
+| `src/grid/domOrder.ts` | 56 | `orderChildren`: puts grid items in order by moving only those out of place (a longest increasing run stays), so iframes in the others do not reload. Used by `initGridStack` and the single-column reorder. `disableGridStackDomSort`: turns off GridStack's own sort, which re-appends every item. |
 | `src/grid/blockLimit.ts` | 13 | `canAddBlock`: false, with a Notice, once a homepage holds `MAX_BLOCKS` blocks. |
 | `src/grid/BlockWrapper.ts` | 119 | DOM builders for the card wrapper, skeleton overlay, edit-mode placeholder and empty state. The header zone gets no role or Tab stop here; `BaseBlock.renderHeader` makes it a toggle when it draws a header. |
 | `src/grid/CollapseToggle.ts` | 99 | Header collapse and expand in view mode, by click, Enter or Space, only on a zone that draws a header (`role="button"`). `isCollapsible` keeps a stored-collapsed Clock, Greeting or Spacer (no header to expand it) drawn expanded; `viewModeHeight` gives the rows a block is drawn at. Collapsing saves `collapsed: true` and `_expandedH`; expanding saves `collapsed: false` and `h`, restored from `_expandedH` when it is a number ≥ 1. |
@@ -334,8 +334,8 @@ flowchart TD
 | `GridLayout` | `HomepageView.onOpen` (`:41`) | Until the next `onOpen`, `reload()` or `onClose` | GridStack, managers, the `blocks` map, `editMode`, `effectiveColumns`/`canonicalColumns`, `phase`, `derivedPersistHeld` (`src/GridLayout.ts:31-51`) |
 | `EditToolbar` | `HomepageView.onOpen` (`:47-57`) | Same as `GridLayout` | `editMode`, `zoomScale`, `blocksSnapshot`, `columnsSnapshot`, the `EditSessionHooks`, `openModal`, `destroyed` (`src/EditToolbar.ts:19-24, 32, 218-220`) |
 | Managers (`AutoHeightManager`, `ResponsiveColumnsManager`, `LayoutPersister`) | `GridLayout` constructor (`:67-72`) | Same as `GridLayout`. Each one keeps `host = this` and re-reads the host's fields on every call. | The auto-height pending queue; the `ResizeObserver` |
-| `GridStack` | `initGridStack` (`src/GridLayout.ts:460-480`) | One `render()`. Destroyed in `teardown()` (`:407-414`). | The live node positions. During a drag these, not the layout, are the source of truth until `LayoutPersister` reads them back. |
-| Block instances | `mountBlock` → `factory.create` (`src/GridLayout.ts:594`) | One `render()`. They are loaded with `block.load()` (`:596`) and unloaded with `block.unload()` in `teardown` (`:399`). They are **not** `addChild`ed to the view or the plugin. | A render-time `instance` snapshot, the header container, timers, vault listeners |
+| `GridStack` | `initGridStack` (`src/GridLayout.ts:460-477`) | One `render()`. Destroyed in `teardown()` (`:403-407`). | The live node positions. During a drag these, not the layout, are the source of truth until `LayoutPersister` reads them back. |
+| Block instances | `mountBlock` → `factory.create` (`src/GridLayout.ts:590`) | One `render()`. They are loaded with `block.load()` (`:592`) and unloaded with `block.unload()` in `teardown` (`:399`). They are **not** `addChild`ed to the view or the plugin. | A render-time `instance` snapshot, the header container, timers, vault listeners |
 | Temporary settings block | `EditHandleBar` settings button (`src/grid/EditHandleBar.ts:108-116`) | While `BlockSettingsModal` is open. It is never `load()`ed. | Used only for `renderContentSettings` |
 | Body-level DOM | The lightbox (`src/blocks/ImageGalleryBlock.ts:47`) and the vault-search dropdown (`src/blocks/VaultSearchBlock.ts:80`), each on the body of its block's own document | The lightbox lives until it is closed, the owning block unloads, or the plugin unloads. The dropdown lives as long as its block. | These elements sit outside `.homepage-view`, so view-scoped CSS tokens do not reach them (see [styling.md](styling.md)). |
 
@@ -344,7 +344,7 @@ Consequences of this object graph:
 - **Every render recreates every block.** A render runs on `onOpen`/`reload()`, on entering or leaving edit mode, after an added block, and through `rerender()` after a column change, a duplicate, a move up/down, a block-settings save, or removing the last block. A drag, a resize or a collapse persists without re-rendering.
   - Per-instance state is lost each time, for example RandomNote's daily cache.
   - State that must survive a render lives in module singletons (Pomodoro `timerStore`) or in the layout. Pomodoro keeps a paused or running timer in the store across unmounts and drops only an idle one (`src/blocks/PomodoroBlock.ts:134-137`); a running phase is anchored to the clock, so it keeps counting while no block is mounted ([blocks.md](blocks.md), `pomodoro`).
-- **Edit mode holds no block instances.** `mountBlock` renders placeholders (`src/GridLayout.ts:589-592`). While editing, block timers, vault listeners and live content are all stopped.
+- **Edit mode holds no block instances.** `mountBlock` renders placeholders (`src/GridLayout.ts:585-588`). While editing, block timers, vault listeners and live content are all stopped.
 - **External rerenders are deferred while a block holds unsaved inline UI.** `rerender()` returns early if any block's `hasUnsavedInlineState()` is true (`src/GridLayout.ts:376-385`). `setEditMode` and `addBlock` render directly and bypass this guard (`:262-269, 360-372`); an open Static Text draft is saved as its block unloads.
 
 ### 4.2 Render pipeline (summary)
@@ -353,11 +353,11 @@ The full sequence is in [flows.md](flows.md).
 
 1. `HomepageView.onOpen` → `GridLayout.render(activeBlocks(), activeColumns(), isInitial=true)` (`src/HomepageView.ts:63`).
 2. `render` captures the scroll positions and the focused control (`captureViewState`, not on the initial render), calls `teardown()` and sets `phase = Ready`. With zero blocks it calls `renderEmptyState` and stops there. Otherwise it calls `initGridStack`, re-applies the edit-mode zoom and restores the view state (`src/GridLayout.ts:141-173`).
-3. `initGridStack` sets `phase = Initializing`, builds the widgets and optionally calls `packRows`. It then runs `GridStack.init` (with `cellHeight: 80`, `margin: 8`, `mode: 'float'`, `staticGrid: !editMode || inPopout()`), turns off GridStack's own DOM sort (`disableGridStackDomSort`) and runs `load`, and calls `mountBlock` for each block. After that it registers the `dragstart`/`dragstop`/`resizestop` handlers, runs `ResponsiveColumnsManager.setup`, and a rAF (`initSettle`) sets `phase = Ready` (`:420-552`).
+3. `initGridStack` sets `phase = Initializing`, builds the widgets and optionally calls `packRows`. It then runs `GridStack.init` (with `cellHeight: 80`, `margin: 8`, `mode: 'float'`, `staticGrid: !editMode || inPopout()`), turns off GridStack's own DOM sort (`disableGridStackDomSort`) and runs `load`, and calls `mountBlock` for each block. After that it registers the `dragstart`/`dragstop`/`resizestop` handlers, runs `ResponsiveColumnsManager.setup`, and a rAF (`initSettle`) sets `phase = Ready` (`:420-548`).
 4. `mountBlock` builds the wrapper (`buildBlockWrapper` → `applyBlockStyling`). On the initial render it also covers the card with a skeleton, removed once the block has drawn and at the latest after 300 ms (`SKELETON_MAX_MS`).
    - In view mode it continues with `factory.create`, `setHeaderContainer`, `load()`, `render(contentEl)`, and then, for an auto-height block, an auto-height request.
    - In edit mode it continues with `renderCompactPlaceholder` and `attachEditHandleBar`.
-   - `attachCollapseToggle` runs in both modes (`:563-655`).
+   - `attachCollapseToggle` runs in both modes (`:559-656`).
 
 ---
 
@@ -445,7 +445,7 @@ flowchart LR
 One path changes `plugin.layout` without a save: `onExternalSettingsChange` assigns the layout another device wrote, which is already on disk (`src/main.ts:541-548`).
 
 Rules this design depends on (see [api/plugin.md](api/plugin.md)):
-- **Never mutate a `BlockInstance` or the layout in place.** Build new arrays and objects, then save. `buildLayoutUpdate` spreads the current `plugin.layout` and replaces only the active slice (`src/GridLayout.ts:684-698`).
+- **Never mutate a `BlockInstance` or the layout in place.** Build new arrays and objects, then save. `buildLayoutUpdate` spreads the current `plugin.layout` and replaces only the active slice (`src/GridLayout.ts:685-699`).
 - **Read through the `active*()` accessors; route grid writes through `buildLayoutUpdate`.** `updateBlockConfig` patches only the **active** platform array (`src/main.ts:586-606`). A change that must reach both arrays, such as a renamed note or folder, is written by the plugin itself (`followRename`, `:503-519`).
 - **A block writes its own config only through `plugin.updateBlockConfig`.** It must then re-read the config with `liveConfig()`. The `StaticTextBlock` inline editor is the reference implementation (`src/blocks/StaticTextBlock.ts:125-147`).
 

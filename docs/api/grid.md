@@ -189,7 +189,7 @@ The module constants are `COMPACT_EDIT_H = 2` (`:21`), the row height of an auto
 | `setColumns(n)` | Changes the column count (§3.7). | `:306-321` |
 | `addBlock(instance)` | Appends a block (§3.7). | `:360-372` |
 | `setZoom(scale)` / `computeFitZoom()` | Zoom (§3.8). | `:324-358` |
-| `buildLayoutUpdate(blocks, extra?: { columns?: number })` | The write-routing funnel (§3.10). | `:684-698` |
+| `buildLayoutUpdate(blocks, extra?: { columns?: number })` | The write-routing funnel (§3.10). | `:685-699` |
 | `shouldAutoHeight(instance)` | The auto-height predicate (§3.9). | `:123-134` |
 | `getElement()` | Returns `gridEl`. | `:137-139` |
 | `emitLayout(layout)` | Calls `onLayoutChange(layout)`. It is the host adapter for `LayoutPersister` and `EditHandleBar`. | `:81-83` |
@@ -198,9 +198,9 @@ The module constants are `COMPACT_EDIT_H = 2` (`:21`), the row height of an auto
 | `clearPendingResizes()` | Calls `autoHeight.clearPending()`. | `:103-105` |
 | `requestAutoHeight(gsEl, instance)` | Calls `autoHeight.request(...)`. | `:108-110` |
 | `packRows(items, columns, priority, reflow)` | Instance wrapper over `packing.ts::packRows`. All four parameters are required here. | `:113-120` |
-| `holdDerivedPersist()` | Sets `derivedPersistHeld`. Until the next `setEditMode` call, `persistLayoutDebounced()` does nothing, so the positions the grid derives itself (view-mode auto-height measurement and repack) are not saved. `HomepageView` calls it on the grid that redraws a `data.json` synced from another device: measured heights depend on the pane width, and two running devices would otherwise keep rewriting and reloading each other's layout. | `:726-728` |
-| `persistLayoutDebounced()` | Returns while `derivedPersistHeld` is set; otherwise calls `persister.persistDebounced()`. | `:731-734` |
-| `repackGridNodes()` | Calls `persister.repackGridNodes(...)` with non-reflow `packRows`. | `:740-744` |
+| `holdDerivedPersist()` | Sets `derivedPersistHeld`. Until the next `setEditMode` call, `persistLayoutDebounced()` does nothing, so the positions the grid derives itself (view-mode auto-height measurement and repack) are not saved. `HomepageView` calls it on the grid that redraws a `data.json` synced from another device: measured heights depend on the pane width, and two running devices would otherwise keep rewriting and reloading each other's layout. | `:727-729` |
+| `persistLayoutDebounced()` | Returns while `derivedPersistHeld` is set; otherwise calls `persister.persistDebounced()`. | `:732-735` |
+| `repackGridNodes()` | Calls `persister.repackGridNodes(...)` with non-reflow `packRows`. | `:741-745` |
 
 The private methods are:
 
@@ -212,11 +212,11 @@ The private methods are:
 | `applyZoom(scale)` | See §3.8. | `:330-346` |
 | `rerender()` | See §3.7. | `:376-385` |
 | `teardown()` | See §3.3. | `:388-418` |
-| `initGridStack()` | See §3.4. | `:420-552` |
-| `mountBlock()` | See §3.5. | `:563-655` |
-| `updateCompactSizeLabels()` | See §3.5. | `:661-670` |
-| `persistLayout()` | Calls `persister.persist()`. | `:701-703` |
-| `tryPersist(context)` | Runs `persistLayout()` in try/catch. On failure it logs `[Homepage Blocks] layout persist failed during <context>:` with only the error message. | `:711-717` |
+| `initGridStack()` | See §3.4. | `:420-548` |
+| `mountBlock()` | See §3.5. | `:559-656` |
+| `updateCompactSizeLabels()` | See §3.5. | `:662-671` |
+| `persistLayout()` | Calls `persister.persist()`. | `:702-704` |
+| `tryPersist(context)` | Runs `persistLayout()` in try/catch. On failure it logs `[Homepage Blocks] layout persist failed during <context>:` with only the error message. | `:712-718` |
 
 ### 3.3 `render` and `teardown`
 
@@ -241,7 +241,7 @@ The private methods are:
 
 ### 3.4 `initGridStack(blocks, columns, isInitial)`
 
-`src/GridLayout.ts:420-552`:
+`src/GridLayout.ts:420-548`:
 
 1. Sets `phase = Phase.Initializing`. This suppresses `dragstop`/`resizestop` persistence while GridStack runs `load()` (`:421-425`).
 2. Builds the widget items without content, because GridStack would set content through `innerHTML` (`:427-445`). Each item has:
@@ -253,15 +253,15 @@ The private methods are:
    - no `sizeToContent` (deliberately omitted, `:441-443`), no `minW` and no `minH`.
 3. When `editMode || plugin.layout.compactLayout`, runs `packRows(items, columns, plugin.activeLayoutPriority())` (`:451-453`). It mutates the item copies only, never the `BlockInstance`s.
 4. Sets `effectiveColumns = columns` and toggles `hp-single-column` for `columns === 1 && !editMode` (`:455-458`). The class's flex layout pins a dragged item to the top, so in edit mode every drag was saved as "move to top"; a one-column editor now keeps GridStack's own positioning (M25).
-5. Runs `GridStack.init(options, gridEl)` (options below). `init` returns `null` only without a document or a grid element; in that case the phase goes back to `Ready` and nothing is drawn. Otherwise it calls `disableGridStackDomSort(gridStack)` and then `gridStack.load(items)` (`:460-480`). GridStack's own sort (since 13.1) re-appends every item after a layout change, and without `moveBefore` (Safari, iOS) that reloads each iframe (M78). The hook is GridStack's internal `_sortDom`: the DOM-order test in `tests/grid/GridLayout.render.test.ts` fails if it stops working.
-6. Calls `mountBlock(instance, i, isInitial)` for each block (`:484-486`).
-7. When `columns === 1`, sorts the `.grid-stack-item` children by node `y`, then `x`, and applies that order with `orderChildren` (`:490-498`). `orderChildren(parent, ordered)` (`src/grid/domOrder.ts`) keeps a longest run of items already in order where it is and moves only the others with `insertBefore`: re-appending every item reloaded each iframe inside it, restarting a playing video (M78).
-8. Registers the GridStack events `dragstart`, `dragstop` and `resizestop` (§14) (`:508-523`).
-9. Calls `responsiveColumns.setup(viewEl, columns)`, where `viewEl` is `gridEl.closest('.homepage-view')` when that is an `HTMLElement`, else `null` (`:525-526`).
-10. If `lastAddedBlockId` is set, clears it, adds `block-just-added` to that item's wrapper with a one-shot `animationend` listener that removes it again (left on, the highlight replayed each time the tab was shown, M75), and calls `scrollIntoView({ behavior: 'smooth', block: 'nearest' })` (`:529-542`).
-11. Schedules the `initSettle` rAF, which sets `phase = Ready` unless the phase is `Destroyed` (`:548-551`).
+5. Runs `new GridStack(gridEl, options)` (options below, `:460-474`): the constructor, not `GridStack.init`, which is typed `GridStack | null` (null without a document), and teardown's `destroy()` already removes the element's previous grid. Then it calls `disableGridStackDomSort(gridStack)` and `gridStack.load(items)` (`:475-477`). GridStack's own sort (since 13.1) re-appends every item after a layout change, and without `moveBefore` (Safari, iOS, Chromium before 133, so Obsidian 1.8.x) that reloads each iframe (M78). The cost is that GridStack no longer keeps the DOM order equal to the visual order between renders, so Tab and print follow the order of the last `render()`. The hook is GridStack's internal `_sortDom`: `disableGridStackDomSort` logs a `console.warn` and changes nothing when the grid has no such method, and the DOM-order test in `tests/grid/GridLayout.render.test.ts` fails if it stops working.
+6. Calls `mountBlock(instance, i, isInitial)` for each block (`:481-483`).
+7. When `columns === 1`, sorts the `.grid-stack-item` children by node `y`, then `x`, and applies that order with `orderChildren` (`:487-495`). `orderChildren(parent, ordered)` (`src/grid/domOrder.ts`) keeps a longest run of items already in order where it is and moves only the others with `insertBefore`: re-appending every item reloaded each iframe inside it, restarting a playing video (M78).
+8. Registers the GridStack events `dragstart`, `dragstop` and `resizestop` (§14) (`:504-519`).
+9. Calls `responsiveColumns.setup(viewEl, columns)`, where `viewEl` is `gridEl.closest('.homepage-view')` when that is an `HTMLElement`, else `null` (`:521-522`).
+10. If `lastAddedBlockId` is set, clears it, adds `block-just-added` to that item's wrapper with a one-shot `animationend` listener that removes it again (left on, the highlight replayed each time the tab was shown, M75), and calls `scrollIntoView({ behavior: 'smooth', block: 'nearest' })` (`:525-538`).
+11. Schedules the `initSettle` rAF, which sets `phase = Ready` unless the phase is `Destroyed` (`:544-547`).
 
-GridStack options (`:460-472`):
+GridStack options (`:460-474`):
 
 | Option | Value |
 |---|---|
@@ -272,31 +272,31 @@ GridStack options (`:460-472`):
 | `animate` | `true` |
 | `staticGrid` | `!editMode \|\| inPopout()` |
 | `removable` | `false` |
-| `handleClass` | `'block-move-handle'` (the drag handle is built by `EditHandleBar`) |
+| `handleClass` | `'block-move-handle'` (the drag handle is built by `EditHandleBar`, after `load()`: `mountBlock` calls `refreshDragHandles` once the bar exists, §3.5) |
 | `resizable` | `{ handles: 'e,s,se' }` |
 
-GridStack compensates for the zoom `transform` itself (`:500-501`).
+GridStack compensates for the zoom `transform` itself (`:497-498`).
 
 ### 3.5 `mountBlock(instance, i, isInitial)`
 
-`src/GridLayout.ts:563-655`:
+`src/GridLayout.ts:559-656`:
 
-1. Finds the item `[gs-id="<CSS.escape(id)>"]` and returns if it is missing. Sets `role="listitem"` on it and toggles `is-auto-height` (`:564-573`).
-2. Finds `.grid-stack-item-content`. On the initial render only, it computes the stagger delay as `[0,50,100,140,170,195,215,230][i] ?? 240` ms (`:579`).
-3. Calls `buildBlockWrapper` (§10) and finds `.block-header-zone` and `.block-content` (`:580-584`). Returns if no factory is registered for the type (`:586-587`).
-4. **Edit mode:** calls `renderCompactPlaceholder(headerZone, contentEl, factory, instance)` and then `blocks.set(id, { block: null, wrapper })` (`:589-592`).
-5. **View mode** (`:593-646`):
+1. Finds the item `[gs-id="<CSS.escape(id)>"]` and returns if it is missing. Sets `role="listitem"` on it and toggles `is-auto-height` (`:560-569`).
+2. Finds `.grid-stack-item-content`. On the initial render only, it computes the stagger delay as `[0,50,100,140,170,195,215,230][i] ?? 240` ms (`:575`).
+3. Calls `buildBlockWrapper` (§10) and finds `.block-header-zone` and `.block-content` (`:576-580`). Returns if no factory is registered for the type (`:582-583`).
+4. **Edit mode:** calls `renderCompactPlaceholder(headerZone, contentEl, factory, instance)` and then `blocks.set(id, { block: null, wrapper })` (`:585-588`).
+5. **View mode** (`:589-642`):
    1. Runs `factory.create(app, instance, plugin)`, then `block.setHeaderContainer(headerZone)`, then `block.load()`, all before `render`.
    2. For an auto-height block, adds a `request-auto-height` listener on the item element (§6.1).
-   3. Creates a skeleton overlay only when `isInitial`, and schedules the `skeleton-cap-<id>` timeout, which removes it after `SKELETON_MAX_MS` (300 ms) even while the render is still pending: an Embedded Note waited for every remote image in the note, forever if a host never answered (M77). The auto-height measurement still waits for the whole render (`:612-616`).
-   4. Runs `block.render(contentEl)` in try/catch. A synchronous throw is converted to `Promise.reject` (`:621-626`), so one failing block does not abort the loop.
+   3. Creates a skeleton overlay only when `isInitial`, and schedules the `skeleton-cap-<id>` timeout, which removes it after `SKELETON_MAX_MS` (300 ms) even while the render is still pending: an Embedded Note waited for every remote image in the note, forever if a host never answered (M77). The auto-height measurement still waits for the whole render (`:608-612`).
+   4. Runs `block.render(contentEl)` in try/catch. A synchronous throw is converted to `Promise.reject` (`:617-622`), so one failing block does not abort the loop.
    5. **Promise result, resolved:** `removeSkeleton`, then `requestAutoHeight` if the block is auto-height.
    6. **Promise result, rejected:** `removeSkeleton`, then `console.error('[Homepage Blocks] Error rendering block <type>:', e)`, then the content text becomes `'Error rendering block. Check console for details.'`.
    7. **Synchronous result:** removes the skeleton at once, then calls `requestAutoHeight` if the block is auto-height.
    8. Calls `blocks.set(id, { block, wrapper })`.
-6. Always calls `attachCollapseToggle(this, gsEl, instance, headerZone)`. In edit mode it also calls `attachEditHandleBar(this, wrapper, instance)` (`:648-654`).
+6. Always calls `attachCollapseToggle(this, gsEl, instance, headerZone)`. In edit mode it also calls `attachEditHandleBar(this, wrapper, instance)` and then `gridStack?.refreshDragHandles(gsEl)` (`:644-655`). GridStack looked for the `.block-move-handle` grip when `load()` made the item, before the bar existed, and fell back to the whole item as the drag surface; the second look makes the grip the only one. Otherwise a touch held on one of the bar's buttons (GridStack arms a drag after 300 ms) would turn on its long-press handling, swallowing `contextmenu` and `selectstart` for the whole document until the next touch of a block. `tests/grid/GridLayout.render.test.ts` reads the elements GridStack listens on.
 
-`updateCompactSizeLabels()` (`:661-670`) rewrites every `.block-compact-size` to `` `${node.w ?? 1}×${node.h ?? 1}` `` from the live GridStack node. It runs after `resizestop`.
+`updateCompactSizeLabels()` (`:662-671`) rewrites every `.block-compact-size` to `` `${node.w ?? 1}×${node.h ?? 1}` `` from the live GridStack node. It runs after `resizestop`.
 
 ### 3.6 `setEditMode(enabled, skipRepack = false, flushInFlight = true)`
 
@@ -381,7 +381,7 @@ The factories flagged `autoHeight: true` are:
 
 ### 3.10 Write routing
 
-**`buildLayoutUpdate(blocks, extra?)`** (`:684-698`) returns `{ ...plugin.layout }` with the blocks routed by `plugin.isMobileActive()`:
+**`buildLayoutUpdate(blocks, extra?)`** (`:685-699`) returns `{ ...plugin.layout }` with the blocks routed by `plugin.isMobileActive()`:
 
 | `isMobileActive()` | Blocks go to | `extra.columns`, if set, goes to |
 |---|---|---|
@@ -444,7 +444,7 @@ stateDiagram-v2
 | `teardown()` sets `Destroyed` | `:395` |
 | `render()` sets `Ready` | `:146` |
 | `initGridStack()` sets `Initializing` | `:425` |
-| `initSettle` rAF sets `Ready` (skipped if `Destroyed`) | `:548-551` |
+| `initSettle` rAF sets `Ready` (skipped if `Destroyed`) | `:544-547` |
 | The empty state stays `Ready` with `gridStack === null` | `:164-167` |
 
 Gates:
@@ -453,7 +453,7 @@ Gates:
 |---|---|---|
 | `setEditMode`, `setColumns`, `addBlock` | not `Destroyed` | `src/GridLayout.ts:215,306,360` |
 | In-flight flushes in `setEditMode` / `setColumns` | `Ready` | `:235,312` |
-| `dragstop` / `resizestop` persist | `Ready` and `editMode` | `:515,520` |
+| `dragstop` / `resizestop` persist | `Ready` and `editMode` | `:511,516` |
 | `LayoutPersister.persist` | `Ready` and a `gridStack` | `src/grid/LayoutPersister.ts:59` |
 | `persistDebounced` callback | not `Destroyed` | `src/grid/LayoutPersister.ts:132` |
 | `AutoHeightManager.runBatch` | not `Destroyed`, and a `gridStack` | `src/grid/AutoHeight.ts:61` |
@@ -465,7 +465,7 @@ A persist attempted during `Initializing` is dropped. For example, a teardown fl
 
 ## 5. Host interfaces
 
-Each helper declares a narrow host interface. `GridLayout` satisfies each one structurally and passes `this` (`src/GridLayout.ts:67-72,649,653`). The managers keep `host` as a live reference and re-read its fields on every call (`src/grid/AutoHeight.ts:41-46`). No other module imports these interfaces.
+Each helper declares a narrow host interface. `GridLayout` satisfies each one structurally and passes `this` (`src/GridLayout.ts:67-72,645,649`). The managers keep `host` as a live reference and re-read its fields on every call (`src/grid/AutoHeight.ts:41-46`). No other module imports these interfaces.
 
 | Interface | Members | Cite |
 |---|---|---|
@@ -488,29 +488,28 @@ Each helper declares a narrow host interface. `GridLayout` satisfies each one st
 | `constructor(host: AutoHeightHost)` | | `:46` |
 | `request(gsEl, instance)` | Stores `pending[instance.id] = { gsEl, instance }` (the latest request per block wins) and schedules the `autoHeight` rAF. | `:54-57` |
 | `clearPending()` | Empties the queue. | `:49-51` |
-| `runBatch()` (private) | See below. | `:59-97` |
-| `measureAndResize(gsEl, instance)` (private) | Returns `true` if the row count changed. | `:103-168` |
+| `runBatch()` (private) | See below. | `:59-90` |
+| `measureAndResize(gsEl, instance)` (private) | Returns `true` if the row count changed. | `:96-160` |
 
 **`runBatch()`**:
 
 1. Returns if the phase is `Destroyed` or there is no grid.
 2. If `effectiveColumns === 1`, clears the queue and returns. In single-column mode the CSS flex layout sizes the blocks (`:66-69`).
-3. Snapshots and clears the queue. If the grid is static, lifts it with `setStatic(false)` for the whole batch (`:71-76`).
-4. Calls `measureAndResize` for each entry. If any row count changed, calls `host.repackGridNodes()` and then `host.persistLayoutDebounced()`. This repack runs whatever `compactLayout` is set to (`:84-91`).
-5. In `finally`, restores `setStatic(true)` (`:92-96`).
+3. Snapshots and clears the queue (`:71-72`). The grid stays static: GridStack's `update()`, `batchUpdate()` and `compact()` do not read `staticGrid` (`:74-76`). Lifting it for each batch built a drag and a resize object, with three resize handles, for every item.
+4. Calls `measureAndResize` for each entry (`:77-80`). If any row count changed, calls `host.repackGridNodes()` and then `host.persistLayoutDebounced()`. This repack runs whatever `compactLayout` is set to (`:82-89`).
 
 **`measureAndResize`** skips (returns `false`) when:
 - the element is disconnected;
-- the wrapper has `block-collapsed` (`:112-113`);
-- `[data-auto-height-content]` or `.block-header-zone` is missing (`:115-117`);
-- the measured content height is `<= 0` (`:140`).
+- the wrapper has `block-collapsed` (`:105-106`);
+- `[data-auto-height-content]` or `.block-header-zone` is missing (`:108-110`);
+- the measured content height is `<= 0` (`:133`).
 
 Otherwise it measures:
 1. It adds `hp-no-transition` and `hp-auto-rows` (`grid-template-rows: max-content !important`, `styles.css:3942-3943`) to `.block-content`.
 2. It reads the `offsetHeight` of the content element and of the header zone.
-3. It removes the classes and forces a reflow (`:124-138`).
+3. It removes the classes and forces a reflow (`:117-131`).
 
-It then computes the row count (`:142-158`):
+It then computes the row count (`:135-151`):
 
 ```
 pad    = wrapper paddingTop + paddingBottom   (24 without a wrapper)
@@ -521,7 +520,7 @@ totalH = headerH + pad + contentH + gap * gapCount + margin * 2 + 4   // 4 = SAF
 rows   = max(1, ceil(totalH / gridStack.getCellHeight()))
 ```
 
-It compares `rows` with `node.h ?? instance.h`. When they differ, it calls `gridStack.update(gsEl, { h: rows })` (`:160-166`).
+It compares `rows` with `node.h ?? instance.h`. When they differ, it calls `gridStack.update(gsEl, { h: rows })` (`:153-158`).
 
 In edit mode, CSS hides the `s` and `se` resize handles of `.is-auto-height` items (`styles.css:2673-2676`), so these blocks resize horizontally only.
 
@@ -529,15 +528,15 @@ In edit mode, CSS hides the `s` and `se` resize handles of `.is-auto-height` ite
 
 | Aspect | Value |
 |---|---|
-| Name | `'request-auto-height'`, a string literal in two places in `src/` (`src/blocks/BaseBlock.ts:174`, `src/GridLayout.ts:605`). There is no shared constant, unlike `AUTO_HEIGHT_ATTR`. |
+| Name | `'request-auto-height'`, a string literal in two places in `src/` (`src/blocks/BaseBlock.ts:174`, `src/GridLayout.ts:601`). There is no shared constant, unlike `AUTO_HEIGHT_ATTR`. |
 | Type | `CustomEvent` with `bubbles: true` and no `detail`. |
 | Dispatched by | `BaseBlock.requestAutoHeight()` on the block's `containerEl` (`src/blocks/BaseBlock.ts:173-175`). |
 | When | After a `scheduleRender` callback returns, or after its promise resolves; not after a failure (sync throw or rejection, which shows an error hint instead), and not when `containerEl` is disconnected, since the callback then does not run (`BaseBlock.ts:146-170`). From the rAF of `observeWidthForAutoHeight` (`BaseBlock.ts:183-201`). From the rAF of `observeSizeForAutoHeight`, which Static Text and a `grow` Embedded Note set on their measured element: a change of its width or height after mount (an image that loads late, an opened callout) asks for a measurement without a re-render (M34, `BaseBlock.ts:209-221`). By a subclass calling it directly. |
-| Listener | On the `.grid-stack-item` (`gsEl`) of auto-height blocks, view mode only, added in `mountBlock` (`src/GridLayout.ts:603-610`). The event reaches it by bubbling from the content element. |
+| Listener | On the `.grid-stack-item` (`gsEl`) of auto-height blocks, view mode only, added in `mountBlock` (`src/GridLayout.ts:599-606`). The event reaches it by bubbling from the content element. |
 | Listener behaviour | Re-reads the live instance from `activeBlocks()` and re-checks `shouldAutoHeight(live)`. When both hold, calls `requestAutoHeight(gsEl, live)`. |
 
 Measurements are also queued without the event:
-- by `mountBlock` after the first render (`src/GridLayout.ts:633,643`); a render that returns a promise is measured once it resolves, which is why `StaticTextBlock.render` returns the promise of its Markdown render (M34);
+- by `mountBlock` after the first render (`src/GridLayout.ts:629,639`); a render that returns a promise is measured once it resolves, which is why `StaticTextBlock.render` returns the promise of its Markdown render (M34);
 - by `ResponsiveColumnsManager.restoreCanonicalLayout` (`src/grid/ResponsiveColumns.ts:172`);
 - by `ResponsiveColumnsManager.packForNarrowLayout` when the new count is above 1 (`src/grid/ResponsiveColumns.ts:196-202`).
 
@@ -553,11 +552,9 @@ sequenceDiagram
   L->>AH: request(gsEl, live)
   AH->>AH: scheduler.raf autoHeight
   Note over AH: next frame, runBatch()
-  AH->>GS: setStatic(false) if static
   AH->>GS: update(gsEl, h = rows) for each changed block
   AH->>GL: repackGridNodes() if any changed
   AH->>GL: persistLayoutDebounced(), sync timeout 50 ms
-  AH->>GS: setStatic(true) in finally
 ```
 
 ---
@@ -602,12 +599,12 @@ Callers of `persist()`:
 
 | Caller | Cite |
 |---|---|
-| `dragstop` and `resizestop` | `src/GridLayout.ts:515,520` |
+| `dragstop` and `resizestop` | `src/GridLayout.ts:511,516` |
 | Edit-mode entry, via `tryPersist` | `src/GridLayout.ts:225` |
 | Edit-mode exit, via `tryPersist` | `src/GridLayout.ts:236` |
 | Column change, via `tryPersist` | `src/GridLayout.ts:313` |
 | Teardown flush, via `tryPersist` | `src/GridLayout.ts:393` |
-| The debounced path from `AutoHeightManager` | `src/grid/AutoHeight.ts:90` |
+| The debounced path from `AutoHeightManager` | `src/grid/AutoHeight.ts:88` |
 
 ---
 
@@ -624,7 +621,7 @@ Callers of `persist()`:
 | `< 1024` | `min(3, canonical)` |
 | otherwise | `canonical` |
 
-The width measured is that of the `.homepage-view` element (`src/GridLayout.ts:525-526`), not the grid's. The grid is capped by `max-width: var(--hp-content-max-width)` (`styles.css:57`), which is 1400px (`styles.css:13`). The CSS container queries on `.homepage-view` are separate from these breakpoints ([styling](../styling.md)).
+The width measured is that of the `.homepage-view` element (`src/GridLayout.ts:521-522`), not the grid's. The grid is capped by `max-width: var(--hp-content-max-width)` (`styles.css:57`), which is 1400px (`styles.css:13`). The CSS container queries on `.homepage-view` are separate from these breakpoints ([styling](../styling.md)).
 
 **`setup(viewEl, userCols)`** (`:57-94`) runs on every `initGridStack`:
 
@@ -677,7 +674,7 @@ In single-column mode, CSS turns the grid into a flex column and overrides GridS
 | Caller | Mode | Cite |
 |---|---|---|
 | `initGridStack` (edit mode, or `compactLayout`) | row groups, on the widget items | `src/GridLayout.ts:451` |
-| `GridLayout.repackGridNodes`, reached from `AutoHeightManager` | row groups, on the live nodes; only `y` is applied | `src/GridLayout.ts:740-744` |
+| `GridLayout.repackGridNodes`, reached from `AutoHeightManager` | row groups, on the live nodes; only `y` is applied | `src/GridLayout.ts:741-745` |
 | `ResponsiveColumnsManager.packForNarrowLayout` | greedy (`reflow = true`) | `src/grid/ResponsiveColumns.ts:185` |
 | `setEditMode` exit, through `repackEditLayout` | row groups, on the `BlockInstance`s | `src/GridLayout.ts:241` |
 | `fitBlocksToColumns` (Copy to mobile, a mobile Reset) | greedy (`reflow = true`), on `structuredClone` copies of the blocks | `src/utils/layoutReset.ts:36-40` |
@@ -724,7 +721,7 @@ The header zone is built without a role or a Tab stop (`:38-41`). `BaseBlock.ren
 
 ## 11. CollapseToggle
 
-**`attachCollapseToggle(host, gsEl, instance, headerZone)`** (`src/grid/CollapseToggle.ts:51-99`) is attached to every block in both modes (`src/GridLayout.ts:649`).
+**`attachCollapseToggle(host, gsEl, instance, headerZone)`** (`src/grid/CollapseToggle.ts:51-99`) is attached to every block in both modes (`src/GridLayout.ts:645`).
 
 | Aspect | Behaviour | Cite |
 |---|---|---|
@@ -734,7 +731,7 @@ The header zone is built without a role or a Tab stop (`:38-41`). `BaseBlock.ren
 | DOM | Flips `block-collapsed` on the wrapper and `is-collapsed` on the chevron, and updates `aria-expanded`. A collapsed block always shows its chevron, with or without hover highlight (M79, CSS). | `:65-68` |
 | Collapse | Reads `liveH = gsNode.h ?? instance.h`, calls `gridStack.update(gsEl, { h: 1 })`, and writes `{ collapsed: true, _expandedH: liveH }`. **The stored `h` is not changed**; view mode draws a collapsed block one row high anyway (`viewModeHeight`, `:33-38`). | `:74-80` |
 | Expand | Reads `origH` from the live block's `_expandedH` when that is a number `>= 1`, falling back to `instance.h`. Calls `update(gsEl, { h: origH })` and writes `{ collapsed: false, h: origH }`. `_expandedH` is left in place. Load and import already keep only a finite `_expandedH >= 1`, rounded (`src/validation.ts:322-326`). | `:79-85` |
-| Save | `void host.plugin.saveLayout(host.buildLayoutUpdate(newBlocks))`, not `emitLayout`. It does not lift `staticGrid` and requests no auto-height measurement after expanding. | `:92` |
+| Save | `void host.plugin.saveLayout(host.buildLayoutUpdate(newBlocks))`, not `emitLayout`. It requests no auto-height measurement after expanding. | `:92` |
 
 A block with `_showTitle === false`, and a Clock, Greeting or Spacer, never renders collapsed (`isCollapsible`, `src/grid/BlockWrapper.ts:25`). Its header zone collapses to height 0 through `hp-header-empty` (`styles.css:2540-2546`), and since no header is drawn it is neither a Tab stop nor a toggle.
 
@@ -746,7 +743,7 @@ A block with `_showTitle === false`, and a Clock, Greeting or Spacer, never rend
 
 | Element | Icon | `aria-label` | Action | Cite |
 |---|---|---|---|---|
-| `div.block-move-handle` | `grip-vertical` | "Drag to reorder" (also the `title`), with `role="img"` so the label is announced | GridStack drag handle (`handleClass`) | `:50-54` |
+| `div.block-move-handle` | `grip-vertical` | "Drag to reorder" (also the `title`), with `role="img"` so the label is announced | GridStack drag handle (`handleClass`), the only drag surface once `mountBlock` has called `refreshDragHandles` | `:50-54` |
 | `button.block-move-up-btn` | `chevron-up` | "Move block up" | `swapWithNeighbor(host, instance, 'up')` | `:57-63` |
 | `button.block-move-down-btn` | `chevron-down` | "Move block down" | `swapWithNeighbor(host, instance, 'down')` | `:65-71` |
 | `button.block-duplicate-btn` | `copy` | "Duplicate block" | Duplicate | `:74-91` |
@@ -803,11 +800,11 @@ It uses `window.setTimeout` and `window.requestAnimationFrame`. There is one ins
 | Key | Kind | Delay | Set by | Cancelled or checked by |
 |---|---|---|---|---|
 | `anim` | timeout | 500 ms | `GridLayout.render`, initial render only (`src/GridLayout.ts:153`) | `cancelAll` in `teardown` (`:396`), which also removes the class the timer would have removed (`:412`) |
-| `initSettle` | rAF | next frame | `GridLayout.initGridStack` (`:548`) | `cancelAll` |
+| `initSettle` | rAF | next frame | `GridLayout.initGridStack` (`:544`) | `cancelAll` |
 | `autoHeight` | rAF | next frame | `AutoHeightManager.request` (`src/grid/AutoHeight.ts:56`) | `ResponsiveColumnsManager.apply` (`src/grid/ResponsiveColumns.ts:115`), `cancelAll` |
 | `sync` | timeout, trailing debounce | 50 ms | `LayoutPersister.persistDebounced` (`src/grid/LayoutPersister.ts:131`), not scheduled while `derivedPersistHeld` is set | `GridLayout.setEditMode` (`:223-224`), `cancelPendingPersist` (`:300`), `teardown` flush (`:391-392`), `ResponsiveColumnsManager.apply` (`src/grid/ResponsiveColumns.ts:116`), `cancelAll` |
 | `skeleton-<n>` | timeout | 200 ms | `removeSkeleton` (`src/grid/BlockWrapper.ts:72-73`) | `cancelAll` |
-| `skeleton-cap-<id>` | timeout | 300 ms (`SKELETON_MAX_MS`) | `mountBlock`, initial render only: calls `removeSkeleton` while the block's render may still be pending (`src/GridLayout.ts:616`) | `cancelAll` |
+| `skeleton-cap-<id>` | timeout | 300 ms (`SKELETON_MAX_MS`) | `mountBlock`, initial render only: calls `removeSkeleton` while the block's render may still be pending (`src/GridLayout.ts:612`) | `cancelAll` |
 
 Timers in this layer that the Scheduler does not track:
 
@@ -824,12 +821,12 @@ Block-side timers (`scheduleRender`, `observeWidthForAutoHeight`, `observeSizeFo
 
 | Event | Source, listener | Effect | Cite |
 |---|---|---|---|
-| GridStack `dragstart` | grid | Adds `hp-dragging`, which dims the siblings (`styles.css:2810`). While zoomed, holds the wheel (§3.8). | `src/GridLayout.ts:508-511` |
-| GridStack `dragstop` | grid | Removes `hp-dragging` and the wheel hold. Calls `persistLayout()` when `Ready && editMode`. | `:512-517` |
-| GridStack `resizestop` | grid | Calls `persistLayout()` and `updateCompactSizeLabels()` when `Ready && editMode`. | `:519-523` |
+| GridStack `dragstart` | grid | Adds `hp-dragging`, which dims the siblings (`styles.css:2810`). While zoomed, holds the wheel (§3.8). | `src/GridLayout.ts:504-507` |
+| GridStack `dragstop` | grid | Removes `hp-dragging` and the wheel hold. Calls `persistLayout()` when `Ready && editMode`. | `:508-513` |
+| GridStack `resizestop` | grid | Calls `persistLayout()` and `updateCompactSizeLabels()` when `Ready && editMode`. | `:515-519` |
 | `wheel` on `.homepage-view`, during a zoomed drag only | `holdWheelWhileDragging` | `preventDefault()`: the view does not scroll under the dragged block (M26). | `:281-292` |
-| `animationend` on a just-added wrapper, once | `initGridStack` | Removes `block-just-added` (M75). | `:538` |
-| DOM `request-auto-height` | block `containerEl` → item `gsEl` | Queues a measurement (§6.1). | `:605-609` |
+| `animationend` on a just-added wrapper, once | `initGridStack` | Removes `block-just-added` (M75). | `:534` |
+| DOM `request-auto-height` | block `containerEl` → item `gsEl` | Queues a measurement (§6.1). | `:601-605` |
 | ResizeObserver on `.homepage-view` | `ResponsiveColumnsManager` | May call `apply(next)`. | `src/grid/ResponsiveColumns.ts:63-77` |
 | Header zone `click`, `keydown` Enter/Space | `CollapseToggle` | Toggles collapse (view mode, only when a header is drawn). | `src/grid/CollapseToggle.ts:95-98` |
 | Handle-bar button `click` | `EditHandleBar` | Move up, move down, duplicate, settings, remove. | `src/grid/EditHandleBar.ts:60-208` |
@@ -1046,7 +1043,7 @@ While editing:
 - per-block config saved through the gear modal, because the config lives inside the `BlockInstance`;
 - a column-count change made with the toolbar select, written to `columns` or `mobileColumns` by `buildLayoutUpdate(snapshot, { columns })` (`src/EditToolbar.ts:114-117`).
 
-Other layout-level fields (startup and display settings, `layoutPriority`, the other platform's blocks) are not in the snapshot, because `buildLayoutUpdate` spreads the current layout (`src/GridLayout.ts:689`). A file or folder renamed during the session is followed in the snapshot too, and a view-mode `updateBlockConfig` that was still queued when the session started is applied to it as well, so Discard keeps it (M52) (`mapSnapshot`, §15).
+Other layout-level fields (startup and display settings, `layoutPriority`, the other platform's blocks) are not in the snapshot, because `buildLayoutUpdate` spreads the current layout (`src/GridLayout.ts:690`). A file or folder renamed during the session is followed in the snapshot too, and a view-mode `updateBlockConfig` that was still queued when the session started is applied to it as well, so Discard keeps it (M52) (`mapSnapshot`, §15).
 
 ---
 
@@ -1058,7 +1055,7 @@ Other layout-level fields (startup and display settings, `layoutPriority`, the o
 |---|---|
 | Lists `swapWithNeighbor` among the `EditHandleBar.ts` exports. | It is module-private (`src/grid/EditHandleBar.ts:224`). |
 | Block Settings Flow: "Save replaces the block's whole config with the draft". | True, but incomplete. `commit()` also forces `_accentColor` and/or the gradient keys to `''` when they were not "dirty" (`src/modals/BlockSettingsModal.ts:432-433`). The draft starts from the render-time `instance.config` (`:54`). |
-| `compactLayout`: "AutoHeightManager still row-packs and persists every block after an auto-height change". | The repack happens only when a measurement changed a row count (`src/grid/AutoHeight.ts:88-91`) and never in single-column mode (`:66-69`). In a narrowed pane the persist writes only fixed-height `h` (`src/grid/LayoutPersister.ts:104,114-117`). On a grid redrawn from a synced `data.json` nothing is persisted until the next edit-mode switch (`holdDerivedPersist`, §3.2). |
+| `compactLayout`: "AutoHeightManager still row-packs and persists every block after an auto-height change". | The repack happens only when a measurement changed a row count (`src/grid/AutoHeight.ts:88-88`) and never in single-column mode (`:66-69`). In a narrowed pane the persist writes only fixed-height `h` (`src/grid/LayoutPersister.ts:104,114-117`). On a grid redrawn from a synced `data.json` nothing is persisted until the next edit-mode switch (`holdDerivedPersist`, §3.2). |
 | Code comment "not the full layout — settings changes must survive" (`src/EditToolbar.ts:66`). | Per-block settings saved during the session are reverted (§17), and so is the column count. Only the other layout-level fields survive. |
 
 **README.md:**
@@ -1073,7 +1070,7 @@ Other layout-level fields (startup and display settings, `layoutPriority`, the o
 
 | Comment | Code |
 |---|---|
-| "Horizontal-only resize in edit mode" (`src/GridLayout.ts:469`). | The handles are `'e,s,se'` (`:471`), so fixed-height blocks resize vertically. |
+| "Horizontal-only resize in edit mode" (`src/GridLayout.ts:471`). | The handles are `'e,s,se'` (`:473`), so fixed-height blocks resize vertically. |
 | AddBlockModal "free fuzzy filtering" (`src/EditToolbar.ts:296`). | `getSuggestions` is a substring match (`:310-318`). |
 | "Add Block button (only in edit mode)" (`src/EditToolbar.ts:194`). | The button is always rendered and is hidden, and `inert`, together with the toolbar. |
 | Fixed 2026-09-28: the comment that called a collapsed block's stored `h` "the collapsed `1` row" was removed; the rule now lives in `viewModeHeight` (`src/grid/CollapseToggle.ts:33-38`). | `CollapseToggle` still never writes `h: 1` (`src/grid/CollapseToggle.ts:78-80`), and `LayoutPersister` never writes a collapsed block's display height back (§7). |
@@ -1093,7 +1090,7 @@ These come from reading the code and were not reproduced at runtime.
 | E | **Fixed 2026-09-27.** The Discard snapshot used to be taken before `setEditMode(true)` flushed a pending view-mode `sync` persist, so Discard also reverted that write. It is now taken after the switch. A view-mode `updateBlockConfig` that lands after the switch is applied to the snapshot as well (M52). | `src/EditToolbar.ts:64,70-71`; `src/GridLayout.ts:223-226`; `src/main.ts:627` |
 | F | **Closing the tab mid-edit** skips both Done and Discard: no exit repack, and the snapshot is lost. The other views reload. `reload()` ends the session as Done instead (§2, §17). | `src/HomepageView.ts:67-71,105-109`; `src/EditToolbar.ts:275-282` |
 | H | **Two width sources.** The first read uses `viewEl.clientWidth`, which includes padding; the observer uses the content-box inline size. They differ by the element's horizontal padding, and near a breakpoint that can give different column counts. The plugin's own CSS sets no padding on `.homepage-view`, so this matters only if other CSS pads it. | `src/grid/ResponsiveColumns.ts:68,91`; `styles.css:6-47` |
-| I | **Inconsistent placeholder size label.** The first label shows the saved `instance.w×instance.h`. After any resize it shows the live node size, which is `h = 2` for auto-height placeholders. | `src/grid/BlockWrapper.ts:96`; `src/GridLayout.ts:661-670` |
+| I | **Inconsistent placeholder size label.** The first label shows the saved `instance.w×instance.h`. After any resize it shows the live node size, which is `h = 2` for auto-height placeholders. | `src/grid/BlockWrapper.ts:96`; `src/GridLayout.ts:662-671` |
 | J | **Label inconsistencies.** The remove-confirm label falls back to `instance.type`, while the placeholder and the preview use the block's default title (`blockTitle()`, M104) and then `displayName`. `_titleLabel` is trimmed in `BaseBlock.renderHeader` but not in the placeholder or the preview. | `src/grid/EditHandleBar.ts:148-150`; `src/grid/BlockWrapper.ts:84-86`; `src/modals/BlockSettingsModal.ts:58,80`; `src/blocks/BaseBlock.ts:66-68` |
 | L | **Overlaps within a row group.** `packRows` does not separate items that share a `y` and overlap horizontally. A swap can produce such a pair, and GridStack's collision handling is left to resolve it. | `src/grid/packing.ts:70-87`; `src/grid/EditHandleBar.ts:243-251` |
 | M | **`setColumns` clamps `w` but not `x`.** A block can then extend past the last column until `initGridStack` clamps it for display, or `LayoutPersister` writes the clamped node position at the next persist. | `src/GridLayout.ts:315-318,438`; `src/grid/LayoutPersister.ts:84-86` |
@@ -1108,10 +1105,11 @@ Fixed on 2026-10-10 and removed from this list: G (a grid narrowed at render dro
 
 | File | Covers |
 |---|---|
-| `tests/grid/GridLayout.render.test.ts` | Empty state and CTA (`:67-94`); wrapper DOM (`:96-139`); collapsed blocks after a reload (`:141-165`); edit placeholders (`:167-182`); `destroy` (`:184-196`); `buildLayoutUpdate` routing (`:198-216`); a block whose render throws (`:218-245`); AP-1, a pending view-mode persist on edit entry (`:247-269`); REG-1, Discard's `flushInFlight = false` (`:271-306`); `addBlock` while a block holds unsaved input (`:308-328`); the block limit (M8, `:330`); single-column edit mode (M25), scroll and focus kept across edit-mode re-renders (M27, M73), the zoom across re-renders and the fit zoom (M71, M72), zoomed drags (M26), GridStack's DOM sort kept off (M78), `init` returning no grid, pop-out windows (M29), the one-shot animations (M74, M75), the skeleton cap (M77) and the header zone of a header-less block (M49) (`:352-580`); the rerender guard (M124, `:582`); the column-change and teardown flushes and the view-mode `dragstop` guard (M120, `:613`); a header-less block stored collapsed is drawn expanded (`:651-`). |
+| `tests/grid/GridLayout.render.test.ts` | Empty state and CTA (`:66-93`); wrapper DOM (`:95-138`); collapsed blocks after a reload (`:140-164`); edit placeholders (`:166-181`); `destroy` (`:183-195`); `buildLayoutUpdate` routing (`:197-215`); a block whose render throws (`:217-244`); AP-1, a pending view-mode persist on edit entry (`:246-268`); REG-1, Discard's `flushInFlight = false` (`:270-305`); `addBlock` while a block holds unsaved input (`:307-327`); the block limit (M8, `:329`); single-column edit mode (M25), scroll and focus kept across edit-mode re-renders (M27, M73), the zoom across re-renders and the fit zoom (M71, M72), zoomed drags (M26), GridStack's DOM sort kept off (M78), the grip as the only drag surface in edit mode, pop-out windows (M29), the one-shot animations (M74, M75), the skeleton cap (M77) and the header zone of a header-less block (M49) (`:351-578`); the rerender guard (M124, `:580`); the column-change and teardown flushes and the view-mode `dragstop` guard (M120, `:611`); a header-less block stored collapsed is drawn expanded (`:651-`). |
 | `tests/grid/LayoutPersister.test.ts` | Collapsed blocks keep their stored `h` in view mode; a resize in edit mode is saved; an expanded fixed-height block still saves `h` (`:40-61`); a narrow pane saves heights but not its packed positions (M120, `:63-`). |
-| `tests/grid/AutoHeight.test.ts` | `staticGrid` restored even when a measurement throws (M120). |
-| `tests/grid/domOrder.test.ts` | `orderChildren` moves nothing when the order is right, and only the element out of place otherwise (M78). |
+| `tests/grid/AutoHeight.test.ts` | View mode stays static (M120): `staticGrid` holds when a measurement throws, and the blocks of a static grid are resized and moved by the real GridStack without `setStatic` ever being called. |
+| `tests/grid/domOrder.test.ts` | `orderChildren` moves nothing when the order is right, and only the element out of place otherwise; `disableGridStackDomSort` replaces `_sortDom`, and warns without adding a property when the grid has none (M78). |
+| `tests/styles.test.ts` | Line 2 of `styles.css` is the `gridstack.min.css` of the installed gridstack. |
 | `tests/grid/ResponsiveColumns.test.ts` | Hidden tabs (width 0), collapsed blocks across a narrow and widen, animation restored after a column change, and the auto-height re-request after narrowing (`:77-`). |
 | `tests/grid/packing.test.ts` | `packRows` (both modes) and `repackEditLayout`. |
 | `tests/EditToolbar.test.ts` | The Add Block pick on desktop, on phones, with its own copy of nested defaults, and after `destroy()` (`:59-101`); Discard keeps a Static Text draft and restores the column count (`:103-159`); edit sessions across views: `canStart`, `ended` after Done, Discard and a tab closed mid-edit (`:161-213`); the `inert` hidden toolbar (M30, `:215`); focus kept across a redraw (M73, `:238`); Discard writes only the snapshot and Done keeps the edit and repacks, with a real grid (M119, `:252-`). |

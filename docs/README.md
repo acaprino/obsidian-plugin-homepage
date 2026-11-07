@@ -1,6 +1,6 @@
 # Homepage Blocks developer docs
 
-These pages document the Obsidian plugin **Homepage Blocks** as the code stands after the X-ray fixes, the review-backlog fixes of 2026-10-10 and the upgrade to GridStack 14.1.0. Line citations were re-mapped to this code on 2026-11-07; about one in ten could not be checked automatically and may be a few lines off. Every claim cites its source as `path:line`, relative to the repo root. When a comment, `CLAUDE.md` or the README says something else, the docs follow the code and list the difference.
+These pages document the Obsidian plugin **Homepage Blocks** as the code stands after the X-ray fixes, the review-backlog fixes of 2026-10-10 and the upgrade to GridStack 14.1.0. Line citations were re-mapped to this code on 2026-11-07, and those of `src/GridLayout.ts` were read one by one afterwards; about one in ten of the others could not be checked automatically and may be a few lines off. Every claim cites its source as `path:line`, relative to the repo root. When a comment, `CLAUDE.md` or the README says something else, the docs follow the code and list the difference.
 
 ## What each doc covers
 

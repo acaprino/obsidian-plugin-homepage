@@ -98,7 +98,7 @@ flowchart TD
 
 - **Rendering target.** The `el` passed to `render` is `.block-content`. The header goes into `.block-header-zone`, which sits outside it (`src/grid/BlockWrapper.ts:38-49`).
 - **Wrapper.** The wrapper carries the classes `homepage-block-wrapper hp-block-<type>` and the shared styling from `applyBlockStyling` (`:22-31`).
-- **Skeleton.** The skeleton overlay is created only on the initial render (`src/GridLayout.ts:612`). It goes when an async render settles, and at the latest after 300 ms (`SKELETON_MAX_MS`, `:24`, `:616`): an Embedded Note used to keep it up while it waited for every remote image in the note (M77). The auto-height measurement still waits for the whole render.
+- **Skeleton.** The skeleton overlay is created only on the initial render (`src/GridLayout.ts:608`). It goes when an async render settles, and at the latest after 300 ms (`SKELETON_MAX_MS`, `:24`, `:612`): an Embedded Note used to keep it up while it waited for every remote image in the note (M77). The auto-height measurement still waits for the whole render.
 - **Error handling inside blocks.** Several blocks catch their own render failure and call `renderErrorHint`, which draws a `.block-empty-hint.block-error-hint` (`src/blocks/BaseBlock.ts:105-110`). These are `quotes-list`, `image-gallery`, `embedded-note`, `static-text` and `random-note`. For them, GridLayout's fallback text shows only when something escapes that handler. A live re-render that fails shows an error hint for every block (see [Live updates](#live-updates)).
 - **Teardown.** Every render (a settings save, a column change, an added, duplicated or moved block, an edit-mode toggle, a view reload) unloads all block instances (`src/GridLayout.ts:397-400`). Anything not in config or in a module-level store is lost.
   - `GridLayout.rerender()` does nothing while any block's `hasUnsavedInlineState()` returns true (`:376-385`).
@@ -166,8 +166,8 @@ A glob in Quick links' `folder` is rewritten only where its text starts with the
 | `static-text` | `.static-text-content` (observed for size changes) / `.static-text-inline-editor` | `heightMode !== 'fixed'` |
 | `random-note` | `.random-note-body` (the card inside `.block-content`), only while a note is shown | always |
 
-- **Measurement.** `AutoHeightManager` measures the first `[data-auto-height-content]` element in the grid item and sets the row count with `gridStack.update` (`src/grid/AutoHeight.ts:103-168`).
-- **When it does nothing.** It skips collapsed blocks (`:112-113`). It also does nothing when the grid has a single column (`effectiveColumns === 1`, `:66-69`).
+- **Measurement.** `AutoHeightManager` measures the first `[data-auto-height-content]` element in the grid item and sets the row count with `gridStack.update` (`src/grid/AutoHeight.ts:96-160`).
+- **When it does nothing.** It skips collapsed blocks (`:105-106`). It also does nothing when the grid has a single column (`effectiveColumns === 1`, `:66-69`).
 - **What triggers a re-measure:**
   - the initial render;
   - every `scheduleRender` run;

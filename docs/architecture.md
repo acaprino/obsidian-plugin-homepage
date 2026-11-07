@@ -2,7 +2,7 @@
 
 This page maps the codebase of **Homepage Blocks**, an Obsidian plugin (`manifest.json`: id `homepage-blocks`, version 1.4.0, `minAppVersion` 1.8.7, `isDesktopOnly: false`).
 
-The plugin registers one custom view, `HomepageView` (`VIEW_TYPE = 'homepage-blocks'`, `src/HomepageView.ts:6`). The view renders a GridStack 12 grid of configurable **blocks**: clock, quotes, gallery, embedded note, voice notes, and 12 more. The whole layout is one `LayoutConfig` object. It lives in memory on the plugin and is persisted to the plugin's `data.json`.
+The plugin registers one custom view, `HomepageView` (`VIEW_TYPE = 'homepage-blocks'`, `src/HomepageView.ts:6`). The view renders a GridStack 14 grid of configurable **blocks**: clock, quotes, gallery, embedded note, voice notes, and 12 more. The whole layout is one `LayoutConfig` object. It lives in memory on the plugin and is persisted to the plugin's `data.json`.
 
 Stack:
 - TypeScript (`strict`)
@@ -88,7 +88,7 @@ Dependencies point downward. The table lists what each layer imports from the la
 | `src/grid/LayoutPersister.ts` | 162 | Reads GridStack nodes, diffs them against the active blocks, and emits the changed positions. Keeps the stored `h` of auto-height blocks and of collapsed blocks drawn at a display height (`nodeShowsStoredHeight`). Has a 50 ms debounced variant and re-packs the live nodes' `y`. |
 | `src/grid/ResponsiveColumns.ts` | 211 | A `ResizeObserver` on `.homepage-view` that lowers the effective column count below 480, 768 and 1024 px, and asks auto-height blocks to measure again after narrowing. View mode only. |
 | `src/grid/packing.ts` | 111 | Pure `packRows` (mutates in place) and `repackEditLayout` (returns a copy). |
-| `src/grid/domOrder.ts` | 36 | `orderChildren`: puts grid items in order by moving only those out of place (a longest increasing run stays), so iframes in the others do not reload. Used by `initGridStack` and the single-column reorder. |
+| `src/grid/domOrder.ts` | 46 | `orderChildren`: puts grid items in order by moving only those out of place (a longest increasing run stays), so iframes in the others do not reload. Used by `initGridStack` and the single-column reorder. `disableGridStackDomSort`: turns off GridStack's own sort, which re-appends every item. |
 | `src/grid/blockLimit.ts` | 13 | `canAddBlock`: false, with a Notice, once a homepage holds `MAX_BLOCKS` blocks. |
 | `src/grid/BlockWrapper.ts` | 119 | DOM builders for the card wrapper, skeleton overlay, edit-mode placeholder and empty state. The header zone gets no role or Tab stop here; `BaseBlock.renderHeader` makes it a toggle when it draws a header. |
 | `src/grid/CollapseToggle.ts` | 99 | Header collapse and expand in view mode, by click, Enter or Space, only on a zone that draws a header (`role="button"`). `isCollapsible` keeps a stored-collapsed Clock, Greeting or Spacer (no header to expand it) drawn expanded; `viewModeHeight` gives the rows a block is drawn at. Collapsing saves `collapsed: true` and `_expandedH`; expanding saves `collapsed: false` and `h`, restored from `_expandedH` when it is a number ≥ 1. |
@@ -353,7 +353,7 @@ The full sequence is in [flows.md](flows.md).
 
 1. `HomepageView.onOpen` → `GridLayout.render(activeBlocks(), activeColumns(), isInitial=true)` (`src/HomepageView.ts:63`).
 2. `render` captures the scroll positions and the focused control (`captureViewState`, not on the initial render), calls `teardown()` and sets `phase = Ready`. With zero blocks it calls `renderEmptyState` and stops there. Otherwise it calls `initGridStack`, re-applies the edit-mode zoom and restores the view state (`src/GridLayout.ts:141-172`).
-3. `initGridStack` sets `phase = Initializing`, builds the widgets and optionally calls `packRows`. It then runs `GridStack.init` (with `cellHeight: 80`, `margin: 8`, `float: true`, `staticGrid: !editMode || inPopout()`) and `load`, and calls `mountBlock` for each block. After that it registers the `dragstart`/`dragstop`/`resizestop` handlers, runs `ResponsiveColumnsManager.setup`, and a rAF (`initSettle`) sets `phase = Ready` (`:340-459`).
+3. `initGridStack` sets `phase = Initializing`, builds the widgets and optionally calls `packRows`. It then runs `GridStack.init` (with `cellHeight: 80`, `margin: 8`, `mode: 'float'`, `staticGrid: !editMode || inPopout()`), turns off GridStack's own DOM sort (`disableGridStackDomSort`) and runs `load`, and calls `mountBlock` for each block. After that it registers the `dragstart`/`dragstop`/`resizestop` handlers, runs `ResponsiveColumnsManager.setup`, and a rAF (`initSettle`) sets `phase = Ready` (`:340-459`).
 4. `mountBlock` builds the wrapper (`buildBlockWrapper` → `applyBlockStyling`). On the initial render it also covers the card with a skeleton, removed once the block has drawn and at the latest after 300 ms (`SKELETON_MAX_MS`).
    - In view mode it continues with `factory.create`, `setHeaderContainer`, `load()`, `render(contentEl)`, and then, for an auto-height block, an auto-height request.
    - In edit mode it continues with `renderCompactPlaceholder` and `attachEditHandleBar`.

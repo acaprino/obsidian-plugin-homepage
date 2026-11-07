@@ -15,6 +15,16 @@ export function orderChildren(parent: HTMLElement, ordered: HTMLElement[]): void
   }
 }
 
+/**
+ * Stop a GridStack from sorting its own items. Since 13.1 it re-appends them all
+ * when a layout change alters the visual order. Without `moveBefore` (Safari, iOS)
+ * that reloads every iframe inside them (M78). `_sortDom` is GridStack's internal
+ * name: the DOM-order test in GridLayout.render.test.ts fails if this stops working.
+ */
+export function disableGridStackDomSort(grid: object): void {
+  (grid as { _sortDom?: () => void })._sortDom = () => undefined;
+}
+
 /** Indices of a longest strictly increasing subsequence of `seq` (patience sorting). */
 function longestIncreasing(seq: number[]): Set<number> {
   const tails: number[] = []; // index into seq of the smallest tail for each length

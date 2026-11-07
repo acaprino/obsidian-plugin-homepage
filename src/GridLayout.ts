@@ -13,7 +13,7 @@ import { attachEditHandleBar } from './grid/EditHandleBar';
 import { packRows, repackEditLayout } from './grid/packing';
 import { canAddBlock } from './grid/blockLimit';
 import { buildBlockWrapper, createSkeleton, removeSkeleton, renderCompactPlaceholder, renderEmptyState } from './grid/BlockWrapper';
-import { orderChildren } from './grid/domOrder';
+import { disableGridStackDomSort, orderChildren } from './grid/domOrder';
 
 type LayoutChangeCallback = (layout: LayoutConfig) => void;
 
@@ -461,7 +461,7 @@ export class GridLayout {
       column: columns,
       cellHeight: 80,
       margin: 8,
-      float: true,
+      mode: 'float',
       animate: true,
       staticGrid: !this.editMode || this.inPopout(),
       removable: false,
@@ -470,6 +470,12 @@ export class GridLayout {
       // In view mode, staticGrid disables all interaction so handles are irrelevant.
       resizable: { handles: 'e,s,se' },
     }, this.gridEl);
+    // Null only without a document or a grid element, and gridEl always is one.
+    if (!this.gridStack) {
+      this.phase = Phase.Ready;
+      return;
+    }
+    disableGridStackDomSort(this.gridStack);
 
     this.gridStack.load(items);
 

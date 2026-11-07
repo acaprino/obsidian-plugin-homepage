@@ -138,7 +138,7 @@ export class ResponsiveColumnsManager {
       }
     } finally {
       // Commit the new geometry while no transition applies, then animate again.
-      // GridStack 12 happens to read computed style in _updateContainerHeight
+      // GridStack happens to read computed style in _updateContainerHeight
       // (unless minRow is set), which already commits it; this read keeps the fix
       // independent of that internal detail.
       void this.host.gridEl.offsetWidth;

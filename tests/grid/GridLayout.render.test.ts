@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Notice, type App } from 'obsidian';
+import { GridStack } from 'gridstack';
 import { GridLayout } from '../../src/GridLayout';
 import { BaseBlock } from '../../src/blocks/BaseBlock';
 import { Phase } from '../../src/grid/phase';
@@ -448,6 +449,47 @@ describe('GridLayout — dragging while zoomed (M26)', () => {
 
     expect(during.defaultPrevented).toBe(true);
     expect(after.defaultPrevented).toBe(false);
+  });
+});
+
+describe('GridLayout — GridStack and the DOM order (M78)', () => {
+  it('moves no item when a layout change alters the visual order: a move reloads the iframes inside', async () => {
+    const blocks = [clock('a', { h: 1 }), clock('b', { x: 1, h: 1 }), clock('c', { y: 1, h: 1 })];
+    const plugin = makePlugin({ blocks });
+    const grid = new GridLayout(host, plugin.app, plugin, () => {});
+    grid.render(blocks, 3);
+    const gridStack = grid.gridStack!;
+    const item = (id: string) => host.querySelector(`[gs-id="${id}"]`) as HTMLElement & { gridstackNode?: { y: number } };
+    const before = [...grid.gridEl.children];
+    const detached: Node[] = [];
+    const observer = new MutationObserver((records) => { for (const r of records) detached.push(...r.removedNodes); });
+    observer.observe(grid.gridEl, { childList: true });
+
+    gridStack.batchUpdate();
+    gridStack.update(item('c'), { y: 0 });
+    gridStack.update(item('a'), { y: 2 });
+    gridStack.batchUpdate(false);
+    await Promise.resolve();
+    observer.disconnect();
+
+    expect(item('c').gridstackNode?.y).toBe(0);
+    expect(item('a').gridstackNode?.y).toBe(2);
+    expect(detached).toEqual([]);
+    expect([...grid.gridEl.children]).toEqual(before);
+  });
+});
+
+describe('GridLayout — GridStack returns no grid', () => {
+  it('stays usable, with nothing left waiting for an init to settle', () => {
+    const init = vi.spyOn(GridStack, 'init').mockReturnValueOnce(null);
+    const plugin = makePlugin({ blocks: [clock('a')] });
+    const grid = new GridLayout(host, plugin.app, plugin, () => {});
+
+    expect(() => grid.render(plugin.activeBlocks(), 3)).not.toThrow();
+
+    expect(grid.gridStack).toBeNull();
+    expect(grid.phase).toBe(Phase.Ready);
+    init.mockRestore();
   });
 });
 

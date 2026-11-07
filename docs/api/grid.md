@@ -1,6 +1,6 @@
 # Grid layer API
 
-This is the interface reference for the layer between the Obsidian view and the blocks. It covers the view shell, `GridLayout` and its helper managers, the edit toolbar and the modals. It describes branch `xray-remediation` after the X-ray fixes and the review-backlog fixes of 2026-10-10. The bundled GridStack is 12.4.2 (`package.json`: `"gridstack": "^12.4.2"`).
+This is the interface reference for the layer between the Obsidian view and the blocks. It covers the view shell, `GridLayout` and its helper managers, the edit toolbar and the modals. It describes branch `xray-remediation` after the X-ray fixes and the review-backlog fixes of 2026-10-10. The bundled GridStack is 14.1.0 (`package.json`: `"gridstack": "^14.1.0"`).
 
 Read first:
 - [architecture](../architecture.md), for where this layer sits;
@@ -58,7 +58,7 @@ Terms used below:
 | `src/grid/LayoutPersister.ts` | `LayoutPersisterHost`, `LayoutPersister` | Diffs GridStack nodes against the `BlockInstance`s and writes the changes. |
 | `src/grid/ResponsiveColumns.ts` | `ResponsiveColumnsHost`, `ResponsiveColumnsManager` | Maps the pane width to an effective column count. |
 | `src/grid/packing.ts` | `packRows`, `repackEditLayout` | Pure y-packing. |
-| `src/grid/domOrder.ts` | `orderChildren` | Puts grid items in a given DOM order, moving only those out of place (§3.4). |
+| `src/grid/domOrder.ts` | `orderChildren`, `disableGridStackDomSort` | Puts grid items in a given DOM order, moving only those out of place; turns off GridStack's own sort, which moves them all (§3.4). |
 | `src/grid/blockLimit.ts` | `canAddBlock` | `false`, with a Notice, when one more block would pass `MAX_BLOCKS` (100) (§3.7, §12). |
 | `src/grid/BlockWrapper.ts` | `buildBlockWrapper`, `createSkeleton`, `removeSkeleton`, `renderCompactPlaceholder`, `renderEmptyState` | DOM builders. |
 | `src/grid/CollapseToggle.ts` | `CollapseToggleHost`, `isCollapsible`, `viewModeHeight`, `attachCollapseToggle` | Collapses a block from its header. |
@@ -77,7 +77,7 @@ flowchart TD
   ET -->|"setEditMode, addBlock, setZoom, computeFitZoom, buildLayoutUpdate, cancelPendingPersist"| GL
   HV -->|"onColumnsChange callback calls setColumns"| GL
   ET --> ABM["AddBlockModal (SuggestModal)"]
-  GL --> GS["GridStack 12.4.2"]
+  GL --> GS["GridStack 14.1.0"]
   GL --> SCH["Scheduler"]
   GL --> AH["AutoHeightManager"]
   GL --> RC["ResponsiveColumnsManager"]
@@ -253,7 +253,7 @@ The private methods are:
    - no `sizeToContent` (deliberately omitted, `:440-442`), no `minW` and no `minH`.
 3. When `editMode || plugin.layout.compactLayout`, runs `packRows(items, columns, plugin.activeLayoutPriority())` (`:450-452`). It mutates the item copies only, never the `BlockInstance`s.
 4. Sets `effectiveColumns = columns` and toggles `hp-single-column` for `columns === 1 && !editMode` (`:454-457`). The class's flex layout pins a dragged item to the top, so in edit mode every drag was saved as "move to top"; a one-column editor now keeps GridStack's own positioning (M25).
-5. Runs `GridStack.init(options, gridEl)` (options below), then `gridStack.load(items)` (`:459-473`).
+5. Runs `GridStack.init(options, gridEl)` (options below). `init` returns `null` only without a document or a grid element; in that case the phase goes back to `Ready` and nothing is drawn. Otherwise it calls `disableGridStackDomSort(gridStack)` and then `gridStack.load(items)` (`:459-473`). GridStack's own sort (since 13.1) re-appends every item after a layout change, and without `moveBefore` (Safari, iOS) that reloads each iframe (M78). The hook is GridStack's internal `_sortDom`: the DOM-order test in `tests/grid/GridLayout.render.test.ts` fails if it stops working.
 6. Calls `mountBlock(instance, i, isInitial)` for each block (`:477-479`).
 7. When `columns === 1`, sorts the `.grid-stack-item` children by node `y`, then `x`, and applies that order with `orderChildren` (`:483-491`). `orderChildren(parent, ordered)` (`src/grid/domOrder.ts`) keeps a longest run of items already in order where it is and moves only the others with `insertBefore`: re-appending every item reloaded each iframe inside it, restarting a playing video (M78).
 8. Registers the GridStack events `dragstart`, `dragstop` and `resizestop` (§14) (`:501-516`).
@@ -268,7 +268,7 @@ GridStack options (`:459-471`):
 | `column` | `columns` |
 | `cellHeight` | `80` |
 | `margin` | `8` |
-| `float` | `true` |
+| `mode` | `'float'` |
 | `animate` | `true` |
 | `staticGrid` | `!editMode \|\| inPopout()` |
 | `removable` | `false` |
@@ -1108,7 +1108,7 @@ Fixed on 2026-10-10 and removed from this list: G (a grid narrowed at render dro
 
 | File | Covers |
 |---|---|
-| `tests/grid/GridLayout.render.test.ts` | Empty state and CTA (`:66-93`); wrapper DOM (`:95-138`); collapsed blocks after a reload (`:140-164`); edit placeholders (`:166-181`); `destroy` (`:183-195`); `buildLayoutUpdate` routing (`:197-215`); a block whose render throws (`:217-244`); AP-1, a pending view-mode persist on edit entry (`:246-268`); REG-1, Discard's `flushInFlight = false` (`:270-305`); `addBlock` while a block holds unsaved input (`:307-327`); the block limit (M8, `:329`); single-column edit mode (M25), scroll and focus kept across edit-mode re-renders (M27, M73), the zoom across re-renders and the fit zoom (M71, M72), zoomed drags (M26), pop-out windows (M29), the one-shot animations (M74, M75), the skeleton cap (M77) and the header zone of a header-less block (M49) (`:351-538`); the rerender guard (M124, `:540`); the column-change and teardown flushes and the view-mode `dragstop` guard (M120, `:571`); a header-less block stored collapsed is drawn expanded (`:609-`). |
+| `tests/grid/GridLayout.render.test.ts` | Empty state and CTA (`:66-93`); wrapper DOM (`:95-138`); collapsed blocks after a reload (`:140-164`); edit placeholders (`:166-181`); `destroy` (`:183-195`); `buildLayoutUpdate` routing (`:197-215`); a block whose render throws (`:217-244`); AP-1, a pending view-mode persist on edit entry (`:246-268`); REG-1, Discard's `flushInFlight = false` (`:270-305`); `addBlock` while a block holds unsaved input (`:307-327`); the block limit (M8, `:329`); single-column edit mode (M25), scroll and focus kept across edit-mode re-renders (M27, M73), the zoom across re-renders and the fit zoom (M71, M72), zoomed drags (M26), GridStack's DOM sort kept off (M78), `init` returning no grid, pop-out windows (M29), the one-shot animations (M74, M75), the skeleton cap (M77) and the header zone of a header-less block (M49) (`:351-538`); the rerender guard (M124, `:540`); the column-change and teardown flushes and the view-mode `dragstop` guard (M120, `:571`); a header-less block stored collapsed is drawn expanded (`:609-`). |
 | `tests/grid/LayoutPersister.test.ts` | Collapsed blocks keep their stored `h` in view mode; a resize in edit mode is saved; an expanded fixed-height block still saves `h` (`:40-61`); a narrow pane saves heights but not its packed positions (M120, `:63-`). |
 | `tests/grid/AutoHeight.test.ts` | `staticGrid` restored even when a measurement throws (M120). |
 | `tests/grid/domOrder.test.ts` | `orderChildren` moves nothing when the order is right, and only the element out of place otherwise (M78). |
